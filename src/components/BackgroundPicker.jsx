@@ -10,6 +10,7 @@ export default function BackgroundPicker({
   chromaSimilarity,
   chromaSmoothness,
   cameraScale,
+  aiBackgroundEnabled,
   onTemplateChange,
   onCustomUpload,
   onClearCustom,
@@ -17,6 +18,7 @@ export default function BackgroundPicker({
   onChromaSimilarityChange,
   onChromaSmoothnessChange,
   onCameraScaleChange,
+  onAiBackgroundChange,
   compact = false,
 }) {
   const fileRef = useRef()
@@ -65,13 +67,28 @@ export default function BackgroundPicker({
           <label className={styles.chromaToggle}>
             <input
               type="checkbox"
+              checked={aiBackgroundEnabled}
+              onChange={e => onAiBackgroundChange?.(e.target.checked)}
+            />
+            <span><i className="ti ti-wand" /> Quitar fondo con IA (sin pantalla verde)</span>
+          </label>
+          {aiBackgroundEnabled && (
+            <p className={styles.hint}>
+              La IA detecta tu silueta y coloca el set de estudio detrás. Funciona mejor con buena luz frontal.
+            </p>
+          )}
+
+          <label className={styles.chromaToggle}>
+            <input
+              type="checkbox"
               checked={chromaEnabled}
+              disabled={aiBackgroundEnabled}
               onChange={e => onChromaChange(e.target.checked)}
             />
             <span><i className="ti ti-background" /> Croma key (pantalla verde)</span>
           </label>
 
-          {chromaEnabled && (
+          {chromaEnabled && !aiBackgroundEnabled && (
             <>
               <div className={styles.sliderRow}>
                 <span>Sensibilidad</span>

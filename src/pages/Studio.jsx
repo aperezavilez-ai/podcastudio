@@ -18,7 +18,9 @@ import { useAutoSwitcher } from '../hooks/useAutoSwitcher.js'
 import { useStudioCompositor } from '../hooks/useStudioCompositor.js'
 import { useAudioMix } from '../hooks/useAudioMix.js'
 import VUMeter from '../components/VUMeter.jsx'
-import PostsPanel from '../components/PostsPanel.jsx'
+import Teleprompter from '../components/Teleprompter.jsx'
+import LiveStreamPanel from '../components/LiveStreamPanel.jsx'
+import { useTeleprompter } from '../hooks/useTeleprompter.js'
 import styles from './Studio.module.css'
 
 const ROTATION_PRESETS = CINTILLO_PRESETS.filter(p => ['topic', 'guest', 'social', 'contact'].includes(p.id))
@@ -83,6 +85,9 @@ export default function Studio({ project, user }) {
   const [chromaSimilarity, setChromaSimilarity] = useState(project?.chromaSimilarity ?? 45)
   const [chromaSmoothness, setChromaSmoothness] = useState(project?.chromaSmoothness ?? 20)
   const [cameraScale, setCameraScale] = useState(project?.cameraScale ?? 100)
+  const [aiBackgroundEnabled, setAiBackgroundEnabled] = useState(() =>
+    project?.aiBackgroundEnabled ?? localStorage.getItem('podcastudio_ai_bg') === 'true'
+  )
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
 
@@ -98,12 +103,23 @@ export default function Studio({ project, user }) {
     cintillo, animPhase, animKey, showManual, showCustom, hide: hideCintillo,
   } = useCintilloRotation({ project: proj, enabled: autoCintillos, displaySec: cintDisplaySec })
 
+  const defaultScript = [
+    proj.episodeTitle && `Hoy hablamos de: ${proj.episodeTitle}`,
+    proj.guestName && `Con nosotros: ${proj.guestName}${proj.guestRole ? `, ${proj.guestRole}` : ''}`,
+    proj.cintillos?.topic,
+    '',
+    'Introduce el tema, desarrolla los puntos clave y cierra con una llamada a la acción.',
+  ].filter(Boolean).join('\n\n')
+
+  const teleprompter = useTeleprompter(defaultScript, true)
+
   const { getProgramStream, getDisplayCanvas } = useStudioCompositor({
     streams,
     activeCamera,
     backgroundTemplate,
     customBackgroundUrl,
     chromaEnabled,
+    aiBackgroundEnabled,
     chromaSimilarity,
     chromaSmoothness,
     cameraScale,
@@ -135,6 +151,7 @@ export default function Studio({ project, user }) {
 
   useEffect(() => { localStorage.setItem('podcastudio_bg_template', backgroundTemplate) }, [backgroundTemplate])
   useEffect(() => { localStorage.setItem('podcastudio_chroma', String(chromaEnabled)) }, [chromaEnabled])
+  useEffect(() => { localStorage.setItem('podcastudio_ai_bg', String(aiBackgroundEnabled)) }, [aiBackgroundEnabled])
 
   useEffect(() => {
     if (!project) return
@@ -197,7 +214,7 @@ export default function Studio({ project, user }) {
   const togglePlat = (p) => setActivePlats(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
 
   const handleRecord = async () => {
-    if (recording) { stopRecording(); return }
+    if (recording) { handleStopRecord(); return }
     if (countdown) return
 
     for (let i = 3; i >= 1; i--) {
@@ -215,11 +232,18 @@ export default function Studio({ project, user }) {
         musicVolume: musicVol,
         musicPlaying,
       })
+      teleprompter.setRecordingActive(true)
       startRecording(combined)
     } catch (e) {
       console.error('Recording mix error:', e)
+      teleprompter.setRecordingActive(true)
       startRecording(videoStream)
     }
+  }
+
+  const handleStopRecord = () => {
+    stopRecording()
+    teleprompter.setRecordingActive(false)
   }
 
   const handleLive = () => {
@@ -330,9 +354,24 @@ export default function Studio({ project, user }) {
                   getDisplayCanvas={getDisplayCanvas}
                   hasStream={!!streams[activeCamera ?? 0]}
                 />
-                {/* SCANLINES OVERLAY */}
+                {teleprompter.visible && (
+                  <Teleprompter
+                    script={teleprompter.script}
+                    onScriptChange={teleprompter.setScript}
+                    playing={teleprompter.playing}
+                    onToggle={teleprompter.toggle}
+                    onReset={teleprompter.reset}
+                    speed={teleprompter.speed}
+                    onSpeedChange={teleprompter.setSpeed}
+                    fontSize={teleprompter.fontSize}
+                    onFontSizeChange={teleprompter.setFontSize}
+                    mirror={teleprompter.mirror}
+                    onMirrorChange={teleprompter.setMirror}
+                    offset={teleprompter.offset}
+                    onClose={() => teleprompter.setVisible(false)}
+                  />
+                )}
                 <div className={styles.scanlines} />
-                {/* LIVE INDICATORS */}
                 {liveOn && (
                   <div className={styles.liveInds}>
                     {PLAT_CONFIG.filter(p => activePlats.includes(p.id)).map(p => (
@@ -509,15 +548,36 @@ export default function Studio({ project, user }) {
                 chromaSimilarity={chromaSimilarity}
                 chromaSmoothness={chromaSmoothness}
                 cameraScale={cameraScale}
+                aiBackgroundEnabled={aiBackgroundEnabled}
                 onTemplateChange={setBackgroundTemplate}
                 onCustomUpload={handleBgUpload}
                 onClearCustom={() => setCustomBackgroundUrl(null)}
-                onChromaChange={setChromaEnabled}
+  onChromaChange={(v) => {
+                  setChromaEnabled(v)
+                  if (v) setAiBackgroundEnabled(false)
+                }}
                 onChromaSimilarityChange={setChromaSimilarity}
                 onChromaSmoothnessChange={setChromaSmoothness}
                 onCameraScaleChange={setCameraScale}
+                onAiBackgroundChange={(v) => {
+                  setAiBackgroundEnabled(v)
+                  if (v) setChromaEnabled(false)
+                }}
               />
             )}
+          </div>
+
+          {/* TELEPROMPTER */}
+          <div className={styles.prSection}>
+            <button
+              type="button"
+              className={styles.styleToggle}
+              onClick={() => teleprompter.setVisible(v => !v)}
+            >
+              <i className="ti ti-script" />
+              <span>Teleprompter {teleprompter.visible ? '(activo)' : ''}</span>
+              <i className={`ti ti-chevron-${teleprompter.visible ? 'up' : 'down'}`} style={{ marginLeft: 'auto', fontSize: 11 }} />
+            </button>
           </div>
 
           {/* AUDIO */}
@@ -532,23 +592,16 @@ export default function Studio({ project, user }) {
             </div>
           </div>
 
-          {/* LIVE PLATFORMS */}
+          {/* LIVE */}
           <div className={styles.prSection}>
             <div className={styles.prTitle}>Transmisión en vivo</div>
-            <div className={styles.platGrid}>
-              {PLAT_CONFIG.map(p => (
-                <button key={p.id}
-                  className={`${styles.platBtn} ${activePlats.includes(p.id) ? styles.platActive : ''}`}
-                  style={activePlats.includes(p.id) ? { borderColor: p.color + '60', color: p.color, background: p.color + '10' } : {}}
-                  onClick={() => togglePlat(p.id)}>
-                  <i className={`ti ${p.icon}`} style={{ fontSize: 12 }} />
-                  <span>{p.label}</span>
-                  {liveOn && activePlats.includes(p.id) && viewers[p.id] > 0 && (
-                    <span className={styles.platViewers}>{viewers[p.id]}</span>
-                  )}
-                </button>
-              ))}
-            </div>
+            <LiveStreamPanel
+              liveOn={liveOn}
+              activePlats={activePlats}
+              onTogglePlat={togglePlat}
+              onGoLive={handleLive}
+              onStopLive={() => setLiveOn(false)}
+            />
           </div>
 
           {/* CINTILLOS */}

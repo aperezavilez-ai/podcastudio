@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { drawCompositorFrame, getStudioImageUrl, COMPOSITOR_W, COMPOSITOR_H } from '../utils/canvasCompositor.js'
+import { usePersonSegmentation } from './usePersonSegmentation.js'
 
 export function useStudioCompositor({
   streams,
@@ -7,6 +8,7 @@ export function useStudioCompositor({
   backgroundTemplate = 'none',
   customBackgroundUrl = null,
   chromaEnabled = false,
+  aiBackgroundEnabled = false,
   chromaColor = '#00b140',
   chromaSimilarity = 45,
   chromaSmoothness = 20,
@@ -27,11 +29,15 @@ export function useStudioCompositor({
   const customImageRef = useRef(null)
   const logoImageRef = useRef(null)
   const settingsRef = useRef({})
+  const lastMaskRef = useRef(null)
+
+  const { processFrame } = usePersonSegmentation(aiBackgroundEnabled)
 
   settingsRef.current = {
     backgroundTemplate,
     customBackgroundUrl,
     chromaEnabled,
+    aiBackgroundEnabled,
     chromaColor,
     chromaSimilarity,
     chromaSmoothness,
@@ -127,12 +133,21 @@ export function useStudioCompositor({
       const video = videosRef.current[slot]
       const c = s.cintillo
 
+      let segmentationMask = null
+      if (s.aiBackgroundEnabled && video?.videoWidth) {
+        const mask = processFrame(video, performance.now())
+        if (mask) lastMaskRef.current = mask
+        segmentationMask = mask || lastMaskRef.current
+      }
+
       drawCompositorFrame(ctx, COMPOSITOR_W, COMPOSITOR_H, {
         video,
         backgroundTemplate: s.backgroundTemplate,
         customImage: customImageRef.current,
         studioImage: studioImageRef.current,
         chromaEnabled: s.chromaEnabled,
+        aiBackgroundEnabled: s.aiBackgroundEnabled,
+        segmentationMask,
         chromaColor: s.chromaColor,
         chromaSimilarity: s.chromaSimilarity,
         chromaSmoothness: s.chromaSmoothness,
@@ -160,7 +175,7 @@ export function useStudioCompositor({
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
-  }, [])
+  }, [processFrame])
 
   const getProgramStream = useCallback(() => outputStreamRef.current, [])
 

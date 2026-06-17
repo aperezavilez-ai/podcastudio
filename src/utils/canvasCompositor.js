@@ -1,4 +1,5 @@
 import { applyChromaKey } from '../hooks/useChromaKey.js'
+import { drawSegmentedVideo } from './segmentationDraw.js'
 import { drawCintillo, drawLogo } from './drawOverlays.js'
 import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 import { STUDIO_BACKGROUND_URLS } from '../config/studioImages.js'
@@ -116,6 +117,8 @@ export function drawCompositorFrame(ctx, w, h, {
   cameraScale = 100,
   chromaCanvas,
   chromaCtx,
+  aiBackgroundEnabled,
+  segmentationMask,
   logoOverlay,
   cintilloOverlay,
 }) {
@@ -126,7 +129,9 @@ export function drawCompositorFrame(ctx, w, h, {
   drawBackground(ctx, w, h, { backgroundTemplate, customImage, studioImage })
 
   if (video && video.readyState >= 2 && video.videoWidth) {
-  if (chromaEnabled && hasBg) {
+  if (aiBackgroundEnabled && hasBg && segmentationMask) {
+    drawSegmentedVideo(ctx, video, segmentationMask, 0, 0, w, h, scale)
+  } else if (chromaEnabled && hasBg) {
     const keyed = processChromaFrame(chromaCtx, chromaCanvas, video, chromaColor, chromaSimilarity, chromaSmoothness)
     ctx.save()
     ctx.translate(w / 2, h)
