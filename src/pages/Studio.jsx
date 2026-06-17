@@ -376,6 +376,7 @@ export default function Studio({ project, user }) {
 
         {/* RIGHT PANEL */}
         <div className={styles.panelRight}>
+          <div className={styles.panelScroll}>
           {/* CAMERAS */}
           <div className={styles.prSection}>
             <div className={styles.prTitle}>Cámaras</div>
@@ -466,7 +467,7 @@ export default function Studio({ project, user }) {
           </div>
 
           {/* CINTILLOS */}
-          <div className={styles.prSection} style={{ flex: 1, overflowY: 'auto' }}>
+          <div className={styles.prSection}>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
               <div className={styles.prTitle} style={{ margin: 0 }}>Cintillos</div>
               <div className={styles.aiChipSm} style={{ marginLeft: 'auto' }}><i className="ti ti-sparkles" style={{ fontSize: 8 }} /> IA</div>
@@ -571,6 +572,9 @@ export default function Studio({ project, user }) {
             )}
           </div>
 
+          </div>{/* panelScroll */}
+
+          <div className={styles.panelFooter}>
           {/* MUSIC */}
           <div className={styles.prSection}>
             <div className={styles.prTitle}>Música sin copyright</div>
@@ -612,6 +616,7 @@ export default function Studio({ project, user }) {
               <i className="ti ti-download" style={{ fontSize: 13 }} />
             </button>
           </div>
+          </div>{/* panelFooter */}
         </div>
       </div>
 
