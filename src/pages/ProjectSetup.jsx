@@ -6,19 +6,13 @@ import BackgroundPicker from '../components/BackgroundPicker.jsx'
 import SetBackground from '../components/SetBackground.jsx'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
 import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
+import { CINTILLO_SETUP_TYPES } from '../config/cintilloPresets.js'
 import styles from './ProjectSetup.module.css'
 
 const CINTILLO_POSITIONS = [
   { id: 'bl', label: 'Abajo izquierda' },
   { id: 'bc', label: 'Abajo centro' },
   { id: 'br', label: 'Abajo derecha' },
-]
-
-const CINTILLO_TYPES = [
-  { id: 'guest', label: 'Nombre del invitado', color: '#1D9E75' },
-  { id: 'topic', label: 'Tema del episodio', color: '#4a90d9' },
-  { id: 'promo', label: 'Promoción', color: '#e8612a' },
-  { id: 'social', label: 'Redes sociales', color: '#9d8ce8' },
 ]
 
 const LOGO_POSITIONS = [
@@ -48,7 +42,7 @@ export default function ProjectSetup({ onProject }) {
   const [project, setProject] = useState({
     name: '', episodeTitle: '', guestName: '', guestRole: '',
     logoFile: null, logoUrl: null, logoPosition: 'tr',
-    cintillos: { guest: '', topic: '', promo: '', social: '' },
+    cintillos: { guest: '', topic: '', promo: '', social: '', contact: '' },
     cintilloStyle: 'angled',
     cintilloPosition: 'bl',
     backgroundTemplate: 'podcast-dark',
@@ -303,7 +297,7 @@ export default function ProjectSetup({ onProject }) {
 
               <div className={styles.cintSectionTitle} style={{ marginTop: 20 }}>Textos de los cintillos</div>
               <div className={styles.fields}>
-                {CINTILLO_TYPES.map(ct => (
+                {CINTILLO_SETUP_TYPES.map(ct => (
                   <div key={ct.id} className={styles.cintField}>
                     <div className={styles.cintDot} style={{ background: ct.color }} />
                     <div className={styles.field} style={{ flex: 1 }}>
@@ -315,7 +309,8 @@ export default function ProjectSetup({ onProject }) {
                           guest: 'Ej: Carolina Bañuelos · Conductora',
                           topic: 'Ej: Nos cacharon en el episodio',
                           promo: 'Ej: 50% OFF · Código: PODCAST24',
-                          social: 'Ej: @losdosdeabajo · Síguenos'
+                          social: 'Ej: @losdosdeabajo · Síguenos',
+                          contact: 'Ej: WhatsApp 55 1234 5678 · miproducto.com',
                         }[ct.id]}
                       />
                     </div>

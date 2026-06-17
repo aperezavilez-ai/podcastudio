@@ -278,6 +278,30 @@
   background: var(--border-1);
   margin: 10px 0;
 }
+.autoCintToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.autoCintToggle input { accent-color: var(--accent); }
+.autoCintHint {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+.sliderRow .val { min-width: 24px; text-align: right; color: var(--text-secondary); }
 .cintForm { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
 .cintSelect, .cintInput {
   padding: 5px 8px; background: var(--surface-3); border: 1px solid var(--border-2);

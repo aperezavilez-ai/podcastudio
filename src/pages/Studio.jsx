@@ -11,18 +11,15 @@ import CameraConnectPanel from '../components/CameraConnectPanel.jsx'
 import CintilloOverlay from '../components/CintilloOverlay.jsx'
 import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
+import { CINTILLO_PRESETS } from '../config/cintilloPresets.js'
+import { useCintilloRotation } from '../hooks/useCintilloRotation.js'
 import { MUSIC_TRACKS } from '../config/musicTracks.js'
 import { useBackgroundMusic } from '../hooks/useBackgroundMusic.js'
 import VUMeter from '../components/VUMeter.jsx'
 import PostsPanel from '../components/PostsPanel.jsx'
 import styles from './Studio.module.css'
 
-const CINTILLO_PRESETS = [
-  { id: 'guest', label: 'Nombre invitado', color: '#1D9E75', tag: 'INVITADO' },
-  { id: 'topic', label: 'Tema del episodio', color: '#4a90d9', tag: 'TEMA' },
-  { id: 'promo', label: 'Promoción', color: '#e8612a', tag: 'PROMO' },
-  { id: 'social', label: 'Redes sociales', color: '#9d8ce8', tag: 'REDES' },
-]
+const ROTATION_PRESETS = CINTILLO_PRESETS.filter(p => ['topic', 'guest', 'social', 'contact'].includes(p.id))
 
 const POS_MAP = {
   tl: { top: 10, left: 10 }, tc: { top: 10, left: '50%', transform: 'translateX(-50%)' },
@@ -47,7 +44,8 @@ export default function Studio({ project, user }) {
   const [tab, setTab] = useState('studio')
   const [liveOn, setLiveOn] = useState(false)
   const [activePlats, setActivePlats] = useState([])
-  const [cintillo, setCintillo] = useState({ tag: 'TEMA', text: project?.episodeTitle || 'Bienvenidos al episodio', active: true })
+  const [autoCintillos, setAutoCintillos] = useState(true)
+  const [cintDisplaySec, setCintDisplaySec] = useState(6)
   const {
     trackIndex: musicTrack, playing: musicPlaying, toggle: toggleMusic,
     nextTrack: nextMusicTrack, volume: musicVol, setVolume: setMusicVol,
@@ -88,6 +86,10 @@ export default function Studio({ project, user }) {
     backgroundTemplate: 'podcast-dark', customBackgroundUrl: null,
     chromaEnabled: false, chromaSimilarity: 45, chromaSmoothness: 20, cameraScale: 100,
   }
+
+  const {
+    cintillo, animPhase, animKey, showManual, showCustom, hide: hideCintillo,
+  } = useCintilloRotation({ project: proj, enabled: autoCintillos, displaySec: cintDisplaySec })
 
   useEffect(() => {
     localStorage.setItem('podcastudio_cintillo_style', cintilloStyle)
@@ -160,18 +162,22 @@ export default function Studio({ project, user }) {
   }
 
   const showCintillo = (preset) => {
-    const text = proj.cintillos?.[preset.id] || { guest: proj.guestName + (proj.guestRole ? ` · ${proj.guestRole}` : ''), topic: proj.episodeTitle, promo: 'Código: PODCAST24', social: `@${(proj.name || 'mipodcast').toLowerCase().replace(/\s/g, '')}` }[preset.id] || preset.label
-    setCintillo({ tag: preset.tag, text, color: preset.color, active: true })
+    setAutoCintillos(false)
+    showManual(preset)
   }
 
   const handleAICintillo = async () => {
     const text = await generateCintillo({ topic: proj.episodeTitle, guest: proj.guestName, role: proj.guestRole, type: 'guest' })
-    if (text) setCintillo({ tag: 'IA', text, active: true })
+    if (text) {
+      setAutoCintillos(false)
+      showCustom({ tag: 'IA', text, color: '#9d8ce8' })
+    }
   }
 
   const submitCustomCint = () => {
     if (!cintFormText.trim()) return
-    setCintillo({ tag: cintFormTag, text: cintFormText.trim(), active: true })
+    setAutoCintillos(false)
+    showCustom({ tag: cintFormTag, text: cintFormText.trim() })
     setShowCintForm(false); setCintFormText(''); setCintFormTag('CUSTOM')
   }
 
@@ -288,9 +294,11 @@ export default function Studio({ project, user }) {
                     accentColor={cintillo.color}
                     imageUrl={proj.logoUrl}
                     position={cintilloPosition}
+                    animPhase={animPhase}
+                    animKey={animKey}
                     liveOn={liveOn}
                     totalViewers={totalViewers}
-                    onClose={() => setCintillo(c => ({ ...c, active: false }))}
+                    onClose={() => { setAutoCintillos(false); hideCintillo() }}
                   />
                 )}
               </div>
@@ -504,8 +512,33 @@ export default function Studio({ project, user }) {
             )}
 
             <div className={styles.cintDivider} />
-            <div className={styles.prTitle} style={{ marginBottom: 6 }}>Activar cintillo</div>
-            {CINTILLO_PRESETS.map(preset => (
+
+            <label className={styles.autoCintToggle}>
+              <input type="checkbox" checked={autoCintillos} onChange={e => setAutoCintillos(e.target.checked)} />
+              <span><i className="ti ti-rotate-clockwise" /> Rotación automática</span>
+            </label>
+            {autoCintillos && (
+              <p className={styles.autoCintHint}>
+                Tema → Invitado → Redes → Contacto · cada {cintDisplaySec}s
+              </p>
+            )}
+            {autoCintillos && (
+              <div className={styles.sliderRow} style={{ marginBottom: 8 }}>
+                <span>Duración</span>
+                <input type="range" min={4} max={12} value={cintDisplaySec} onChange={e => setCintDisplaySec(+e.target.value)} style={{ flex: 1 }} />
+                <span className={styles.val}>{cintDisplaySec}s</span>
+              </div>
+            )}
+
+            <div className={styles.prTitle} style={{ marginBottom: 6 }}>Activar manual</div>
+            {ROTATION_PRESETS.map(preset => (
+              <button key={preset.id} className={styles.cintItem} onClick={() => showCintillo(preset)}>
+                <div className={styles.cintDot} style={{ background: preset.color }} />
+                <span className={styles.cintItemLabel}>{preset.label}</span>
+                <i className="ti ti-player-play" style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }} />
+              </button>
+            ))}
+            {CINTILLO_PRESETS.filter(p => p.id === 'promo').map(preset => (
               <button key={preset.id} className={styles.cintItem} onClick={() => showCintillo(preset)}>
                 <div className={styles.cintDot} style={{ background: preset.color }} />
                 <span className={styles.cintItemLabel}>{preset.label}</span>
@@ -527,7 +560,7 @@ export default function Studio({ project, user }) {
             {showCintForm && (
               <div className={styles.cintForm}>
                 <select value={cintFormTag} onChange={e => setCintFormTag(e.target.value)} className={styles.cintSelect}>
-                  {['INVITADO', 'TEMA', 'PROMO', 'REDES', 'CUSTOM'].map(t => <option key={t}>{t}</option>)}
+                  {['INVITADO', 'TEMA', 'PROMO', 'REDES', 'CONTACTO', 'CUSTOM'].map(t => <option key={t}>{t}</option>)}
                 </select>
                 <input className={styles.cintInput} value={cintFormText} onChange={e => setCintFormText(e.target.value)} placeholder="Texto del cintillo..." onKeyDown={e => e.key === 'Enter' && submitCustomCint()} />
                 <div style={{ display: 'flex', gap: 4 }}>

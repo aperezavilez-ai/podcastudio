@@ -4,7 +4,6 @@
   display: flex;
   align-items: flex-end;
   gap: 0;
-  animation: cintSlideUp .3s ease;
   max-width: 85%;
   --cint-primary: #e8612a;
   --cint-secondary: #ffffff;
@@ -434,4 +433,50 @@
 @keyframes cintSlideUpRight {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Ensamblaje por partes */
+.phaseEnter .animPart1 {
+  opacity: 0;
+  animation: partSlideLeft .55s cubic-bezier(.22, 1, .36, 1) forwards;
+}
+.phaseEnter .animPart2 {
+  opacity: 0;
+  animation: partFadeUp .45s cubic-bezier(.22, 1, .36, 1) .22s forwards;
+}
+.phaseEnter .animPart3 {
+  opacity: 0;
+  animation: partFadeUp .45s cubic-bezier(.22, 1, .36, 1) .42s forwards;
+}
+.phaseEnter .animPart4 {
+  opacity: 0;
+  animation: partFadeUp .4s cubic-bezier(.22, 1, .36, 1) .58s forwards;
+}
+
+.phaseExit {
+  animation: cintExit .45s cubic-bezier(.55, 0, 1, .45) forwards;
+}
+
+@keyframes partSlideLeft {
+  from { opacity: 0; transform: translateX(-28px) scaleX(.6); }
+  to { opacity: 1; transform: translateX(0) scaleX(1); }
+}
+
+@keyframes partFadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cintExit {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(18px); }
+}
+
+.posBc.phaseExit {
+  animation: cintExitCenter .45s cubic-bezier(.55, 0, 1, .45) forwards;
+}
+
+@keyframes cintExitCenter {
+  from { opacity: 1; transform: translateX(-50%) translateY(0); }
+  to { opacity: 0; transform: translateX(-50%) translateY(18px); }
 }
