@@ -11,11 +11,14 @@ export function useRecorder() {
   const startRecording = useCallback((stream) => {
     if (!stream) return
     chunksRef.current = []
-    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-      ? 'video/webm;codecs=vp9'
-      : MediaRecorder.isTypeSupported('video/webm')
-      ? 'video/webm'
-      : 'video/mp4'
+    const mimeTypes = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=vp9',
+      'video/webm',
+      'video/mp4',
+    ]
+    const mimeType = mimeTypes.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm'
     try {
       const mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000 })
       mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }

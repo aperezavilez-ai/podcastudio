@@ -101,5 +101,6 @@ export function useBackgroundMusic(tracks, initialVolume = 30) {
     loading,
     error,
     currentTrack: tracks[trackIndex],
+    getAudioElement: () => audioRef.current,
   }
 }

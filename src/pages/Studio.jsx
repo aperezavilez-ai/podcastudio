@@ -16,7 +16,8 @@ import { useCintilloRotation } from '../hooks/useCintilloRotation.js'
 import { MUSIC_TRACKS } from '../config/musicTracks.js'
 import { useBackgroundMusic } from '../hooks/useBackgroundMusic.js'
 import { useAutoSwitcher } from '../hooks/useAutoSwitcher.js'
-import { useProgramOutput } from '../hooks/useProgramOutput.js'
+import { useStudioCompositor } from '../hooks/useStudioCompositor.js'
+import { useAudioMix } from '../hooks/useAudioMix.js'
 import VUMeter from '../components/VUMeter.jsx'
 import PostsPanel from '../components/PostsPanel.jsx'
 import styles from './Studio.module.css'
@@ -39,7 +40,7 @@ export default function Studio({ project, user }) {
     micLevel, bluetoothSupported, wifiConnecting, btScanning, wifiPresets,
     autoConnecting, connectedCount,
     enumerateDevices, startCamera, autoConnectAll, connectNextCameraToSlot, stopCamera, connectWifiCamera,
-    scanBluetoothCamera, connectBluetoothWifiStream, startMic,
+    scanBluetoothCamera, connectBluetoothWifiStream, startMic, getMicStream,
   } = useWebcam()
   const { recording, duration, recordings, startRecording, stopRecording, downloadRecording, formatDuration } = useRecorder()
   const { generateCintillo, loadingCintillo, aiConfigured, checkAIStatus } = useAI()
@@ -53,6 +54,7 @@ export default function Studio({ project, user }) {
     trackIndex: musicTrack, playing: musicPlaying, toggle: toggleMusic,
     nextTrack: nextMusicTrack, volume: musicVol, setVolume: setMusicVol,
     loading: musicLoading, error: musicError, currentTrack: currentMusic,
+    getAudioElement,
   } = useBackgroundMusic(MUSIC_TRACKS, 30)
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState('')
@@ -84,7 +86,17 @@ export default function Studio({ project, user }) {
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
 
-  const { getProgramStream } = useProgramOutput(streams, activeCamera)
+  const { getProgramStream, getDisplayCanvas } = useStudioCompositor({
+    streams,
+    activeCamera,
+    backgroundTemplate,
+    customBackgroundUrl,
+    chromaEnabled,
+    chromaSimilarity,
+    chromaSmoothness,
+    cameraScale,
+  })
+  const { buildRecordingStream } = useAudioMix()
 
   useAutoSwitcher({
     enabled: autoSwitch,
@@ -179,11 +191,22 @@ export default function Studio({ project, user }) {
 
   const togglePlat = (p) => setActivePlats(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
 
-  const handleRecord = () => {
+  const handleRecord = async () => {
     if (recording) { stopRecording(); return }
-    const program = getProgramStream()
-    const activeStream = program || streams[activeCamera ?? 0]
-    if (activeStream) startRecording(activeStream)
+    const videoStream = getProgramStream()
+    if (!videoStream) return
+    try {
+      const combined = await buildRecordingStream(videoStream, {
+        micStream: getMicStream(),
+        musicEl: getAudioElement(),
+        musicVolume: musicVol,
+        musicPlaying,
+      })
+      startRecording(combined)
+    } catch (e) {
+      console.error('Recording mix error:', e)
+      startRecording(videoStream)
+    }
   }
 
   const handleLive = () => {
@@ -291,13 +314,8 @@ export default function Studio({ project, user }) {
               <div className={styles.viewportInner} style={{ aspectRatio: proj.format === '9:16' ? '9/16' : proj.format === '1:1' ? '1/1' : '16/9' }}>
                 {/* ACTIVE CAMERA */}
                 <ViewportComposer
-                  stream={streams[activeCamera ?? 0]}
-                  backgroundTemplate={backgroundTemplate}
-                  customBackgroundUrl={customBackgroundUrl}
-                  chromaEnabled={chromaEnabled}
-                  chromaSimilarity={chromaSimilarity}
-                  chromaSmoothness={chromaSmoothness}
-                  cameraScale={cameraScale}
+                  getDisplayCanvas={getDisplayCanvas}
+                  hasStream={!!streams[activeCamera ?? 0]}
                 />
                 {/* SCANLINES OVERLAY */}
                 <div className={styles.scanlines} />

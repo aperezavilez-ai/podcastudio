@@ -438,7 +438,10 @@ export function useWebcam() {
   const stopMic = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current)
     if (micRef.current) micRef.current.getTracks().forEach(t => t.stop())
+    micRef.current = null
   }, [])
+
+  const getMicStream = useCallback(() => micRef.current, [])
 
   useEffect(() => () => {
     Object.values(cleanupRef.current).forEach(fn => fn?.())
@@ -483,5 +486,6 @@ export function useWebcam() {
     connectBluetoothWifiStream,
     startMic,
     stopMic,
+    getMicStream,
   }
 }
