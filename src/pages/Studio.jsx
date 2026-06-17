@@ -11,16 +11,11 @@ import CameraConnectPanel from '../components/CameraConnectPanel.jsx'
 import CintilloOverlay from '../components/CintilloOverlay.jsx'
 import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
+import { MUSIC_TRACKS } from '../config/musicTracks.js'
+import { useBackgroundMusic } from '../hooks/useBackgroundMusic.js'
 import VUMeter from '../components/VUMeter.jsx'
 import PostsPanel from '../components/PostsPanel.jsx'
 import styles from './Studio.module.css'
-
-const MUSIC_TRACKS = [
-  { name: 'Lo-fi Focus 01', sub: 'Sin copyright' },
-  { name: 'Ambient Jazz 03', sub: 'Sin copyright' },
-  { name: 'Cinematic Calm 07', sub: 'Sin copyright' },
-  { name: 'Upbeat News 02', sub: 'Sin copyright' },
-]
 
 const CINTILLO_PRESETS = [
   { id: 'guest', label: 'Nombre invitado', color: '#1D9E75', tag: 'INVITADO' },
@@ -53,9 +48,11 @@ export default function Studio({ project, user }) {
   const [liveOn, setLiveOn] = useState(false)
   const [activePlats, setActivePlats] = useState([])
   const [cintillo, setCintillo] = useState({ tag: 'TEMA', text: project?.episodeTitle || 'Bienvenidos al episodio', active: true })
-  const [musicTrack, setMusicTrack] = useState(0)
-  const [musicPlaying, setMusicPlaying] = useState(false)
-  const [musicVol, setMusicVol] = useState(30)
+  const {
+    trackIndex: musicTrack, playing: musicPlaying, toggle: toggleMusic,
+    nextTrack: nextMusicTrack, volume: musicVol, setVolume: setMusicVol,
+    loading: musicLoading, error: musicError, currentTrack: currentMusic,
+  } = useBackgroundMusic(MUSIC_TRACKS, 30)
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState('')
   const [viewers, setViewers] = useState({ facebook: 0, youtube: 0, tiktok: 0, instagram: 0 })
@@ -545,15 +542,19 @@ export default function Studio({ project, user }) {
           <div className={styles.prSection}>
             <div className={styles.prTitle}>Música sin copyright</div>
             <div className={styles.musicRow}>
-              <div className={styles.musicThumb}><i className="ti ti-music" style={{ fontSize: 13 }} /></div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className={styles.musicTitle}>{MUSIC_TRACKS[musicTrack].name}</div>
-                <div className={styles.musicSub}>{MUSIC_TRACKS[musicTrack].sub}</div>
+              <div className={`${styles.musicThumb} ${musicPlaying ? styles.musicThumbActive : ''}`}>
+                <i className={`ti ${musicLoading ? 'ti-loader' : 'ti-music'}`} style={musicLoading ? { animation: 'spin 1s linear infinite' } : {}} />
               </div>
-              <button className={styles.musicBtn} onClick={() => setMusicPlaying(p => !p)}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className={styles.musicTitle}>{currentMusic.name}</div>
+                <div className={styles.musicSub}>
+                  {musicPlaying ? 'Reproduciendo...' : musicError || currentMusic.sub}
+                </div>
+              </div>
+              <button className={styles.musicBtn} onClick={toggleMusic} title={musicPlaying ? 'Pausar' : 'Reproducir'}>
                 <i className={`ti ${musicPlaying ? 'ti-player-pause' : 'ti-player-play'}`} style={{ fontSize: 13 }} />
               </button>
-              <button className={styles.musicBtn} onClick={() => setMusicTrack(t => (t + 1) % MUSIC_TRACKS.length)}>
+              <button className={styles.musicBtn} onClick={nextMusicTrack} title="Siguiente pista">
                 <i className="ti ti-arrow-shuffle" style={{ fontSize: 12 }} />
               </button>
             </div>

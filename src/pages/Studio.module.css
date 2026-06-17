@@ -295,6 +295,12 @@
   width: 30px; height: 30px; border-radius: 6px; flex-shrink: 0;
   background: var(--purple-dim); border: 1px solid var(--purple-border);
   display: flex; align-items: center; justify-content: center; color: var(--purple);
+  transition: all .2s;
+}
+.musicThumbActive {
+  background: var(--green-dim) !important;
+  border-color: var(--green-border) !important;
+  color: var(--green) !important;
 }
 .musicTitle { font-size: 11px; font-weight: 500; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .musicSub { font-size: 9px; color: var(--text-muted); }
