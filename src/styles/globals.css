@@ -34,11 +34,16 @@
   -webkit-font-smoothing: antialiased;
 }
 
-html, body, #root {
-  height: 100%;
+html, body {
+  min-height: 100%;
   background: var(--app-bg);
   color: var(--text-primary);
-  overflow: hidden;
+}
+
+#root {
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 button { font-family: inherit; cursor: pointer; border: none; background: none; }
