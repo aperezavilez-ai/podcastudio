@@ -8,7 +8,6 @@ import BackgroundPicker from '../components/BackgroundPicker.jsx'
 import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 import CameraView from '../components/CameraView.jsx'
 import CameraConnectPanel from '../components/CameraConnectPanel.jsx'
-import CintilloOverlay from '../components/CintilloOverlay.jsx'
 import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
 import { CINTILLO_PRESETS } from '../config/cintilloPresets.js'
@@ -42,7 +41,7 @@ export default function Studio({ project, user }) {
     enumerateDevices, startCamera, autoConnectAll, connectNextCameraToSlot, stopCamera, connectWifiCamera,
     scanBluetoothCamera, connectBluetoothWifiStream, startMic, getMicStream,
   } = useWebcam()
-  const { recording, duration, recordings, startRecording, stopRecording, downloadRecording, formatDuration } = useRecorder()
+  const { recording, duration, recordings, converting, convertProgress, startRecording, stopRecording, downloadRecording, downloadRecordingMp4, formatDuration } = useRecorder()
   const { generateCintillo, loadingCintillo, aiConfigured, checkAIStatus } = useAI()
 
   const [tab, setTab] = useState('studio')
@@ -56,6 +55,7 @@ export default function Studio({ project, user }) {
     loading: musicLoading, error: musicError, currentTrack: currentMusic,
     getAudioElement,
   } = useBackgroundMusic(MUSIC_TRACKS, 30)
+  const [countdown, setCountdown] = useState(null)
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState('')
   const [viewers, setViewers] = useState({ facebook: 0, youtube: 0, tiktok: 0, instagram: 0 })
@@ -86,6 +86,18 @@ export default function Studio({ project, user }) {
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
 
+  const proj = project || {
+    name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
+    logoPosition: 'tr', logoUrl: null, format: '16:9', cintillos: {},
+    cintilloStyle: 'classic', cintilloPosition: 'bl',
+    backgroundTemplate: 'podcast-dark', customBackgroundUrl: null,
+    chromaEnabled: false, chromaSimilarity: 45, chromaSmoothness: 20, cameraScale: 100,
+  }
+
+  const {
+    cintillo, animPhase, animKey, showManual, showCustom, hide: hideCintillo,
+  } = useCintilloRotation({ project: proj, enabled: autoCintillos, displaySec: cintDisplaySec })
+
   const { getProgramStream, getDisplayCanvas } = useStudioCompositor({
     streams,
     activeCamera,
@@ -95,6 +107,11 @@ export default function Studio({ project, user }) {
     chromaSimilarity,
     chromaSmoothness,
     cameraScale,
+    logoUrl: proj.logoUrl,
+    logoPosition: proj.logoPosition || 'tr',
+    podcastName: proj.name || 'Mi Podcast',
+    cintillo,
+    cintilloPosition,
   })
   const { buildRecordingStream } = useAudioMix()
 
@@ -107,18 +124,6 @@ export default function Studio({ project, user }) {
     onlyWhileRecording: false,
     recording,
   })
-
-  const proj = project || {
-    name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
-    logoPosition: 'tr', logoUrl: null, format: '16:9', cintillos: {},
-    cintilloStyle: 'classic', cintilloPosition: 'bl',
-    backgroundTemplate: 'podcast-dark', customBackgroundUrl: null,
-    chromaEnabled: false, chromaSimilarity: 45, chromaSmoothness: 20, cameraScale: 100,
-  }
-
-  const {
-    cintillo, animPhase, animKey, showManual, showCustom, hide: hideCintillo,
-  } = useCintilloRotation({ project: proj, enabled: autoCintillos, displaySec: cintDisplaySec })
 
   useEffect(() => {
     localStorage.setItem('podcastudio_cintillo_style', cintilloStyle)
@@ -193,6 +198,14 @@ export default function Studio({ project, user }) {
 
   const handleRecord = async () => {
     if (recording) { stopRecording(); return }
+    if (countdown) return
+
+    for (let i = 3; i >= 1; i--) {
+      setCountdown(i)
+      await new Promise(r => setTimeout(r, 1000))
+    }
+    setCountdown(null)
+
     const videoStream = getProgramStream()
     if (!videoStream) return
     try {
@@ -330,30 +343,10 @@ export default function Studio({ project, user }) {
                     ))}
                   </div>
                 )}
-                {/* LOGO OVERLAY */}
-                <div className={styles.logoOverlay} style={{ position: 'absolute', ...POS_MAP[proj.logoPosition || 'tr'] }}>
-                  {proj.logoUrl
-                    ? <img src={proj.logoUrl} alt="Logo" style={{ height: 22, borderRadius: 4 }} />
-                    : <div className={styles.logoIcon}><i className="ti ti-microphone" style={{ fontSize: 11, color: '#fff' }} /></div>
-                  }
-                  <span className={styles.logoText}>{proj.name || 'Mi Podcast'}</span>
-                </div>
-                {/* CINTILLO */}
-                {cintillo.active && (
-                  <CintilloOverlay
-                    styleId={cintilloStyle}
-                    tag={cintillo.tag}
-                    text={cintillo.text}
-                    subtitle={proj.guestRole || ''}
-                    accentColor={cintillo.color}
-                    imageUrl={proj.logoUrl}
-                    position={cintilloPosition}
-                    animPhase={animPhase}
-                    animKey={animKey}
-                    liveOn={liveOn}
-                    totalViewers={totalViewers}
-                    onClose={() => { setAutoCintillos(false); hideCintillo() }}
-                  />
+                {countdown != null && (
+                  <div className={styles.countdownOverlay}>
+                    <span className={styles.countdownNum}>{countdown}</span>
+                  </div>
                 )}
               </div>
             </div>
@@ -434,6 +427,11 @@ export default function Studio({ project, user }) {
         {tab === 'recordings' && (
           <div className={styles.stage} style={{ padding: 24, overflowY: 'auto' }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>Grabaciones</div>
+            {converting && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
+                Convirtiendo a MP4… {convertProgress}%
+              </div>
+            )}
             {recordings.length === 0
               ? <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: 13 }}>
                   <i className="ti ti-video" style={{ fontSize: 32, display: 'block', marginBottom: 8 }} />
@@ -447,7 +445,10 @@ export default function Studio({ project, user }) {
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{(r.size / 1024 / 1024).toFixed(1)} MB</div>
                   </div>
                   <button className={styles.dlBtn} onClick={() => downloadRecording(r)}>
-                    <i className="ti ti-download" /> Descargar
+                    <i className="ti ti-download" /> WebM
+                  </button>
+                  <button className={styles.dlBtn} onClick={() => downloadRecordingMp4(r)} disabled={converting}>
+                    <i className="ti ti-file-type-mp4" /> MP4
                   </button>
                 </div>
               ))

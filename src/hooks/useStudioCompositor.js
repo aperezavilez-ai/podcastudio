@@ -11,6 +11,11 @@ export function useStudioCompositor({
   chromaSimilarity = 45,
   chromaSmoothness = 20,
   cameraScale = 100,
+  logoUrl = null,
+  logoPosition = 'tr',
+  podcastName = '',
+  cintillo = null,
+  cintilloPosition = 'bl',
 }) {
   const canvasRef = useRef(null)
   const outputStreamRef = useRef(null)
@@ -20,6 +25,7 @@ export function useStudioCompositor({
   const chromaCtxRef = useRef(null)
   const studioImageRef = useRef(null)
   const customImageRef = useRef(null)
+  const logoImageRef = useRef(null)
   const settingsRef = useRef({})
 
   settingsRef.current = {
@@ -31,6 +37,10 @@ export function useStudioCompositor({
     chromaSmoothness,
     cameraScale,
     activeCamera,
+    logoPosition,
+    podcastName,
+    cintillo,
+    cintilloPosition,
   }
 
   useEffect(() => {
@@ -84,6 +94,17 @@ export function useStudioCompositor({
   }, [customBackgroundUrl])
 
   useEffect(() => {
+    if (!logoUrl) {
+      logoImageRef.current = null
+      return
+    }
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => { logoImageRef.current = img }
+    img.src = logoUrl
+  }, [logoUrl])
+
+  useEffect(() => {
     if (!canvasRef.current) {
       const canvas = document.createElement('canvas')
       canvas.width = COMPOSITOR_W
@@ -104,6 +125,7 @@ export function useStudioCompositor({
       const s = settingsRef.current
       const slot = s.activeCamera ?? 0
       const video = videosRef.current[slot]
+      const c = s.cintillo
 
       drawCompositorFrame(ctx, COMPOSITOR_W, COMPOSITOR_H, {
         video,
@@ -117,6 +139,18 @@ export function useStudioCompositor({
         cameraScale: s.cameraScale,
         chromaCanvas: chromaCanvasRef.current,
         chromaCtx: chromaCtxRef.current,
+        logoOverlay: {
+          podcastName: s.podcastName,
+          position: s.logoPosition,
+          logoImage: logoImageRef.current,
+        },
+        cintilloOverlay: c?.active ? {
+          active: true,
+          tag: c.tag,
+          text: c.text,
+          color: c.color,
+          position: s.cintilloPosition,
+        } : null,
       })
 
       rafRef.current = requestAnimationFrame(draw)

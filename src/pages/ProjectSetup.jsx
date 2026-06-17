@@ -7,7 +7,7 @@ import SetBackground from '../components/SetBackground.jsx'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
 import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 import { CINTILLO_SETUP_TYPES } from '../config/cintilloPresets.js'
-import styles from './ProjectSetup.module.css'
+import { saveProject } from '../lib/projects.js'
 
 const CINTILLO_POSITIONS = [
   { id: 'bl', label: 'Abajo izquierda' },
@@ -36,7 +36,7 @@ const POS_STYLE = {
   br: { bottom: 40, right: 10 },
 }
 
-export default function ProjectSetup({ onProject }) {
+export default function ProjectSetup({ user, onProject }) {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [project, setProject] = useState({
@@ -73,7 +73,12 @@ export default function ProjectSetup({ onProject }) {
     setProject(p => ({ ...p, customBackgroundUrl: url }))
   }
 
-  const finish = () => {
+  const finish = async () => {
+    try {
+      await saveProject(user?.id, project)
+    } catch (e) {
+      console.error('Save project:', e)
+    }
     onProject(project)
     navigate('/studio')
   }

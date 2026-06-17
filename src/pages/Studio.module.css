@@ -397,6 +397,22 @@
   cursor: pointer; transition: all .15s;
 }
 .dlBtn:hover { background: var(--surface-2); color: var(--text-primary); }
+.recItem .dlBtn { flex-shrink: 0; }
+
+.countdownOverlay {
+  position: absolute; inset: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.5); pointer-events: none;
+}
+.countdownNum {
+  font-size: 120px; font-weight: 800; color: #fff;
+  text-shadow: 0 4px 48px rgba(232,97,42,0.7);
+  animation: countdown-pulse 0.9s ease infinite;
+}
+@keyframes countdown-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
 
 /* INIT OVERLAY */
 .initOverlay {

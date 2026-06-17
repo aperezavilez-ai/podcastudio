@@ -1,5 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { signIn, signUp, isSupabaseConfigured } from '../lib/projects.js'
+import { mapSupabaseUser } from '../lib/supabase.js'
 import styles from './Auth.module.css'
 
 export default function Auth({ onAuth }) {
@@ -16,10 +18,30 @@ export default function Auth({ onAuth }) {
     setError('')
     if (!form.email || !form.password) { setError('Completa todos los campos.'); return }
     setLoading(true)
-    await new Promise(r => setTimeout(r, 900))
-    const user = { id: '1', name: form.name || form.email.split('@')[0], email: form.email }
-    onAuth(user)
-    setLoading(false)
+    try {
+      if (isSupabaseConfigured) {
+        if (mode === 'login') {
+          const { user } = await signIn(form.email, form.password)
+          onAuth(mapSupabaseUser(user))
+        } else {
+          const { user } = await signUp(form.email, form.password, form.name)
+          if (!user) throw new Error('Revisa tu correo para confirmar la cuenta.')
+          onAuth(mapSupabaseUser(user))
+        }
+      } else {
+        await new Promise(r => setTimeout(r, 600))
+        onAuth({ id: 'local', name: form.name || form.email.split('@')[0], email: form.email })
+      }
+      navigate('/setup')
+    } catch (err) {
+      setError(err.message || 'Error al iniciar sesión')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const demoLogin = () => {
+    onAuth({ id: 'demo', name: 'Demo User', email: 'demo@ps.com' })
     navigate('/setup')
   }
 
@@ -34,6 +56,11 @@ export default function Auth({ onAuth }) {
           <button className={`${styles.tab} ${mode === 'login' ? styles.tabActive : ''}`} onClick={() => setMode('login')}>Iniciar sesión</button>
           <button className={`${styles.tab} ${mode === 'register' ? styles.tabActive : ''}`} onClick={() => setMode('register')}>Crear cuenta</button>
         </div>
+        {!isSupabaseConfigured && (
+          <div className={styles.demoNote}>
+            <i className="ti ti-info-circle" /> Modo local — configura Supabase en Vercel para guardar en la nube.
+          </div>
+        )}
         <form className={styles.form} onSubmit={submit}>
           {mode === 'register' && (
             <div className={styles.field}>
@@ -56,11 +83,8 @@ export default function Auth({ onAuth }) {
         </form>
         <div className={styles.divider}><span>o continúa con</span></div>
         <div className={styles.socials}>
-          <button className={styles.socialBtn} onClick={() => { onAuth({ id: '1', name: 'Demo User', email: 'demo@ps.com' }); navigate('/setup') }}>
-            <i className="ti ti-brand-google" /> Google
-          </button>
-          <button className={styles.socialBtn}>
-            <i className="ti ti-brand-apple" /> Apple
+          <button type="button" className={styles.socialBtn} onClick={demoLogin}>
+            <i className="ti ti-player-play" /> Modo demo
           </button>
         </div>
         <p className={styles.terms}>Al continuar aceptas los <a href="#">Términos de uso</a> y la <a href="#">Política de privacidad</a>.</p>

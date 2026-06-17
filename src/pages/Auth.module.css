@@ -49,6 +49,12 @@
   background: var(--red-dim); border: 1px solid rgba(224,80,80,0.3);
   border-radius: var(--radius-md); padding: 8px 12px;
 }
+.demoNote {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: #e8a84a;
+  background: rgba(255,180,60,0.08); border: 1px solid rgba(255,180,60,0.22);
+  border-radius: var(--radius-md); padding: 8px 10px; margin-bottom: 14px;
+}
 .submitBtn {
   width: 100%; padding: 12px;
   border-radius: var(--radius-md); background: var(--accent); border: none;

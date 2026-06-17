@@ -1,4 +1,5 @@
 import { applyChromaKey } from '../hooks/useChromaKey.js'
+import { drawCintillo, drawLogo } from './drawOverlays.js'
 import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 import { STUDIO_BACKGROUND_URLS } from '../config/studioImages.js'
 
@@ -115,6 +116,8 @@ export function drawCompositorFrame(ctx, w, h, {
   cameraScale = 100,
   chromaCanvas,
   chromaCtx,
+  logoOverlay,
+  cintilloOverlay,
 }) {
   const hasBg = backgroundTemplate !== 'none' || !!customImage
   const template = getBackgroundTemplate(backgroundTemplate)
@@ -122,8 +125,7 @@ export function drawCompositorFrame(ctx, w, h, {
 
   drawBackground(ctx, w, h, { backgroundTemplate, customImage, studioImage })
 
-  if (!video || video.readyState < 2 || !video.videoWidth) return
-
+  if (video && video.readyState >= 2 && video.videoWidth) {
   if (chromaEnabled && hasBg) {
     const keyed = processChromaFrame(chromaCtx, chromaCanvas, video, chromaColor, chromaSimilarity, chromaSmoothness)
     ctx.save()
@@ -132,10 +134,7 @@ export function drawCompositorFrame(ctx, w, h, {
     ctx.translate(-w / 2, -h)
     drawImageCover(ctx, keyed, w, h)
     ctx.restore()
-    return
-  }
-
-  if (hasBg) {
+  } else if (hasBg) {
     const cam = template.camera
     const rectW = (cam.width / 100) * w
     const rectH = (cam.height / 100) * h
@@ -157,10 +156,13 @@ export function drawCompositorFrame(ctx, w, h, {
     ctx.beginPath()
     strokeRoundRect(ctx, rectX, rectY, rectW, rectH, 8)
     ctx.stroke()
-    return
+  } else {
+    drawVideoCover(ctx, video, 0, 0, w, h)
+  }
   }
 
-  drawVideoCover(ctx, video, 0, 0, w, h)
+  drawLogo(ctx, w, h, logoOverlay)
+  drawCintillo(ctx, w, h, cintilloOverlay)
 }
 
 export function getStudioImageUrl(templateId, customUrl) {
