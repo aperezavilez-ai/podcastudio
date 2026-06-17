@@ -16,7 +16,8 @@ npm install
 npm run dev
 ```
 
-La app corre en http://localhost:3000
+- **Local:** http://localhost:3000
+- **Producción (Vercel):** conectado al repo `aperezavilez-ai/podcastudio` — cada push a `main` despliega automáticamente.
 
 ## Estructura
 
@@ -92,9 +93,24 @@ En src/hooks/useAI.js la CLAUDE_API ya apunta a la URL correcta.
 El navegador necesita una clave de API. Para producción usar un proxy/backend para no exponer la clave.
 Obtener clave en: https://console.anthropic.com/
 
-## Producción
+## Producción (Vercel)
+
+El proyecto incluye `vercel.json` con rewrites para React Router (rutas como `/studio`, `/auth`, etc.).
+
+### Variables de entorno en Vercel
+
+En **Project Settings → Environment Variables**:
+
+| Variable | Uso |
+|----------|-----|
+| `VITE_SITE_URL` | URL pública con tu dominio propio (ej. `https://podcastudio.tudominio.com`) |
+| `VITE_ANTHROPIC_API_KEY` | Clave Claude (recomendado: proxy backend, no exponer en frontend) |
+
+### Build local
 
 ```bash
 npm run build
+npm run preview
 ```
-El output en /dist puede servirse con Nginx, Netlify, Vercel o cualquier CDN.
+
+El output en `/dist` se sirve automáticamente en Vercel tras cada push a `main`.

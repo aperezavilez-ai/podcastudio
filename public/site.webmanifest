@@ -1,0 +1,16 @@
+{
+  "name": "PodcastStudio",
+  "short_name": "PodcastStudio",
+  "description": "Estudio profesional de podcast con cámaras, grabación y transmisión en vivo",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08080b",
+  "theme_color": "#e8612a",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
