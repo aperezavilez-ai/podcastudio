@@ -1,6 +1,15 @@
 import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import CintilloOverlay from '../components/CintilloOverlay.jsx'
+import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
+import { getCintilloStyle } from '../config/cintilloStyles.js'
 import styles from './ProjectSetup.module.css'
+
+const CINTILLO_POSITIONS = [
+  { id: 'bl', label: 'Abajo izquierda' },
+  { id: 'bc', label: 'Abajo centro' },
+  { id: 'br', label: 'Abajo derecha' },
+]
 
 const CINTILLO_TYPES = [
   { id: 'guest', label: 'Nombre del invitado', color: '#1D9E75' },
@@ -37,6 +46,8 @@ export default function ProjectSetup({ onProject }) {
     name: '', episodeTitle: '', guestName: '', guestRole: '',
     logoFile: null, logoUrl: null, logoPosition: 'tr',
     cintillos: { guest: '', topic: '', promo: '', social: '' },
+    cintilloStyle: 'classic',
+    cintilloPosition: 'bl',
     format: '16:9',
   })
   const fileRef = useRef()
@@ -67,7 +78,7 @@ export default function ProjectSetup({ onProject }) {
         </div>
       </div>
 
-      <div className={styles.wizard}>
+      <div className={`${styles.wizard} ${step === 2 ? styles.wizardWide : ''}`}>
         {/* STEPPER */}
         <div className={styles.stepper}>
           {STEPS.map((s, i) => (
@@ -171,9 +182,15 @@ export default function ProjectSetup({ onProject }) {
                       }
                       <span>{project.name || 'Mi Podcast'}</span>
                     </div>
-                    <div className={styles.miniCintillo}>
-                      <div className={styles.miniAccent} />
-                      <span>{project.guestName || 'Invitado'}</span>
+                    <div className={styles.miniCintilloWrap}>
+                      <CintilloOverlay
+                        styleId={project.cintilloStyle}
+                        tag="INVITADO"
+                        text={project.guestName || 'Invitado'}
+                        imageUrl={project.logoUrl}
+                        position={project.cintilloPosition}
+                        preview
+                      />
                     </div>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', marginTop: 8 }}>Vista previa en tiempo real</div>
@@ -186,7 +203,50 @@ export default function ProjectSetup({ onProject }) {
           {step === 2 && (
             <div className={styles.stepContent}>
               <h2 className={styles.stepTitle}>Cintillos del episodio</h2>
-              <p className={styles.stepDesc}>La IA los activará durante la grabación. Puedes editar estos textos en el estudio.</p>
+              <p className={styles.stepDesc}>Elige el estilo de cortinilla y personaliza los textos. Se activan durante la grabación en el estudio.</p>
+
+              <div className={styles.cintSection}>
+                <div className={styles.cintSectionTitle}>Estilo de cintillo</div>
+                <CintilloStylePicker
+                  value={project.cintilloStyle}
+                  onChange={v => upd('cintilloStyle', v)}
+                  previewTag="INVITADO"
+                  previewText={project.guestName || project.episodeTitle || 'Tu texto aquí'}
+                />
+              </div>
+
+              <div className={styles.cintPosRow}>
+                <span className={styles.posLabel}>Posición en pantalla</span>
+                <div className={styles.cintPosBtns}>
+                  {CINTILLO_POSITIONS.map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`${styles.cintPosBtn} ${project.cintilloPosition === p.id ? styles.cintPosBtnActive : ''}`}
+                      onClick={() => upd('cintilloPosition', p.id)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className={styles.cintLivePreview}>
+                <div className={styles.cintLiveLabel}>Vista previa en vivo</div>
+                <div className={styles.miniScreen}>
+                  <i className="ti ti-video" style={{ fontSize: 24, color: '#333' }} />
+                  <CintilloOverlay
+                    styleId={project.cintilloStyle}
+                    tag="INVITADO"
+                    text={project.cintillos.guest || project.guestName || 'Nombre del invitado'}
+                    subtitle={project.guestRole || ''}
+                    imageUrl={project.logoUrl}
+                    position={project.cintilloPosition}
+                  />
+                </div>
+              </div>
+
+              <div className={styles.cintSectionTitle} style={{ marginTop: 20 }}>Textos de los cintillos</div>
               <div className={styles.fields}>
                 {CINTILLO_TYPES.map(ct => (
                   <div key={ct.id} className={styles.cintField}>
@@ -197,10 +257,10 @@ export default function ProjectSetup({ onProject }) {
                         value={project.cintillos[ct.id]}
                         onChange={e => updCint(ct.id, e.target.value)}
                         placeholder={{
-                          guest: 'Ej: Carlos Pérez · CEO de TechCo',
-                          topic: 'Ej: Inteligencia Artificial en Latinoamérica',
+                          guest: 'Ej: Carolina Bañuelos · Conductora',
+                          topic: 'Ej: Nos cacharon en el episodio',
                           promo: 'Ej: 50% OFF · Código: PODCAST24',
-                          social: 'Ej: @mipodcast · Síguenos'
+                          social: 'Ej: @losdosdeabajo · Síguenos'
                         }[ct.id]}
                       />
                     </div>
@@ -222,6 +282,7 @@ export default function ProjectSetup({ onProject }) {
                 {project.guestName && <div className={styles.summaryRow}><i className="ti ti-user" />{project.guestName}{project.guestRole ? ` · ${project.guestRole}` : ''}</div>}
                 <div className={styles.summaryRow}><i className="ti ti-aspect-ratio" />Formato {project.format}</div>
                 <div className={styles.summaryRow}><i className="ti ti-layout-bottombar" />Logo: {LOGO_POSITIONS.find(p => p.id === project.logoPosition)?.label}</div>
+                <div className={styles.summaryRow}><i className="ti ti-palette" />Cintillo: {getCintilloStyle(project.cintilloStyle).name}</div>
               </div>
             </div>
           )}

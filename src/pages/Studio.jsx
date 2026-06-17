@@ -5,6 +5,7 @@ import { useRecorder } from '../hooks/useRecorder.js'
 import { useAI } from '../hooks/useAI.js'
 import CameraView from '../components/CameraView.jsx'
 import CameraConnectPanel from '../components/CameraConnectPanel.jsx'
+import CintilloOverlay from '../components/CintilloOverlay.jsx'
 import VUMeter from '../components/VUMeter.jsx'
 import PostsPanel from '../components/PostsPanel.jsx'
 import styles from './Studio.module.css'
@@ -60,7 +61,11 @@ export default function Studio({ project, user }) {
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
 
-  const proj = project || { name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '', logoPosition: 'tr', logoUrl: null, format: '16:9', cintillos: {} }
+  const proj = project || {
+    name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
+    logoPosition: 'tr', logoUrl: null, format: '16:9', cintillos: {},
+    cintilloStyle: 'classic', cintilloPosition: 'bl',
+  }
 
   // Initialize cameras and mic on mount
   useEffect(() => {
@@ -107,7 +112,7 @@ export default function Studio({ project, user }) {
 
   const showCintillo = (preset) => {
     const text = proj.cintillos?.[preset.id] || { guest: proj.guestName + (proj.guestRole ? ` · ${proj.guestRole}` : ''), topic: proj.episodeTitle, promo: 'Código: PODCAST24', social: `@${(proj.name || 'mipodcast').toLowerCase().replace(/\s/g, '')}` }[preset.id] || preset.label
-    setCintillo({ tag: preset.tag, text, active: true })
+    setCintillo({ tag: preset.tag, text, color: preset.color, active: true })
   }
 
   const handleAICintillo = async () => {
@@ -221,20 +226,18 @@ export default function Studio({ project, user }) {
                 </div>
                 {/* CINTILLO */}
                 {cintillo.active && (
-                  <div className={styles.cintilloBar}>
-                    <div className={styles.cintAccent} />
-                    <div>
-                      <div className={styles.cintLabel}>{cintillo.tag}</div>
-                      <div className={styles.cintText}>{cintillo.text}</div>
-                    </div>
-                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {liveOn && <div className={styles.liveBadge}><div className={styles.liveDot} />En vivo</div>}
-                      {totalViewers > 0 && <div className={styles.viewerCount}><i className="ti ti-eye" style={{ fontSize: 10 }} /> {totalViewers.toLocaleString()}</div>}
-                      <button className={styles.cintClose} onClick={() => setCintillo(c => ({ ...c, active: false }))}>
-                        <i className="ti ti-x" style={{ fontSize: 10 }} />
-                      </button>
-                    </div>
-                  </div>
+                  <CintilloOverlay
+                    styleId={proj.cintilloStyle || 'classic'}
+                    tag={cintillo.tag}
+                    text={cintillo.text}
+                    subtitle={proj.guestRole || ''}
+                    accentColor={cintillo.color}
+                    imageUrl={proj.logoUrl}
+                    position={proj.cintilloPosition || 'bl'}
+                    liveOn={liveOn}
+                    totalViewers={totalViewers}
+                    onClose={() => setCintillo(c => ({ ...c, active: false }))}
+                  />
                 )}
               </div>
             </div>

@@ -1,0 +1,437 @@
+.wrap {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  animation: cintSlideUp .3s ease;
+  max-width: 85%;
+  --cint-primary: #e8612a;
+  --cint-secondary: #ffffff;
+}
+
+.preview {
+  position: relative;
+  max-width: 100%;
+  transform: scale(0.72);
+  transform-origin: bottom left;
+}
+
+.posBl { bottom: 12px; left: 12px; }
+.posBc { bottom: 12px; left: 50%; transform: translateX(-50%); }
+.posBr { bottom: 12px; right: 12px; left: auto; }
+.posBc.preview { transform: translateX(-50%) scale(0.72); transform-origin: bottom center; }
+.posBr.preview { transform: scale(0.72); transform-origin: bottom right; }
+
+.tag {
+  display: block;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  line-height: 1.2;
+}
+
+.mainText {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+
+.subText {
+  display: block;
+  font-size: 10px;
+  color: rgba(255,255,255,.75);
+  margin-top: 2px;
+}
+
+.extras {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.liveBadge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(224,80,80,.15);
+  border: 1px solid rgba(224,80,80,.4);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-size: 8px;
+  font-weight: 600;
+  color: #e05050;
+  text-transform: uppercase;
+}
+
+.liveDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #e05050;
+  animation: pulse-dot 1.2s infinite;
+}
+
+.viewers {
+  font-size: 9px;
+  color: rgba(255,255,255,.6);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.closeBtn {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,.15);
+  background: rgba(0,0,0,.4);
+  color: rgba(255,255,255,.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.closeBtn:hover { background: rgba(255,255,255,.1); color: #fff; }
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--cint-primary);
+  flex-shrink: 0;
+}
+
+.avatarPlaceholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* Classic */
+.classicAccent {
+  width: 4px;
+  align-self: stretch;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.classicBody {
+  background: rgba(6,6,10,.92);
+  border: 1px solid rgba(255,255,255,.06);
+  padding: 8px 14px;
+  border-radius: 0 6px 6px 0;
+}
+
+/* Angled */
+.style_angled {
+  align-items: stretch;
+}
+
+.angledShape {
+  width: 28px;
+  background: var(--cint-primary);
+  clip-path: polygon(0 0, 100% 12%, 100% 88%, 0 100%);
+  flex-shrink: 0;
+}
+
+.angledBody {
+  background: rgba(10,10,16,.95);
+  padding: 8px 14px 8px 10px;
+  border-radius: 0 4px 4px 0;
+}
+
+/* Broadcast */
+.broadcastFlag {
+  width: 36px;
+  background: var(--cint-primary);
+  clip-path: polygon(0 0, 100% 0, 70% 100%, 0 100%);
+  flex-shrink: 0;
+}
+
+.broadcastBar {
+  background: var(--cint-secondary);
+  color: #111;
+  padding: 8px 16px 8px 8px;
+  margin-left: -8px;
+}
+
+.broadcastBar .mainText { color: #111; font-weight: 700; }
+
+/* Profile */
+.style_profile {
+  align-items: center;
+  gap: 8px;
+  background: rgba(6,6,10,.85);
+  padding: 6px 12px 6px 6px;
+  border-radius: 40px;
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.profileBody { min-width: 0; }
+
+/* Tab */
+.style_tab {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.topTab {
+  font-size: 7px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  padding: 2px 10px;
+  border-radius: 4px 4px 0 0;
+  margin-left: 8px;
+}
+
+.tabBody {
+  padding: 8px 16px;
+  border-radius: 4px 6px 6px 6px;
+}
+
+/* News */
+.style_news {
+  align-items: stretch;
+  background: rgba(10,10,16,.95);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.newsIcon {
+  width: 32px;
+  background: var(--cint-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.newsBody {
+  padding: 8px 12px;
+  min-width: 0;
+}
+
+.newsTab {
+  display: inline-block;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: 1px 6px;
+  border-radius: 2px;
+  color: #fff;
+  margin-bottom: 3px;
+}
+
+/* Elegant */
+.elegantBody {
+  background: var(--cint-secondary);
+  padding: 10px 16px 8px;
+  border-radius: 4px;
+  position: relative;
+  min-width: 140px;
+}
+
+.elegantBody .mainText { color: #111; }
+
+.topTabSm {
+  display: inline-block;
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: 1px 7px;
+  border-radius: 2px;
+  margin-bottom: 4px;
+}
+
+.accentLine {
+  height: 3px;
+  border-radius: 2px;
+  margin-top: 6px;
+  width: 60%;
+}
+
+/* Wave */
+.style_wave {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  padding: 10px 16px;
+  min-width: 160px;
+}
+
+.waveBg {
+  position: absolute;
+  inset: 0;
+  background: var(--cint-primary);
+  clip-path: polygon(0 20%, 8% 0, 100% 0, 100% 100%, 0 100%);
+  opacity: .95;
+}
+
+.waveContent {
+  position: relative;
+  z-index: 1;
+}
+
+.waveContent .tag { color: rgba(255,255,255,.8); margin-bottom: 2px; }
+
+/* Neon */
+.style_neon {
+  align-items: center;
+  gap: 8px;
+}
+
+.neonBody {
+  border: 2px solid var(--cint-primary);
+  background: var(--cint-secondary);
+  padding: 6px 12px;
+  border-radius: 4px;
+}
+
+.neonBody .mainText { color: #fff; }
+
+.neonSub {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  color: #111;
+  padding: 2px 8px;
+  border-radius: 2px;
+}
+
+/* Sport */
+.style_sport {
+  align-items: stretch;
+}
+
+.sportVertical {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #fff;
+  padding: 8px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sportArc {
+  width: 24px;
+  clip-path: ellipse(50% 80% at 0% 50%);
+  flex-shrink: 0;
+}
+
+.sportBar {
+  background: rgba(255,255,255,.95);
+  padding: 8px 14px;
+  margin-left: -4px;
+  border-radius: 0 4px 4px 0;
+}
+
+.sportBar .mainText { color: #111; }
+
+/* Corporate */
+.style_corporate {
+  align-items: stretch;
+}
+
+.corpStripes {
+  width: 12px;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--cint-primary),
+    var(--cint-primary) 3px,
+    #fff 3px,
+    #fff 6px
+  );
+  flex-shrink: 0;
+}
+
+.corpBody {
+  background: var(--cint-secondary);
+  padding: 8px 14px;
+  border: 2px solid var(--cint-primary);
+  border-left: none;
+}
+
+.corpBody .mainText { color: #111; }
+
+.corpSub {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 9px;
+  color: #444;
+  border-left: 3px solid;
+  padding-left: 6px;
+}
+
+/* Premium */
+.style_premium {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.premiumMain {
+  padding: 8px 16px;
+  border-radius: 4px 4px 0 0;
+  min-width: 160px;
+}
+
+.premiumMain .tag { color: rgba(255,255,255,.75); margin-bottom: 2px; }
+
+.premiumSub {
+  background: var(--cint-secondary);
+  color: #111;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 4px 16px;
+  border-radius: 0 0 4px 4px;
+  width: 100%;
+}
+
+@keyframes cintSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.posBc:not(.preview) { animation: cintSlideUpCenter .3s ease; }
+.posBr:not(.preview) { animation: cintSlideUpRight .3s ease; }
+
+@keyframes cintSlideUpCenter {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes cintSlideUpRight {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
