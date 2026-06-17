@@ -6,6 +6,8 @@ import { useAI } from '../hooks/useAI.js'
 import CameraView from '../components/CameraView.jsx'
 import CameraConnectPanel from '../components/CameraConnectPanel.jsx'
 import CintilloOverlay from '../components/CintilloOverlay.jsx'
+import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
+import { getCintilloStyle } from '../config/cintilloStyles.js'
 import VUMeter from '../components/VUMeter.jsx'
 import PostsPanel from '../components/PostsPanel.jsx'
 import styles from './Studio.module.css'
@@ -58,6 +60,13 @@ export default function Studio({ project, user }) {
   const [showCintForm, setShowCintForm] = useState(false)
   const [cintFormText, setCintFormText] = useState('')
   const [cintFormTag, setCintFormTag] = useState('CUSTOM')
+  const [cintilloStyle, setCintilloStyle] = useState(() =>
+    project?.cintilloStyle || localStorage.getItem('podcastudio_cintillo_style') || 'angled'
+  )
+  const [cintilloPosition, setCintilloPosition] = useState(() =>
+    project?.cintilloPosition || localStorage.getItem('podcastudio_cintillo_position') || 'bl'
+  )
+  const [showStylePicker, setShowStylePicker] = useState(true)
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
 
@@ -66,6 +75,14 @@ export default function Studio({ project, user }) {
     logoPosition: 'tr', logoUrl: null, format: '16:9', cintillos: {},
     cintilloStyle: 'classic', cintilloPosition: 'bl',
   }
+
+  useEffect(() => {
+    localStorage.setItem('podcastudio_cintillo_style', cintilloStyle)
+  }, [cintilloStyle])
+
+  useEffect(() => {
+    localStorage.setItem('podcastudio_cintillo_position', cintilloPosition)
+  }, [cintilloPosition])
 
   // Initialize cameras and mic on mount
   useEffect(() => {
@@ -227,13 +244,13 @@ export default function Studio({ project, user }) {
                 {/* CINTILLO */}
                 {cintillo.active && (
                   <CintilloOverlay
-                    styleId={proj.cintilloStyle || 'classic'}
+                    styleId={cintilloStyle}
                     tag={cintillo.tag}
                     text={cintillo.text}
                     subtitle={proj.guestRole || ''}
                     accentColor={cintillo.color}
                     imageUrl={proj.logoUrl}
-                    position={proj.cintilloPosition || 'bl'}
+                    position={cintilloPosition}
                     liveOn={liveOn}
                     totalViewers={totalViewers}
                     onClose={() => setCintillo(c => ({ ...c, active: false }))}
@@ -373,11 +390,53 @@ export default function Studio({ project, user }) {
           </div>
 
           {/* CINTILLOS */}
-          <div className={styles.prSection} style={{ flex: 1 }}>
+          <div className={styles.prSection} style={{ flex: 1, overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
               <div className={styles.prTitle} style={{ margin: 0 }}>Cintillos</div>
               <div className={styles.aiChipSm} style={{ marginLeft: 'auto' }}><i className="ti ti-sparkles" style={{ fontSize: 8 }} /> IA</div>
             </div>
+
+            <button
+              type="button"
+              className={styles.styleToggle}
+              onClick={() => setShowStylePicker(s => !s)}
+            >
+              <i className="ti ti-palette" />
+              <span>Diseño: <strong>{getCintilloStyle(cintilloStyle).name}</strong></span>
+              <i className={`ti ti-chevron-${showStylePicker ? 'up' : 'down'}`} style={{ marginLeft: 'auto', fontSize: 11 }} />
+            </button>
+
+            {showStylePicker && (
+              <div className={styles.stylePickerWrap}>
+                <CintilloStylePicker
+                  compact
+                  value={cintilloStyle}
+                  onChange={setCintilloStyle}
+                  previewTag="TEMA"
+                  previewText={proj.episodeTitle || 'Tu texto'}
+                />
+                <div className={styles.posRow}>
+                  {[
+                    { id: 'bl', icon: 'ti-arrow-down-left' },
+                    { id: 'bc', icon: 'ti-arrow-down' },
+                    { id: 'br', icon: 'ti-arrow-down-right' },
+                  ].map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`${styles.posBtn} ${cintilloPosition === p.id ? styles.posBtnActive : ''}`}
+                      onClick={() => setCintilloPosition(p.id)}
+                      title={{ bl: 'Abajo izquierda', bc: 'Abajo centro', br: 'Abajo derecha' }[p.id]}
+                    >
+                      <i className={`ti ${p.icon}`} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className={styles.cintDivider} />
+            <div className={styles.prTitle} style={{ marginBottom: 6 }}>Activar cintillo</div>
             {CINTILLO_PRESETS.map(preset => (
               <button key={preset.id} className={styles.cintItem} onClick={() => showCintillo(preset)}>
                 <div className={styles.cintDot} style={{ background: preset.color }} />

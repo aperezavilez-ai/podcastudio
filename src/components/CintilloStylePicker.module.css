@@ -57,6 +57,17 @@
 
 .cardActive .cardName { color: var(--accent); }
 
+.pickerCompact .grid {
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.pickerCompact .previewBox { height: 52px; }
+
+.pickerCompact .cardInfo { padding: 5px 7px; }
+
+.pickerCompact .cardName { font-size: 9px; }
+
 @media (max-width: 640px) {
   .grid { grid-template-columns: repeat(2, 1fr); }
 }

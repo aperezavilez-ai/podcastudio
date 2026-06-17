@@ -46,7 +46,7 @@ export default function ProjectSetup({ onProject }) {
     name: '', episodeTitle: '', guestName: '', guestRole: '',
     logoFile: null, logoUrl: null, logoPosition: 'tr',
     cintillos: { guest: '', topic: '', promo: '', social: '' },
-    cintilloStyle: 'classic',
+    cintilloStyle: 'angled',
     cintilloPosition: 'bl',
     format: '16:9',
   })

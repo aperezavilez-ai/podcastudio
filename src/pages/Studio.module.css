@@ -57,7 +57,7 @@
 /* LAYOUT */
 .layout {
   display: grid;
-  grid-template-columns: 48px 1fr 236px;
+  grid-template-columns: 48px 1fr 280px;
   flex: 1;
   overflow: hidden;
 }
@@ -226,6 +226,58 @@
 .cintItem:hover { background: var(--surface-3); border-color: var(--border-2); }
 .cintDot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 .cintItemLabel { font-size: 10px; color: var(--text-secondary); flex: 1; }
+.styleToggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px;
+  margin-bottom: 8px;
+  border-radius: 7px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-dim);
+  font-size: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all .15s;
+}
+.styleToggle:hover { background: rgba(232,97,42,.2); }
+.styleToggle strong { color: var(--accent); font-weight: 600; }
+.stylePickerWrap {
+  margin-bottom: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+.posRow {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+.posBtn {
+  flex: 1;
+  padding: 5px;
+  border-radius: 5px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.posBtn:hover { background: var(--surface-3); color: var(--text-secondary); }
+.posBtnActive {
+  border-color: var(--accent-border) !important;
+  background: var(--accent-dim) !important;
+  color: var(--accent) !important;
+}
+.cintDivider {
+  height: 1px;
+  background: var(--border-1);
+  margin: 10px 0;
+}
 .cintForm { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
 .cintSelect, .cintInput {
   padding: 5px 8px; background: var(--surface-3); border: 1px solid var(--border-2);
