@@ -23,6 +23,23 @@ function aiApiDev(apiKey) {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith('/api/ai')) return next()
+
+        if (req.url === '/api/ai/status' || req.url.startsWith('/api/ai/status?')) {
+          if (req.method !== 'GET') {
+            res.statusCode = 405
+            res.end('Method not allowed')
+            return
+          }
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({
+            configured: !!apiKey,
+            provider: 'claude',
+            model: 'claude-sonnet-4-6',
+          }))
+          return
+        }
+
         if (req.method !== 'POST') {
           res.statusCode = 405
           res.end('Method not allowed')

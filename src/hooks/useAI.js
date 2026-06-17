@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 async function callAI(prompt, systemPrompt = '') {
   const res = await fetch('/api/ai', {
@@ -16,6 +16,21 @@ export function useAI() {
   const [loadingCintillo, setLoadingCintillo] = useState(false)
   const [posts, setPosts] = useState(null)
   const [error, setError] = useState('')
+  const [aiConfigured, setAiConfigured] = useState(false)
+
+  const checkAIStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/ai/status')
+      const data = await res.json().catch(() => ({}))
+      setAiConfigured(!!data.configured)
+      return !!data.configured
+    } catch {
+      setAiConfigured(false)
+      return false
+    }
+  }, [])
+
+  useEffect(() => { checkAIStatus() }, [checkAIStatus])
 
   const generateCintillo = useCallback(async ({ topic, guest, role, type }) => {
     setLoadingCintillo(true)
@@ -75,5 +90,5 @@ Incluye SOLO las plataformas: ${platList}`
     }
   }, [])
 
-  return { generateCintillo, generatePosts, loadingPosts, loadingCintillo, posts, setPosts, error }
+  return { generateCintillo, generatePosts, loadingPosts, loadingCintillo, posts, setPosts, error, aiConfigured, checkAIStatus }
 }

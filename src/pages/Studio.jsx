@@ -38,11 +38,11 @@ export default function Studio({ project, user }) {
     devices, streams, cameraMeta, activeCamera, setActiveCamera, error: camError, setError: setCamError,
     micLevel, bluetoothSupported, wifiConnecting, btScanning, wifiPresets,
     autoConnecting, connectedCount,
-    enumerateDevices, startCamera, autoConnectAll, stopCamera, connectWifiCamera,
+    enumerateDevices, startCamera, autoConnectAll, connectNextCameraToSlot, stopCamera, connectWifiCamera,
     scanBluetoothCamera, connectBluetoothWifiStream, startMic,
   } = useWebcam()
   const { recording, duration, recordings, startRecording, stopRecording, downloadRecording, formatDuration } = useRecorder()
-  const { generateCintillo, loadingCintillo } = useAI()
+  const { generateCintillo, loadingCintillo, aiConfigured, checkAIStatus } = useAI()
 
   const [tab, setTab] = useState('studio')
   const [liveOn, setLiveOn] = useState(false)
@@ -140,13 +140,28 @@ export default function Studio({ project, user }) {
     async function init() {
       const devs = await enumerateDevices()
       if (devs.cameras.length > 0) {
-        await autoConnectAll(devs.cameras)
+        const n = await autoConnectAll(devs.cameras)
+        if (n === 0) setInitError('Permite el acceso a la cámara en el navegador y pulsa reconectar.')
+      } else {
+        setInitError('No se detectaron cámaras USB. Conecta una y autoriza el acceso.')
       }
       if (devs.microphones.length > 0) await startMic(devs.microphones[0]?.deviceId)
+      await checkAIStatus()
       setInitialized(true)
     }
     init()
-  }, [])
+  }, [enumerateDevices, autoConnectAll, startMic, checkAIStatus])
+
+  // Re-scan for newly plugged cameras
+  useEffect(() => {
+    if (!initialized) return
+    const id = setInterval(async () => {
+      const { cameras } = await enumerateDevices(false)
+      const connected = Object.values(streams).filter(Boolean).length
+      if (cameras.length > connected) await autoConnectAll(cameras)
+    }, 10000)
+    return () => clearInterval(id)
+  }, [initialized, enumerateDevices, autoConnectAll, streams])
 
   // Simulate viewer counts when live
   useEffect(() => {
@@ -237,7 +252,12 @@ export default function Studio({ project, user }) {
           )}
         </div>
         <div className={styles.topRight}>
-          {initialized && <div className={styles.aiChip}><i className="ti ti-sparkles" style={{ fontSize: 9 }} /> IA activa</div>}
+          {initialized && (
+            <div className={`${styles.aiChip} ${aiConfigured ? '' : styles.aiChipOff}`} title={aiConfigured ? 'Claude Sonnet activo' : 'Añade ANTHROPIC_API_KEY en Vercel'}>
+              <i className="ti ti-sparkles" style={{ fontSize: 9 }} />
+              {aiConfigured ? 'IA activa' : 'IA sin configurar'}
+            </div>
+          )}
           <button className={styles.iconBtn} title="Ayuda"><i className="ti ti-help" style={{ fontSize: 13 }} /></button>
           <button className={styles.iconBtn} title="Configuración"><i className="ti ti-settings" style={{ fontSize: 13 }} /></button>
         </div>
@@ -330,7 +350,11 @@ export default function Studio({ project, user }) {
                   <div
                     key={i}
                     className={`${styles.camThumb} ${activeCamera === i ? styles.camActive : ''}`}
-                    onClick={() => { setActiveCamera(i); setCamSlot(i) }}
+                    onClick={() => {
+                      setActiveCamera(i)
+                      setCamSlot(i)
+                      if (!streams[i]) connectNextCameraToSlot(i)
+                    }}
                   >
                     <CameraView stream={streams[i]} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 7 }} />
                     {typeIcon && (

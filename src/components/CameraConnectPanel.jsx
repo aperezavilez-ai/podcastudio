@@ -68,7 +68,9 @@ export default function CameraConnectPanel({
             <i className="ti ti-plug-connected" />
             {connectedCount > 0
               ? `${connectedCount} cámara${connectedCount > 1 ? 's' : ''} conectada${connectedCount > 1 ? 's' : ''} automáticamente`
-              : `${devices.cameras.length} detectada${devices.cameras.length !== 1 ? 's' : ''} — conecta manualmente`}
+              : devices.cameras.length > 0
+                ? `${devices.cameras.length} detectada${devices.cameras.length !== 1 ? 's' : ''} — conectando...`
+                : 'Sin cámaras USB — conecta una y autoriza el acceso'}
           </span>
         )}
         {onReconnectAll && devices.cameras.length > 0 && !autoConnecting && (
