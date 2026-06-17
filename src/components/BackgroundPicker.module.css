@@ -1,0 +1,145 @@
+.picker { width: 100%; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 2px;
+  margin-bottom: 8px;
+}
+
+.compact .grid { max-height: 160px; }
+
+.card {
+  display: flex;
+  flex-direction: column;
+  border: 1.5px solid var(--border-2);
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all .15s;
+  padding: 0;
+  text-align: center;
+}
+
+.card:hover { border-color: var(--border-3); }
+.cardActive {
+  border-color: var(--accent-border) !important;
+  box-shadow: 0 0 0 1px var(--accent-border);
+}
+
+.thumb {
+  height: 44px;
+  position: relative;
+  overflow: hidden;
+  background: #0a0a10;
+}
+
+.thumbNone {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 16px;
+}
+
+.name {
+  font-size: 8px;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 4px 2px;
+  line-height: 1.2;
+}
+
+.cardActive .name { color: var(--accent); }
+
+.customRow {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.customBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 7px 8px;
+  border-radius: 6px;
+  border: 1px dashed var(--border-3);
+  background: transparent;
+  font-size: 9px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all .15s;
+}
+
+.customBtn:hover {
+  background: var(--surface-2);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.clearBtn {
+  width: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chromaSection {
+  padding: 8px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+}
+
+.chromaToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.chromaToggle input { accent-color: var(--green); }
+
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.sliderRow input[type="range"] {
+  flex: 1;
+  height: 3px;
+}
+
+.val {
+  min-width: 28px;
+  text-align: right;
+  font-size: 9px;
+  color: var(--text-secondary);
+}
+
+.hint {
+  font-size: 8px;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 4px 0 8px;
+}

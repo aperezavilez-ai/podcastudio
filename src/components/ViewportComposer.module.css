@@ -1,0 +1,79 @@
+.composer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  background: #07070a;
+}
+
+.noSignal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #333;
+  z-index: 2;
+}
+
+.noSignal i { font-size: 22px; }
+.noSignal span { font-size: 10px; color: #2a2a3e; }
+
+.cameraWrap {
+  position: absolute;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.cameraFramed {
+  border-radius: 4px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.5);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.cameraChroma {
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.hiddenVideo {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cameraVideo,
+.chromaCanvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.chromaBadge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(29,158,117,.2);
+  border: 1px solid rgba(29,158,117,.4);
+  font-size: 8px;
+  font-weight: 600;
+  color: #1D9E75;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}

@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useWebcam } from '../hooks/useWebcam.js'
 import { useRecorder } from '../hooks/useRecorder.js'
 import { useAI } from '../hooks/useAI.js'
+import ViewportComposer from '../components/ViewportComposer.jsx'
+import BackgroundPicker from '../components/BackgroundPicker.jsx'
+import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 import CameraView from '../components/CameraView.jsx'
 import CameraConnectPanel from '../components/CameraConnectPanel.jsx'
 import CintilloOverlay from '../components/CintilloOverlay.jsx'
@@ -67,6 +70,17 @@ export default function Studio({ project, user }) {
     project?.cintilloPosition || localStorage.getItem('podcastudio_cintillo_position') || 'bl'
   )
   const [showStylePicker, setShowStylePicker] = useState(true)
+  const [showBgPicker, setShowBgPicker] = useState(true)
+  const [backgroundTemplate, setBackgroundTemplate] = useState(() =>
+    project?.backgroundTemplate || localStorage.getItem('podcastudio_bg_template') || 'podcast-dark'
+  )
+  const [customBackgroundUrl, setCustomBackgroundUrl] = useState(project?.customBackgroundUrl || null)
+  const [chromaEnabled, setChromaEnabled] = useState(() =>
+    project?.chromaEnabled ?? localStorage.getItem('podcastudio_chroma') === 'true'
+  )
+  const [chromaSimilarity, setChromaSimilarity] = useState(project?.chromaSimilarity ?? 45)
+  const [chromaSmoothness, setChromaSmoothness] = useState(project?.chromaSmoothness ?? 20)
+  const [cameraScale, setCameraScale] = useState(project?.cameraScale ?? 100)
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
 
@@ -74,6 +88,8 @@ export default function Studio({ project, user }) {
     name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
     logoPosition: 'tr', logoUrl: null, format: '16:9', cintillos: {},
     cintilloStyle: 'classic', cintilloPosition: 'bl',
+    backgroundTemplate: 'podcast-dark', customBackgroundUrl: null,
+    chromaEnabled: false, chromaSimilarity: 45, chromaSmoothness: 20, cameraScale: 100,
   }
 
   useEffect(() => {
@@ -83,6 +99,25 @@ export default function Studio({ project, user }) {
   useEffect(() => {
     localStorage.setItem('podcastudio_cintillo_position', cintilloPosition)
   }, [cintilloPosition])
+
+  useEffect(() => { localStorage.setItem('podcastudio_bg_template', backgroundTemplate) }, [backgroundTemplate])
+  useEffect(() => { localStorage.setItem('podcastudio_chroma', String(chromaEnabled)) }, [chromaEnabled])
+
+  useEffect(() => {
+    if (!project) return
+    if (project.backgroundTemplate) setBackgroundTemplate(project.backgroundTemplate)
+    if (project.customBackgroundUrl) setCustomBackgroundUrl(project.customBackgroundUrl)
+    if (project.chromaEnabled != null) setChromaEnabled(project.chromaEnabled)
+    if (project.chromaSimilarity != null) setChromaSimilarity(project.chromaSimilarity)
+    if (project.chromaSmoothness != null) setChromaSmoothness(project.chromaSmoothness)
+    if (project.cameraScale != null) setCameraScale(project.cameraScale)
+  }, [project])
+
+  const handleBgUpload = (e) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    setCustomBackgroundUrl(URL.createObjectURL(f))
+  }
 
   // Initialize cameras and mic on mount
   useEffect(() => {
@@ -216,9 +251,14 @@ export default function Studio({ project, user }) {
             <div className={styles.viewport}>
               <div className={styles.viewportInner} style={{ aspectRatio: proj.format === '9:16' ? '9/16' : proj.format === '1:1' ? '1/1' : '16/9' }}>
                 {/* ACTIVE CAMERA */}
-                <CameraView
+                <ViewportComposer
                   stream={streams[activeCamera ?? 0]}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
+                  backgroundTemplate={backgroundTemplate}
+                  customBackgroundUrl={customBackgroundUrl}
+                  chromaEnabled={chromaEnabled}
+                  chromaSimilarity={chromaSimilarity}
+                  chromaSmoothness={chromaSmoothness}
+                  cameraScale={cameraScale}
                 />
                 {/* SCANLINES OVERLAY */}
                 <div className={styles.scanlines} />
@@ -355,6 +395,37 @@ export default function Studio({ project, user }) {
                 <span>{camError}</span>
                 <button type="button" onClick={() => setCamError(null)}><i className="ti ti-x" /></button>
               </div>
+            )}
+          </div>
+
+          {/* FONDOS / SET */}
+          <div className={styles.prSection}>
+            <button
+              type="button"
+              className={styles.styleToggle}
+              onClick={() => setShowBgPicker(s => !s)}
+            >
+              <i className="ti ti-photo" />
+              <span>Fondo: <strong>{customBackgroundUrl ? 'Mi set' : getBackgroundTemplate(backgroundTemplate).name}</strong></span>
+              <i className={`ti ti-chevron-${showBgPicker ? 'up' : 'down'}`} style={{ marginLeft: 'auto', fontSize: 11 }} />
+            </button>
+            {showBgPicker && (
+              <BackgroundPicker
+                compact
+                templateId={backgroundTemplate}
+                customUrl={customBackgroundUrl}
+                chromaEnabled={chromaEnabled}
+                chromaSimilarity={chromaSimilarity}
+                chromaSmoothness={chromaSmoothness}
+                cameraScale={cameraScale}
+                onTemplateChange={setBackgroundTemplate}
+                onCustomUpload={handleBgUpload}
+                onClearCustom={() => setCustomBackgroundUrl(null)}
+                onChromaChange={setChromaEnabled}
+                onChromaSimilarityChange={setChromaSimilarity}
+                onChromaSmoothnessChange={setChromaSmoothness}
+                onCameraScaleChange={setCameraScale}
+              />
             )}
           </div>
 

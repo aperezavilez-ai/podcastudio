@@ -2,7 +2,10 @@ import React, { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import CintilloOverlay from '../components/CintilloOverlay.jsx'
 import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
+import BackgroundPicker from '../components/BackgroundPicker.jsx'
+import SetBackground from '../components/SetBackground.jsx'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
+import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 import styles from './ProjectSetup.module.css'
 
 const CINTILLO_POSITIONS = [
@@ -48,9 +51,16 @@ export default function ProjectSetup({ onProject }) {
     cintillos: { guest: '', topic: '', promo: '', social: '' },
     cintilloStyle: 'angled',
     cintilloPosition: 'bl',
+    backgroundTemplate: 'podcast-dark',
+    customBackgroundUrl: null,
+    chromaEnabled: false,
+    chromaSimilarity: 45,
+    chromaSmoothness: 20,
+    cameraScale: 100,
     format: '16:9',
   })
   const fileRef = useRef()
+  const bgFileRef = useRef()
 
   const upd = (k, v) => setProject(p => ({ ...p, [k]: v }))
   const updCint = (k, v) => setProject(p => ({ ...p, cintillos: { ...p.cintillos, [k]: v } }))
@@ -62,12 +72,19 @@ export default function ProjectSetup({ onProject }) {
     setProject(p => ({ ...p, logoFile: f, logoUrl: url }))
   }
 
+  const handleBgUpload = (e) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    const url = URL.createObjectURL(f)
+    setProject(p => ({ ...p, customBackgroundUrl: url }))
+  }
+
   const finish = () => {
     onProject(project)
     navigate('/studio')
   }
 
-  const STEPS = ['Proyecto', 'Logo', 'Cintillos', 'Listo']
+  const STEPS = ['Proyecto', 'Logo', 'Fondos', 'Cintillos', 'Listo']
 
   return (
     <div className={styles.page}>
@@ -78,7 +95,7 @@ export default function ProjectSetup({ onProject }) {
         </div>
       </div>
 
-      <div className={`${styles.wizard} ${step === 2 ? styles.wizardWide : ''}`}>
+      <div className={`${styles.wizard} ${step >= 2 ? styles.wizardWide : ''}`}>
         {/* STEPPER */}
         <div className={styles.stepper}>
           {STEPS.map((s, i) => (
@@ -199,8 +216,46 @@ export default function ProjectSetup({ onProject }) {
             </div>
           )}
 
-          {/* STEP 2 — CINTILLOS */}
+          {/* STEP 2 — FONDOS */}
           {step === 2 && (
+            <div className={styles.stepContent}>
+              <h2 className={styles.stepTitle}>Fondo del set</h2>
+              <p className={styles.stepDesc}>Elige una plantilla estilo TV o sube tu propio set. Activa croma key si usas pantalla verde.</p>
+              <div className={styles.bgLayout}>
+                <BackgroundPicker
+                  templateId={project.backgroundTemplate}
+                  customUrl={project.customBackgroundUrl}
+                  chromaEnabled={project.chromaEnabled}
+                  chromaSimilarity={project.chromaSimilarity}
+                  chromaSmoothness={project.chromaSmoothness}
+                  cameraScale={project.cameraScale}
+                  onTemplateChange={v => upd('backgroundTemplate', v)}
+                  onCustomUpload={handleBgUpload}
+                  onClearCustom={() => upd('customBackgroundUrl', null)}
+                  onChromaChange={v => upd('chromaEnabled', v)}
+                  onChromaSimilarityChange={v => upd('chromaSimilarity', v)}
+                  onChromaSmoothnessChange={v => upd('chromaSmoothness', v)}
+                  onCameraScaleChange={v => upd('cameraScale', v)}
+                />
+                <div className={styles.bgPreviewBox}>
+                  <div className={styles.cintLiveLabel}>Vista previa del set</div>
+                  <div className={styles.miniScreen}>
+                    <SetBackground templateId={project.backgroundTemplate} customUrl={project.customBackgroundUrl} />
+                    <div className={styles.bgCamPlaceholder}>
+                      <i className="ti ti-user" />
+                      <span>Tu cámara</span>
+                    </div>
+                    {project.chromaEnabled && (
+                      <div className={styles.bgChromaTag}><i className="ti ti-background" /> Croma</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3 — CINTILLOS */}
+          {step === 3 && (
             <div className={styles.stepContent}>
               <h2 className={styles.stepTitle}>Cintillos del episodio</h2>
               <p className={styles.stepDesc}>Elige el estilo de cortinilla y personaliza los textos. Se activan durante la grabación en el estudio.</p>
@@ -270,8 +325,8 @@ export default function ProjectSetup({ onProject }) {
             </div>
           )}
 
-          {/* STEP 3 — READY */}
-          {step === 3 && (
+          {/* STEP 4 — READY */}
+          {step === 4 && (
             <div className={styles.stepContent} style={{ textAlign: 'center', padding: '20px 0' }}>
               <div className={styles.readyIcon}><i className="ti ti-sparkles" /></div>
               <h2 className={styles.stepTitle}>¡Todo listo!</h2>
@@ -283,6 +338,7 @@ export default function ProjectSetup({ onProject }) {
                 <div className={styles.summaryRow}><i className="ti ti-aspect-ratio" />Formato {project.format}</div>
                 <div className={styles.summaryRow}><i className="ti ti-layout-bottombar" />Logo: {LOGO_POSITIONS.find(p => p.id === project.logoPosition)?.label}</div>
                 <div className={styles.summaryRow}><i className="ti ti-palette" />Cintillo: {getCintilloStyle(project.cintilloStyle).name}</div>
+                <div className={styles.summaryRow}><i className="ti ti-photo" />Fondo: {project.customBackgroundUrl ? 'Set personalizado' : getBackgroundTemplate(project.backgroundTemplate).name}{project.chromaEnabled ? ' + Croma' : ''}</div>
               </div>
             </div>
           )}
@@ -295,9 +351,9 @@ export default function ProjectSetup({ onProject }) {
               </button>
             )}
             <div style={{ flex: 1 }} />
-            {step < 3
+            {step < 4
               ? <button className={styles.btnNext} onClick={() => setStep(s => s + 1)}>
-                  {step === 2 ? 'Revisar configuración' : 'Continuar'} <i className="ti ti-arrow-right" />
+                  {step === 3 ? 'Revisar configuración' : 'Continuar'} <i className="ti ti-arrow-right" />
                 </button>
               : <button className={styles.btnFinish} onClick={finish}>
                   <i className="ti ti-player-play" /> Abrir el estudio
