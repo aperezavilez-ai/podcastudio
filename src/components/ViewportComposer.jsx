@@ -5,17 +5,39 @@ export default function ViewportComposer({ getDisplayCanvas, hasStream }) {
   const containerRef = useRef(null)
 
   useEffect(() => {
-    const canvas = getDisplayCanvas?.()
-    const el = containerRef.current
-    if (!canvas || !el) return
+    if (!hasStream) return
 
-    canvas.className = styles.programCanvas
-    el.appendChild(canvas)
+    let rafId = 0
+    const mount = () => {
+      const canvas = getDisplayCanvas?.()
+      const el = containerRef.current
+      if (canvas && el) {
+        canvas.className = styles.programCanvas
+        if (canvas.parentNode !== el) {
+          el.appendChild(canvas)
+        }
+        return true
+      }
+      return false
+    }
+
+    if (!mount()) {
+      const retry = () => {
+        if (mount()) return
+        rafId = requestAnimationFrame(retry)
+      }
+      rafId = requestAnimationFrame(retry)
+    }
 
     return () => {
-      if (canvas.parentNode === el) el.removeChild(canvas)
+      cancelAnimationFrame(rafId)
+      const canvas = getDisplayCanvas?.()
+      const el = containerRef.current
+      if (canvas && el && canvas.parentNode === el) {
+        el.removeChild(canvas)
+      }
     }
-  }, [getDisplayCanvas])
+  }, [getDisplayCanvas, hasStream])
 
   if (!hasStream) {
     return (

@@ -31,6 +31,15 @@ export function useStudioCompositor({
   const settingsRef = useRef({})
   const lastMaskRef = useRef(null)
 
+  // Crear canvas de forma síncrona para que el visor pueda montarlo al primer render
+  if (!canvasRef.current && typeof document !== 'undefined') {
+    const canvas = document.createElement('canvas')
+    canvas.width = COMPOSITOR_W
+    canvas.height = COMPOSITOR_H
+    canvasRef.current = canvas
+    outputStreamRef.current = canvas.captureStream(30)
+  }
+
   const { processFrame } = usePersonSegmentation(aiBackgroundEnabled)
 
   settingsRef.current = {
@@ -69,10 +78,14 @@ export function useStudioCompositor({
         v.autoplay = true
         videos[i] = v
       }
-      if (videos[i].srcObject !== stream) {
-        videos[i].srcObject = stream
-        videos[i].play().catch(() => {})
+      const track = stream.getVideoTracks()[0]
+      const feed = track
+        ? new MediaStream([track.clone?.() ?? track])
+        : stream
+      if (videos[i].srcObject !== feed) {
+        videos[i].srcObject = feed
       }
+      videos[i].play().catch(() => {})
     })
   }, [streams])
 
@@ -111,20 +124,13 @@ export function useStudioCompositor({
   }, [logoUrl])
 
   useEffect(() => {
-    if (!canvasRef.current) {
-      const canvas = document.createElement('canvas')
-      canvas.width = COMPOSITOR_W
-      canvas.height = COMPOSITOR_H
-      canvasRef.current = canvas
-      outputStreamRef.current = canvas.captureStream(30)
-    }
-
     if (!chromaCanvasRef.current) {
       chromaCanvasRef.current = document.createElement('canvas')
       chromaCtxRef.current = chromaCanvasRef.current.getContext('2d', { willReadFrequently: true })
     }
 
     const canvas = canvasRef.current
+    if (!canvas) return
     const ctx = canvas.getContext('2d')
 
     const draw = () => {
