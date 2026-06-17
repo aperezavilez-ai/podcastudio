@@ -14,6 +14,9 @@ export default function CameraConnectPanel({
   slotIndex,
   devices,
   cameraMeta,
+  autoConnecting,
+  connectedCount,
+  onReconnectAll,
   bluetoothSupported,
   wifiConnecting,
   btScanning,
@@ -54,6 +57,27 @@ export default function CameraConnectPanel({
 
   return (
     <div className={styles.panel}>
+      <div className={styles.autoStatus}>
+        {autoConnecting ? (
+          <span className={styles.autoStatusLoading}>
+            <i className="ti ti-loader" style={{ animation: 'spin 1s linear infinite' }} />
+            Conectando cámaras...
+          </span>
+        ) : (
+          <span className={styles.autoStatusOk}>
+            <i className="ti ti-plug-connected" />
+            {connectedCount > 0
+              ? `${connectedCount} cámara${connectedCount > 1 ? 's' : ''} conectada${connectedCount > 1 ? 's' : ''} automáticamente`
+              : `${devices.cameras.length} detectada${devices.cameras.length !== 1 ? 's' : ''} — conecta manualmente`}
+          </span>
+        )}
+        {onReconnectAll && devices.cameras.length > 0 && !autoConnecting && (
+          <button type="button" className={styles.reconnectBtn} onClick={onReconnectAll} title="Reconectar todas">
+            <i className="ti ti-refresh" />
+          </button>
+        )}
+      </div>
+
       <div className={styles.slotRow}>
         {[0, 1, 2].map(i => (
           <button

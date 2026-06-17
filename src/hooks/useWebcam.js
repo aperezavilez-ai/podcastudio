@@ -9,6 +9,20 @@ const WIFI_PRESETS = [
 
 const BT_CAMERA_PREFIXES = ['GoPro', 'Insta360', 'DJI', 'Osmo', 'Canon', 'Sony', 'Ricoh', 'Theta', 'AKASO', 'Campark']
 
+function uniqueCameras(cameras) {
+  const seen = new Set()
+  return cameras.filter(cam => {
+    const key = cam.groupId || cam.deviceId
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms))
+}
+
 function isMjpegUrl(url) {
   const u = url.toLowerCase()
   return u.includes('/video') || u.includes('mjpeg') || u.includes('/cam') || u.endsWith('.mjpg')
@@ -114,11 +128,18 @@ export function useWebcam() {
   const [bluetoothSupported, setBluetoothSupported] = useState(false)
   const [wifiConnecting, setWifiConnecting] = useState(false)
   const [btScanning, setBtScanning] = useState(false)
+  const [autoConnecting, setAutoConnecting] = useState(false)
+  const [connectedCount, setConnectedCount] = useState(0)
 
   const micRef = useRef(null)
   const analyserRef = useRef(null)
   const rafRef = useRef(null)
   const cleanupRef = useRef({})
+  const streamsRef = useRef({})
+  const cameraMetaRef = useRef({})
+
+  useEffect(() => { streamsRef.current = streams }, [streams])
+  useEffect(() => { cameraMetaRef.current = cameraMeta }, [cameraMeta])
 
   useEffect(() => {
     setBluetoothSupported(typeof navigator !== 'undefined' && !!navigator.bluetooth)
@@ -133,7 +154,7 @@ export function useWebcam() {
     try {
       await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       const all = await navigator.mediaDevices.enumerateDevices()
-      const cams = all.filter(d => d.kind === 'videoinput')
+      const cams = uniqueCameras(all.filter(d => d.kind === 'videoinput'))
       const mics = all.filter(d => d.kind === 'audioinput')
       setDevices({ cameras: cams, microphones: mics })
       return { cameras: cams, microphones: mics }
@@ -169,17 +190,28 @@ export function useWebcam() {
     })
   }, [setSlotCleanup])
 
-  const startCamera = useCallback(async (deviceId, slotIndex) => {
+  const startCamera = useCallback(async (deviceId, slotIndex, labelOverride) => {
     try {
       stopCamera(slotIndex)
       const constraints = {
         video: deviceId
-          ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+          ? { deviceId: { ideal: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
           : { width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false,
       }
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      const label = devices.cameras.find(c => c.deviceId === deviceId)?.label || `USB Cam ${slotIndex + 1}`
+      let stream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints)
+      } catch {
+        if (!deviceId) throw new Error('no device')
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false,
+        })
+      }
+      const label = labelOverride
+        || devices.cameras.find(c => c.deviceId === deviceId)?.label
+        || `USB Cam ${slotIndex + 1}`
       attachStream(slotIndex, stream, { type: 'usb', label, deviceId })
       return stream
     } catch {
@@ -187,6 +219,32 @@ export function useWebcam() {
       return null
     }
   }, [attachStream, devices.cameras, stopCamera])
+
+  const autoConnectAll = useCallback(async (cameraList) => {
+    const list = uniqueCameras(cameraList || devices.cameras)
+    if (!list.length) {
+      setConnectedCount(0)
+      return 0
+    }
+
+    setAutoConnecting(true)
+    setError(null)
+    let connected = 0
+
+    for (let i = 0; i < Math.min(3, list.length); i++) {
+      const cam = list[i]
+      const stream = await startCamera(cam.deviceId, i, cam.label || `USB Cam ${i + 1}`)
+      if (stream) {
+        connected++
+        await delay(300)
+      }
+    }
+
+    if (connected > 0) setActiveCamera(prev => (prev === null ? 0 : prev))
+    setConnectedCount(connected)
+    setAutoConnecting(false)
+    return connected
+  }, [devices.cameras, startCamera])
 
   const connectWifiCamera = useCallback(async (url, slotIndex, label) => {
     const trimmed = url?.trim()
@@ -337,6 +395,34 @@ export function useWebcam() {
     stopMic()
   }, [])
 
+  useEffect(() => {
+    if (!navigator.mediaDevices?.addEventListener) return
+
+    const onDeviceChange = async () => {
+      const { cameras } = await enumerateDevices()
+      const unique = uniqueCameras(cameras)
+      let connected = 0
+
+      for (let i = 0; i < Math.min(3, unique.length); i++) {
+        const cam = unique[i]
+        const meta = cameraMetaRef.current[i]
+        const hasStream = !!streamsRef.current[i]
+
+        if (!hasStream || (meta?.type === 'usb' && meta.deviceId !== cam.deviceId)) {
+          const stream = await startCamera(cam.deviceId, i, cam.label || `USB Cam ${i + 1}`)
+          if (stream) connected++
+        } else if (hasStream) {
+          connected++
+        }
+      }
+
+      setConnectedCount(connected)
+    }
+
+    navigator.mediaDevices.addEventListener('devicechange', onDeviceChange)
+    return () => navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange)
+  }, [enumerateDevices, startCamera])
+
   return {
     devices,
     streams,
@@ -349,9 +435,12 @@ export function useWebcam() {
     bluetoothSupported,
     wifiConnecting,
     btScanning,
+    autoConnecting,
+    connectedCount,
     wifiPresets: WIFI_PRESETS,
     enumerateDevices,
     startCamera,
+    autoConnectAll,
     stopCamera,
     connectWifiCamera,
     scanBluetoothCamera,

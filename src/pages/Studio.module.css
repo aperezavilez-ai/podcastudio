@@ -144,9 +144,23 @@
 /* CAM STRIP */
 .camStrip {
   height: 80px; background: #0b0b10; border-top: 1px solid var(--border-1);
-  display: flex; align-items: center; padding: 0 12px; gap: 7px;
+  display: flex; align-items: center; padding: 0 12px; gap: 10px;
   flex-shrink: 0;
 }
+.camStripLeft { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }
+.switcherControls {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: 8px;
+  background: var(--surface-2); border: 1px solid var(--border-1);
+  flex-shrink: 0;
+}
+.autoSwitchToggle {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 9px; color: var(--text-secondary); cursor: pointer; white-space: nowrap;
+}
+.autoSwitchToggle input { accent-color: var(--accent); }
+.switchInterval { width: 56px; accent-color: var(--accent); }
+.switchIntervalVal { font-size: 9px; color: var(--text-muted); min-width: 22px; }
 .camThumb {
   width: 108px; height: 62px; border-radius: 8px;
   background: #111118; border: 1.5px solid var(--border-1);

@@ -4,6 +4,27 @@
   gap: 8px;
 }
 
+.autoStatus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+  font-size: 9px;
+  line-height: 1.3;
+}
+.autoStatusOk { flex: 1; display: flex; align-items: center; gap: 5px; color: var(--green); }
+.autoStatusLoading { flex: 1; display: flex; align-items: center; gap: 5px; color: var(--accent); }
+.reconnectBtn {
+  width: 24px; height: 24px; border-radius: 5px;
+  border: 1px solid var(--border-1); background: var(--surface-3);
+  color: var(--text-muted); cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.reconnectBtn:hover { color: var(--accent); border-color: var(--accent-border); }
+
 .slotRow {
   display: flex;
   gap: 4px;

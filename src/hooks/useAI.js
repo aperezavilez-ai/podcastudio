@@ -1,20 +1,14 @@
 import { useState, useCallback } from 'react'
 
-const CLAUDE_API = 'https://api.anthropic.com/v1/messages'
-const MODEL = 'claude-sonnet-4-6'
-
-async function callClaude(prompt, systemPrompt = '') {
-  const messages = [{ role: 'user', content: prompt }]
-  const body = { model: MODEL, max_tokens: 1500, messages }
-  if (systemPrompt) body.system = systemPrompt
-  const res = await fetch(CLAUDE_API, {
+async function callAI(prompt, systemPrompt = '') {
+  const res = await fetch('/api/ai', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify({ prompt, systemPrompt }),
   })
-  if (!res.ok) throw new Error(`API error ${res.status}`)
-  const data = await res.json()
-  return data.content.filter(b => b.type === 'text').map(b => b.text).join('')
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error || `API error ${res.status}`)
+  return data.text
 }
 
 export function useAI() {
@@ -31,10 +25,10 @@ export function useAI() {
 Invitado: ${guest || 'N/A'}, Cargo: ${role || 'N/A'}, Tema: ${topic || 'N/A'}
 Tipo: ${type}
 Responde SOLO el texto del cintillo, máximo 60 caracteres, sin comillas ni explicaciones.`
-      const text = await callClaude(prompt)
+      const text = await callAI(prompt)
       return text.trim().slice(0, 80)
     } catch (e) {
-      setError('Error al generar cintillo')
+      setError(e.message || 'Error al generar cintillo')
       return null
     } finally {
       setLoadingCintillo(false)
@@ -68,13 +62,13 @@ Responde SOLO JSON válido sin backticks:
 }
 Incluye SOLO las plataformas: ${platList}`
 
-      const raw = await callClaude(prompt)
+      const raw = await callAI(prompt)
       const clean = raw.replace(/```json|```/g, '').trim()
       const parsed = JSON.parse(clean)
       setPosts(parsed)
       return parsed
     } catch (e) {
-      setError('Error al generar posts. Verifica tu conexión y vuelve a intentar.')
+      setError(e.message || 'Error al generar posts. Verifica tu conexión y vuelve a intentar.')
       return null
     } finally {
       setLoadingPosts(false)

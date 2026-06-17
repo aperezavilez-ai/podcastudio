@@ -15,6 +15,8 @@ import { CINTILLO_PRESETS } from '../config/cintilloPresets.js'
 import { useCintilloRotation } from '../hooks/useCintilloRotation.js'
 import { MUSIC_TRACKS } from '../config/musicTracks.js'
 import { useBackgroundMusic } from '../hooks/useBackgroundMusic.js'
+import { useAutoSwitcher } from '../hooks/useAutoSwitcher.js'
+import { useProgramOutput } from '../hooks/useProgramOutput.js'
 import VUMeter from '../components/VUMeter.jsx'
 import PostsPanel from '../components/PostsPanel.jsx'
 import styles from './Studio.module.css'
@@ -35,7 +37,8 @@ export default function Studio({ project, user }) {
   const {
     devices, streams, cameraMeta, activeCamera, setActiveCamera, error: camError, setError: setCamError,
     micLevel, bluetoothSupported, wifiConnecting, btScanning, wifiPresets,
-    enumerateDevices, startCamera, stopCamera, connectWifiCamera,
+    autoConnecting, connectedCount,
+    enumerateDevices, startCamera, autoConnectAll, stopCamera, connectWifiCamera,
     scanBluetoothCamera, connectBluetoothWifiStream, startMic,
   } = useWebcam()
   const { recording, duration, recordings, startRecording, stopRecording, downloadRecording, formatDuration } = useRecorder()
@@ -55,6 +58,8 @@ export default function Studio({ project, user }) {
   const [initError, setInitError] = useState('')
   const [viewers, setViewers] = useState({ facebook: 0, youtube: 0, tiktok: 0, instagram: 0 })
   const [camSlot, setCamSlot] = useState(0)
+  const [autoSwitch, setAutoSwitch] = useState(true)
+  const [switchInterval, setSwitchInterval] = useState(8)
   const [showCintForm, setShowCintForm] = useState(false)
   const [cintFormText, setCintFormText] = useState('')
   const [cintFormTag, setCintFormTag] = useState('CUSTOM')
@@ -78,6 +83,18 @@ export default function Studio({ project, user }) {
   const [cameraScale, setCameraScale] = useState(project?.cameraScale ?? 100)
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
+
+  const { getProgramStream } = useProgramOutput(streams, activeCamera)
+
+  useAutoSwitcher({
+    enabled: autoSwitch,
+    intervalSec: switchInterval,
+    streams,
+    activeCamera,
+    setActiveCamera,
+    onlyWhileRecording: false,
+    recording,
+  })
 
   const proj = project || {
     name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
@@ -123,9 +140,7 @@ export default function Studio({ project, user }) {
     async function init() {
       const devs = await enumerateDevices()
       if (devs.cameras.length > 0) {
-        await startCamera(devs.cameras[0]?.deviceId, 0)
-        if (devs.cameras[1]) await startCamera(devs.cameras[1]?.deviceId, 1)
-        if (devs.cameras[2]) await startCamera(devs.cameras[2]?.deviceId, 2)
+        await autoConnectAll(devs.cameras)
       }
       if (devs.microphones.length > 0) await startMic(devs.microphones[0]?.deviceId)
       setInitialized(true)
@@ -151,7 +166,8 @@ export default function Studio({ project, user }) {
 
   const handleRecord = () => {
     if (recording) { stopRecording(); return }
-    const activeStream = streams[activeCamera ?? 0]
+    const program = getProgramStream()
+    const activeStream = program || streams[activeCamera ?? 0]
     if (activeStream) startRecording(activeStream)
   }
 
@@ -306,6 +322,7 @@ export default function Studio({ project, user }) {
 
             {/* CAM STRIP */}
             <div className={styles.camStrip}>
+              <div className={styles.camStripLeft}>
               {[0, 1, 2].map(i => {
                 const meta = cameraMeta[i]
                 const typeIcon = meta?.type === 'wifi' ? 'ti-wifi' : meta?.type === 'bluetooth' ? 'ti-bluetooth' : meta?.type === 'usb' ? 'ti-plug' : null
@@ -329,6 +346,28 @@ export default function Studio({ project, user }) {
                   </div>
                 )
               })}
+              </div>
+              <div className={styles.switcherControls}>
+                <label className={styles.autoSwitchToggle} title="Cambiar cámara automáticamente">
+                  <input type="checkbox" checked={autoSwitch} onChange={e => setAutoSwitch(e.target.checked)} />
+                  <i className="ti ti-switch-horizontal" />
+                  <span>Auto</span>
+                </label>
+                {autoSwitch && (
+                  <>
+                    <input
+                      type="range"
+                      min={4}
+                      max={20}
+                      value={switchInterval}
+                      onChange={e => setSwitchInterval(+e.target.value)}
+                      className={styles.switchInterval}
+                      title={`Cada ${switchInterval}s`}
+                    />
+                    <span className={styles.switchIntervalVal}>{switchInterval}s</span>
+                  </>
+                )}
+              </div>
               {/* FORMAT SELECTOR */}
               <div className={styles.fmtSelector}>
                 {[{ f: '16:9', w: 26, h: 15 }, { f: '9:16', w: 12, h: 22 }, { f: '1:1', w: 18, h: 18 }].map(({ f, w, h }) => (
@@ -384,6 +423,9 @@ export default function Studio({ project, user }) {
               slotIndex={camSlot}
               devices={devices}
               cameraMeta={cameraMeta}
+              autoConnecting={autoConnecting}
+              connectedCount={connectedCount}
+              onReconnectAll={() => autoConnectAll()}
               bluetoothSupported={bluetoothSupported}
               wifiConnecting={wifiConnecting}
               btScanning={btScanning}
@@ -626,7 +668,11 @@ export default function Studio({ project, user }) {
           <div className={styles.initCard}>
             <i className="ti ti-loader" style={{ fontSize: 32, color: 'var(--accent)', animation: 'spin 1s linear infinite', display: 'block', marginBottom: 14 }} />
             <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>Detectando dispositivos...</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Autoriza el acceso a cámaras y micrófono cuando el navegador lo solicite.</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+              {autoConnecting
+                ? 'Conectando cámaras USB automáticamente...'
+                : 'Autoriza el acceso a cámaras y micrófono cuando el navegador lo solicite.'}
+            </div>
             {initError && <div className={styles.initError}><i className="ti ti-alert-circle" /> {initError}</div>}
           </div>
         </div>
