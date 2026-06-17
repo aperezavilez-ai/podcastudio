@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.1.0/dist/tabler-icons.min.css');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --app-bg: #08080b;
+  --surface-1: #0d0d11;
+  --surface-2: #111118;
+  --surface-3: #161622;
+  --border-1: #1a1a24;
+  --border-2: #22222e;
+  --border-3: #2a2a38;
+  --text-primary: #e8e8f0;
+  --text-secondary: #8888a0;
+  --text-muted: #444460;
+  --accent: #e8612a;
+  --accent-dim: rgba(232,97,42,0.15);
+  --accent-border: rgba(232,97,42,0.35);
+  --green: #1D9E75;
+  --green-dim: rgba(29,158,117,0.15);
+  --green-border: rgba(29,158,117,0.35);
+  --purple: #9d8ce8;
+  --purple-dim: rgba(157,140,232,0.12);
+  --purple-border: rgba(157,140,232,0.3);
+  --red: #e05050;
+  --red-dim: rgba(224,80,80,0.12);
+  --blue: #4a90d9;
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 13px;
+  --radius-xl: 18px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--app-bg);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+input, textarea, select { font-family: inherit; }
+a { text-decoration: none; color: inherit; }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--surface-1); }
+::-webkit-scrollbar-thumb { background: var(--border-3); border-radius: 2px; }
+
+/* Utility classes */
+.sr-only { position: absolute; left: -9999px; }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}

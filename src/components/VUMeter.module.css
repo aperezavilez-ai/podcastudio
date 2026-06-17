@@ -1,0 +1,16 @@
+.meter {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 32px;
+  width: 100%;
+}
+.bar {
+  flex: 1;
+  border-radius: 2px;
+  background: var(--green);
+  transition: height 0.08s ease;
+  min-height: 8%;
+}
+.bar[data-warn='true'] { background: #BA7517; }
+.bar[data-clip='true'] { background: var(--red); }

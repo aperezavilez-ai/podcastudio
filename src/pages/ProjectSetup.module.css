@@ -1,0 +1,138 @@
+.page { min-height: 100vh; background: var(--app-bg); overflow-y: auto; }
+.header {
+  display: flex; align-items: center; padding: 0 40px; height: 54px;
+  border-bottom: 1px solid var(--border-1); background: rgba(8,8,11,0.8);
+}
+.brand { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--text-secondary); cursor: pointer; }
+.brand strong { color: var(--accent); font-weight: 600; }
+.brandLogo { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 15px; color: #fff; }
+.wizard { max-width: 700px; margin: 0 auto; padding: 40px 24px 60px; }
+.stepper { display: flex; align-items: center; margin-bottom: 36px; }
+.stepItem { display: flex; align-items: center; gap: 8px; }
+.stepCircle {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--text-muted); font-weight: 500; flex-shrink: 0;
+}
+.stepActive .stepCircle { background: var(--accent); border-color: var(--accent); color: #fff; }
+.stepLabel { font-size: 12px; color: var(--text-muted); }
+.stepActive .stepLabel { color: var(--text-primary); }
+.stepLine { flex: 1; height: 1px; background: var(--border-1); margin: 0 8px; }
+.stepLineActive { background: var(--accent); }
+.card {
+  background: var(--surface-1); border: 1px solid var(--border-1);
+  border-radius: var(--radius-xl); overflow: hidden;
+}
+.stepContent { padding: 32px 32px 0; }
+.stepTitle { font-size: 22px; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+.stepDesc { font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 28px; }
+.fields { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 5px; }
+.fieldRow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.field input {
+  padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border-2);
+  border-radius: var(--radius-md); font-size: 13px; color: var(--text-primary);
+  outline: none; transition: border-color .15s;
+}
+.field input:focus { border-color: var(--accent); }
+.field input::placeholder { color: var(--text-muted); }
+.fmtPicker { display: flex; gap: 8px; }
+.fmtBtn {
+  flex: 1; display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  background: var(--surface-2); border: 1px solid var(--border-2);
+  border-radius: var(--radius-md); color: var(--text-muted); transition: all .15s;
+}
+.fmtBtn:hover { background: var(--surface-3); }
+.fmtActive { border-color: var(--purple-border) !important; background: var(--purple-dim) !important; color: var(--purple) !important; }
+.fmtIcon { flex-shrink: 0; }
+.fmtLabel { font-size: 13px; font-weight: 600; }
+.fmtSub { font-size: 10px; opacity: .7; margin-top: 1px; }
+
+/* LOGO STEP */
+.logoLayout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.logoControls { display: flex; flex-direction: column; gap: 14px; }
+.uploadZone {
+  border: 1.5px dashed var(--border-3); border-radius: var(--radius-lg);
+  padding: 28px 16px; text-align: center; cursor: pointer;
+  transition: background .15s; min-height: 120px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.uploadZone:hover { background: var(--surface-2); }
+.logoPreviewImg { max-height: 60px; max-width: 100%; object-fit: contain; border-radius: 8px; }
+.posLabel { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.posGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+.posBtn {
+  aspect-ratio: 1; border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+  background: var(--surface-2); color: var(--text-muted); font-size: 12px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: all .15s;
+}
+.posBtn:hover { background: var(--surface-3); color: var(--text-primary); }
+.posBtnActive { border-color: var(--accent-border) !important; background: var(--accent-dim) !important; color: var(--accent) !important; }
+.logoPreviewBox { display: flex; flex-direction: column; align-items: center; }
+.miniScreen {
+  width: 100%; aspect-ratio: 16/9; background: #0d0d14;
+  border-radius: 10px; border: 1px solid var(--border-2);
+  position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden;
+}
+.miniLogo {
+  position: absolute; display: flex; align-items: center; gap: 5px;
+  background: rgba(8,8,12,0.82); border: 1px solid rgba(255,255,255,.08);
+  border-radius: 5px; padding: 4px 9px; font-size: 10px; font-weight: 500; color: #fff;
+}
+.miniCintillo {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: rgba(6,6,10,.9); padding: 6px 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.miniAccent { width: 2px; height: 14px; background: var(--accent); border-radius: 1px; }
+.miniCintillo span { font-size: 10px; color: #fff; font-weight: 500; }
+
+/* CINTILLOS STEP */
+.cintField { display: flex; align-items: flex-end; gap: 12px; }
+.cintDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-bottom: 12px; }
+
+/* READY STEP */
+.readyIcon {
+  width: 64px; height: 64px; border-radius: 18px;
+  background: var(--accent-dim); border: 1px solid var(--accent-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; color: var(--accent); margin: 0 auto 16px;
+}
+.readySummary {
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--surface-2); border: 1px solid var(--border-1);
+  border-radius: var(--radius-lg); padding: 16px; margin-top: 20px; text-align: left;
+}
+.summaryRow { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-secondary); }
+.summaryRow i { font-size: 14px; color: var(--accent); }
+
+/* NAVIGATION */
+.nav {
+  display: flex; align-items: center;
+  padding: 20px 32px; border-top: 1px solid var(--border-1);
+  margin-top: 28px;
+}
+.btnBack {
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 18px; border-radius: var(--radius-md);
+  border: 1px solid var(--border-2); background: transparent;
+  font-size: 13px; color: var(--text-secondary); transition: all .15s;
+}
+.btnBack:hover { background: var(--surface-2); color: var(--text-primary); }
+.btnNext {
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 22px; border-radius: var(--radius-md);
+  background: var(--surface-3); border: 1px solid var(--border-2);
+  font-size: 13px; font-weight: 500; color: var(--text-primary); transition: all .15s;
+}
+.btnNext:hover { border-color: var(--border-3); }
+.btnFinish {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 26px; border-radius: var(--radius-md);
+  background: var(--accent); border: none;
+  font-size: 14px; font-weight: 600; color: #fff; transition: background .15s;
+}
+.btnFinish:hover { background: #d4541f; }
