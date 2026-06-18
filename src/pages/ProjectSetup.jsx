@@ -283,7 +283,7 @@ export default function ProjectSetup({ user, onProject }) {
               </div>
 
               <div className={styles.cintLivePreview}>
-                <div className={styles.cintLiveLabel}>Vista previa en vivo</div>
+                <div className={styles.cintLiveLabel}>Vista previa</div>
                 <div className={styles.miniScreen}>
                   <i className="ti ti-video" style={{ fontSize: 24, color: '#333' }} />
                   <CintilloOverlay

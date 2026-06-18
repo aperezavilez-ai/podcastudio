@@ -7,7 +7,7 @@ const PREP_STEPS = [
   { pct: 5, label: 'Iniciando instalación…' },
   { pct: 12, label: 'Verificando archivos del estudio…' },
   { pct: 22, label: 'Preparando cámaras y grabación HD…' },
-  { pct: 34, label: 'Configurando transmisión en vivo…' },
+  { pct: 34, label: 'Preparando estudio de grabación…' },
   { pct: 46, label: 'Activando cintillos y recursos de IA…' },
   { pct: 58, label: 'Sincronizando panel de control…' },
   { pct: 63, label: 'Preparando acceso sin conexión…' },

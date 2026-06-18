@@ -2,13 +2,6 @@ import React, { useEffect, useState } from 'react'
 import CintilloOverlay from './CintilloOverlay.jsx'
 import styles from './TourPreview.module.css'
 
-const PLATFORMS = [
-  { id: 'yt', label: 'YT', color: '#ff0000' },
-  { id: 'fb', label: 'FB', color: '#1877f2' },
-  { id: 'tk', label: 'TK', color: '#010101' },
-  { id: 'ig', label: 'IG', color: '#e1306c' },
-]
-
 /** Planos de estudio realistas — URLs verificadas */
 const CAM_SCENES = [
   {
@@ -37,6 +30,13 @@ const SIDEBAR = [
   { icon: 'ti-hash' },
 ]
 
+const NETWORKS = [
+  { label: 'YT', icon: 'ti-brand-youtube', color: '#e05050' },
+  { label: 'IG', icon: 'ti-brand-instagram', color: '#d4537e' },
+  { label: 'TK', icon: 'ti-brand-tiktok', color: '#ccc' },
+  { label: 'FB', icon: 'ti-brand-facebook', color: '#4a90d9' },
+]
+
 function VideoFeed({ sceneIndex, showScanlines = true }) {
   const scene = CAM_SCENES[sceneIndex] || CAM_SCENES[0]
   return (
@@ -59,46 +59,39 @@ function VideoFeed({ sceneIndex, showScanlines = true }) {
 }
 
 function RightPanel({ stepId }) {
-  if (stepId === 'live') {
+  if (stepId === 'export' || stepId === 'posts') {
     return (
       <div className={styles.panelRight}>
         <div className={styles.panelScroll}>
           <div className={styles.prSection}>
-            <div className={styles.prTitle}>Cámaras</div>
-            <div className={styles.prItem}><i className="ti ti-plug-connected" /> USB · Cam 1</div>
-            <div className={styles.prItemMuted}>Cam 2 · Conectar</div>
-            <div className={styles.prItemMuted}>Cam 3 · Conectar</div>
+            <div className={styles.prTitle}>Publicar</div>
+            <div className={styles.prItem}><i className="ti ti-circle" /> Grabar episodio</div>
+            <div className={styles.prItem}><i className="ti ti-download" /> Descargar MP4</div>
+            <div className={styles.prItem}><i className="ti ti-sparkles" /> Posts IA</div>
+            <div className={styles.prItem}><i className="ti ti-upload" /> Subir a redes</div>
           </div>
           <div className={styles.prSection}>
-            <div className={styles.prTitle}>Transmisión</div>
+            <div className={styles.prTitle}>Redes</div>
             <div className={styles.platGrid}>
-              {PLATFORMS.map((p, i) => (
-                <span key={p.id} className={`${styles.platBtn} ${i < 3 ? styles.platBtnOn : ''}`}>
-                  <span className={styles.platDot} style={{ background: p.color }} />
-                  {p.label}
+              {NETWORKS.map(n => (
+                <span key={n.label} className={styles.platBtn}>
+                  <i className={`ti ${n.icon}`} style={{ color: n.color }} />
+                  {n.label}
                 </span>
               ))}
             </div>
           </div>
-          <div className={styles.prSection}>
-            <div className={styles.prTitle}>Cintillos</div>
-            <div className={styles.miniBtn}><i className="ti ti-layout-bottombar" /> Invitado</div>
-            <div className={styles.miniBtn}><i className="ti ti-hash" /> Tema</div>
-            <div className={styles.miniBtn}><i className="ti ti-sparkles" /> Generar IA</div>
-          </div>
-          <div className={styles.prSection}>
-            <div className={styles.prTitle}>Audio</div>
-            <div className={styles.vuRow}>
-              {Array.from({ length: 10 }).map((_, i) => (
-                <span key={i} className={styles.vuBar} style={{ height: `${30 + (i % 4) * 12}%`, opacity: i < 7 ? 1 : 0.35 }} />
-              ))}
+          {stepId === 'posts' && (
+            <div className={styles.prSection}>
+              <div className={styles.prTitle}>Posts IA</div>
+              <div className={styles.prPost}>Instagram · listo</div>
+              <div className={styles.prPost}>TikTok · listo</div>
             </div>
-          </div>
+          )}
         </div>
         <div className={styles.recControls}>
           <span className={`${styles.rcBtn} ${styles.rcRec}`}><i className="ti ti-circle" /> Grabar</span>
-          <span className={`${styles.rcBtn} ${styles.rcLive} ${styles.rcLiveOn}`}><i className="ti ti-broadcast" /> En vivo</span>
-          <span className={styles.rcBtn}><i className="ti ti-download" /></span>
+          <span className={styles.rcBtn}><i className="ti ti-download" /> Descargar</span>
         </div>
       </div>
     )
@@ -129,24 +122,6 @@ function RightPanel({ stepId }) {
           <div className={styles.prItem}><i className="ti ti-script" /> Teleprompter</div>
         </>
       )}
-      {stepId === 'posts' && (
-        <>
-          <div className={styles.prTitle}>Posts IA</div>
-          <div className={styles.prPost}>Instagram · listo</div>
-          <div className={styles.prPost}>TikTok · listo</div>
-        </>
-      )}
-      {stepId === 'export' && (
-        <>
-          <div className={styles.prTitle}>Grabación</div>
-          <div className={styles.prItem}><i className="ti ti-circle-filled" style={{ color: 'var(--red)' }} /> HD 1080p</div>
-          <div className={styles.prItem}><i className="ti ti-music" /> Música fondo</div>
-          <div className={styles.recControls}>
-            <span className={`${styles.rcBtn} ${styles.rcRec}`}><i className="ti ti-circle" /> Grabar</span>
-            <span className={`${styles.rcBtn} ${styles.rcLive}`}><i className="ti ti-broadcast" /> Ir en vivo</span>
-          </div>
-        </>
-      )}
     </div>
   )
 }
@@ -155,15 +130,14 @@ export default function TourPreview({ stepId, landing = false }) {
   const [activeCam, setActiveCam] = useState(0)
 
   useEffect(() => {
-    if (!['cameras', 'director', 'live', 'export'].includes(stepId)) return undefined
+    if (!['cameras', 'director', 'export', 'posts'].includes(stepId)) return undefined
     const t = setInterval(() => setActiveCam(c => (c + 1) % 3), 3200)
     return () => clearInterval(t)
   }, [stepId])
 
-  const showCamStrip = stepId === 'cameras' || stepId === 'director' || stepId === 'live' || stepId === 'export'
-  const showCintillo = stepId === 'cintillos' || stepId === 'live'
+  const showCamStrip = ['cameras', 'director', 'export', 'posts'].includes(stepId)
+  const showCintillo = stepId === 'cintillos' || stepId === 'export'
   const showDirector = stepId === 'director'
-  const showLive = stepId === 'live'
   const showPosts = stepId === 'posts'
 
   return (
@@ -201,16 +175,6 @@ export default function TourPreview({ stepId, landing = false }) {
         <div className={styles.stageCol}>
           <div className={styles.viewport}>
             <VideoFeed sceneIndex={activeCam} />
-
-            {showLive && (
-              <div className={styles.liveInds}>
-                {PLATFORMS.map(p => (
-                  <span key={p.id} className={styles.liveInd} style={{ background: `${p.color}cc` }}>
-                    {p.label} LIVE
-                  </span>
-                ))}
-              </div>
-            )}
 
             <div className={styles.logoOverlay}>
               <div className={styles.logoIcon}><i className="ti ti-microphone" /></div>

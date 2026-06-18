@@ -21,14 +21,13 @@ import MicSelector from '../components/MicSelector.jsx'
 import Teleprompter from '../components/Teleprompter.jsx'
 import TeleprompterDocUpload from '../components/TeleprompterDocUpload.jsx'
 import TeleprompterOverlay from '../components/TeleprompterOverlay.jsx'
-import LiveStreamPanel from '../components/LiveStreamPanel.jsx'
+import PublishPanel, { connectYouTubeChannel, fetchYouTubeStatus } from '../components/PublishPanel.jsx'
 import SubtitleOverlay from '../components/SubtitleOverlay.jsx'
 import { useTeleprompter } from '../hooks/useTeleprompter.js'
 import { useAIProducer, applyAIProducerPlan } from '../hooks/useAIProducer.js'
 import { useSpeechSubtitles } from '../hooks/useSpeechSubtitles.js'
-import { notifyRecordingReady, notifyLiveStarted } from '../lib/notifications.js'
+import { notifyRecordingReady } from '../lib/notifications.js'
 import { useMuxUpload } from '../hooks/useMuxUpload.js'
-import { useLiveBroadcast } from '../hooks/useLiveBroadcast.js'
 import { fetchCloudRecordings, fetchIntegrationStatus, publishToYouTube } from '../lib/integrations.js'
 import styles from './Studio.module.css'
 
@@ -64,12 +63,11 @@ export default function Studio({ project, user }) {
 
   const [tab, setTab] = useState('studio')
   const { uploadRecording } = useMuxUpload()
-  const { liveOn, status: liveStatus, error: liveError, start: startLive, startDemo, stop: stopLive, setError: setLiveError } = useLiveBroadcast()
   const [integrations, setIntegrations] = useState(null)
   const [cloudRecordings, setCloudRecordings] = useState([])
   const [muxUploading, setMuxUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
-  const [activePlats, setActivePlats] = useState([])
+  const [youtubeConnected, setYoutubeConnected] = useState(false)
   const [autoCintillos, setAutoCintillos] = useState(true)
   const [cintDisplaySec, setCintDisplaySec] = useState(6)
   const {
@@ -81,7 +79,6 @@ export default function Studio({ project, user }) {
   const [countdown, setCountdown] = useState(null)
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState('')
-  const [viewers, setViewers] = useState({ facebook: 0, youtube: 0, tiktok: 0, instagram: 0 })
   const [camSlot, setCamSlot] = useState(0)
   const [switchMode, setSwitchMode] = useState('ai')
   const [switchInterval, setSwitchInterval] = useState(8)
@@ -108,7 +105,7 @@ export default function Studio({ project, user }) {
 
   const subtitleLang = proj.subtitleLanguage || 'es-MX'
   const { displayText: subtitleText, interim: subtitleInterim, supported: subtitlesSupported } = useSpeechSubtitles({
-    enabled: subtitlesOn && (recording || liveOn),
+    enabled: subtitlesOn && recording,
     language: subtitleLang,
   })
 
@@ -267,6 +264,7 @@ export default function Studio({ project, user }) {
 
   useEffect(() => {
     fetchIntegrationStatus().then(setIntegrations)
+    fetchYouTubeStatus().then(s => setYoutubeConnected(!!s?.connected)).catch(() => {})
     if (user?.id) {
       fetchCloudRecordings().then(setCloudRecordings).catch(() => {})
     }
@@ -279,20 +277,6 @@ export default function Studio({ project, user }) {
     if (yt === 'error') setUploadMsg('No se pudo conectar YouTube')
     setSearchParams({}, { replace: true })
   }, [searchParams, setSearchParams])
-  useEffect(() => {
-    if (!liveOn) { setViewers({ facebook: 0, youtube: 0, tiktok: 0, instagram: 0 }); return }
-    const int = setInterval(() => {
-      setViewers(v => ({
-        facebook: activePlats.includes('facebook') ? Math.max(0, v.facebook + Math.floor(Math.random() * 10 - 3)) : 0,
-        youtube: activePlats.includes('youtube') ? Math.max(0, v.youtube + Math.floor(Math.random() * 8 - 2)) : 0,
-        tiktok: activePlats.includes('tiktok') ? Math.max(0, v.tiktok + Math.floor(Math.random() * 15 - 4)) : 0,
-        instagram: activePlats.includes('instagram') ? Math.max(0, v.instagram + Math.floor(Math.random() * 6 - 1)) : 0,
-      }))
-    }, 3000)
-    return () => clearInterval(int)
-  }, [liveOn, activePlats])
-
-  const togglePlat = (p) => setActivePlats(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
 
   const handleRecord = async () => {
     if (recording) { handleStopRecord(); return }
@@ -350,59 +334,6 @@ export default function Studio({ project, user }) {
     teleprompter.setRecordingActive(false)
   }
 
-  const handleLive = async () => {
-    if (liveOn) {
-      await stopLive()
-      return
-    }
-    if (activePlats.length === 0) setActivePlats(['youtube', 'facebook'])
-
-    if (!integrations?.liveWithoutObs) {
-      startDemo()
-      if (user?.email) {
-        notifyLiveStarted(user, {
-          podcastName: proj.name,
-          platforms: activePlats,
-        })
-      }
-      return
-    }
-
-    const videoStream = getProgramStream()
-    if (!videoStream) {
-      setLiveError('Conecta una cámara antes de transmitir')
-      return
-    }
-
-    try {
-      let stream = videoStream
-      try {
-        stream = await buildRecordingStream(videoStream, {
-          micStream: getMicStream(),
-          musicEl: getAudioElement(),
-          musicVolume: musicVol,
-          musicPlaying,
-        })
-      } catch { /* video only */ }
-
-      await startLive(stream, proj.episodeTitle || proj.name || 'PodcastStudio Live')
-
-      if (user?.email) {
-        notifyLiveStarted(user, {
-          podcastName: proj.name,
-          platforms: activePlats,
-        })
-      }
-    } catch (e) {
-      setLiveError(e.message || 'No se pudo iniciar transmisión')
-      await stopLive()
-    }
-  }
-
-  const handleStopLive = async () => {
-    await stopLive()
-  }
-
   const showCintillo = (preset) => {
     setAutoCintillos(false)
     showManual(preset)
@@ -437,15 +368,6 @@ export default function Studio({ project, user }) {
     setShowCintForm(false); setCintFormText(''); setCintFormTag('CUSTOM')
   }
 
-  const totalViewers = Object.values(viewers).reduce((a, b) => a + b, 0)
-
-  const PLAT_CONFIG = [
-    { id: 'facebook', label: 'Facebook', icon: 'ti-brand-facebook', color: '#4a90d9' },
-    { id: 'youtube', label: 'YouTube', icon: 'ti-brand-youtube', color: '#e05050' },
-    { id: 'tiktok', label: 'TikTok', icon: 'ti-brand-tiktok', color: '#ccccdd' },
-    { id: 'instagram', label: 'Instagram', icon: 'ti-brand-instagram', color: '#d4537e' },
-  ]
-
   return (
     <div className={styles.app}>
       {/* TOPBAR */}
@@ -467,12 +389,6 @@ export default function Studio({ project, user }) {
             <div className={styles.recPill}>
               <div className={styles.recDot} />
               REC &nbsp;<span className={styles.recTimer}>{formatDuration(duration)}</span>
-            </div>
-          )}
-          {liveOn && totalViewers > 0 && (
-            <div className={styles.liveViewers}>
-              <i className="ti ti-eye" style={{ fontSize: 10 }} />
-              {totalViewers.toLocaleString()} en vivo
             </div>
           )}
         </div>
@@ -515,6 +431,7 @@ export default function Studio({ project, user }) {
               <li><b>Guion IA</b> — escribe el teleprompter del episodio</li>
               <li><b>Cintillos IA</b> — genera textos para pantalla (invitado, tema)</li>
               <li><b>Posts IA</b> — crea publicaciones y hashtags para redes</li>
+              <li><b>Descarga</b> — exporta WebM/MP4 y súbelo a tus canales</li>
             </ul>
             {!aiConfigured && (
               <p className={styles.aiInfoSetup}>
@@ -561,16 +478,6 @@ export default function Studio({ project, user }) {
                   previewStream={streams[activeCamera ?? 0]}
                 />
                 <div className={styles.scanlines} />
-                {liveOn && (
-                  <div className={styles.liveInds}>
-                    {PLAT_CONFIG.filter(p => activePlats.includes(p.id)).map(p => (
-                      <span key={p.id} className={styles.liveInd} style={{ background: p.color === '#ccccdd' ? '#1a1a22' : p.color + 'cc', border: p.color === '#ccccdd' ? '1px solid #333' : 'none' }}>
-                        <i className={`ti ${p.icon}`} style={{ fontSize: 9 }} />
-                        {viewers[p.id] > 0 && <span>{viewers[p.id]}</span>}
-                      </span>
-                    ))}
-                  </div>
-                )}
                 {countdown != null && (
                   <div className={styles.countdownOverlay}>
                     <span className={styles.countdownNum}>{countdown}</span>
@@ -596,7 +503,7 @@ export default function Studio({ project, user }) {
                 <SubtitleOverlay
                   text={subtitleText}
                   interim={subtitleInterim}
-                  visible={subtitlesOn && subtitlesSupported && (recording || liveOn)}
+                  visible={subtitlesOn && subtitlesSupported && recording}
                 />
               </div>
             </div>
@@ -741,7 +648,7 @@ export default function Studio({ project, user }) {
             {recordings.length === 0 && cloudRecordings.length === 0
               ? <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: 13 }}>
                   <i className="ti ti-video" style={{ fontSize: 32, display: 'block', marginBottom: 8 }} />
-                  Aún no hay grabaciones. Usa el botón Grabar en el estudio.
+                  Aún no hay grabaciones. Graba en el estudio y descarga tu episodio para subirlo a tus redes.
                 </div>
               : recordings.map((r, i) => (
                 <div key={i} className={styles.recItem}>
@@ -878,17 +785,14 @@ export default function Studio({ project, user }) {
             </div>
           </div>
 
-          {/* LIVE */}
+          {/* PUBLICAR */}
           <div className={styles.prSection}>
-            <div className={styles.prTitle}>Transmisión en vivo</div>
-            <LiveStreamPanel
-              liveOn={liveOn}
-              liveStatus={liveStatus}
-              liveError={liveError}
-              activePlats={activePlats}
-              onTogglePlat={togglePlat}
-              onGoLive={handleLive}
-              onStopLive={handleStopLive}
+            <div className={styles.prTitle}>Publicar episodio</div>
+            <PublishPanel
+              onOpenPosts={() => setTab('posts')}
+              hasRecordings={recordings.length > 0 || cloudRecordings.length > 0}
+              youtubeConnected={youtubeConnected}
+              onYouTubeConnect={integrations?.youtube ? connectYouTubeChannel : null}
             />
           </div>
 
@@ -1025,7 +929,7 @@ export default function Studio({ project, user }) {
                   disabled={!subtitlesSupported}
                   onChange={e => setSubtitlesOn(e.target.checked)}
                 />
-                Subtítulos en vivo {subtitlesSupported ? '' : '(Chrome/Edge)'}
+                Subtítulos al grabar {subtitlesSupported ? '' : '(Chrome/Edge)'}
               </label>
             </div>
           )}
@@ -1064,12 +968,22 @@ export default function Studio({ project, user }) {
               <i className={`ti ${recording ? 'ti-player-stop' : 'ti-circle'}`} style={{ fontSize: 13 }} />
               {recording ? 'Detener' : 'Grabar'}
             </button>
-            <button className={`${styles.rcBtn} ${styles.rcLive} ${liveOn ? styles.rcLiveOn : ''}`} onClick={handleLive}>
-              <i className="ti ti-broadcast" style={{ fontSize: 12 }} />
-              {liveOn ? 'En vivo' : 'Ir en vivo'}
-            </button>
-            <button className={styles.rcBtn} onClick={() => { if (recordings.length > 0) downloadRecording(recordings[recordings.length - 1]) }}>
+            <button
+              className={styles.rcBtn}
+              onClick={() => { if (recordings.length > 0) downloadRecording(recordings[recordings.length - 1]) }}
+              disabled={recordings.length === 0}
+              title="Descargar última grabación"
+            >
               <i className="ti ti-download" style={{ fontSize: 13 }} />
+              Descargar
+            </button>
+            <button
+              className={styles.rcBtn}
+              onClick={() => setTab('posts')}
+              title="Generar posts para redes"
+            >
+              <i className="ti ti-sparkles" style={{ fontSize: 13 }} />
+              Posts
             </button>
           </div>
           </div>{/* panelFooter */}

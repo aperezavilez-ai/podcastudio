@@ -6,12 +6,12 @@ import TourPreview from '../components/TourPreview.jsx'
 import styles from './Landing.module.css'
 
 const FEATURES = [
-  { icon: 'ti-video', title: 'Switcher de 3 cámaras', desc: 'Conecta hasta 3 cámaras USB y cambia entre ellas en vivo con un clic.' },
-  { icon: 'ti-broadcast', title: 'En vivo a 4 plataformas', desc: 'Transmite simultáneamente a YouTube, Facebook, TikTok e Instagram.' },
+  { icon: 'ti-video', title: 'Switcher de 3 cámaras', desc: 'Conecta hasta 3 cámaras USB y cambia entre planos con un clic.' },
+  { icon: 'ti-download', title: 'Graba y descarga', desc: 'Exporta tu episodio en WebM o MP4 con cintillos y logo incluidos.' },
   { icon: 'ti-sparkles', title: 'Cintillos con IA', desc: 'La IA genera y anima los cintillos de tu episodio automáticamente.' },
-  { icon: 'ti-layout-bottombar', title: 'Logo en pantalla', desc: 'Tu logo en la esquina que elijas, siempre visible en transmisión.' },
+  { icon: 'ti-layout-bottombar', title: 'Logo en pantalla', desc: 'Tu logo en la esquina que elijas, siempre visible en la grabación.' },
   { icon: 'ti-music', title: 'Música sin copyright', desc: 'Biblioteca de música libre para usar como fondo de tus episodios.' },
-  { icon: 'ti-hash', title: 'Posts e hashtags con IA', desc: 'Genera posts virales para todas tus redes con un clic post-episodio.' },
+  { icon: 'ti-hash', title: 'Posts e hashtags con IA', desc: 'Genera textos para tus redes y sube el video donde quieras.' },
 ]
 
 const FORMATS = [
@@ -108,8 +108,8 @@ export default function Landing() {
           <span className={styles.heroAccent}>en cualquier computadora</span>
         </h1>
         <p className={styles.heroSub}>
-          Conecta tus cámaras USB, transmite en vivo a YouTube, TikTok y Facebook,<br />
-          agrega cintillos con IA y publica tus posts automáticamente.
+          Conecta tus cámaras USB, graba con cintillos y logo,<br />
+          descarga tu episodio y publícalo en YouTube, TikTok, Instagram o Facebook.
         </p>
         <div className={styles.heroCtas}>
           <button className={styles.btnHero} onClick={() => navigate('/auth')}>
@@ -124,7 +124,7 @@ export default function Landing() {
 
         {/* Preview idéntico al estudio real */}
         <div className={styles.studioPreviewWrap}>
-          <TourPreview stepId="live" landing />
+          <TourPreview stepId="export" landing />
         </div>
       </section>
 

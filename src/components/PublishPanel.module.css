@@ -1,0 +1,136 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lead {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.steps li i {
+  font-size: 8px;
+  color: var(--accent);
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.steps strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.networks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.netChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.postsBtn {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--purple-border);
+  background: var(--purple-dim);
+  color: var(--purple);
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.postsBtn:hover {
+  background: rgba(157, 140, 232, 0.2);
+}
+
+.hint {
+  font-size: 9px;
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+}
+
+.youtubeRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+}
+
+.youtubeRow strong {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--text-primary);
+}
+
+.youtubeRow p {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+
+.ytBtn {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-3);
+  font-size: 9px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ytBtn:hover {
+  color: var(--text-primary);
+}
+
+.ytOk {
+  color: var(--green);
+  font-size: 14px;
+}
