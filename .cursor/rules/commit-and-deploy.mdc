@@ -1,0 +1,30 @@
+---
+description: Commit y deploy automático tras cada cambio en el proyecto
+alwaysApply: true
+---
+
+# Commit y deploy automático
+
+Después de **cualquier** cambio, ajuste, fix o implementación nueva en PodcastStudio:
+
+1. **Commit** — Siempre, sin preguntar al usuario.
+2. **Push** a `origin/main` — Dispara el deploy en Vercel automáticamente.
+
+## Flujo obligatorio
+
+1. Verificar que no se incluyan secretos (`.env.local`, claves reales).
+2. `git add` solo archivos relevantes al cambio.
+3. Commit con mensaje claro (qué y por qué).
+4. `git push origin main`.
+5. Informar al usuario que el deploy está en camino (no esperar a que termine salvo que falle).
+
+## Excepciones
+
+- No hacer commit vacío.
+- No hacer push con `--force` a main.
+- No commitear `.env.local` ni archivos con credenciales.
+
+## Proyecto
+
+- Repo: `aperezavilez-ai/podcastudio`
+- Producción: `https://podcaststudio.mx` (Vercel, deploy en push a `main`)

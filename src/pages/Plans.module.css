@@ -86,3 +86,45 @@
   border: 1px solid var(--border-1);
   color: var(--text-secondary);
 }
+
+.activeBanner {
+  margin-top: 20px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: var(--green-dim);
+  border: 1px solid var(--green-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  text-align: left;
+}
+
+.activeBanner strong {
+  display: block;
+  color: var(--green);
+  font-size: 14px;
+}
+
+.renew {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.portalBtn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--green-border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.portalBtn:hover:not(:disabled) { background: var(--surface-2); }
+.portalBtn:disabled { opacity: 0.7; cursor: wait; }

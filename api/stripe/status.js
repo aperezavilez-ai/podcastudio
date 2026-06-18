@@ -1,5 +1,6 @@
 import { isStripeConfigured } from '../../lib/stripe/client.js'
 import { PLANS } from '../../lib/stripe/plans.js'
+import { isSupabaseAdminConfigured } from '../../lib/supabase/admin.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -9,6 +10,8 @@ export default async function handler(req, res) {
 
   res.status(200).json({
     configured: isStripeConfigured(),
+    webhook: !!process.env.STRIPE_WEBHOOK_SECRET,
+    supabaseSync: isSupabaseAdminConfigured(),
     provider: 'stripe',
     currency: 'usd',
     plans: PLANS.map(p => ({

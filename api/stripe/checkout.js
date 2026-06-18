@@ -7,14 +7,14 @@ export default async function handler(req, res) {
     return
   }
 
-  const { planId, email } = req.body || {}
+  const { planId, email, userId } = req.body || {}
   if (!planId || !ALLOWED_PLAN_IDS.has(planId)) {
     res.status(400).json({ error: 'Plan inválido' })
     return
   }
 
   try {
-    const session = await createCheckoutSession({ planId, customerEmail: email })
+    const session = await createCheckoutSession({ planId, customerEmail: email, userId })
     res.status(200).json({ url: session.url, sessionId: session.id })
   } catch (e) {
     res.status(500).json({ error: e.message || 'Error al crear pago' })

@@ -4,7 +4,7 @@ import { PLANS } from '../config/plans.js'
 import { startCheckout } from '../lib/billing.js'
 import styles from './PlansGrid.module.css'
 
-export default function PlansGrid({ user, onSkip, compact = false }) {
+export default function PlansGrid({ user, activePlanId, onSkip, compact = false }) {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(null)
   const [error, setError] = useState('')
@@ -17,7 +17,7 @@ export default function PlansGrid({ user, onSkip, compact = false }) {
     }
     setLoading(planId)
     try {
-      await startCheckout(planId, user.email)
+      await startCheckout(planId, user.email, user.id)
     } catch (e) {
       setError(e.message || 'Error al conectar con Stripe')
       setLoading(null)
@@ -32,12 +32,15 @@ export default function PlansGrid({ user, onSkip, compact = false }) {
         </div>
       )}
       <div className={styles.grid}>
-        {PLANS.map(plan => (
+        {PLANS.map(plan => {
+          const isCurrent = activePlanId === plan.id
+          return (
           <div
             key={plan.id}
-            className={`${styles.card} ${plan.featured ? styles.featured : ''}`}
+            className={`${styles.card} ${plan.featured ? styles.featured : ''} ${isCurrent ? styles.current : ''}`}
           >
-            {plan.badge && <div className={styles.badge}>{plan.badge}</div>}
+            {isCurrent && <div className={styles.currentBadge}>Tu plan</div>}
+            {plan.badge && !isCurrent && <div className={styles.badge}>{plan.badge}</div>}
             <div className={styles.name}>{plan.name}</div>
             <div className={styles.price}>
               <span className={styles.currency}>$</span>
@@ -55,15 +58,18 @@ export default function PlansGrid({ user, onSkip, compact = false }) {
             <button
               type="button"
               className={`${styles.btn} ${plan.featured ? styles.btnPrimary : ''}`}
-              disabled={!!loading}
+              disabled={!!loading || isCurrent}
               onClick={() => handleSelect(plan.id)}
             >
-              {loading === plan.id
-                ? <><i className="ti ti-loader" style={{ animation: 'spin 1s linear infinite' }} /> Redirigiendo...</>
-                : `Elegir ${plan.name}`}
+              {isCurrent
+                ? 'Plan actual'
+                : loading === plan.id
+                  ? <><i className="ti ti-loader" style={{ animation: 'spin 1s linear infinite' }} /> Redirigiendo...</>
+                  : `Elegir ${plan.name}`}
             </button>
           </div>
-        ))}
+          )
+        })}
       </div>
       {onSkip && (
         <button type="button" className={styles.skipBtn} onClick={onSkip}>
