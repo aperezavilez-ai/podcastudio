@@ -37,10 +37,28 @@ export function drawImageCover(ctx, img, w, h) {
   ctx.drawImage(img, dx, dy, dw, dh)
 }
 
-export function drawVideoCover(ctx, video, x, y, w, h) {
+export function drawVideoCover(ctx, video, x, y, w, h, directorCrop = null) {
   if (!video || video.readyState < 2 || !video.videoWidth) return
   const vw = video.videoWidth
   const vh = video.videoHeight
+
+  if (directorCrop && directorCrop.zoom > 1.02) {
+    const zoom = directorCrop.zoom
+    const cropW = vw / zoom
+    const cropH = vh / zoom
+    let sx = directorCrop.focusX * vw - cropW / 2
+    let sy = directorCrop.focusY * vh - cropH / 2
+    sx = Math.max(0, Math.min(vw - cropW, sx))
+    sy = Math.max(0, Math.min(vh - cropH, sy))
+    const scale = Math.max(w / cropW, h / cropH)
+    const dw = cropW * scale
+    const dh = cropH * scale
+    const dx = x + (w - dw) / 2
+    const dy = y + (h - dh) / 2
+    ctx.drawImage(video, sx, sy, cropW, cropH, dx, dy, dw, dh)
+    return
+  }
+
   const scale = Math.max(w / vw, h / vh)
   const dw = vw * scale
   const dh = vh * scale
@@ -121,6 +139,7 @@ export function drawCompositorFrame(ctx, w, h, {
   segmentationMask,
   logoOverlay,
   cintilloOverlay,
+  directorCrop = null,
 }) {
   const hasBg = backgroundTemplate !== 'none' || !!customImage
   const template = getBackgroundTemplate(backgroundTemplate)
@@ -153,7 +172,7 @@ export function drawCompositorFrame(ctx, w, h, {
     ctx.translate(cx, cy)
     ctx.scale(scale, scale)
     ctx.translate(-cx, -cy)
-    drawVideoCover(ctx, video, rectX, rectY, rectW, rectH)
+    drawVideoCover(ctx, video, rectX, rectY, rectW, rectH, directorCrop)
     ctx.restore()
 
     ctx.strokeStyle = 'rgba(255,255,255,0.12)'
@@ -162,7 +181,7 @@ export function drawCompositorFrame(ctx, w, h, {
     strokeRoundRect(ctx, rectX, rectY, rectW, rectH, 8)
     ctx.stroke()
   } else {
-    drawVideoCover(ctx, video, 0, 0, w, h)
+    drawVideoCover(ctx, video, 0, 0, w, h, directorCrop)
   }
   }
 

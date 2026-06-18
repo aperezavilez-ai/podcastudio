@@ -18,6 +18,7 @@ export function useStudioCompositor({
   podcastName = '',
   cintillo = null,
   cintilloPosition = 'bl',
+  directorCrop = null,
 }) {
   const canvasRef = useRef(null)
   const outputStreamRef = useRef(null)
@@ -56,6 +57,7 @@ export function useStudioCompositor({
     podcastName,
     cintillo,
     cintilloPosition,
+    directorCrop,
   }
 
   useEffect(() => {
@@ -172,6 +174,7 @@ export function useStudioCompositor({
           color: c.color,
           position: s.cintilloPosition,
         } : null,
+        directorCrop: s.directorCrop,
       })
 
       rafRef.current = requestAnimationFrame(draw)

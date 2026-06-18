@@ -15,6 +15,7 @@ import { useCintilloRotation } from '../hooks/useCintilloRotation.js'
 import { MUSIC_TRACKS } from '../config/musicTracks.js'
 import { useBackgroundMusic } from '../hooks/useBackgroundMusic.js'
 import { useAutoSwitcher } from '../hooks/useAutoSwitcher.js'
+import { useAIDirector } from '../hooks/useAIDirector.js'
 import { useStudioCompositor } from '../hooks/useStudioCompositor.js'
 import { useAudioMix } from '../hooks/useAudioMix.js'
 import VUMeter from '../components/VUMeter.jsx'
@@ -63,7 +64,7 @@ export default function Studio({ project, user }) {
   const [initError, setInitError] = useState('')
   const [viewers, setViewers] = useState({ facebook: 0, youtube: 0, tiktok: 0, instagram: 0 })
   const [camSlot, setCamSlot] = useState(0)
-  const [autoSwitch, setAutoSwitch] = useState(true)
+  const [switchMode, setSwitchMode] = useState('timer') // off | timer | ai
   const [switchInterval, setSwitchInterval] = useState(8)
   const [showCintForm, setShowCintForm] = useState(false)
   const [cintFormText, setCintFormText] = useState('')
@@ -114,6 +115,16 @@ export default function Studio({ project, user }) {
 
   const teleprompter = useTeleprompter(defaultScript, true)
 
+  const { directorCrop, directorStatus } = useAIDirector({
+    enabled: switchMode === 'ai',
+    streams,
+    micLevel,
+    activeCamera,
+    setActiveCamera,
+    minCutSec: switchInterval,
+    shotCycleSec: Math.max(switchInterval, 5),
+  })
+
   const { getProgramStream, getDisplayCanvas } = useStudioCompositor({
     streams,
     activeCamera,
@@ -129,11 +140,12 @@ export default function Studio({ project, user }) {
     podcastName: proj.name || 'Mi Podcast',
     cintillo,
     cintilloPosition,
+    directorCrop: switchMode === 'ai' ? directorCrop : null,
   })
   const { buildRecordingStream } = useAudioMix()
 
   useAutoSwitcher({
-    enabled: autoSwitch,
+    enabled: switchMode === 'timer',
     intervalSec: switchInterval,
     streams,
     activeCamera,
@@ -411,6 +423,12 @@ export default function Studio({ project, user }) {
                     <span className={styles.countdownNum}>{countdown}</span>
                   </div>
                 )}
+                {switchMode === 'ai' && directorStatus && (
+                  <div className={styles.directorBadge}>
+                    <i className="ti ti-wand" />
+                    <span>{directorStatus}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -446,12 +464,18 @@ export default function Studio({ project, user }) {
               })}
               </div>
               <div className={styles.switcherControls}>
-                <label className={styles.autoSwitchToggle} title="Cambiar cámara automáticamente">
-                  <input type="checkbox" checked={autoSwitch} onChange={e => setAutoSwitch(e.target.checked)} />
-                  <i className="ti ti-switch-horizontal" />
-                  <span>Auto</span>
-                </label>
-                {autoSwitch && (
+                <i className="ti ti-switch-horizontal" style={{ fontSize: 11, color: 'var(--text-muted)' }} />
+                <select
+                  className={styles.switchModeSelect}
+                  value={switchMode}
+                  onChange={e => setSwitchMode(e.target.value)}
+                  title="Modo de cambio de cámara"
+                >
+                  <option value="off">Manual</option>
+                  <option value="timer">Auto tiempo</option>
+                  <option value="ai">Director IA</option>
+                </select>
+                {switchMode !== 'off' && (
                   <>
                     <input
                       type="range"
@@ -460,7 +484,9 @@ export default function Studio({ project, user }) {
                       value={switchInterval}
                       onChange={e => setSwitchInterval(+e.target.value)}
                       className={styles.switchInterval}
-                      title={`Cada ${switchInterval}s`}
+                      title={switchMode === 'ai'
+                        ? `Corte mín. ${switchInterval}s · plano cada ${Math.max(switchInterval, 5)}s`
+                        : `Cada ${switchInterval}s`}
                     />
                     <span className={styles.switchIntervalVal}>{switchInterval}s</span>
                   </>
