@@ -42,7 +42,7 @@
   font-size: 11px; color: var(--green); background: var(--green-dim);
   border: 1px solid var(--green-border); border-radius: 6px; padding: 3px 10px;
 }
-.topRight { display: flex; align-items: center; gap: 6px; }
+.topRight { display: flex; align-items: center; gap: 6px; position: relative; z-index: 20; flex-shrink: 0; }
 .aiChip {
   display: inline-flex; align-items: center; gap: 4px;
   background: var(--green-dim); border: 1px solid var(--green-border);
@@ -280,9 +280,18 @@
 .camError button:hover { color: var(--text-primary); }
 .fmtSelector { display: flex; gap: 5px; margin-left: auto; }
 .fmtOpt {
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 6px 8px; border-radius: 7px; border: 1px solid transparent;
-  cursor: pointer; transition: all .15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: all .15s;
+  font: inherit;
+  color: inherit;
 }
 .fmtOpt:hover { background: var(--surface-2); }
 .fmtActive { background: var(--purple-dim) !important; border-color: var(--purple-border) !important; }
@@ -298,6 +307,9 @@
   overflow-y: auto;
   overflow-x: hidden;
   min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 .panelScroll::-webkit-scrollbar { width: 5px; }
 .panelScroll::-webkit-scrollbar-thumb { background: var(--border-3); border-radius: 3px; }
@@ -306,6 +318,31 @@
   border-top: 1px solid var(--border-1);
   background: #0b0b10;
   box-shadow: 0 -4px 16px rgba(0,0,0,.35);
+}
+
+.panelMobileHead {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-1);
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.panelCloseBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
 }
 .prSection { padding: 12px 13px; border-bottom: 1px solid var(--border-1); }
 .prTitle {
@@ -529,25 +566,47 @@
 
   .mobileOnly { display: flex; }
 
+  .topbar { position: relative; z-index: 200; }
+
   .panelBackdrop {
     display: block;
     top: calc(44px + env(safe-area-inset-top, 0px));
+    z-index: 180;
   }
 
   .panelRight {
     position: fixed;
     top: calc(44px + env(safe-area-inset-top, 0px));
-    right: 0;
     bottom: env(safe-area-inset-bottom, 0px);
-    width: min(320px, 92vw);
+    width: min(340px, 94vw);
     z-index: 190;
-    transform: translateX(100%);
-    transition: transform 0.25s ease;
+    right: 0;
+    transform: none;
+    transition: visibility 0.25s, opacity 0.25s;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
     box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
   }
 
   .panelRightOpen {
-    transform: translateX(0);
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .panelMobileHead {
+    display: flex;
+  }
+
+  .iconBtn {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
   }
 
   .topCenter { display: none; }
@@ -601,7 +660,13 @@
   .panelRight {
     width: 100%;
     max-width: 100%;
-    bottom: 0;
+  }
+
+  .panelScroll {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    padding-bottom: 8px;
   }
 
   .camStrip {

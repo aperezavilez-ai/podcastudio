@@ -3,20 +3,31 @@ import { preferVideoPreview } from '../lib/device.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 import styles from './ViewportComposer.module.css'
 
-function MobileVideoPreview({ stream }) {
+function MobileVideoPreview({ stream, cameraKey }) {
   const videoRef = useRef(null)
 
   useEffect(() => {
     const video = videoRef.current
     if (!video || !stream) return undefined
+
+    video.setAttribute('playsinline', '')
+    video.setAttribute('webkit-playsinline', '')
+    video.muted = true
     video.srcObject = stream
-    video.play().catch(() => {})
+
+    const play = () => { video.play().catch(() => {}) }
+    video.addEventListener('loadedmetadata', play)
+    video.addEventListener('canplay', play)
+    play()
+
     const off = bindVideoKeepAlive(video)
     return () => {
+      video.removeEventListener('loadedmetadata', play)
+      video.removeEventListener('canplay', play)
       off()
       if (video.srcObject === stream) video.srcObject = null
     }
-  }, [stream])
+  }, [stream, cameraKey])
 
   return (
     <video
@@ -29,16 +40,24 @@ function MobileVideoPreview({ stream }) {
   )
 }
 
-export default function ViewportComposer({ getDisplayCanvas, hasStream, previewStream }) {
+export default function ViewportComposer({
+  getDisplayCanvas,
+  hasStream,
+  previewStream,
+  cameraKey = 0,
+}) {
   const containerRef = useRef(null)
   const [useVideoPreview, setUseVideoPreview] = useState(() => preferVideoPreview())
 
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 768px), (pointer: coarse)')
     const update = () => setUseVideoPreview(preferVideoPreview())
     update()
-    mq.addEventListener('change', update)
-    return () => mq.removeEventListener('change', update)
+    window.addEventListener('resize', update)
+    window.addEventListener('orientationchange', update)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('orientationchange', update)
+    }
   }, [])
 
   useEffect(() => {
@@ -90,7 +109,7 @@ export default function ViewportComposer({ getDisplayCanvas, hasStream, previewS
   if (useVideoPreview && previewStream) {
     return (
       <div className={styles.composer}>
-        <MobileVideoPreview stream={previewStream} />
+        <MobileVideoPreview stream={previewStream} cameraKey={cameraKey} />
       </div>
     )
   }

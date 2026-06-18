@@ -95,17 +95,25 @@ export default function Studio({ project, user }) {
   const [cintilloPosition, setCintilloPosition] = useState(() =>
     project?.cintilloPosition || localStorage.getItem('podcastudio_cintillo_position') || 'bl'
   )
+  const [outputFormat, setOutputFormat] = useState(() => project?.format || '16:9')
   const [showStylePicker, setShowStylePicker] = useState(true)
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
   const initRanRef = useRef(false)
 
-  const proj = enrichedProject || project || {
-    name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
-    logoPosition: 'tr', logoUrl: null, format: '16:9', cintillos: {},
-    cintilloStyle: 'classic', cintilloPosition: 'bl',
-    subtitlesEnabled: false, subtitleLanguage: 'es-MX', directorMode: 'ai', autoCintillos: true,
+  const proj = {
+    ...(enrichedProject || project || {
+      name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
+      logoPosition: 'tr', logoUrl: null, format: '16:9', cintillos: {},
+      cintilloStyle: 'classic', cintilloPosition: 'bl',
+      subtitlesEnabled: false, subtitleLanguage: 'es-MX', directorMode: 'ai', autoCintillos: true,
+    }),
+    format: outputFormat,
   }
+
+  useEffect(() => {
+    if (project?.format) setOutputFormat(project.format)
+  }, [project?.format])
 
   const subtitleLang = proj.subtitleLanguage || 'es-MX'
   const { displayText: subtitleText, interim: subtitleInterim, supported: subtitlesSupported } = useSpeechSubtitles({
@@ -441,8 +449,22 @@ export default function Studio({ project, user }) {
           >
             <i className="ti ti-layout-sidebar-right" style={{ fontSize: 13 }} />
           </button>
-          <button className={styles.iconBtn} title="Manual de operación" onClick={() => navigate('/guia?from=studio')}><i className="ti ti-help" style={{ fontSize: 13 }} /></button>
-          <button className={styles.iconBtn} title="Configuración"><i className="ti ti-settings" style={{ fontSize: 13 }} /></button>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            title="Manual de operación"
+            onClick={() => navigate('/guia?from=studio')}
+          >
+            <i className="ti ti-help" style={{ fontSize: 13 }} />
+          </button>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            title="Controles y ajustes"
+            onClick={() => setMobilePanelOpen(true)}
+          >
+            <i className="ti ti-settings" style={{ fontSize: 13 }} />
+          </button>
         </div>
       </div>
 
@@ -504,6 +526,7 @@ export default function Studio({ project, user }) {
                   getDisplayCanvas={getDisplayCanvas}
                   hasStream={!!streams[activeCamera ?? 0]}
                   previewStream={streams[activeCamera ?? 0]}
+                  cameraKey={activeCamera ?? 0}
                 />
                 <div className={styles.scanlines} />
                 {countdown != null && (
@@ -609,10 +632,16 @@ export default function Studio({ project, user }) {
               {/* FORMAT SELECTOR */}
               <div className={styles.fmtSelector}>
                 {[{ f: '16:9', w: 26, h: 15 }, { f: '9:16', w: 12, h: 22 }, { f: '1:1', w: 18, h: 18 }].map(({ f, w, h }) => (
-                  <div key={f} className={`${styles.fmtOpt} ${proj.format === f ? styles.fmtActive : ''}`} title={f}>
+                  <button
+                    key={f}
+                    type="button"
+                    className={`${styles.fmtOpt} ${proj.format === f ? styles.fmtActive : ''}`}
+                    title={f}
+                    onClick={() => setOutputFormat(f)}
+                  >
                     <div style={{ width: w * 0.65, height: h * 0.65, border: `1.5px solid ${proj.format === f ? 'var(--purple)' : 'var(--border-3)'}`, borderRadius: 2 }} />
                     <span style={{ fontSize: 8, color: proj.format === f ? 'var(--purple)' : 'var(--text-muted)' }}>{f}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -707,6 +736,12 @@ export default function Studio({ project, user }) {
           />
         )}
         <div className={`${styles.panelRight} ${mobilePanelOpen ? styles.panelRightOpen : ''}`}>
+          <div className={styles.panelMobileHead}>
+            <span>Controles</span>
+            <button type="button" className={styles.panelCloseBtn} onClick={() => setMobilePanelOpen(false)}>
+              <i className="ti ti-x" /> Cerrar
+            </button>
+          </div>
           <div className={styles.panelScroll}>
           {/* CAMERAS */}
           <div className={styles.prSection}>
