@@ -174,7 +174,7 @@ export function PwaInstallBanner() {
     if (installedOnDevice || isStandalone) localStorage.removeItem(PWA_DISMISS_KEY)
   }, [installedOnDevice, isStandalone])
 
-  if (location.pathname === '/' || installing) return null
+  if (location.pathname === '/' || location.pathname === '/auth' || installing) return null
   if (isStandalone && !showUpdateUi) return null
   if (installedOnDevice && !showUpdateUi) return null
   if (!showInstallUi && !showUpdateUi) return null

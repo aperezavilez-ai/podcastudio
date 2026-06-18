@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { signIn, isSupabaseConfigured } from '../lib/projects.js'
 import { mapSupabaseUser, checkSupabaseHealth } from '../lib/supabase.js'
 import { hasSeenTour } from '../config/tourSteps.js'
+import { ADMIN_EMAIL } from '../lib/adminEmail.js'
 import styles from './Auth.module.css'
 
 export default function Auth({ onAuth }) {
@@ -27,7 +28,7 @@ export default function Auth({ onAuth }) {
       return 'Sin conexión al servidor. Comprueba internet o intenta más tarde.'
     }
     if (msg.includes('invalid login') || msg.includes('invalid_credentials')) {
-      return 'Correo o contraseña incorrectos. Revisa que el correo esté bien escrito (alfonsoavilery@icloud.com).'
+      return `Correo o contraseña incorrectos. El admin es: ${ADMIN_EMAIL}`
     }
     return err?.message || 'Error al iniciar sesión'
   }
@@ -80,10 +81,13 @@ export default function Auth({ onAuth }) {
             <i className="ti ti-wifi-off" /> No hay conexión con la plataforma. El proyecto Supabase puede estar mal configurado o inactivo.
           </div>
         )}
+        <p className={styles.adminHint}>
+          <i className="ti ti-user-check" /> Admin: <strong>{ADMIN_EMAIL}</strong>
+        </p>
         <form className={styles.form} onSubmit={submit}>
           <div className={styles.field}>
             <label>Correo electrónico</label>
-            <input name="email" type="email" value={form.email} onChange={handle} placeholder="tu@email.com" autoFocus />
+            <input name="email" type="email" value={form.email} onChange={handle} placeholder={ADMIN_EMAIL} autoComplete="email" autoFocus />
           </div>
           <div className={styles.field}>
             <label>Contraseña</label>

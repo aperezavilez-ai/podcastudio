@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase.js'
+import { normalizeLoginEmail } from './adminEmail.js'
 
 export { isSupabaseConfigured }
 
@@ -43,7 +44,8 @@ export async function loadProject(userId) {
 export async function signIn(email, password) {
   if (!supabase) throw new Error('Supabase no está configurado')
 
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  const loginEmail = normalizeLoginEmail(email)
+  const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })
   if (!error && data?.user) return data
 
   // Fallback: login vía API con env de servidor (Vercel puede tener Supabase distinto al bundle)
@@ -51,7 +53,7 @@ export async function signIn(email, password) {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: loginEmail, password }),
     })
     const body = await res.json().catch(() => ({}))
     if (!res.ok) throw error || new Error(body.error || 'Error al iniciar sesión')
