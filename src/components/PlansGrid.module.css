@@ -145,6 +145,43 @@
 
 .btnPrimary:hover:not(:disabled) { background: #d4541f !important; }
 
+.entryActions {
+  margin-top: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.entryPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: min(100%, 320px);
+  padding: 14px 24px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.entryPrimary:hover { background: #d4541f; }
+
+.entrySecondary {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.entrySecondary:hover { color: var(--text-secondary); }
+
 .skipBtn {
   display: block;
   margin: 20px auto 0;

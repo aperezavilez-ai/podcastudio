@@ -4,7 +4,7 @@ import { PLANS } from '../config/plans.js'
 import { startCheckout } from '../lib/billing.js'
 import styles from './PlansGrid.module.css'
 
-export default function PlansGrid({ user, activePlanId, onSkip, compact = false }) {
+export default function PlansGrid({ user, activePlanId, onEnterStudio, onConfigure, compact = false }) {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(null)
   const [error, setError] = useState('')
@@ -71,10 +71,17 @@ export default function PlansGrid({ user, activePlanId, onSkip, compact = false 
           )
         })}
       </div>
-      {onSkip && (
-        <button type="button" className={styles.skipBtn} onClick={onSkip}>
-          Continuar sin pagar (modo demo del estudio)
-        </button>
+      {user?.email && onEnterStudio && (
+        <div className={styles.entryActions}>
+          <button type="button" className={styles.entryPrimary} onClick={onEnterStudio}>
+            <i className="ti ti-player-play" /> Entrar al estudio
+          </button>
+          {onConfigure && (
+            <button type="button" className={styles.entrySecondary} onClick={onConfigure}>
+              Configurar podcast primero (opcional)
+            </button>
+          )}
+        </div>
       )}
     </div>
   )

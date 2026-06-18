@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import TourPreview from '../components/TourPreview.jsx'
 import { PLANS } from '../config/plans.js'
 import { TOUR_STEPS, markTourSeen } from '../config/tourSteps.js'
+import { isAdminUser } from '../lib/access.js'
 import styles from './Tour.module.css'
 
 const PLAN_NAMES = Object.fromEntries(PLANS.map(p => [p.id, p.name]))
@@ -18,13 +19,22 @@ export default function Tour({ user }) {
 
   const goPlans = () => {
     markTourSeen()
+    if (isAdminUser(user)) {
+      navigate('/studio')
+      return
+    }
     navigate(pendingPlan ? `/plans?plan=${pendingPlan}` : '/plans')
   }
 
   const skip = () => {
     markTourSeen()
-    if (user) navigate('/plans')
-    else navigate('/auth')
+    if (isAdminUser(user)) {
+      navigate('/studio')
+    } else if (user) {
+      navigate('/plans')
+    } else {
+      navigate('/auth')
+    }
   }
 
   return (
@@ -35,7 +45,7 @@ export default function Tour({ user }) {
           Podcast<strong>Studio</strong>
         </button>
         <button type="button" className={styles.skipBtn} onClick={skip}>
-          {user ? 'Ir a planes' : 'Saltar recorrido'}
+          {isAdminUser(user) ? 'Entrar al estudio' : user ? 'Ir a planes' : 'Saltar recorrido'}
         </button>
       </header>
 
@@ -105,18 +115,24 @@ export default function Tour({ user }) {
 
           {isLast ? (
             <div className={styles.finalCtas}>
-              <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={goPlans}>
-                <i className="ti ti-credit-card" /> Elegir mi plan
-              </button>
-              {user && (
-                <button type="button" className={styles.btn} onClick={() => { markTourSeen(); navigate('/setup') }}>
-                  Continuar en demo
+              {isAdminUser(user) ? (
+                <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={goPlans}>
+                  <i className="ti ti-player-play" /> Entrar al estudio
+                </button>
+              ) : (
+                <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={goPlans}>
+                  <i className="ti ti-credit-card" /> Elegir mi plan
+                </button>
+              )}
+              {user && !isAdminUser(user) && (
+                <button type="button" className={styles.btn} onClick={() => { markTourSeen(); navigate('/studio') }}>
+                  Entrar al estudio (demo)
                 </button>
               )}
             </div>
           ) : (
             <button type="button" className={styles.btn} onClick={goPlans}>
-              Ya sé lo que necesito — ver planes
+              {isAdminUser(user) ? 'Entrar al estudio' : 'Ya sé lo que necesito — ver planes'}
             </button>
           )}
         </nav>

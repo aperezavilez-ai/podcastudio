@@ -9,6 +9,7 @@ import {
   syncCheckoutSession,
   verifyCheckoutSession,
 } from '../lib/billing.js'
+import { isAdminUser } from '../lib/access.js'
 import styles from './Plans.module.css'
 
 export default function Plans({ user }) {
@@ -77,9 +78,16 @@ export default function Plans({ user }) {
         <button type="button" className={styles.back} onClick={() => navigate('/')}>
           <i className="ti ti-arrow-left" /> Inicio
         </button>
-        <div className={styles.brand}>
-          <i className="ti ti-microphone" />
-          <span>Podcast<strong>Studio</strong></span>
+        <div className={styles.headerActions}>
+          {user?.email && (
+            <button type="button" className={styles.studioBtn} onClick={() => navigate('/studio')}>
+              <i className="ti ti-player-play" /> Entrar al estudio
+            </button>
+          )}
+          <div className={styles.brand}>
+            <i className="ti ti-microphone" />
+            <span>Podcast<strong>Studio</strong></span>
+          </div>
         </div>
       </div>
 
@@ -91,6 +99,18 @@ export default function Plans({ user }) {
           <button type="button" className={styles.tourLink} onClick={() => navigate('/tour')}>
             <i className="ti ti-route" /> ¿No estás seguro? Ver recorrido de funciones
           </button>
+
+          {isAdminUser(user) && (
+            <div className={styles.adminBanner}>
+              <div>
+                <strong><i className="ti ti-shield-check" /> Cuenta administrador</strong>
+                <span>Acceso completo al estudio — no necesitas elegir un plan.</span>
+              </div>
+              <button type="button" className={styles.studioBtnLarge} onClick={() => navigate('/studio')}>
+                <i className="ti ti-player-play" /> Abrir el estudio
+              </button>
+            </div>
+          )}
 
           {activePlan && (
             <div className={styles.activeBanner}>
@@ -125,7 +145,8 @@ export default function Plans({ user }) {
         <PlansGrid
           user={user}
           activePlanId={activePlanId}
-          onSkip={() => navigate('/setup')}
+          onEnterStudio={() => navigate('/studio')}
+          onConfigure={() => navigate('/setup')}
         />
       </div>
     </div>

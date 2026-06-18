@@ -4,6 +4,7 @@ import { signIn, isSupabaseConfigured } from '../lib/projects.js'
 import { mapSupabaseUser, checkSupabaseHealth } from '../lib/supabase.js'
 import { hasSeenTour } from '../config/tourSteps.js'
 import { ADMIN_EMAIL, WRONG_EMAIL_EXAMPLE, isKnownEmailTypo, normalizeLoginEmail } from '../lib/adminEmail.js'
+import { getPostLoginPath } from '../lib/access.js'
 import styles from './Auth.module.css'
 
 export default function Auth({ onAuth }) {
@@ -48,21 +49,18 @@ export default function Auth({ onAuth }) {
     if (!form.email || !form.password) { setError('Completa todos los campos.'); return }
     setLoading(true)
     try {
-      if (isSupabaseConfigured) {
-        const { user, session } = await signIn(form.email, form.password)
-        if (!session) throw new Error('No se pudo guardar la sesión. Intenta de nuevo.')
-        onAuth(mapSupabaseUser(user))
-      } else {
+      if (!isSupabaseConfigured) {
         setError('Supabase no está configurado. No se puede iniciar sesión.')
         return
       }
-      if (pendingPlan) {
-        navigate(`/plans?plan=${pendingPlan}`)
-      } else if (!hasSeenTour()) {
-        navigate('/tour')
-      } else {
-        navigate('/plans')
-      }
+      const { user, session } = await signIn(form.email, form.password)
+      if (!session) throw new Error('No se pudo guardar la sesión. Intenta de nuevo.')
+      const mapped = mapSupabaseUser(user)
+      onAuth(mapped)
+      navigate(getPostLoginPath(mapped, {
+        pendingPlan,
+        seenTour: hasSeenTour(),
+      }))
     } catch (err) {
       setError(friendlyAuthError(err))
     } finally {
