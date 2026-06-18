@@ -1,10 +1,12 @@
-/** Correo admin oficial y variantes con typo frecuentes. */
-export const ADMIN_EMAIL = 'alfonsoavilery@icloud.com'
-export const WRONG_EMAIL_EXAMPLE = 'alfonsoevilery@icloud.com'
+/** Correo admin oficial y variantes con typo frecuentes (cuenta anterior). */
+export const ADMIN_EMAIL = 'aperezavilez@gmail.com'
+export const WRONG_EMAIL_EXAMPLE = 'alfonsoavilery@icloud.com'
 
 const TYPO_MAP = {
-  [WRONG_EMAIL_EXAMPLE]: ADMIN_EMAIL,
+  'alfonsoevilery@icloud.com': ADMIN_EMAIL,
   'alfonsovillery@icloud.com': ADMIN_EMAIL,
+  'alfonsoavilery@icloud.com': ADMIN_EMAIL,
+  'alfonsoaviler@icloud.com': ADMIN_EMAIL,
 }
 
 export function normalizeLoginEmail(email) {

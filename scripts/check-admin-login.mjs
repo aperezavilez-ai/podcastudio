@@ -1,4 +1,4 @@
-const email = process.env.ADMIN_EMAIL || 'alfonsoavilery@icloud.com'
+const email = process.env.ADMIN_EMAIL || 'aperezavilez@gmail.com'
 const password = process.env.ADMIN_PASSWORD || ''
 
 const localUrl = process.env.VITE_SUPABASE_URL
