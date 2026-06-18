@@ -14,9 +14,12 @@ export async function getAccessToken() {
 
 export function mapSupabaseUser(user) {
   if (!user) return null
+  const role = user.app_metadata?.role || user.user_metadata?.role || 'user'
   return {
     id: user.id,
     email: user.email,
     name: user.user_metadata?.name || user.email?.split('@')[0] || 'Usuario',
+    role,
+    isAdmin: role === 'admin',
   }
 }
