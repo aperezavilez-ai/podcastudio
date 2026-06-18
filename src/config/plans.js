@@ -7,7 +7,7 @@ export const PLANS = [
     intervalLabel: '/mes',
     description: 'Para empezar tu podcast con calidad profesional.',
     features: [
-      '2 cámaras simultáneas',
+      '3 cámaras simultáneas',
       '1 plataforma en vivo',
       'Cintillos básicos',
       '20 posts IA / mes',
