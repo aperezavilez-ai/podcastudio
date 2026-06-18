@@ -96,6 +96,9 @@ export default function Plans({ user }) {
           <span className={styles.label}>Planes</span>
           <h1>Elige tu plan</h1>
           <p>Sin contratos. Cancela cuando quieras. Pago seguro con Stripe.</p>
+          <button type="button" className={styles.tourLink} onClick={() => navigate('/guia')}>
+            <i className="ti ti-book" /> Manual de operación paso a paso
+          </button>
           <button type="button" className={styles.tourLink} onClick={() => navigate('/tour')}>
             <i className="ti ti-route" /> ¿No estás seguro? Ver recorrido de funciones
           </button>

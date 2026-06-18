@@ -9,6 +9,7 @@ import { loadProject } from './lib/projects.js'
 
 const Plans = lazy(() => import('./pages/Plans.jsx'))
 const Tour = lazy(() => import('./pages/Tour.jsx'))
+const Manual = lazy(() => import('./pages/Manual.jsx'))
 const ProjectSetup = lazy(() => import('./pages/ProjectSetup.jsx'))
 const Studio = lazy(() => import('./pages/Studio.jsx'))
 
@@ -113,6 +114,7 @@ export default function App() {
           <Route path="/" element={<Landing />} />
           <Route path="/auth" element={<Auth onAuth={handleAuth} />} />
           <Route path="/tour" element={<Tour user={user} />} />
+          <Route path="/guia" element={<Manual />} />
           <Route path="/plans" element={<Plans user={user} onContinue={() => {}} />} />
           <Route path="/setup" element={<ProjectSetup user={user} onProject={handleProject} />} />
           <Route path="/studio" element={<Studio project={project} user={user} onProjectSave={handleProject} />} />

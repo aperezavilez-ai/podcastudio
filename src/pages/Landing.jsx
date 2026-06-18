@@ -90,6 +90,9 @@ export default function Landing() {
           <button type="button" className={styles.navTourLink} onClick={() => navigate('/tour')}>
             Cómo funciona
           </button>
+          <button type="button" className={styles.navTourLink} onClick={() => navigate('/guia')}>
+            Manual de uso
+          </button>
         </div>
         <div className={styles.navActions}>
           <PwaInstallNavButton />

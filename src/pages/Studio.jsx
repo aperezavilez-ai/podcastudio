@@ -428,7 +428,7 @@ export default function Studio({ project, user }) {
           >
             <i className="ti ti-layout-sidebar-right" style={{ fontSize: 13 }} />
           </button>
-          <button className={styles.iconBtn} title="Ayuda"><i className="ti ti-help" style={{ fontSize: 13 }} /></button>
+          <button className={styles.iconBtn} title="Manual de operación" onClick={() => navigate('/guia?from=studio')}><i className="ti ti-help" style={{ fontSize: 13 }} /></button>
           <button className={styles.iconBtn} title="Configuración"><i className="ti ti-settings" style={{ fontSize: 13 }} /></button>
         </div>
       </div>

@@ -129,6 +129,11 @@ export default function Auth({ onAuth }) {
             {loading ? <><i className="ti ti-loader" style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }} /> Procesando...</> : 'Entrar'}
           </button>
         </form>
+        <p className={styles.manualLink}>
+          <button type="button" onClick={() => navigate('/guia')}>
+            <i className="ti ti-book" /> Ver manual de operación
+          </button>
+        </p>
         <p className={styles.terms}>Acceso solo con cuenta autorizada. Contacta al administrador si necesitas una cuenta.</p>
       </div>
     </div>
