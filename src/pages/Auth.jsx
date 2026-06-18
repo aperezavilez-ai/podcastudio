@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { notifyWelcome } from '../lib/notifications.js'
 import { signIn, signUp, isSupabaseConfigured } from '../lib/projects.js'
 import { mapSupabaseUser } from '../lib/supabase.js'
 import styles from './Auth.module.css'
@@ -25,12 +26,15 @@ export default function Auth({ onAuth }) {
           onAuth(mapSupabaseUser(user))
         } else {
           const { user } = await signUp(form.email, form.password, form.name)
+          notifyWelcome({ email: form.email, name: form.name || form.email.split('@')[0] })
           if (!user) throw new Error('Revisa tu correo para confirmar la cuenta.')
           onAuth(mapSupabaseUser(user))
         }
       } else {
         await new Promise(r => setTimeout(r, 600))
-        onAuth({ id: 'local', name: form.name || form.email.split('@')[0], email: form.email })
+        const localUser = { id: 'local', name: form.name || form.email.split('@')[0], email: form.email }
+        onAuth(localUser)
+        if (mode === 'register') notifyWelcome(localUser)
       }
       navigate('/setup')
     } catch (err) {

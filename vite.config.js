@@ -17,11 +17,64 @@ function readBody(req) {
   })
 }
 
-function aiApiDev(apiKey) {
+function aiApiDev(env) {
+  const apiKey = env.ANTHROPIC_API_KEY
   return {
     name: 'ai-api-dev',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith('/api/')) return next()
+
+        if (req.url === '/api/email/status' || req.url.startsWith('/api/email/status?')) {
+          if (req.method !== 'GET') {
+            res.statusCode = 405
+            res.end('Method not allowed')
+            return
+          }
+          const configured = !!env.RESEND_API_KEY
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({
+            configured,
+            from: configured ? (env.RESEND_FROM_EMAIL || 'PodcastStudio <onboarding@resend.dev>') : null,
+            provider: 'resend',
+            types: ['welcome', 'project_ready', 'recording_ready', 'live_started'],
+          }))
+          return
+        }
+
+        if (req.url === '/api/email/send' || req.url.startsWith('/api/email/send?')) {
+          if (req.method !== 'POST') {
+            res.statusCode = 405
+            res.end('Method not allowed')
+            return
+          }
+          try {
+            if (!env.RESEND_API_KEY) {
+              res.statusCode = 503
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify({ error: 'Añade RESEND_API_KEY en .env.local' }))
+              return
+            }
+            const body = await readBody(req)
+            const { sendNotificationEmail } = await import('./lib/email/resend.js')
+            const result = await sendNotificationEmail({
+              type: body.type,
+              to: body.to,
+              data: body.data || {},
+              apiKey: env.RESEND_API_KEY,
+            })
+            res.statusCode = 200
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ ok: true, id: result.id }))
+          } catch (e) {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: e.message || 'Error email' }))
+          }
+          return
+        }
+
         if (!req.url?.startsWith('/api/ai')) return next()
 
         if (req.url === '/api/ai/status' || req.url.startsWith('/api/ai/status?')) {
@@ -71,7 +124,7 @@ function aiApiDev(apiKey) {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    plugins: [react(), aiApiDev(env.ANTHROPIC_API_KEY)],
+    plugins: [react(), aiApiDev(env)],
     server: { port: 3000 },
   }
 })

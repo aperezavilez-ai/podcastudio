@@ -14,6 +14,8 @@ export function useRecorder() {
   const chunksRef = useRef([])
   const timerRef = useRef(null)
   const mimeTypeRef = useRef('video/webm')
+  const durationRef = useRef(0)
+  const onCompleteRef = useRef(null)
 
   const pickMimeType = () => {
     const types = [
@@ -40,21 +42,30 @@ export function useRecorder() {
         const blob = new Blob(chunksRef.current, { type: mimeType })
         const url = URL.createObjectURL(blob)
         const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')
-        setRecordings(prev => [...prev, {
+        const rec = {
           url, name: `episodio-${ts}.${ext}`, size: blob.size, blob, mimeType, ext,
-        }])
+          duration: durationRef.current,
+        }
+        setRecordings(prev => [...prev, rec])
+        onCompleteRef.current?.(rec)
+        onCompleteRef.current = null
       }
       mr.start(1000)
       mediaRecorderRef.current = mr
       setRecording(true)
       setDuration(0)
-      timerRef.current = setInterval(() => setDuration(d => d + 1), 1000)
+      durationRef.current = 0
+      timerRef.current = setInterval(() => {
+        durationRef.current += 1
+        setDuration(d => d + 1)
+      }, 1000)
     } catch (e) {
       console.error('MediaRecorder error:', e)
     }
   }, [])
 
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback((onComplete) => {
+    if (typeof onComplete === 'function') onCompleteRef.current = onComplete
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }

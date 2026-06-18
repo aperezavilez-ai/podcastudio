@@ -23,6 +23,7 @@ import Teleprompter from '../components/Teleprompter.jsx'
 import TeleprompterOverlay from '../components/TeleprompterOverlay.jsx'
 import LiveStreamPanel from '../components/LiveStreamPanel.jsx'
 import { useTeleprompter } from '../hooks/useTeleprompter.js'
+import { notifyRecordingReady, notifyLiveStarted } from '../lib/notifications.js'
 import styles from './Studio.module.css'
 
 const ROTATION_PRESETS = CINTILLO_PRESETS.filter(p => ['topic', 'guest', 'social', 'contact'].includes(p.id))
@@ -271,7 +272,16 @@ export default function Studio({ project, user }) {
   }
 
   const handleStopRecord = () => {
-    stopRecording()
+    stopRecording((rec) => {
+      if (user?.email) {
+        notifyRecordingReady(user, {
+          podcastName: proj.name,
+          episodeTitle: proj.episodeTitle,
+          duration: formatDuration(rec.duration ?? duration),
+          fileName: rec.name,
+        })
+      }
+    })
     teleprompter.setRecordingActive(false)
   }
 
@@ -279,6 +289,12 @@ export default function Studio({ project, user }) {
     if (liveOn) { setLiveOn(false); return }
     if (activePlats.length === 0) { setActivePlats(['youtube', 'facebook']); }
     setLiveOn(true)
+    if (user?.email) {
+      notifyLiveStarted(user, {
+        podcastName: proj.name,
+        platforms: activePlats.length ? activePlats : ['youtube', 'facebook'],
+      })
+    }
   }
 
   const showCintillo = (preset) => {

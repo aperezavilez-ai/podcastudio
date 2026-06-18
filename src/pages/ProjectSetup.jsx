@@ -8,6 +8,7 @@ import { getCintilloStyle } from '../config/cintilloStyles.js'
 import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 import { CINTILLO_SETUP_TYPES } from '../config/cintilloPresets.js'
 import { saveProject } from '../lib/projects.js'
+import { notifyProjectReady } from '../lib/notifications.js'
 
 const CINTILLO_POSITIONS = [
   { id: 'bl', label: 'Abajo izquierda' },
@@ -80,6 +81,7 @@ export default function ProjectSetup({ user, onProject }) {
       console.error('Save project:', e)
     }
     onProject(project)
+    if (user?.email) notifyProjectReady(user, project)
     navigate('/studio')
   }
 
