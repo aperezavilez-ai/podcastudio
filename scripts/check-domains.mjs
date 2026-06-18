@@ -31,4 +31,4 @@ async function checkDomain(base) {
   }
 }
 
-await checkDomain('https://podcaststudio.mx')
+await checkDomain('https://www.podcastudio.mx')

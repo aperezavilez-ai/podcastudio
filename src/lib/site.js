@@ -1,13 +1,13 @@
 /** URL pública de la app. Usar VITE_SITE_URL en Vercel cuando el dominio propio tenga DNS activo. */
 export const CANONICAL_SITE_URL = (
-  import.meta.env.VITE_SITE_URL || 'https://podcastudio-three.vercel.app'
+  import.meta.env.VITE_SITE_URL || 'https://www.podcastudio.mx'
 ).replace(/\/$/, '')
 
 export function getCanonicalHost() {
   try {
     return new URL(CANONICAL_SITE_URL).hostname
   } catch {
-    return 'podcastudio-three.vercel.app'
+    return 'www.podcastudio.mx'
   }
 }
 
@@ -20,7 +20,20 @@ export function isLocalDevHost(hostname = window.location.hostname) {
   )
 }
 
-/** Sin redirección automática: el dominio propio debe tener DNS activo en Vercel primero. */
+/** Redirige vercel.app al dominio propio (www.podcastudio.mx). */
 export function redirectToCanonicalDomain() {
+  if (!import.meta.env.PROD || typeof window === 'undefined') return false
+
+  const { hostname, pathname, search, hash } = window.location
+  if (isLocalDevHost(hostname)) return false
+
+  const canonicalHost = getCanonicalHost()
+  if (hostname === canonicalHost || hostname === 'podcastudio.mx') return false
+
+  if (hostname.endsWith('.vercel.app')) {
+    window.location.replace(`${CANONICAL_SITE_URL}${pathname}${search}${hash}`)
+    return true
+  }
+
   return false
 }

@@ -2,7 +2,7 @@
  * Muestra la configuración de URLs que debes tener en Supabase Dashboard:
  * Authentication → URL Configuration
  */
-const site = process.env.SITE_URL || process.env.VITE_SITE_URL || 'https://podcaststudio.mx'
+const site = process.env.SITE_URL || process.env.VITE_SITE_URL || 'https://www.podcastudio.mx'
 const base = site.replace(/\/$/, '')
 
 console.log('Configura en Supabase → Authentication → URL Configuration:\n')
