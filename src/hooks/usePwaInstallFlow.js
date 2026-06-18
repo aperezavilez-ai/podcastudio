@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { getManualInstallSteps } from '../lib/pwaBrowser.js'
 import { usePwaInstall } from './usePwaInstall.js'
 
 const PREP_STEPS = [
@@ -19,10 +20,12 @@ export function usePwaInstallFlow() {
   const pwa = usePwaInstall()
   const [installing, setInstalling] = useState(false)
   const [progress, setProgress] = useState(null)
+  const [installGuide, setInstallGuide] = useState(null)
 
   const runInstall = useCallback(async ({ onSuccess } = {}) => {
     if (installing) return false
     setInstalling(true)
+    setInstallGuide(null)
 
     try {
       for (const step of PREP_STEPS) {
@@ -30,21 +33,13 @@ export function usePwaInstallFlow() {
         await wait(380 + Math.random() * 220)
       }
 
-      if (pwa.showIosHint && !pwa.canInstall) {
-        setProgress({ pct: 10, label: 'Abre Compartir → Añadir a pantalla de inicio' })
-        await wait(600)
-        window.alert('En iPhone/iPad: pulsa Compartir en Safari y elige «Añadir a pantalla de inicio».')
-        return false
-      }
-
-      setProgress({ pct: 10, label: 'Abriendo instalador del sistema…' })
+      setProgress({ pct: 68, label: 'Abriendo instalador de tu navegador…' })
       const ok = await pwa.install()
 
       if (ok) {
         for (const [pct, label] of [
-          [72, 'Instalando PodcastStudio en tu dispositivo…'],
-          [84, 'Configurando icono y acceso directo…'],
-          [94, 'Finalizando instalación…'],
+          [82, 'Instalando PodcastStudio en tu dispositivo…'],
+          [92, 'Configurando icono y acceso directo…'],
           [100, '¡Instalación completa!'],
         ]) {
           setProgress({ pct, label })
@@ -52,14 +47,22 @@ export function usePwaInstallFlow() {
         }
         onSuccess?.()
         await wait(700)
+        setProgress(null)
+        return true
       }
 
-      return ok
+      setProgress({ pct: 100, label: 'Sigue estos pasos en tu navegador:' })
+      setInstallGuide(getManualInstallSteps(pwa.browser))
+      return false
     } finally {
       setInstalling(false)
-      setProgress(null)
     }
   }, [installing, pwa])
 
-  return { ...pwa, installing, progress, runInstall }
+  const clearGuide = useCallback(() => {
+    setInstallGuide(null)
+    setProgress(null)
+  }, [])
+
+  return { ...pwa, installing, progress, installGuide, runInstall, clearGuide }
 }

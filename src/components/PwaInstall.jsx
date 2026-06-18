@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
+import { getBrowserLabel, getReadyHint } from '../lib/pwaBrowser.js'
 import { usePwaInstallFlow } from '../hooks/usePwaInstallFlow.js'
 import styles from './PwaInstall.module.css'
 
@@ -50,23 +51,18 @@ export function PwaInstallProgress() {
   )
 }
 
-/** Tarjeta de instalación en la landing (estilo TrackPro). Oculta dentro de la PWA. */
+/** Tarjeta de instalación en la landing. Oculta dentro de la PWA instalada. */
 export function PwaLandingInstall() {
-  const { canInstall, installed, showIosHint, installing, progress, runInstall } = usePwa()
+  const {
+    canInstall, canShowInstall, installed, browser,
+    installing, progress, installGuide, runInstall, clearGuide,
+  } = usePwa()
 
-  if (installed) return null
+  if (!canShowInstall) return null
 
-  const idleHint = showIosHint && !canInstall
-    ? 'En Safari: pulsa Compartir → Añadir a pantalla de inicio'
-    : canInstall
-      ? 'Acceso rápido desde escritorio, tablet o móvil sin abrir el navegador'
-      : 'En Chrome o Edge: menú ⋮ → Instalar aplicación'
-
-  const statusLabel = installing && progress
-    ? progress.label
-    : idleHint
-
-  const statusPct = installing && progress ? progress.pct : 0
+  const idleHint = getReadyHint(browser, canInstall)
+  const statusLabel = installing && progress ? progress.label : idleHint
+  const statusPct = installing && progress ? progress.pct : (installGuide ? 100 : 0)
 
   return (
     <section className={styles.landingInstall} aria-label="Instalar aplicación">
@@ -76,7 +72,7 @@ export function PwaLandingInstall() {
         </div>
         <div>
           <strong>PodcastStudio</strong>
-          <span>Instalación de la aplicación</span>
+          <span>Instalación en {getBrowserLabel(browser)}</span>
         </div>
       </div>
 
@@ -89,12 +85,12 @@ export function PwaLandingInstall() {
             <em>Estado</em>
             <p>{statusLabel}</p>
           </div>
-          {installing && progress && (
+          {(installing || installGuide) && progress && (
             <strong className={styles.landingInstallPct}>{progress.pct}%</strong>
           )}
         </div>
 
-        {(installing || statusPct > 0) && (
+        {(installing || installGuide || statusPct > 0) && (
           <div className={styles.landingInstallTrack}>
             <div
               className={styles.landingInstallFill}
@@ -103,19 +99,32 @@ export function PwaLandingInstall() {
           </div>
         )}
 
+        {installGuide && (
+          <ol className={styles.landingInstallSteps}>
+            {installGuide.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+        )}
+
         <button
           type="button"
           className={styles.landingInstallBtn}
           disabled={installing}
-          onClick={() => runInstall()}
+          onClick={() => (installGuide ? clearGuide() : runInstall())}
         >
-          <i className="ti ti-device-mobile" />
-          {installing ? 'Instalando…' : 'Instalar en este dispositivo'}
+          <i className={installGuide ? 'ti ti-refresh' : 'ti ti-download'} />
+          {installing
+            ? 'Instalando…'
+            : installGuide
+              ? 'Intentar de nuevo'
+              : 'Instalar en este dispositivo'}
         </button>
       </div>
 
       <p className={styles.landingInstallFoot}>
-        Al completar la instalación podrás iniciar sesión, configurar tu estudio y grabar desde la app.
+        Compatible con Chrome, Edge, Brave, Firefox, Safari y Samsung Internet.
+        Al completar la instalación podrás iniciar sesión y usar el estudio desde la app.
       </p>
     </section>
   )
@@ -123,23 +132,18 @@ export function PwaLandingInstall() {
 
 export function PwaInstallBanner() {
   const location = useLocation()
-  const { canInstall, installed, showIosHint, installing, runInstall } = usePwa()
+  const { canShowInstall, browser, canInstall, installed, installing, runInstall } = usePwa()
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_KEY) === '1')
 
   useEffect(() => {
     if (installed) localStorage.removeItem(DISMISS_KEY)
   }, [installed])
 
-  if (location.pathname === '/' || installed || dismissed || installing) return null
-  if (!canInstall && !showIosHint) return null
+  if (location.pathname === '/' || !canShowInstall || dismissed || installing) return null
 
   const dismiss = () => {
     localStorage.setItem(DISMISS_KEY, '1')
     setDismissed(true)
-  }
-
-  const handleInstall = () => {
-    runInstall({ onSuccess: dismiss })
   }
 
   return (
@@ -148,18 +152,12 @@ export function PwaInstallBanner() {
         <div className={styles.icon}><i className="ti ti-download" /></div>
         <div className={styles.text}>
           <strong>Instalar PodcastStudio</strong>
-          <span>
-            {showIosHint && !canInstall
-              ? 'En Safari: Compartir → Añadir a pantalla de inicio'
-              : 'Acceso rápido desde tu escritorio, tablet o móvil'}
-          </span>
+          <span>{getReadyHint(browser, canInstall)}</span>
         </div>
         <div className={styles.actions}>
-          {canInstall && (
-            <button type="button" className={styles.installBtn} onClick={handleInstall}>
-              Instalar
-            </button>
-          )}
+          <button type="button" className={styles.installBtn} onClick={() => runInstall({ onSuccess: dismiss })}>
+            Instalar
+          </button>
           <button type="button" className={styles.dismissBtn} onClick={dismiss} aria-label="Cerrar">
             <i className="ti ti-x" />
           </button>
@@ -171,9 +169,9 @@ export function PwaInstallBanner() {
 
 export function PwaInstallNavButton() {
   const location = useLocation()
-  const { canInstall, installed, showIosHint, installing, runInstall } = usePwa()
+  const { canShowInstall, installed, installing, runInstall } = usePwa()
 
-  if (location.pathname === '/' || installed || installing || (!canInstall && !showIosHint)) return null
+  if (location.pathname === '/' || !canShowInstall || installed || installing) return null
 
   return (
     <button type="button" className={styles.navBtn} onClick={() => runInstall()}>

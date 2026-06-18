@@ -312,6 +312,20 @@
 .landingInstallBtn:hover:not(:disabled) { background: #d4541f; }
 .landingInstallBtn:disabled { opacity: 0.75; cursor: wait; }
 
+.landingInstallSteps {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.landingInstallSteps li {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
 .landingInstallFoot {
   margin-top: 14px;
   font-size: 11px;
