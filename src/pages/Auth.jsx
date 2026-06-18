@@ -11,6 +11,7 @@ export default function Auth({ onAuth }) {
   const [searchParams] = useSearchParams()
   const pendingPlan = searchParams.get('plan')
   const [form, setForm] = useState({ email: '', password: '' })
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [serverOk, setServerOk] = useState(null)
@@ -105,7 +106,25 @@ export default function Auth({ onAuth }) {
           </div>
           <div className={styles.field}>
             <label>Contraseña</label>
-            <input name="password" type="password" value={form.password} onChange={handle} placeholder="••••••••" autoComplete="off" />
+            <div className={styles.passwordWrap}>
+              <input
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={handle}
+                placeholder="••••••••"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                className={styles.passwordToggle}
+                onClick={() => setShowPassword(v => !v)}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                tabIndex={-1}
+              >
+                <i className={`ti ${showPassword ? 'ti-eye-off' : 'ti-eye'}`} />
+              </button>
+            </div>
           </div>
           {error && <div className={styles.error}><i className="ti ti-alert-circle" /> {error}</div>}
           <button className={styles.submitBtn} type="submit" disabled={loading}>
