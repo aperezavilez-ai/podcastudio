@@ -1,47 +1,66 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import styles from './LiveStreamPanel.module.css'
+import {
+  fetchIntegrationStatus,
+  fetchRestreamStatus,
+  fetchYouTubeStatus,
+  getYouTubeAuthUrl,
+} from '../lib/integrations.js'
 
 const PLATFORMS = [
-  { id: 'youtube', label: 'YouTube', icon: 'ti-brand-youtube', color: '#e05050', rtmpHint: 'rtmp://a.rtmp.youtube.com/live2' },
-  { id: 'facebook', label: 'Facebook', icon: 'ti-brand-facebook', color: '#4a90d9', rtmpHint: 'rtmps://live-api-s.facebook.com:443/rtmp/' },
-  { id: 'tiktok', label: 'TikTok', icon: 'ti-brand-tiktok', color: '#ccc', rtmpHint: 'rtmp://push.tiktok.com/live/' },
-  { id: 'instagram', label: 'Instagram', icon: 'ti-brand-instagram', color: '#d4537e', rtmpHint: 'rtmps://live-upload.instagram.com:443/rtmp/' },
+  { id: 'youtube', label: 'YouTube', icon: 'ti-brand-youtube', color: '#e05050' },
+  { id: 'facebook', label: 'Facebook', icon: 'ti-brand-facebook', color: '#4a90d9' },
+  { id: 'tiktok', label: 'TikTok', icon: 'ti-brand-tiktok', color: '#ccc' },
+  { id: 'instagram', label: 'Instagram', icon: 'ti-brand-instagram', color: '#d4537e' },
 ]
 
-const STORAGE_KEY = 'podcastudio_rtmp_keys'
-
-function loadKeys() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-  } catch {
-    return {}
-  }
-}
-
-export default function LiveStreamPanel({ liveOn, activePlats, onTogglePlat, onGoLive, onStopLive }) {
-  const [keys, setKeys] = useState(loadKeys)
-  const [expanded, setExpanded] = useState(null)
-  const [copied, setCopied] = useState('')
+export default function LiveStreamPanel({
+  liveOn,
+  liveStatus,
+  liveError,
+  activePlats,
+  onTogglePlat,
+  onGoLive,
+  onStopLive,
+}) {
+  const [integrations, setIntegrations] = useState(null)
+  const [restream, setRestream] = useState(null)
+  const [youtube, setYoutube] = useState(null)
+  const [ytLoading, setYtLoading] = useState(false)
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(keys))
-  }, [keys])
+    fetchIntegrationStatus().then(setIntegrations)
+    fetchRestreamStatus().then(setRestream).catch(() => null)
+    fetchYouTubeStatus().then(setYoutube).catch(() => null)
+  }, [])
 
-  const updateKey = (plat, field, value) => {
-    setKeys(k => ({ ...k, [plat]: { ...k[plat], [field]: value } }))
+  const connectYouTube = async () => {
+    setYtLoading(true)
+    try {
+      const url = await getYouTubeAuthUrl()
+      window.location.href = url
+    } catch (e) {
+      alert(e.message)
+      setYtLoading(false)
+    }
   }
 
-  const copyText = (text, id) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(id)
-      setTimeout(() => setCopied(''), 2000)
-    })
-  }
-
-  const hasAnyKey = PLATFORMS.some(p => keys[p.id]?.streamKey)
+  const canLiveWithoutObs = integrations?.liveWithoutObs
+  const restreamReady = restream?.configured && restream?.ingest?.hasStreamKey
 
   return (
     <div className={styles.panel}>
+      {integrations && (
+        <div className={styles.integrationBar}>
+          <span className={integrations.restream ? styles.dotOn : styles.dotOff} title="Restream" />
+          <span className={integrations.livepeer ? styles.dotOn : styles.dotOff} title="Livepeer" />
+          <span className={integrations.youtube ? styles.dotOn : styles.dotOff} title="YouTube API" />
+          <span className={styles.integrationLabel}>
+            {canLiveWithoutObs ? 'En vivo sin OBS' : 'Configura Restream + Livepeer'}
+          </span>
+        </div>
+      )}
+
       <div className={styles.platGrid}>
         {PLATFORMS.map(p => (
           <button
@@ -57,48 +76,48 @@ export default function LiveStreamPanel({ liveOn, activePlats, onTogglePlat, onG
         ))}
       </div>
 
-      <button type="button" className={styles.configToggle} onClick={() => setExpanded(e => e ? null : 'keys')}>
-        <i className="ti ti-key" />
-        Claves de transmisión (RTMP)
-        <i className={`ti ti-chevron-${expanded ? 'up' : 'down'}`} />
-      </button>
-
-      {expanded && PLATFORMS.map(p => (
-        <div key={p.id} className={styles.keyBlock}>
-          <div className={styles.keyTitle} style={{ color: p.color }}>
-            <i className={`ti ${p.icon}`} /> {p.label}
-          </div>
-          <label className={styles.keyLabel}>URL del servidor</label>
-          <div className={styles.keyRow}>
-            <input
-              value={keys[p.id]?.serverUrl || p.rtmpHint}
-              onChange={e => updateKey(p.id, 'serverUrl', e.target.value)}
-              placeholder={p.rtmpHint}
-            />
-            <button type="button" onClick={() => copyText(keys[p.id]?.serverUrl || p.rtmpHint, `${p.id}-url`)}>
-              <i className={`ti ${copied === `${p.id}-url` ? 'ti-check' : 'ti-copy'}`} />
-            </button>
-          </div>
-          <label className={styles.keyLabel}>Stream key</label>
-          <div className={styles.keyRow}>
-            <input
-              type="password"
-              value={keys[p.id]?.streamKey || ''}
-              onChange={e => updateKey(p.id, 'streamKey', e.target.value)}
-              placeholder="Pega tu stream key aquí"
-            />
-            <button type="button" onClick={() => copyText(keys[p.id]?.streamKey || '', `${p.id}-key`)}>
-              <i className={`ti ${copied === `${p.id}-key` ? 'ti-check' : 'ti-copy'}`} />
-            </button>
-          </div>
+      {restreamReady && restream.channels?.length > 0 && (
+        <div className={styles.channelList}>
+          <span className={styles.channelTitle}>Canales Restream conectados</span>
+          {restream.channels.slice(0, 6).map(ch => (
+            <span key={ch.id || ch.platform} className={styles.channelChip}>
+              {ch.name || ch.platform}
+            </span>
+          ))}
         </div>
-      ))}
+      )}
+
+      <div className={styles.youtubeRow}>
+        <div>
+          <strong><i className="ti ti-brand-youtube" /> YouTube VOD</strong>
+          <p>{youtube?.connected ? `Conectado: ${youtube.channelTitle}` : 'Conecta para publicar grabaciones automáticamente'}</p>
+        </div>
+        {!youtube?.connected && integrations?.youtube && (
+          <button type="button" className={styles.ytBtn} onClick={connectYouTube} disabled={ytLoading}>
+            {ytLoading ? '...' : 'Conectar'}
+          </button>
+        )}
+        {youtube?.connected && <span className={styles.ytOk}><i className="ti ti-check" /></span>}
+      </div>
+
+      {liveError && (
+        <div className={styles.liveError}><i className="ti ti-alert-circle" /> {liveError}</div>
+      )}
+
+      {liveStatus && liveOn && (
+        <div className={styles.liveStatus}><i className="ti ti-broadcast" /> {liveStatus}</div>
+      )}
 
       <div className={styles.actions}>
         {!liveOn ? (
-          <button type="button" className={styles.goLiveBtn} onClick={onGoLive} disabled={activePlats.length === 0}>
+          <button
+            type="button"
+            className={styles.goLiveBtn}
+            onClick={onGoLive}
+            disabled={activePlats.length === 0}
+          >
             <i className="ti ti-broadcast" />
-            {hasAnyKey ? 'Preparar en vivo (OBS)' : 'Ir en vivo (demo)'}
+            {canLiveWithoutObs ? 'Ir en vivo (sin OBS)' : 'Ir en vivo (demo)'}
           </button>
         ) : (
           <button type="button" className={styles.stopBtn} onClick={onStopLive}>
@@ -107,15 +126,17 @@ export default function LiveStreamPanel({ liveOn, activePlats, onTogglePlat, onG
         )}
       </div>
 
-      {liveOn && hasAnyKey && (
+      {!canLiveWithoutObs && (
         <div className={styles.obsHelp}>
-          <strong><i className="ti ti-info-circle" /> Conectar con OBS Studio</strong>
-          <ol>
-            <li>Abre OBS → Configuración → Emisión → Servicio: Personalizado</li>
-            <li>Pega la URL y stream key de la plataforma activa</li>
-            <li>Fuente: <em>Captura de ventana</em> → selecciona PodcastStudio</li>
-            <li>Inicia transmisión en OBS</li>
-          </ol>
+          <strong><i className="ti ti-info-circle" /> Transmisión real sin OBS</strong>
+          <p>Añade en Vercel: <code>RESTREAM_API_TOKEN</code> y <code>LIVEPEER_API_KEY</code>. Restream multistreama a YouTube, Facebook, TikTok e Instagram.</p>
+        </div>
+      )}
+
+      {liveOn && canLiveWithoutObs && (
+        <div className={styles.obsHelp}>
+          <strong><i className="ti ti-check" /> Transmitiendo</strong>
+          <p>Tu señal sale por WebRTC → Livepeer → Restream → redes seleccionadas. No necesitas OBS.</p>
         </div>
       )}
     </div>

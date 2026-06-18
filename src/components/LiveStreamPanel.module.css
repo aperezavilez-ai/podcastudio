@@ -141,3 +141,107 @@
 }
 
 .obsHelp em { color: var(--accent); font-style: normal; }
+
+.integrationBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+}
+
+.dotOn, .dotOff {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.dotOn { background: var(--green); box-shadow: 0 0 6px rgba(29,158,117,0.5); }
+.dotOff { background: var(--border-3); }
+
+.integrationLabel {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+
+.channelList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.channelTitle {
+  width: 100%;
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.channelChip {
+  font-size: 9px;
+  padding: 3px 7px;
+  border-radius: 99px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  color: var(--text-secondary);
+}
+
+.youtubeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+}
+
+.youtubeRow strong {
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.youtubeRow p {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.ytBtn {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ytOk { color: var(--green); font-size: 16px; }
+
+.liveError {
+  font-size: 10px;
+  color: var(--red);
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--red-dim);
+}
+
+.liveStatus {
+  font-size: 10px;
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.obsHelp p { margin: 4px 0 0; }
+.obsHelp code { font-size: 9px; color: var(--accent); }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useWebcam } from '../hooks/useWebcam.js'
 import { useRecorder } from '../hooks/useRecorder.js'
 import { useAI } from '../hooks/useAI.js'
@@ -27,6 +27,9 @@ import { useTeleprompter } from '../hooks/useTeleprompter.js'
 import { useAIProducer, applyAIProducerPlan } from '../hooks/useAIProducer.js'
 import { useSpeechSubtitles } from '../hooks/useSpeechSubtitles.js'
 import { notifyRecordingReady, notifyLiveStarted } from '../lib/notifications.js'
+import { useMuxUpload } from '../hooks/useMuxUpload.js'
+import { useLiveBroadcast } from '../hooks/useLiveBroadcast.js'
+import { fetchCloudRecordings, fetchIntegrationStatus, publishToYouTube } from '../lib/integrations.js'
 import styles from './Studio.module.css'
 
 const ROTATION_PRESETS = CINTILLO_PRESETS.filter(p => ['topic', 'guest', 'social', 'contact'].includes(p.id))
@@ -42,6 +45,7 @@ const POS_MAP = {
 
 export default function Studio({ project, user }) {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     devices, streams, cameraMeta, activeCamera, setActiveCamera, error: camError, setError: setCamError,
     micLevel, bluetoothSupported, wifiConnecting, btScanning, wifiPresets,
@@ -59,7 +63,12 @@ export default function Studio({ project, user }) {
   const [subtitlesOn, setSubtitlesOn] = useState(false)
 
   const [tab, setTab] = useState('studio')
-  const [liveOn, setLiveOn] = useState(false)
+  const { uploadRecording } = useMuxUpload()
+  const { liveOn, status: liveStatus, error: liveError, start: startLive, startDemo, stop: stopLive, setError: setLiveError } = useLiveBroadcast()
+  const [integrations, setIntegrations] = useState(null)
+  const [cloudRecordings, setCloudRecordings] = useState([])
+  const [muxUploading, setMuxUploading] = useState(false)
+  const [uploadMsg, setUploadMsg] = useState('')
   const [activePlats, setActivePlats] = useState([])
   const [autoCintillos, setAutoCintillos] = useState(true)
   const [cintDisplaySec, setCintDisplaySec] = useState(6)
@@ -256,7 +265,20 @@ export default function Studio({ project, user }) {
     return () => clearInterval(id)
   }, [initialized])
 
-  // Simulate viewer counts when live
+  useEffect(() => {
+    fetchIntegrationStatus().then(setIntegrations)
+    if (user?.id) {
+      fetchCloudRecordings().then(setCloudRecordings).catch(() => {})
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    const yt = searchParams.get('youtube')
+    if (!yt) return
+    if (yt === 'connected') setUploadMsg('YouTube conectado correctamente')
+    if (yt === 'error') setUploadMsg('No se pudo conectar YouTube')
+    setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams])
   useEffect(() => {
     if (!liveOn) { setViewers({ facebook: 0, youtube: 0, tiktok: 0, instagram: 0 }); return }
     const int = setInterval(() => {
@@ -301,7 +323,7 @@ export default function Studio({ project, user }) {
   }
 
   const handleStopRecord = () => {
-    stopRecording((rec) => {
+    stopRecording(async (rec) => {
       if (user?.email) {
         notifyRecordingReady(user, {
           podcastName: proj.name,
@@ -310,20 +332,75 @@ export default function Studio({ project, user }) {
           fileName: rec.name,
         })
       }
+      if (integrations?.mux && user?.id) {
+        setMuxUploading(true)
+        setUploadMsg('Subiendo a Mux…')
+        const result = await uploadRecording(rec, {
+          title: proj.episodeTitle || proj.name || 'Episodio',
+        })
+        setMuxUploading(false)
+        if (result.ok) {
+          setUploadMsg('Subida a Mux iniciada. Se publicará en YouTube cuando esté lista.')
+          fetchCloudRecordings().then(setCloudRecordings).catch(() => {})
+        } else {
+          setUploadMsg(result.error || 'Error al subir a Mux')
+        }
+      }
     })
     teleprompter.setRecordingActive(false)
   }
 
-  const handleLive = () => {
-    if (liveOn) { setLiveOn(false); return }
-    if (activePlats.length === 0) { setActivePlats(['youtube', 'facebook']); }
-    setLiveOn(true)
-    if (user?.email) {
-      notifyLiveStarted(user, {
-        podcastName: proj.name,
-        platforms: activePlats.length ? activePlats : ['youtube', 'facebook'],
-      })
+  const handleLive = async () => {
+    if (liveOn) {
+      await stopLive()
+      return
     }
+    if (activePlats.length === 0) setActivePlats(['youtube', 'facebook'])
+
+    if (!integrations?.liveWithoutObs) {
+      startDemo()
+      if (user?.email) {
+        notifyLiveStarted(user, {
+          podcastName: proj.name,
+          platforms: activePlats,
+        })
+      }
+      return
+    }
+
+    const videoStream = getProgramStream()
+    if (!videoStream) {
+      setLiveError('Conecta una cámara antes de transmitir')
+      return
+    }
+
+    try {
+      let stream = videoStream
+      try {
+        stream = await buildRecordingStream(videoStream, {
+          micStream: getMicStream(),
+          musicEl: getAudioElement(),
+          musicVolume: musicVol,
+          musicPlaying,
+        })
+      } catch { /* video only */ }
+
+      await startLive(stream, proj.episodeTitle || proj.name || 'PodcastStudio Live')
+
+      if (user?.email) {
+        notifyLiveStarted(user, {
+          podcastName: proj.name,
+          platforms: activePlats,
+        })
+      }
+    } catch (e) {
+      setLiveError(e.message || 'No se pudo iniciar transmisión')
+      await stopLive()
+    }
+  }
+
+  const handleStopLive = async () => {
+    await stopLive()
   }
 
   const showCintillo = (preset) => {
@@ -617,13 +694,51 @@ export default function Studio({ project, user }) {
         {/* RECORDINGS TAB */}
         {tab === 'recordings' && (
           <div className={styles.stage} style={{ padding: 24, overflowY: 'auto' }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>Grabaciones</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Grabaciones</div>
+            {(uploadMsg || muxUploading) && (
+              <div style={{ fontSize: 11, color: muxUploading ? 'var(--accent)' : 'var(--text-secondary)', marginBottom: 12 }}>
+                {muxUploading ? <><i className="ti ti-loader" style={{ animation: 'spin 1s linear infinite' }} /> {uploadMsg}</> : uploadMsg}
+              </div>
+            )}
             {converting && (
               <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
                 Convirtiendo a MP4… {convertProgress}%
               </div>
             )}
-            {recordings.length === 0
+            {cloudRecordings.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>En la nube (Mux / YouTube)</div>
+                {cloudRecordings.map(cr => (
+                  <div key={cr.id} className={styles.recItem}>
+                    <i className="ti ti-cloud-upload" style={{ fontSize: 20, color: 'var(--green)' }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500 }}>{cr.title || cr.file_name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {cr.status}
+                        {cr.youtube_video_id && ' · YouTube publicado'}
+                      </div>
+                    </div>
+                    {cr.status === 'ready' && !cr.youtube_video_id && integrations?.youtube && (
+                      <button type="button" className={styles.dlBtn} onClick={async () => {
+                        try {
+                          await publishToYouTube(cr.id)
+                          setUploadMsg('Publicado en YouTube')
+                          fetchCloudRecordings().then(setCloudRecordings)
+                        } catch (e) { setUploadMsg(e.message) }
+                      }}>
+                        <i className="ti ti-brand-youtube" /> Publicar
+                      </button>
+                    )}
+                    {cr.mux_playback_id && (
+                      <a className={styles.dlBtn} href={`https://stream.mux.com/${cr.mux_playback_id}`} target="_blank" rel="noreferrer">
+                        <i className="ti ti-player-play" /> Ver
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+            {recordings.length === 0 && cloudRecordings.length === 0
               ? <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)', fontSize: 13 }}>
                   <i className="ti ti-video" style={{ fontSize: 32, display: 'block', marginBottom: 8 }} />
                   Aún no hay grabaciones. Usa el botón Grabar en el estudio.
@@ -768,10 +883,12 @@ export default function Studio({ project, user }) {
             <div className={styles.prTitle}>Transmisión en vivo</div>
             <LiveStreamPanel
               liveOn={liveOn}
+              liveStatus={liveStatus}
+              liveError={liveError}
               activePlats={activePlats}
               onTogglePlat={togglePlat}
               onGoLive={handleLive}
-              onStopLive={() => setLiveOn(false)}
+              onStopLive={handleStopLive}
             />
           </div>
 
