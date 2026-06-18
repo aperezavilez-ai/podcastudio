@@ -34,7 +34,10 @@ export function resolveCintilloText(presetId, project) {
 }
 
 export function getRotationPresets(project) {
-  return CINTILLO_ROTATION_ORDER
+  const order = project?.cintilloRotation?.length
+    ? project.cintilloRotation
+    : CINTILLO_ROTATION_ORDER
+  return order
     .map(id => CINTILLO_PRESETS.find(p => p.id === id))
     .filter(preset => {
       if (!preset) return false

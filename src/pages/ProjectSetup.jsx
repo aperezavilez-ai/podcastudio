@@ -10,6 +10,7 @@ import { CINTILLO_SETUP_TYPES } from '../config/cintilloPresets.js'
 import { saveProject } from '../lib/projects.js'
 import { notifyProjectReady } from '../lib/notifications.js'
 import { useAI } from '../hooks/useAI.js'
+import { applyAIProducerPlan } from '../hooks/useAIProducer.js'
 import TeleprompterDocUpload from '../components/TeleprompterDocUpload.jsx'
 
 const CINTILLO_POSITIONS = [
@@ -43,7 +44,7 @@ export default function ProjectSetup({ user, onProject }) {
   const navigate = useNavigate()
   const [step, setStep] = useState(0)
   const [project, setProject] = useState({
-    name: '', episodeTitle: '', guestName: '', guestRole: '',
+    name: '', episodeTitle: '', guestName: '', guestRole: '', eventDescription: '',
     teleprompterScript: '',
     logoFile: null, logoUrl: null, logoPosition: 'tr',
     cintillos: { guest: '', topic: '', promo: '', social: '', contact: '' },
@@ -59,7 +60,7 @@ export default function ProjectSetup({ user, onProject }) {
   })
   const fileRef = useRef()
   const bgFileRef = useRef()
-  const { formatTeleprompterDocument, loadingScript, aiConfigured } = useAI()
+  const { formatTeleprompterDocument, analyzeEventWithAI, loadingScript, loadingProducer, aiConfigured } = useAI()
 
   const upd = (k, v) => setProject(p => ({ ...p, [k]: v }))
   const updCint = (k, v) => setProject(p => ({ ...p, cintillos: { ...p.cintillos, [k]: v } }))
@@ -79,13 +80,18 @@ export default function ProjectSetup({ user, onProject }) {
   }
 
   const finish = async () => {
+    let finalProject = { ...project }
+    if (aiConfigured && (project.episodeTitle || project.name)) {
+      const plan = await analyzeEventWithAI(project)
+      if (plan) finalProject = applyAIProducerPlan(project, plan)
+    }
     try {
-      await saveProject(user?.id, project)
+      await saveProject(user?.id, finalProject)
     } catch (e) {
       console.error('Save project:', e)
     }
-    onProject(project)
-    if (user?.email) notifyProjectReady(user, project)
+    onProject(finalProject)
+    if (user?.email) notifyProjectReady(user, finalProject)
     navigate('/studio')
   }
 
@@ -141,6 +147,20 @@ export default function ProjectSetup({ user, onProject }) {
                     <input value={project.guestRole} onChange={e => upd('guestRole', e.target.value)} placeholder="CEO · TechCo LATAM" />
                   </div>
                 </div>
+                <div className={styles.field}>
+                  <label>De qué trata el episodio</label>
+                  <textarea
+                    value={project.eventDescription}
+                    onChange={e => upd('eventDescription', e.target.value)}
+                    placeholder="Ej: Entrevista sobre IA en negocios, tono profesional, público emprendedores..."
+                    rows={3}
+                  />
+                </div>
+                {aiConfigured && (
+                  <p className={styles.aiNote}>
+                    <i className="ti ti-sparkles" /> La IA usará estos datos para cintillos, música, subtítulos y cambio de cámaras automático.
+                  </p>
+                )}
                 <div className={styles.field}>
                   <label>Formato de grabación</label>
                   <div className={styles.fmtPicker}>
@@ -388,8 +408,10 @@ export default function ProjectSetup({ user, onProject }) {
               ? <button className={styles.btnNext} onClick={() => setStep(s => s + 1)}>
                   {step === 3 ? 'Revisar configuración' : 'Continuar'} <i className="ti ti-arrow-right" />
                 </button>
-              : <button className={styles.btnFinish} onClick={finish}>
-                  <i className="ti ti-player-play" /> Abrir el estudio
+              : <button className={styles.btnFinish} onClick={finish} disabled={loadingProducer}>
+                  {loadingProducer
+                    ? <><i className="ti ti-loader" style={{ animation: 'spin 1s linear infinite' }} /> IA preparando episodio...</>
+                    : <><i className="ti ti-player-play" /> Abrir el estudio</>}
                 </button>
             }
           </div>

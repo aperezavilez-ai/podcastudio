@@ -91,11 +91,27 @@ export function useBackgroundMusic(tracks, initialVolume = 30) {
     setPlaying(true)
   }, [tracks.length])
 
+  const selectTrack = useCallback((index) => {
+    if (index < 0 || index >= tracks.length) return
+    setTrackIndex(index)
+  }, [tracks.length])
+
+  const selectTrackById = useCallback((id, autoPlay = false) => {
+    const idx = tracks.findIndex(t => t.id === id)
+    if (idx >= 0) {
+      setTrackIndex(idx)
+      if (autoPlay) setPlaying(true)
+    }
+  }, [tracks])
+
   return {
     trackIndex,
     playing,
     toggle,
     nextTrack,
+    selectTrack,
+    selectTrackById,
+    setPlaying,
     volume,
     setVolume,
     loading,

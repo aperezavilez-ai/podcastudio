@@ -52,6 +52,24 @@
   cursor: pointer;
 }
 .aiChip { cursor: pointer; }
+
+.producerChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgba(157, 140, 232, 0.12);
+  border: 1px solid rgba(157, 140, 232, 0.35);
+  border-radius: 5px;
+  padding: 3px 8px;
+  font-size: 9px;
+  color: #c4b5fd;
+  font-weight: 600;
+}
+
 .aiInfoBar {
   background: rgba(157, 140, 232, 0.08);
   border-bottom: 1px solid rgba(157, 140, 232, 0.2);

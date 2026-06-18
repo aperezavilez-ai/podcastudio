@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 
+import { MUSIC_TRACKS, MUSIC_GENRES } from '../config/musicTracks.js'
+
 async function callAI(prompt, systemPrompt = '') {
   const res = await fetch('/api/ai', {
     method: 'POST',
@@ -15,6 +17,7 @@ export function useAI() {
   const [loadingPosts, setLoadingPosts] = useState(false)
   const [loadingCintillo, setLoadingCintillo] = useState(false)
   const [loadingScript, setLoadingScript] = useState(false)
+  const [loadingProducer, setLoadingProducer] = useState(false)
   const [posts, setPosts] = useState(null)
   const [error, setError] = useState('')
   const [aiConfigured, setAiConfigured] = useState(false)
@@ -103,6 +106,59 @@ Escribe SOLO el guion, sin títulos. Tono conversacional, como si hablaras a cá
     }
   }, [])
 
+  const analyzeEventWithAI = useCallback(async (project) => {
+    setLoadingProducer(true)
+    setError('')
+    const trackIds = MUSIC_TRACKS.map(t => t.id).join(', ')
+    const genres = Object.entries(MUSIC_GENRES).map(([k, v]) => `${k}=${v}`).join(', ')
+    try {
+      const prompt = `Eres la productora IA de un estudio de podcast profesional en español latinoamericano.
+Analiza este evento/episodio y genera la configuración automática del estudio.
+
+Datos del evento:
+- Podcast: ${project.name || 'Sin nombre'}
+- Episodio: ${project.episodeTitle || 'Sin título'}
+- Invitado: ${project.guestName || 'N/A'}
+- Cargo: ${project.guestRole || 'N/A'}
+- Descripción: ${project.eventDescription || project.episodeTitle || 'Podcast general'}
+- Guion existente: ${(project.teleprompterScript || '').slice(0, 2000) || 'ninguno'}
+
+Géneros musicales disponibles: ${genres}
+IDs de pista musical: ${trackIds}
+
+Responde SOLO JSON válido sin backticks:
+{
+  "genre": "tech|business|interview|comedy|news|wellness|sports|culture|education|marketing|crime|general",
+  "musicTrackId": "id de la lista anterior",
+  "musicVolume": 18-35,
+  "cintillos": {
+    "topic": "texto cintillo tema max 60 chars",
+    "guest": "nombre y cargo invitado max 60 chars",
+    "social": "handle redes max 40 chars",
+    "contact": "contacto o CTA max 50 chars",
+    "promo": "promo opcional max 50 chars"
+  },
+  "cintilloRotation": ["topic","guest","social","contact"],
+  "subtitlesEnabled": true,
+  "subtitleLanguage": "es-MX",
+  "directorMode": "ai",
+  "autoCintillos": true,
+  "teleprompterScript": "guion corto 150-400 palabras si no hay guion, o vacío si ya hay uno bueno",
+  "producerSummary": "una frase de qué hará la IA en este episodio"
+}`
+      const raw = await callAI(prompt, 'Responde únicamente JSON válido. Sin markdown.')
+      const clean = raw.replace(/```json|```/g, '').trim()
+      const parsed = JSON.parse(clean)
+      if (!parsed.cintillos) throw new Error('Respuesta IA incompleta')
+      return parsed
+    } catch (e) {
+      setError(e.message || 'Error al analizar el evento')
+      return null
+    } finally {
+      setLoadingProducer(false)
+    }
+  }, [])
+
   const generatePosts = useCallback(async ({ podcast, topic, guest, role, description, platforms }) => {
     setLoadingPosts(true)
     setPosts(null)
@@ -145,7 +201,8 @@ Incluye SOLO las plataformas: ${platList}`
 
   return {
     generateCintillo, generateTeleprompterScript, formatTeleprompterDocument, generatePosts,
-    loadingPosts, loadingCintillo, loadingScript,
+    analyzeEventWithAI,
+    loadingPosts, loadingCintillo, loadingScript, loadingProducer,
     posts, setPosts, error, aiConfigured, checkAIStatus,
   }
 }

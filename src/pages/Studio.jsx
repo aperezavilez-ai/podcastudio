@@ -12,7 +12,7 @@ import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
 import { CINTILLO_PRESETS } from '../config/cintilloPresets.js'
 import { useCintilloRotation } from '../hooks/useCintilloRotation.js'
-import { MUSIC_TRACKS } from '../config/musicTracks.js'
+import { MUSIC_TRACKS, MUSIC_GENRES } from '../config/musicTracks.js'
 import { useBackgroundMusic } from '../hooks/useBackgroundMusic.js'
 import { useAutoSwitcher } from '../hooks/useAutoSwitcher.js'
 import { useAIDirector } from '../hooks/useAIDirector.js'
@@ -24,7 +24,10 @@ import Teleprompter from '../components/Teleprompter.jsx'
 import TeleprompterDocUpload from '../components/TeleprompterDocUpload.jsx'
 import TeleprompterOverlay from '../components/TeleprompterOverlay.jsx'
 import LiveStreamPanel from '../components/LiveStreamPanel.jsx'
+import SubtitleOverlay from '../components/SubtitleOverlay.jsx'
 import { useTeleprompter } from '../hooks/useTeleprompter.js'
+import { useAIProducer, applyAIProducerPlan } from '../hooks/useAIProducer.js'
+import { useSpeechSubtitles } from '../hooks/useSpeechSubtitles.js'
 import { notifyRecordingReady, notifyLiveStarted } from '../lib/notifications.js'
 import styles from './Studio.module.css'
 
@@ -49,9 +52,13 @@ export default function Studio({ project, user }) {
     scanBluetoothCamera, connectBluetoothWifiStream, startPreferredMic, switchMic, selectedMicId, micLabel, getMicStream,
   } = useWebcam()
   const { recording, duration, recordings, converting, convertProgress, startRecording, stopRecording, downloadRecording, downloadRecordingMp4, formatDuration } = useRecorder()
-  const { generateCintillo, generateTeleprompterScript, formatTeleprompterDocument, loadingCintillo, loadingScript, aiConfigured, checkAIStatus } = useAI()
+  const { generateCintillo, generateTeleprompterScript, formatTeleprompterDocument, analyzeEventWithAI, loadingCintillo, loadingScript, loadingProducer, aiConfigured, checkAIStatus } = useAI()
+  const { runProducer, shouldAutoRun, markRan } = useAIProducer({ analyzeEventWithAI, aiConfigured })
   const [showAiInfo, setShowAiInfo] = useState(false)
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
+  const [enrichedProject, setEnrichedProject] = useState(null)
+  const [producerStatus, setProducerStatus] = useState('')
+  const [subtitlesOn, setSubtitlesOn] = useState(false)
 
   const [tab, setTab] = useState('studio')
   const [liveOn, setLiveOn] = useState(false)
@@ -62,14 +69,14 @@ export default function Studio({ project, user }) {
     trackIndex: musicTrack, playing: musicPlaying, toggle: toggleMusic,
     nextTrack: nextMusicTrack, volume: musicVol, setVolume: setMusicVol,
     loading: musicLoading, error: musicError, currentTrack: currentMusic,
-    getAudioElement,
+    getAudioElement, selectTrackById, setPlaying: setMusicPlaying,
   } = useBackgroundMusic(MUSIC_TRACKS, 30)
   const [countdown, setCountdown] = useState(null)
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState('')
   const [viewers, setViewers] = useState({ facebook: 0, youtube: 0, tiktok: 0, instagram: 0 })
   const [camSlot, setCamSlot] = useState(0)
-  const [switchMode, setSwitchMode] = useState('timer') // off | timer | ai
+  const [switchMode, setSwitchMode] = useState('ai')
   const [switchInterval, setSwitchInterval] = useState(8)
   const [showCintForm, setShowCintForm] = useState(false)
   const [cintFormText, setCintFormText] = useState('')
@@ -99,13 +106,20 @@ export default function Studio({ project, user }) {
   const compositeStreamRef = useRef()
   const initRanRef = useRef(false)
 
-  const proj = project || {
+  const proj = enrichedProject || project || {
     name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
     logoPosition: 'tr', logoUrl: null, format: '16:9', cintillos: {},
     cintilloStyle: 'classic', cintilloPosition: 'bl',
     backgroundTemplate: 'podcast-dark', customBackgroundUrl: null,
     chromaEnabled: false, chromaSimilarity: 45, chromaSmoothness: 20, cameraScale: 100,
+    subtitlesEnabled: false, subtitleLanguage: 'es-MX', directorMode: 'ai', autoCintillos: true,
   }
+
+  const subtitleLang = proj.subtitleLanguage || 'es-MX'
+  const { displayText: subtitleText, interim: subtitleInterim, supported: subtitlesSupported } = useSpeechSubtitles({
+    enabled: subtitlesOn && (recording || liveOn),
+    language: subtitleLang,
+  })
 
   const {
     cintillo, animPhase, animKey, showManual, showCustom, hide: hideCintillo,
@@ -174,6 +188,15 @@ export default function Studio({ project, user }) {
 
   useEffect(() => {
     if (!project) return
+    setEnrichedProject(prev => {
+      if (prev?.aiPlanAt && project.aiPlanAt === prev.aiPlanAt) return prev
+      return project.aiPlan ? applyAIProducerPlan(project, project.aiPlan) : null
+    })
+    if (project.subtitlesEnabled) setSubtitlesOn(true)
+    if (project.directorMode === 'ai') setSwitchMode('ai')
+    if (project.autoCintillos != null) setAutoCintillos(project.autoCintillos)
+    if (project.musicVolume != null) setMusicVol(project.musicVolume)
+    if (project.musicTrackId) selectTrackById(project.musicTrackId)
     if (project.backgroundTemplate) setBackgroundTemplate(project.backgroundTemplate)
     if (project.customBackgroundUrl) setCustomBackgroundUrl(project.customBackgroundUrl)
     if (project.chromaEnabled != null) setChromaEnabled(project.chromaEnabled)
@@ -226,6 +249,36 @@ export default function Studio({ project, user }) {
     }
     init()
   }, [])
+
+  // IA Productora: analiza el evento y configura cintillos, música, director y subtítulos
+  useEffect(() => {
+    if (!initialized || !project || !aiConfigured) return
+
+    const applyPlan = (result) => {
+      if (!result?.plan) return
+      setEnrichedProject(result.project)
+      if (result.music?.id) selectTrackById(result.music.id, true)
+      if (result.plan.musicVolume != null) setMusicVol(result.plan.musicVolume)
+      if (result.plan.subtitlesEnabled) setSubtitlesOn(true)
+      if (result.plan.directorMode === 'ai') setSwitchMode('ai')
+      if (result.plan.autoCintillos != null) setAutoCintillos(result.plan.autoCintillos)
+      if (result.plan.teleprompterScript?.trim() && !project.teleprompterScript?.trim()) {
+        teleprompter.setScript(result.plan.teleprompterScript)
+        teleprompter.setVisible(true)
+      }
+      setProducerStatus(result.plan.producerSummary || 'IA productora activa')
+    }
+
+    if (project.aiPlan?.producerSummary) {
+      applyPlan({ project: applyAIProducerPlan(project, project.aiPlan), plan: project.aiPlan, music: null })
+      return
+    }
+
+    if (!shouldAutoRun(project)) return
+    markRan()
+    setProducerStatus('Analizando evento con IA...')
+    runProducer(project).then(applyPlan)
+  }, [initialized, project, aiConfigured])
 
   // Re-scan for newly plugged cameras
   useEffect(() => {
@@ -382,6 +435,12 @@ export default function Studio({ project, user }) {
           )}
         </div>
         <div className={styles.topRight}>
+          {producerStatus && aiConfigured && (
+            <div className={styles.producerChip} title="IA Productora">
+              <i className="ti ti-robot" style={{ fontSize: 9 }} />
+              {loadingProducer ? 'IA preparando...' : producerStatus.slice(0, 42)}
+            </div>
+          )}
           {initialized && (
             <button
               type="button"
@@ -492,6 +551,11 @@ export default function Studio({ project, user }) {
                     onMaxScrollChange={teleprompter.setMaxScroll}
                   />
                 )}
+                <SubtitleOverlay
+                  text={subtitleText}
+                  interim={subtitleInterim}
+                  visible={subtitlesOn && subtitlesSupported && (recording || liveOn)}
+                />
               </div>
             </div>
 
@@ -894,6 +958,34 @@ export default function Studio({ project, user }) {
           </div>{/* panelScroll */}
 
           <div className={styles.panelFooter}>
+          {aiConfigured && (
+            <div className={styles.prSection}>
+              <div className={styles.prTitle}>
+                IA Productora
+                <span className={styles.aiChipSm}><i className="ti ti-robot" /> Auto</span>
+              </div>
+              <p className={styles.autoCintHint}>
+                {producerStatus || 'Director IA, cintillos y música se configuran solos según tu evento.'}
+              </p>
+              <label className={styles.autoCintToggle}>
+                <input type="checkbox" checked={switchMode === 'ai'} onChange={e => setSwitchMode(e.target.checked ? 'ai' : 'off')} />
+                Director IA de cámaras
+              </label>
+              <label className={styles.autoCintToggle}>
+                <input type="checkbox" checked={autoCintillos} onChange={e => setAutoCintillos(e.target.checked)} />
+                Cintillos automáticos
+              </label>
+              <label className={styles.autoCintToggle}>
+                <input
+                  type="checkbox"
+                  checked={subtitlesOn}
+                  disabled={!subtitlesSupported}
+                  onChange={e => setSubtitlesOn(e.target.checked)}
+                />
+                Subtítulos en vivo {subtitlesSupported ? '' : '(Chrome/Edge)'}
+              </label>
+            </div>
+          )}
           {/* MUSIC */}
           <div className={styles.prSection}>
             <div className={styles.prTitle}>Música sin copyright</div>
@@ -904,7 +996,9 @@ export default function Studio({ project, user }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className={styles.musicTitle}>{currentMusic.name}</div>
                 <div className={styles.musicSub}>
+                  {proj.podcastGenre && `${MUSIC_GENRES[proj.podcastGenre] || proj.podcastGenre} · `}
                   {musicPlaying ? 'Reproduciendo...' : musicError || currentMusic.sub}
+                  {proj.aiPlan && !musicPlaying ? ' · elegida por IA' : ''}
                 </div>
               </div>
               <button className={styles.musicBtn} onClick={toggleMusic} title={musicPlaying ? 'Pausar' : 'Reproducir'}>
