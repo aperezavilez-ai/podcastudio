@@ -6,7 +6,7 @@ import Plans from './pages/Plans.jsx'
 import Tour from './pages/Tour.jsx'
 import ProjectSetup from './pages/ProjectSetup.jsx'
 import Studio from './pages/Studio.jsx'
-import { PwaInstallBanner } from './components/PwaInstall.jsx'
+import { PwaInstallBanner, PwaInstallProvider } from './components/PwaInstall.jsx'
 import { supabase, mapSupabaseUser, isSupabaseConfigured, withTimeout } from './lib/supabase.js'
 import { loadProject } from './lib/projects.js'
 
@@ -117,7 +117,7 @@ export default function App() {
   if (!authReady) return <BootScreen />
 
   return (
-    <>
+    <PwaInstallProvider>
       {bootError && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
@@ -138,6 +138,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
       <PwaInstallBanner />
-    </>
+    </PwaInstallProvider>
   )
 }

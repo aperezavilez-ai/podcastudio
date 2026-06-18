@@ -1,19 +1,58 @@
-import React, { useEffect, useState } from 'react'
-import { usePwaInstall } from '../hooks/usePwaInstall.js'
+import React, { createContext, useContext, useEffect, useState } from 'react'
+import { usePwaInstallFlow } from '../hooks/usePwaInstallFlow.js'
 import styles from './PwaInstall.module.css'
 
 const DISMISS_KEY = 'podcastudio_pwa_dismiss'
+const PwaContext = createContext(null)
+
+export function PwaInstallProvider({ children }) {
+  const flow = usePwaInstallFlow()
+  return (
+    <PwaContext.Provider value={flow}>
+      {children}
+      <PwaInstallProgress />
+    </PwaContext.Provider>
+  )
+}
+
+function usePwa() {
+  const ctx = useContext(PwaContext)
+  if (!ctx) throw new Error('PwaInstallProvider required')
+  return ctx
+}
+
+export function PwaInstallProgress() {
+  const { installing, progress } = usePwa()
+  if (!installing || !progress) return null
+
+  return (
+    <div className={styles.progressWrap} role="status" aria-live="polite" aria-label="Progreso de instalación">
+      <div className={styles.progressCard}>
+        <div className={styles.progressHeader}>
+          <i className="ti ti-download" />
+          <span>{progress.label}</span>
+          <strong>{progress.pct}%</strong>
+        </div>
+        <div className={styles.progressTrack}>
+          <div
+            className={styles.progressFill}
+            style={{ width: `${progress.pct}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function PwaInstallBanner() {
-  const { canInstall, installed, showIosHint, install } = usePwaInstall()
+  const { canInstall, installed, showIosHint, installing, runInstall } = usePwa()
   const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_KEY) === '1')
-  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (installed) localStorage.removeItem(DISMISS_KEY)
   }, [installed])
 
-  if (installed || dismissed) return null
+  if (installed || dismissed || installing) return null
   if (!canInstall && !showIosHint) return null
 
   const dismiss = () => {
@@ -21,14 +60,8 @@ export function PwaInstallBanner() {
     setDismissed(true)
   }
 
-  const handleInstall = async () => {
-    setLoading(true)
-    try {
-      const ok = await install()
-      if (ok) dismiss()
-    } finally {
-      setLoading(false)
-    }
+  const handleInstall = () => {
+    runInstall({ onSuccess: dismiss })
   }
 
   return (
@@ -45,8 +78,8 @@ export function PwaInstallBanner() {
         </div>
         <div className={styles.actions}>
           {canInstall && (
-            <button type="button" className={styles.installBtn} disabled={loading} onClick={handleInstall}>
-              {loading ? '...' : 'Instalar'}
+            <button type="button" className={styles.installBtn} onClick={handleInstall}>
+              Instalar
             </button>
           )}
           <button type="button" className={styles.dismissBtn} onClick={dismiss} aria-label="Cerrar">
@@ -59,28 +92,14 @@ export function PwaInstallBanner() {
 }
 
 export function PwaInstallNavButton() {
-  const { canInstall, installed, showIosHint, install } = usePwaInstall()
-  const [loading, setLoading] = useState(false)
+  const { canInstall, installed, showIosHint, installing, runInstall } = usePwa()
 
-  if (installed || (!canInstall && !showIosHint)) return null
-
-  const handleClick = async () => {
-    if (showIosHint && !canInstall) {
-      window.alert('En iPhone/iPad: pulsa Compartir en Safari y elige «Añadir a pantalla de inicio».')
-      return
-    }
-    setLoading(true)
-    try {
-      await install()
-    } finally {
-      setLoading(false)
-    }
-  }
+  if (installed || installing || (!canInstall && !showIosHint)) return null
 
   return (
-    <button type="button" className={styles.navBtn} onClick={handleClick} disabled={loading}>
+    <button type="button" className={styles.navBtn} onClick={() => runInstall()}>
       <i className="ti ti-download" />
-      {loading ? '...' : 'Instalar app'}
+      Instalar app
     </button>
   )
 }

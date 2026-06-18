@@ -1,3 +1,73 @@
+.progressWrap {
+  position: fixed;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 600;
+  width: min(360px, calc(100vw - 32px));
+  animation: slide-up 0.3s ease;
+}
+
+.progressCard {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(13, 13, 17, 0.98);
+  border: 1px solid var(--border-2);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px);
+}
+
+.progressHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.progressHeader i {
+  color: var(--accent);
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.progressHeader span {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.progressHeader strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.progressTrack {
+  height: 5px;
+  border-radius: 99px;
+  background: var(--border-2);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #c44e1f, var(--accent), #ff8a55);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 12px rgba(232, 97, 42, 0.45);
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateX(-50%) translateY(16px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 .wrap {
   position: fixed;
   bottom: max(16px, env(safe-area-inset-bottom));
