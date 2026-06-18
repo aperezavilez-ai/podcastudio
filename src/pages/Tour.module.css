@@ -164,7 +164,11 @@
   text-decoration: line-through;
 }
 
-.previewWrap { margin-bottom: 28px; }
+.previewWrap {
+  margin-bottom: 28px;
+  border-radius: 14px;
+  overflow: hidden;
+}
 
 .nav {
   display: flex;

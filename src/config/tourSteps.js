@@ -4,7 +4,7 @@ export const TOUR_STEPS = [
     icon: 'ti-video',
     title: 'Switcher de cámaras',
     description: 'Conecta cámaras USB, WiFi o Bluetooth y cambia entre planos en vivo con un clic. Ideal para entrevistas y podcasts multipersona.',
-    demoHint: 'Las miniaturas parpadean al simular un cambio de cámara.',
+    demoHint: 'Las miniaturas muestran planos reales de estudio; al usar la app verás tu cámara en vivo.',
     plans: [
       { id: 'starter', label: '2 cámaras', highlight: false },
       { id: 'pro', label: '3 cámaras', highlight: true },

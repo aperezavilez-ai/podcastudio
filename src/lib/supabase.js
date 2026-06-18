@@ -39,7 +39,9 @@ export async function checkSupabaseHealth(timeoutMs = 6000) {
       null,
     )
     if (!res) return { ok: false, reason: 'timeout' }
-    return { ok: res.ok, reason: res.ok ? null : `http_${res.status}` }
+    // Supabase responde 401 en /health sin apikey; el servicio sigue activo.
+    const reachable = res.status > 0 && res.status < 500
+    return { ok: reachable, reason: reachable ? null : `http_${res.status}` }
   } catch {
     return { ok: false, reason: 'unreachable' }
   }
