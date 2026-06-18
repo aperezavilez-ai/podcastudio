@@ -56,6 +56,15 @@
   transition: color 0.15s;
 }
 .navLinks a:hover { color: var(--text-primary); }
+.navTourLink {
+  font-size: 13px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.navTourLink:hover { color: #ff7a45; }
 .navActions { display: flex; gap: 8px; }
 .btnGhost {
   padding: 7px 16px;

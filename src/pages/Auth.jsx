@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { notifyWelcome } from '../lib/notifications.js'
 import { signIn, signUp, isSupabaseConfigured } from '../lib/projects.js'
 import { mapSupabaseUser } from '../lib/supabase.js'
+import { hasSeenTour } from '../config/tourSteps.js'
 import styles from './Auth.module.css'
 
 export default function Auth({ onAuth }) {
@@ -38,7 +39,16 @@ export default function Auth({ onAuth }) {
         onAuth(localUser)
         if (mode === 'register') notifyWelcome(localUser)
       }
-      navigate(pendingPlan ? `/plans?plan=${pendingPlan}` : '/plans')
+      const planQ = pendingPlan ? `?plan=${pendingPlan}` : ''
+      if (mode === 'register') {
+        navigate(`/tour${planQ}`)
+      } else if (pendingPlan) {
+        navigate(`/plans?plan=${pendingPlan}`)
+      } else if (!hasSeenTour()) {
+        navigate('/tour')
+      } else {
+        navigate('/plans')
+      }
     } catch (err) {
       setError(err.message || 'Error al iniciar sesión')
     } finally {
@@ -48,7 +58,7 @@ export default function Auth({ onAuth }) {
 
   const demoLogin = () => {
     onAuth({ id: 'demo', name: 'Demo User', email: 'demo@ps.com' })
-    navigate('/setup')
+    navigate('/tour')
   }
 
   return (

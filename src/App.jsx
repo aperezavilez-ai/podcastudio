@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import Landing from './pages/Landing.jsx'
 import Auth from './pages/Auth.jsx'
 import Plans from './pages/Plans.jsx'
+import Tour from './pages/Tour.jsx'
 import ProjectSetup from './pages/ProjectSetup.jsx'
 import Studio from './pages/Studio.jsx'
 import { PwaInstallBanner } from './components/PwaInstall.jsx'
@@ -62,6 +63,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/auth" element={<Auth onAuth={handleAuth} />} />
+        <Route path="/tour" element={<Tour user={user} />} />
         <Route path="/plans" element={<Plans user={user} onContinue={() => {}} />} />
         <Route path="/setup" element={<ProjectSetup user={user} onProject={handleProject} />} />
         <Route path="/studio" element={<Studio project={project} user={user} onProjectSave={handleProject} />} />

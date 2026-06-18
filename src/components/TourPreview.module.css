@@ -1,0 +1,248 @@
+.frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  max-height: 280px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #07070a;
+  border: 1px solid var(--border-2);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 10px;
+  background: #0d0d13;
+  border-bottom: 1px solid var(--border-1);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.rec {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--red);
+  font-weight: 600;
+}
+
+.recDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--red);
+  animation: pulse-dot 1.2s infinite;
+}
+
+.stage {
+  position: relative;
+  height: calc(100% - 28px - 52px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #0a0a12 0%, #12121c 100%);
+}
+
+.person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: opacity 0.4s, transform 0.4s;
+}
+
+.head {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #1e1e2a;
+  border: 2px solid #2a2a3a;
+}
+
+.body {
+  width: 72px;
+  height: 64px;
+  margin-top: -4px;
+  border-radius: 36px 36px 0 0;
+  background: #161622;
+  border: 2px solid #222232;
+  border-bottom: none;
+}
+
+.camStrip {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  height: 52px;
+  background: #0b0b10;
+  border-top: 1px solid var(--border-1);
+}
+
+.thumb {
+  flex: 1;
+  border-radius: 6px;
+  border: 1.5px solid var(--border-1);
+  background: #111118;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  color: var(--text-muted);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.thumbActive {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(232, 97, 42, 0.3);
+  color: var(--accent);
+}
+
+.cintillo {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px 12px;
+  background: rgba(6, 6, 10, 0.92);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cintAccent { width: 3px; height: 22px; background: var(--accent); border-radius: 2px; }
+.cintTag { font-size: 8px; color: var(--accent); font-weight: 700; text-transform: uppercase; }
+.cintText { font-size: 11px; color: #fff; font-weight: 500; }
+
+.teleprompter {
+  position: absolute;
+  inset: 12px 20%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.8);
+  animation: tp-scroll 8s linear infinite;
+}
+
+@keyframes tp-scroll {
+  0%, 15% { transform: translateY(20px); opacity: 0.6; }
+  50% { transform: translateY(-10px); opacity: 1; }
+  85%, 100% { transform: translateY(-30px); opacity: 0.6; }
+}
+
+.directorBadge {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(157, 140, 232, 0.4);
+  font-size: 9px;
+  color: #e9d5ff;
+}
+
+.faceBox {
+  position: absolute;
+  border: 2px solid rgba(157, 140, 232, 0.7);
+  border-radius: 4px;
+  animation: face-pulse 2s ease infinite;
+}
+
+@keyframes face-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.livePills {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.livePill {
+  font-size: 7px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: #fff;
+  letter-spacing: 0.04em;
+}
+
+.posts {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  justify-content: center;
+}
+
+.postCard {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.postCard strong {
+  display: block;
+  font-size: 9px;
+  color: var(--accent);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.exportRow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.exportBtns {
+  display: flex;
+  gap: 8px;
+}
+
+.exportBtn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  font-size: 10px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.exportBtnPrimary {
+  background: rgba(224, 80, 80, 0.12);
+  border-color: rgba(224, 80, 80, 0.35);
+  color: var(--red);
+}
+
+.badge4k {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--purple);
+  letter-spacing: 0.05em;
+}

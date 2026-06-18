@@ -81,6 +81,9 @@ export default function Landing() {
         <div className={styles.navLinks}>
           <a href="#features">Funciones</a>
           <a href="#pricing">Planes</a>
+          <button type="button" className={styles.navTourLink} onClick={() => navigate('/tour')}>
+            Cómo funciona
+          </button>
         </div>
         <div className={styles.navActions}>
           <PwaInstallNavButton />
@@ -107,8 +110,8 @@ export default function Landing() {
           <button className={styles.btnHero} onClick={() => navigate('/auth')}>
             <i className="ti ti-player-play" /> Crear estudio gratis
           </button>
-          <button className={styles.btnHeroGhost}>
-            <i className="ti ti-video" /> Ver demo
+          <button className={styles.btnHeroGhost} onClick={() => navigate('/tour')}>
+            <i className="ti ti-route" /> Ver cómo funciona
           </button>
         </div>
 

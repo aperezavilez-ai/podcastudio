@@ -73,7 +73,7 @@ export default function PlansGrid({ user, activePlanId, onSkip, compact = false 
       </div>
       {onSkip && (
         <button type="button" className={styles.skipBtn} onClick={onSkip}>
-          Continuar sin plan de pago (demo)
+          Continuar sin pagar (modo demo del estudio)
         </button>
       )}
     </div>
