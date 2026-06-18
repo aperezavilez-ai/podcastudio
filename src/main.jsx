@@ -6,7 +6,12 @@ import App from './App.jsx'
 import './styles/globals.css'
 
 if (import.meta.env.PROD) {
-  registerSW({ immediate: true })
+  registerSW({
+    immediate: true,
+    onRegisteredSW(_url, registration) {
+      registration?.update()
+    },
+  })
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

@@ -3,8 +3,47 @@ import { createClient } from '@supabase/supabase-js'
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export const supabase = url && key ? createClient(url, key) : null
+/** localStorage seguro en Safari iOS (modo privado puede lanzar excepción). */
+const safeStorage = {
+  getItem: (k) => { try { return localStorage.getItem(k) } catch { return null } },
+  setItem: (k, v) => { try { localStorage.setItem(k, v) } catch { /* noop */ } },
+  removeItem: (k) => { try { localStorage.removeItem(k) } catch { /* noop */ } },
+}
+
+export const supabase = url && key
+  ? createClient(url, key, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: safeStorage,
+    },
+  })
+  : null
 export const isSupabaseConfigured = !!supabase
+
+export function withTimeout(promise, ms, fallback) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ])
+}
+
+/** Comprueba si el proyecto Supabase responde (útil en móvil con red lenta). */
+export async function checkSupabaseHealth(timeoutMs = 6000) {
+  if (!url) return { ok: false, reason: 'not_configured' }
+  try {
+    const res = await withTimeout(
+      fetch(`${url.replace(/\/$/, '')}/auth/v1/health`, { method: 'GET' }),
+      timeoutMs,
+      null,
+    )
+    if (!res) return { ok: false, reason: 'timeout' }
+    return { ok: res.ok, reason: res.ok ? null : `http_${res.status}` }
+  } catch {
+    return { ok: false, reason: 'unreachable' }
+  }
+}
 
 export async function getAccessToken() {
   if (!supabase) return null

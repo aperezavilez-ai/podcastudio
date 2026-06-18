@@ -306,6 +306,14 @@ export default defineConfig(({ mode }) => {
       }),
       aiApiDev(env),
     ],
-    server: { port: 3000 },
+    server: {
+      port: 3000,
+      host: true,
+      strictPort: false,
+    },
+    preview: {
+      port: 3000,
+      host: true,
+    },
   }
 })

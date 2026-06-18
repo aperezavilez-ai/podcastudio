@@ -7,13 +7,50 @@ import Tour from './pages/Tour.jsx'
 import ProjectSetup from './pages/ProjectSetup.jsx'
 import Studio from './pages/Studio.jsx'
 import { PwaInstallBanner } from './components/PwaInstall.jsx'
-import { supabase, mapSupabaseUser, isSupabaseConfigured } from './lib/supabase.js'
+import { supabase, mapSupabaseUser, isSupabaseConfigured, withTimeout } from './lib/supabase.js'
 import { loadProject } from './lib/projects.js'
+
+const bootStyles = {
+  screen: {
+    minHeight: '100dvh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    padding: 24,
+    background: '#08080b',
+    color: '#e8e8f0',
+    fontFamily: 'Inter, system-ui, sans-serif',
+  },
+  logo: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    background: 'rgba(232,97,42,0.15)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#e8612a',
+    fontSize: 22,
+  },
+  muted: { color: '#8888a0', fontSize: 14, textAlign: 'center', maxWidth: 320 },
+}
+
+function BootScreen({ message }) {
+  return (
+    <div style={bootStyles.screen}>
+      <div style={bootStyles.logo}><i className="ti ti-microphone" /></div>
+      <p style={bootStyles.muted}>{message || 'Cargando PodcastStudio…'}</p>
+    </div>
+  )
+}
 
 export default function App() {
   const [user, setUser] = useState(null)
   const [project, setProject] = useState(null)
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured)
+  const [bootError, setBootError] = useState(null)
 
   useEffect(() => {
     if (!supabase) {
@@ -23,28 +60,49 @@ export default function App() {
       return
     }
 
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      const u = mapSupabaseUser(session?.user)
-      setUser(u)
-      if (u) {
-        const p = await loadProject(u.id).catch(() => null)
-        if (p) setProject(p)
-      }
-      setAuthReady(true)
-    })
+    let cancelled = false
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const u = mapSupabaseUser(session?.user)
+    async function hydrateUser(sessionUser) {
+      const u = mapSupabaseUser(sessionUser)
       setUser(u)
       if (u) {
-        const p = await loadProject(u.id).catch(() => null)
-        if (p) setProject(p)
+        loadProject(u.id).catch(() => null).then((p) => {
+          if (!cancelled && p) setProject(p)
+        })
       } else {
         setProject(null)
       }
+    }
+
+    async function initAuth() {
+      try {
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          8000,
+          { data: { session: null } },
+        )
+        if (!cancelled) {
+          await hydrateUser(session?.user)
+          setAuthReady(true)
+        }
+      } catch {
+        if (!cancelled) {
+          setBootError('No se pudo conectar con el servidor. Revisa tu conexión.')
+          setAuthReady(true)
+        }
+      }
+    }
+
+    initAuth()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      hydrateUser(session?.user)
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
   }, [])
 
   const handleAuth = (u) => {
@@ -56,10 +114,20 @@ export default function App() {
     setProject(p)
   }
 
-  if (!authReady) return null
+  if (!authReady) return <BootScreen />
 
   return (
     <>
+      {bootError && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          padding: '10px 16px', background: '#3a1a1a', color: '#ffb4b4',
+          fontSize: 13, textAlign: 'center',
+          paddingTop: 'max(10px, env(safe-area-inset-top))',
+        }}>
+          {bootError}
+        </div>
+      )}
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/auth" element={<Auth onAuth={handleAuth} />} />

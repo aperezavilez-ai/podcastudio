@@ -1,7 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { signIn, isSupabaseConfigured } from '../lib/projects.js'
-import { mapSupabaseUser } from '../lib/supabase.js'
+import { mapSupabaseUser, checkSupabaseHealth } from '../lib/supabase.js'
 import { hasSeenTour } from '../config/tourSteps.js'
 import styles from './Auth.module.css'
 
@@ -12,8 +12,25 @@ export default function Auth({ onAuth }) {
   const [form, setForm] = useState({ email: '', password: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [serverOk, setServerOk] = useState(null)
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return
+    checkSupabaseHealth().then((h) => setServerOk(h.ok))
+  }, [])
 
   const handle = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }))
+
+  const friendlyAuthError = (err) => {
+    const msg = (err?.message || '').toLowerCase()
+    if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed to fetch')) {
+      return 'Sin conexión al servidor. Comprueba internet o intenta más tarde.'
+    }
+    if (msg.includes('invalid login') || msg.includes('invalid_credentials')) {
+      return 'Correo o contraseña incorrectos.'
+    }
+    return err?.message || 'Error al iniciar sesión'
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -36,7 +53,7 @@ export default function Auth({ onAuth }) {
         navigate('/plans')
       }
     } catch (err) {
-      setError(err.message || 'Error al iniciar sesión')
+      setError(friendlyAuthError(err))
     } finally {
       setLoading(false)
     }
@@ -55,6 +72,11 @@ export default function Auth({ onAuth }) {
         {!isSupabaseConfigured && (
           <div className={styles.demoNote}>
             <i className="ti ti-info-circle" /> Supabase no configurado. Revisa VITE_SUPABASE_URL en Vercel.
+          </div>
+        )}
+        {isSupabaseConfigured && serverOk === false && (
+          <div className={styles.demoNote}>
+            <i className="ti ti-wifi-off" /> No hay conexión con la plataforma. El proyecto Supabase puede estar mal configurado o inactivo.
           </div>
         )}
         <form className={styles.form} onSubmit={submit}>
