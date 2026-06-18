@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PLANS } from '../config/plans.js'
-import { PwaInstallNavButton } from '../components/PwaInstall.jsx'
+import { PwaInstallNavButton, PwaLandingInstall } from '../components/PwaInstall.jsx'
 import TourPreview from '../components/TourPreview.jsx'
 import styles from './Landing.module.css'
 
@@ -119,6 +119,8 @@ export default function Landing() {
             <i className="ti ti-route" /> Ver cómo funciona
           </button>
         </div>
+
+        <PwaLandingInstall />
 
         {/* Preview idéntico al estudio real */}
         <div className={styles.studioPreviewWrap}>

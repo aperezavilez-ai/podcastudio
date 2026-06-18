@@ -2,11 +2,13 @@ import { useCallback, useState } from 'react'
 import { usePwaInstall } from './usePwaInstall.js'
 
 const PREP_STEPS = [
-  { pct: 1, label: 'Iniciando instalación…' },
-  { pct: 3, label: 'Verificando archivos…' },
-  { pct: 5, label: 'Preparando recursos…' },
-  { pct: 7, label: 'Configurando aplicación…' },
-  { pct: 10, label: 'Finalizando preparación…' },
+  { pct: 5, label: 'Iniciando instalación…' },
+  { pct: 12, label: 'Verificando archivos del estudio…' },
+  { pct: 22, label: 'Preparando cámaras y grabación HD…' },
+  { pct: 34, label: 'Configurando transmisión en vivo…' },
+  { pct: 46, label: 'Activando cintillos y recursos de IA…' },
+  { pct: 58, label: 'Sincronizando panel de control…' },
+  { pct: 63, label: 'Preparando acceso sin conexión…' },
 ]
 
 function wait(ms) {
@@ -39,12 +41,14 @@ export function usePwaInstallFlow() {
       const ok = await pwa.install()
 
       if (ok) {
-        for (const pct of [35, 62, 88, 100]) {
-          setProgress({
-            pct,
-            label: pct < 100 ? 'Instalando PodcastStudio…' : '¡Instalación completa!',
-          })
-          await wait(280)
+        for (const [pct, label] of [
+          [72, 'Instalando PodcastStudio en tu dispositivo…'],
+          [84, 'Configurando icono y acceso directo…'],
+          [94, 'Finalizando instalación…'],
+          [100, '¡Instalación completa!'],
+        ]) {
+          setProgress({ pct, label })
+          await wait(320)
         }
         onSuccess?.()
         await wait(700)

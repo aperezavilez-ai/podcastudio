@@ -127,7 +127,7 @@
   max-width: 560px;
   margin-bottom: 36px;
 }
-.heroCtas { display: flex; gap: 12px; margin-bottom: 60px; }
+.heroCtas { display: flex; gap: 12px; margin-bottom: 36px; }
 .btnHero {
   display: flex; align-items: center; gap: 8px;
   padding: 13px 28px;

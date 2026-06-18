@@ -12,7 +12,7 @@ export function usePwaInstall() {
       && !window.navigator.standalone
     setIsIos(ios)
 
-    if (window.matchMedia('(display-mode: standalone)').matches) {
+    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
       setInstalled(true)
     }
 
