@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { pickPreferredMicrophone, isBuiltInMicrophone } from '../utils/micDevices.js'
 import { openCameraStream, waitMs } from '../utils/openCamera.js'
+import { applyStreamQualityHints } from '../utils/videoStream.js'
 
 const WIFI_PRESETS = [
   { label: 'IP Webcam (Android)', url: 'http://192.168.1.100:8080/video' },
@@ -238,6 +239,7 @@ export function useWebcam() {
     try {
       stopCamera(slotIndex)
       const stream = await openCameraStream(deviceId)
+      applyStreamQualityHints(stream)
       const track = stream.getVideoTracks()[0]
       const activeId = track?.getSettings?.().deviceId || deviceId
       const label = labelOverride

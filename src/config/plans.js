@@ -30,7 +30,7 @@ export const PLANS = [
       'Cintillos y posts IA ilimitados',
       'Exportación 4K',
       'Música sin copyright',
-      'Logo y fondos virtuales IA',
+      'Logo en pantalla',
     ],
     featured: true,
     badge: 'Más popular',

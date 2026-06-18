@@ -4,8 +4,6 @@ import { useWebcam } from '../hooks/useWebcam.js'
 import { useRecorder } from '../hooks/useRecorder.js'
 import { useAI } from '../hooks/useAI.js'
 import ViewportComposer from '../components/ViewportComposer.jsx'
-import BackgroundPicker from '../components/BackgroundPicker.jsx'
-import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 import CameraThumb from '../components/CameraThumb.jsx'
 import CameraConnectPanel from '../components/CameraConnectPanel.jsx'
 import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
@@ -88,20 +86,6 @@ export default function Studio({ project, user }) {
     project?.cintilloPosition || localStorage.getItem('podcastudio_cintillo_position') || 'bl'
   )
   const [showStylePicker, setShowStylePicker] = useState(true)
-  const [showBgPicker, setShowBgPicker] = useState(true)
-  const [backgroundTemplate, setBackgroundTemplate] = useState(() =>
-    project?.backgroundTemplate || localStorage.getItem('podcastudio_bg_template') || 'none'
-  )
-  const [customBackgroundUrl, setCustomBackgroundUrl] = useState(project?.customBackgroundUrl || null)
-  const [chromaEnabled, setChromaEnabled] = useState(() =>
-    project?.chromaEnabled ?? localStorage.getItem('podcastudio_chroma') === 'true'
-  )
-  const [chromaSimilarity, setChromaSimilarity] = useState(project?.chromaSimilarity ?? 45)
-  const [chromaSmoothness, setChromaSmoothness] = useState(project?.chromaSmoothness ?? 20)
-  const [cameraScale, setCameraScale] = useState(project?.cameraScale ?? 100)
-  const [aiBackgroundEnabled, setAiBackgroundEnabled] = useState(() =>
-    project?.aiBackgroundEnabled ?? localStorage.getItem('podcastudio_ai_bg') === 'true'
-  )
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
   const initRanRef = useRef(false)
@@ -110,8 +94,6 @@ export default function Studio({ project, user }) {
     name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
     logoPosition: 'tr', logoUrl: null, format: '16:9', cintillos: {},
     cintilloStyle: 'classic', cintilloPosition: 'bl',
-    backgroundTemplate: 'podcast-dark', customBackgroundUrl: null,
-    chromaEnabled: false, chromaSimilarity: 45, chromaSmoothness: 20, cameraScale: 100,
     subtitlesEnabled: false, subtitleLanguage: 'es-MX', directorMode: 'ai', autoCintillos: true,
   }
 
@@ -148,13 +130,6 @@ export default function Studio({ project, user }) {
   const { getProgramStream, getDisplayCanvas } = useStudioCompositor({
     streams,
     activeCamera,
-    backgroundTemplate,
-    customBackgroundUrl,
-    chromaEnabled,
-    aiBackgroundEnabled,
-    chromaSimilarity,
-    chromaSmoothness,
-    cameraScale,
     logoUrl: proj.logoUrl,
     logoPosition: proj.logoPosition || 'tr',
     podcastName: proj.name || 'Mi Podcast',
@@ -182,9 +157,11 @@ export default function Studio({ project, user }) {
     localStorage.setItem('podcastudio_cintillo_position', cintilloPosition)
   }, [cintilloPosition])
 
-  useEffect(() => { localStorage.setItem('podcastudio_bg_template', backgroundTemplate) }, [backgroundTemplate])
-  useEffect(() => { localStorage.setItem('podcastudio_chroma', String(chromaEnabled)) }, [chromaEnabled])
-  useEffect(() => { localStorage.setItem('podcastudio_ai_bg', String(aiBackgroundEnabled)) }, [aiBackgroundEnabled])
+  useEffect(() => {
+    localStorage.setItem('podcastudio_bg_template', 'none')
+    localStorage.setItem('podcastudio_chroma', 'false')
+    localStorage.setItem('podcastudio_ai_bg', 'false')
+  }, [])
 
   useEffect(() => {
     if (!project) return
@@ -197,12 +174,6 @@ export default function Studio({ project, user }) {
     if (project.autoCintillos != null) setAutoCintillos(project.autoCintillos)
     if (project.musicVolume != null) setMusicVol(project.musicVolume)
     if (project.musicTrackId) selectTrackById(project.musicTrackId)
-    if (project.backgroundTemplate) setBackgroundTemplate(project.backgroundTemplate)
-    if (project.customBackgroundUrl) setCustomBackgroundUrl(project.customBackgroundUrl)
-    if (project.chromaEnabled != null) setChromaEnabled(project.chromaEnabled)
-    if (project.chromaSimilarity != null) setChromaSimilarity(project.chromaSimilarity)
-    if (project.chromaSmoothness != null) setChromaSmoothness(project.chromaSmoothness)
-    if (project.cameraScale != null) setCameraScale(project.cameraScale)
   }, [project])
 
   useEffect(() => {
@@ -219,12 +190,6 @@ export default function Studio({ project, user }) {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [tab, teleprompter.visible, teleprompter.toggle])
-
-  const handleBgUpload = (e) => {
-    const f = e.target.files?.[0]
-    if (!f) return
-    setCustomBackgroundUrl(URL.createObjectURL(f))
-  }
 
   // Initialize cameras and mic once on mount (evita bucle de reconexión)
   useEffect(() => {
@@ -727,45 +692,6 @@ export default function Studio({ project, user }) {
                 <span>{camError}</span>
                 <button type="button" onClick={() => setCamError(null)}><i className="ti ti-x" /></button>
               </div>
-            )}
-          </div>
-
-          {/* FONDOS / SET */}
-          <div className={styles.prSection}>
-            <button
-              type="button"
-              className={styles.styleToggle}
-              onClick={() => setShowBgPicker(s => !s)}
-            >
-              <i className="ti ti-photo" />
-              <span>Fondo: <strong>{customBackgroundUrl ? 'Mi set' : getBackgroundTemplate(backgroundTemplate).name}</strong></span>
-              <i className={`ti ti-chevron-${showBgPicker ? 'up' : 'down'}`} style={{ marginLeft: 'auto', fontSize: 11 }} />
-            </button>
-            {showBgPicker && (
-              <BackgroundPicker
-                compact
-                templateId={backgroundTemplate}
-                customUrl={customBackgroundUrl}
-                chromaEnabled={chromaEnabled}
-                chromaSimilarity={chromaSimilarity}
-                chromaSmoothness={chromaSmoothness}
-                cameraScale={cameraScale}
-                aiBackgroundEnabled={aiBackgroundEnabled}
-                onTemplateChange={setBackgroundTemplate}
-                onCustomUpload={handleBgUpload}
-                onClearCustom={() => setCustomBackgroundUrl(null)}
-  onChromaChange={(v) => {
-                  setChromaEnabled(v)
-                  if (v) setAiBackgroundEnabled(false)
-                }}
-                onChromaSimilarityChange={setChromaSimilarity}
-                onChromaSmoothnessChange={setChromaSmoothness}
-                onCameraScaleChange={setCameraScale}
-                onAiBackgroundChange={(v) => {
-                  setAiBackgroundEnabled(v)
-                  if (v) setChromaEnabled(false)
-                }}
-              />
             )}
           </div>
 

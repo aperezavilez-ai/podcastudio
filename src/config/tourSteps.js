@@ -63,7 +63,7 @@ export const TOUR_STEPS = [
     id: 'export',
     icon: 'ti-download',
     title: 'Grabación y exportación',
-    description: 'Graba el episodio en el navegador y descarga en WebM o MP4. Música sin copyright de fondo y fondos virtuales con IA.',
+    description: 'Graba el episodio en el navegador y descarga en WebM o MP4. Música sin copyright de fondo y calidad HD de cámara.',
     demoHint: 'No se graba ni descarga ningún archivo en el recorrido.',
     plans: [
       { id: 'starter', label: 'HD 1080p', highlight: false },

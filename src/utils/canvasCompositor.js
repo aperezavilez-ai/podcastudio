@@ -1,28 +1,7 @@
-import { applyChromaKey } from '../hooks/useChromaKey.js'
-import { drawSegmentedVideo } from './segmentationDraw.js'
 import { drawCintillo, drawLogo } from './drawOverlays.js'
-import { STUDIO_BACKGROUND_URLS } from '../config/studioImages.js'
 
 const W = 1920
 const H = 1080
-
-export function drawImageCover(ctx, img, w, h) {
-  const ir = img.width / img.height
-  const cr = w / h
-  let dw, dh, dx, dy
-  if (ir > cr) {
-    dh = h
-    dw = h * ir
-    dx = (w - dw) / 2
-    dy = 0
-  } else {
-    dw = w
-    dh = w / ir
-    dx = 0
-    dy = (h - dh) / 2
-  }
-  ctx.drawImage(img, dx, dy, dw, dh)
-}
 
 export function drawVideoCover(ctx, video, x, y, w, h, directorCrop = null) {
   if (!video || video.readyState < 2 || !video.videoWidth) return
@@ -54,115 +33,21 @@ export function drawVideoCover(ctx, video, x, y, w, h, directorCrop = null) {
   ctx.drawImage(video, dx, dy, dw, dh)
 }
 
-function drawStudioVignette(ctx, w, h) {
-  const g = ctx.createRadialGradient(w / 2, h / 2, w * 0.2, w / 2, h / 2, w * 0.75)
-  g.addColorStop(0, 'rgba(0,0,0,0)')
-  g.addColorStop(1, 'rgba(0,0,0,0.45)')
-  ctx.fillStyle = g
-  ctx.fillRect(0, 0, w, h)
-}
-
-function drawProceduralFallback(ctx, w, h, templateId) {
-  const gradients = {
-    'broadcast-news': ['#1a1a22', '#8b0000', '#1a1a22'],
-    'podcast-dark': ['#0a0a0e', '#1a1520', '#0a0a0e'],
-    'tech-studio': ['#0f0f12', '#2a2a30', '#0f0f12'],
-    'glam-tv': ['#0d0a10', '#3d1f35', '#0d0a10'],
-    'warm-lounge': ['#1a1410', '#2a2018', '#1a1410'],
-  }
-  const colors = gradients[templateId] || ['#07070a', '#121218', '#07070a']
-  const g = ctx.createLinearGradient(0, 0, w, h)
-  g.addColorStop(0, colors[0])
-  g.addColorStop(0.5, colors[1])
-  g.addColorStop(1, colors[2])
-  ctx.fillStyle = g
-  ctx.fillRect(0, 0, w, h)
-}
-
-export function drawBackground(ctx, w, h, { backgroundTemplate, customImage, studioImage }) {
-  const hasBg = backgroundTemplate !== 'none' || customImage
-
-  if (!hasBg) {
-    ctx.fillStyle = '#07070a'
-    ctx.fillRect(0, 0, w, h)
-    return
-  }
-
-  const img = customImage?.complete ? customImage : studioImage?.complete ? studioImage : null
-  if (img) {
-    drawImageCover(ctx, img, w, h)
-    drawStudioVignette(ctx, w, h)
-    return
-  }
-
-  drawProceduralFallback(ctx, w, h, backgroundTemplate)
-}
-
-function processChromaFrame(chromaCtx, chromaCanvas, video, keyColor, similarity, smoothness) {
-  if (chromaCanvas.width !== video.videoWidth || chromaCanvas.height !== video.videoHeight) {
-    chromaCanvas.width = video.videoWidth
-    chromaCanvas.height = video.videoHeight
-  }
-  chromaCtx.drawImage(video, 0, 0)
-  const frame = chromaCtx.getImageData(0, 0, chromaCanvas.width, chromaCanvas.height)
-  applyChromaKey(frame, keyColor, similarity, smoothness)
-  chromaCtx.putImageData(frame, 0, 0)
-  return chromaCanvas
-}
-
 export function drawCompositorFrame(ctx, w, h, {
   video,
-  backgroundTemplate,
-  customImage,
-  studioImage,
-  chromaEnabled,
-  chromaColor = '#00b140',
-  chromaSimilarity = 45,
-  chromaSmoothness = 20,
-  cameraScale = 100,
-  chromaCanvas,
-  chromaCtx,
-  aiBackgroundEnabled,
-  segmentationMask,
   logoOverlay,
   cintilloOverlay,
   directorCrop = null,
 }) {
-  const hasBg = backgroundTemplate !== 'none' || !!customImage
-  const useVirtualBg = hasBg && (chromaEnabled || aiBackgroundEnabled)
-  const scale = cameraScale / 100
-
-  if (useVirtualBg) {
-    drawBackground(ctx, w, h, { backgroundTemplate, customImage, studioImage })
-  } else {
-    ctx.fillStyle = '#07070a'
-    ctx.fillRect(0, 0, w, h)
-  }
+  ctx.fillStyle = '#07070a'
+  ctx.fillRect(0, 0, w, h)
 
   if (video && video.readyState >= 2 && video.videoWidth) {
-    if (aiBackgroundEnabled && hasBg && segmentationMask) {
-      drawSegmentedVideo(ctx, video, segmentationMask, 0, 0, w, h, scale)
-    } else if (chromaEnabled && hasBg) {
-      const keyed = processChromaFrame(chromaCtx, chromaCanvas, video, chromaColor, chromaSimilarity, chromaSmoothness)
-      ctx.save()
-      ctx.translate(w / 2, h)
-      ctx.scale(scale, scale)
-      ctx.translate(-w / 2, -h)
-      drawImageCover(ctx, keyed, w, h)
-      ctx.restore()
-    } else {
-      drawVideoCover(ctx, video, 0, 0, w, h, directorCrop)
-    }
+    drawVideoCover(ctx, video, 0, 0, w, h, directorCrop)
   }
 
   drawLogo(ctx, w, h, logoOverlay)
   drawCintillo(ctx, w, h, cintilloOverlay)
-}
-
-export function getStudioImageUrl(templateId, customUrl) {
-  if (customUrl) return customUrl
-  if (!templateId || templateId === 'none') return null
-  return STUDIO_BACKGROUND_URLS[templateId] || null
 }
 
 export { W as COMPOSITOR_W, H as COMPOSITOR_H }

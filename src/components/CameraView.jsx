@@ -1,12 +1,17 @@
 import React, { useEffect, useRef } from 'react'
+import { bindVideoKeepAlive } from '../utils/videoStream.js'
 
 export default function CameraView({ stream, className, style, muted = true, onClick }) {
   const videoRef = useRef()
 
   useEffect(() => {
-    if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream
-    }
+    const video = videoRef.current
+    if (!video || !stream) return
+
+    video.srcObject = stream
+    video.play().catch(() => {})
+
+    return bindVideoKeepAlive(video)
   }, [stream])
 
   if (!stream) {
@@ -25,7 +30,7 @@ export default function CameraView({ stream, className, style, muted = true, onC
       playsInline
       muted={muted}
       className={className}
-      style={{ objectFit: 'cover', ...style }}
+      style={{ objectFit: 'cover', width: '100%', height: '100%', ...style }}
       onClick={onClick}
     />
   )

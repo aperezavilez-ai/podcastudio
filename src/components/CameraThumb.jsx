@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react'
 import { drawVideoCover, COMPOSITOR_W, COMPOSITOR_H } from '../utils/canvasCompositor.js'
 import { drawCintillo, drawLogo } from '../utils/drawOverlays.js'
+import { bindVideoKeepAlive } from '../utils/videoStream.js'
 
 export default function CameraThumb({
   stream,
@@ -27,10 +28,9 @@ export default function CameraThumb({
     }
 
     const video = videoRef.current
-    const track = stream.getVideoTracks()[0]
-    const feed = track ? new MediaStream([track.clone?.() ?? track]) : stream
-    if (video.srcObject !== feed) video.srcObject = feed
+    if (video.srcObject !== stream) video.srcObject = stream
     video.play().catch(() => {})
+    const unbindKeepAlive = bindVideoKeepAlive(video)
 
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
@@ -47,6 +47,8 @@ export default function CameraThumb({
         canvas.height = ph
       }
 
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.fillStyle = '#07070a'
       ctx.fillRect(0, 0, pw, ph)
@@ -73,7 +75,10 @@ export default function CameraThumb({
     }
 
     draw()
-    return () => cancelAnimationFrame(rafId)
+    return () => {
+      cancelAnimationFrame(rafId)
+      unbindKeepAlive()
+    }
   }, [stream, cintillo, cintilloPosition, logoOverlay, directorCrop])
 
   if (!stream) {
