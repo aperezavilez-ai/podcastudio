@@ -41,9 +41,10 @@ export async function loadProject(userId) {
 }
 
 export async function signIn(email, password) {
-  if (!supabase) return { demo: true }
+  if (!supabase) throw new Error('Supabase no está configurado')
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
+  if (!data?.user) throw new Error('No se pudo iniciar sesión')
   return data
 }
 

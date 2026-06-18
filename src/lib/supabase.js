@@ -17,6 +17,7 @@ export const supabase = url && key
       autoRefreshToken: true,
       detectSessionInUrl: true,
       storage: safeStorage,
+      storageKey: `podcastudio-auth-${url.replace(/https?:\/\//, '').split('.')[0]}`,
     },
   })
   : null

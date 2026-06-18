@@ -39,7 +39,8 @@ export default function Auth({ onAuth }) {
     setLoading(true)
     try {
       if (isSupabaseConfigured) {
-        const { user } = await signIn(form.email, form.password)
+        const { user, session } = await signIn(form.email, form.password)
+        if (!session) throw new Error('No se pudo guardar la sesión. Intenta de nuevo.')
         onAuth(mapSupabaseUser(user))
       } else {
         setError('Supabase no está configurado. No se puede iniciar sesión.')
