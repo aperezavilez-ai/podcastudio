@@ -1,4 +1,4 @@
-const email = process.env.ADMIN_EMAIL || 'aperezavilez@gmail.com'
+const email = process.env.ADMIN_EMAIL || 'alfonsoavilez@icloud.com'
 const password = process.env.ADMIN_PASSWORD || ''
 
 async function checkDomain(base) {
