@@ -13,3 +13,8 @@ export function getPostLoginPath(user, { pendingPlan, seenTour } = {}) {
   if (!seenTour) return '/tour'
   return '/plans'
 }
+
+export function canAccessStudio(user, subscription) {
+  if (isAdminUser(user)) return true
+  return !!subscription?.active
+}

@@ -9,7 +9,7 @@ import {
   syncCheckoutSession,
   verifyCheckoutSession,
 } from '../lib/billing.js'
-import { isAdminUser } from '../lib/access.js'
+import { isAdminUser, canAccessStudio } from '../lib/access.js'
 import styles from './Plans.module.css'
 
 export default function Plans({ user }) {
@@ -61,6 +61,7 @@ export default function Plans({ user }) {
 
   const activePlanId = subscription?.active ? subscription.planId : null
   const activePlan = activePlanId ? getPlan(activePlanId) : null
+  const studioAccess = canAccessStudio(user, subscription)
 
   const handlePortal = async () => {
     setPortalLoading(true)
@@ -79,7 +80,7 @@ export default function Plans({ user }) {
           <i className="ti ti-arrow-left" /> Inicio
         </button>
         <div className={styles.headerActions}>
-          {user?.email && (
+          {user?.email && studioAccess && (
             <button type="button" className={styles.studioBtn} onClick={() => navigate('/studio')}>
               <i className="ti ti-player-play" /> Entrar al estudio
             </button>
@@ -148,6 +149,7 @@ export default function Plans({ user }) {
         <PlansGrid
           user={user}
           activePlanId={activePlanId}
+          canEnterStudio={studioAccess}
           onEnterStudio={() => navigate('/studio')}
           onConfigure={() => navigate('/setup')}
         />

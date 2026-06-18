@@ -31,6 +31,8 @@ import { useSpeechSubtitles } from '../hooks/useSpeechSubtitles.js'
 import { notifyRecordingReady } from '../lib/notifications.js'
 import { useMuxUpload } from '../hooks/useMuxUpload.js'
 import { fetchCloudRecordings, fetchIntegrationStatus, publishToYouTube } from '../lib/integrations.js'
+import { fetchSubscription } from '../lib/billing.js'
+import { isAdminUser, canAccessStudio } from '../lib/access.js'
 import styles from './Studio.module.css'
 
 const ROTATION_PRESETS = CINTILLO_PRESETS.filter(p => ['topic', 'guest', 'social', 'contact'].includes(p.id))
@@ -178,6 +180,17 @@ export default function Studio({ project, user }) {
     localStorage.setItem('podcastudio_chroma', 'false')
     localStorage.setItem('podcastudio_ai_bg', 'false')
   }, [])
+
+  useEffect(() => {
+    if (isAdminUser(user)) return undefined
+    let cancelled = false
+    fetchSubscription().then((sub) => {
+      if (!cancelled && !canAccessStudio(user, sub)) {
+        navigate('/plans', { replace: true })
+      }
+    })
+    return () => { cancelled = true }
+  }, [user, navigate])
 
   useEffect(() => {
     if (!project) return

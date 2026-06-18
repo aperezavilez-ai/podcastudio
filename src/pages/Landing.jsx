@@ -97,7 +97,7 @@ export default function Landing() {
         <div className={styles.navActions}>
           <PwaInstallNavButton />
           <button className={styles.btnGhost} onClick={() => navigate('/auth')}>Iniciar sesión</button>
-          <button className={styles.btnPrimary} onClick={() => navigate('/auth')}>Comenzar gratis</button>
+          <button className={styles.btnPrimary} onClick={() => navigate('/plans')}>Ver planes</button>
         </div>
       </nav>
 
@@ -116,8 +116,8 @@ export default function Landing() {
           descarga tu episodio y publícalo en YouTube, TikTok, Instagram o Facebook.
         </p>
         <div className={styles.heroCtas}>
-          <button className={styles.btnHero} onClick={() => navigate('/auth')}>
-            <i className="ti ti-player-play" /> Crear estudio gratis
+          <button className={styles.btnHero} onClick={() => navigate('/plans')}>
+            <i className="ti ti-credit-card" /> Ver planes desde $39/mes
           </button>
           <button className={styles.btnHeroGhost} onClick={() => navigate('/tour')}>
             <i className="ti ti-route" /> Ver cómo funciona
@@ -184,7 +184,7 @@ export default function Landing() {
       {/* PRICING */}
       <section className={styles.pricing} id="pricing">
         <div className={styles.sectionLabel}>Planes</div>
-        <h2 className={styles.sectionTitle}>Sin contratos, cancela cuando quieras</h2>
+        <h2 className={styles.sectionTitle}>Acceso con suscripción — cancela cuando quieras</h2>
         <div className={styles.plansGrid}>
           {PLANS.map(plan => (
             <div key={plan.id} className={`${styles.planCard} ${plan.featured ? styles.planFeatured : ''}`}>
@@ -205,7 +205,7 @@ export default function Landing() {
                 className={`${styles.planBtn} ${plan.featured ? styles.planBtnPrimary : ''}`}
                 onClick={() => navigate(`/auth?plan=${plan.id}`)}
               >
-                {plan.featured ? `Comenzar ${plan.name}` : 'Comenzar'}
+                {plan.featured ? `Elegir ${plan.name}` : 'Elegir plan'}
               </button>
             </div>
           ))}

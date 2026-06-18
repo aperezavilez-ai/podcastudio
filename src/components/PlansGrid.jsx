@@ -4,7 +4,7 @@ import { PLANS } from '../config/plans.js'
 import { startCheckout } from '../lib/billing.js'
 import styles from './PlansGrid.module.css'
 
-export default function PlansGrid({ user, activePlanId, onEnterStudio, onConfigure, compact = false }) {
+export default function PlansGrid({ user, activePlanId, canEnterStudio, onEnterStudio, onConfigure, compact = false }) {
   const navigate = useNavigate()
   const [loading, setLoading] = useState(null)
   const [error, setError] = useState('')
@@ -71,7 +71,7 @@ export default function PlansGrid({ user, activePlanId, onEnterStudio, onConfigu
           )
         })}
       </div>
-      {user?.email && onEnterStudio && (
+      {user?.email && canEnterStudio && onEnterStudio && (
         <div className={styles.entryActions}>
           <button type="button" className={styles.entryPrimary} onClick={onEnterStudio}>
             <i className="ti ti-player-play" /> Entrar al estudio

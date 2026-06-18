@@ -125,8 +125,8 @@ export default function Tour({ user }) {
                 </button>
               )}
               {user && !isAdminUser(user) && (
-                <button type="button" className={styles.btn} onClick={() => { markTourSeen(); navigate('/studio') }}>
-                  Entrar al estudio (demo)
+                <button type="button" className={styles.btn} onClick={goPlans}>
+                  Ver planes y contratar
                 </button>
               )}
             </div>
