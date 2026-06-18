@@ -36,14 +36,18 @@
 
 html, body {
   min-height: 100%;
+  min-height: 100dvh;
   background: var(--app-bg);
   color: var(--text-primary);
 }
 
 #root {
   min-height: 100%;
+  min-height: 100dvh;
   overflow-x: hidden;
   overflow-y: auto;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 button { font-family: inherit; cursor: pointer; border: none; background: none; }

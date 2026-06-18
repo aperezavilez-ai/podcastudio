@@ -51,6 +51,7 @@ export default function Studio({ project, user }) {
   const { recording, duration, recordings, converting, convertProgress, startRecording, stopRecording, downloadRecording, downloadRecordingMp4, formatDuration } = useRecorder()
   const { generateCintillo, generateTeleprompterScript, formatTeleprompterDocument, loadingCintillo, loadingScript, aiConfigured, checkAIStatus } = useAI()
   const [showAiInfo, setShowAiInfo] = useState(false)
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
 
   const [tab, setTab] = useState('studio')
   const [liveOn, setLiveOn] = useState(false)
@@ -392,6 +393,14 @@ export default function Studio({ project, user }) {
               {aiConfigured ? 'IA activa' : 'IA sin configurar'}
             </button>
           )}
+          <button
+            type="button"
+            className={`${styles.iconBtn} ${styles.mobileOnly}`}
+            onClick={() => setMobilePanelOpen(true)}
+            title="Abrir controles"
+          >
+            <i className="ti ti-layout-sidebar-right" style={{ fontSize: 13 }} />
+          </button>
           <button className={styles.iconBtn} title="Ayuda"><i className="ti ti-help" style={{ fontSize: 13 }} /></button>
           <button className={styles.iconBtn} title="Configuración"><i className="ti ti-settings" style={{ fontSize: 13 }} /></button>
         </div>
@@ -610,7 +619,15 @@ export default function Studio({ project, user }) {
         )}
 
         {/* RIGHT PANEL */}
-        <div className={styles.panelRight}>
+        {mobilePanelOpen && (
+          <button
+            type="button"
+            className={styles.panelBackdrop}
+            onClick={() => setMobilePanelOpen(false)}
+            aria-label="Cerrar panel"
+          />
+        )}
+        <div className={`${styles.panelRight} ${mobilePanelOpen ? styles.panelRightOpen : ''}`}>
           <div className={styles.panelScroll}>
           {/* CAMERAS */}
           <div className={styles.prSection}>

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PLANS } from '../config/plans.js'
+import { PwaInstallNavButton } from '../components/PwaInstall.jsx'
 import styles from './Landing.module.css'
 
 const FEATURES = [
@@ -82,6 +83,7 @@ export default function Landing() {
           <a href="#pricing">Planes</a>
         </div>
         <div className={styles.navActions}>
+          <PwaInstallNavButton />
           <button className={styles.btnGhost} onClick={() => navigate('/auth')}>Iniciar sesión</button>
           <button className={styles.btnPrimary} onClick={() => navigate('/auth')}>Comenzar gratis</button>
         </div>

@@ -224,3 +224,19 @@
   font-size: 14px; font-weight: 600; color: #fff; transition: background .15s;
 }
 .btnFinish:hover { background: #d4541f; }
+
+@media (max-width: 768px) {
+  .header { padding: 0 16px; }
+  .wizard { padding: 24px 16px 64px; }
+  .stepContent { padding: 24px 20px 8px; }
+  .fieldRow { grid-template-columns: 1fr; }
+  .stepper { overflow-x: auto; padding-bottom: 4px; }
+  .stepLabel { display: none; }
+  .nav { padding: 16px 20px; flex-wrap: wrap; gap: 10px; }
+  .btnFinish, .btnNext, .btnBack { flex: 1; justify-content: center; }
+}
+
+@media (max-width: 480px) {
+  .stepTitle { font-size: 19px; }
+  .logoGrid { grid-template-columns: repeat(3, 1fr); }
+}

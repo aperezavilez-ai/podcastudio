@@ -5,6 +5,7 @@ import Auth from './pages/Auth.jsx'
 import Plans from './pages/Plans.jsx'
 import ProjectSetup from './pages/ProjectSetup.jsx'
 import Studio from './pages/Studio.jsx'
+import { PwaInstallBanner } from './components/PwaInstall.jsx'
 import { supabase, mapSupabaseUser, isSupabaseConfigured } from './lib/supabase.js'
 import { loadProject } from './lib/projects.js'
 
@@ -57,13 +58,16 @@ export default function App() {
   if (!authReady) return null
 
   return (
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/auth" element={<Auth onAuth={handleAuth} />} />
-      <Route path="/plans" element={<Plans user={user} onContinue={() => {}} />} />
-      <Route path="/setup" element={<ProjectSetup user={user} onProject={handleProject} />} />
-      <Route path="/studio" element={<Studio project={project} user={user} onProjectSave={handleProject} />} />
-      <Route path="*" element={<Navigate to="/" />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/auth" element={<Auth onAuth={handleAuth} />} />
+        <Route path="/plans" element={<Plans user={user} onContinue={() => {}} />} />
+        <Route path="/setup" element={<ProjectSetup user={user} onProject={handleProject} />} />
+        <Route path="/studio" element={<Studio project={project} user={user} onProjectSave={handleProject} />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+      <PwaInstallBanner />
+    </>
   )
 }

@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 import { callClaude } from './lib/ai/claude.js'
 
 function readBody(req) {
@@ -275,7 +276,36 @@ function aiApiDev(env) {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return {
-    plugins: [react(), aiApiDev(env)],
+    plugins: [
+      react(),
+      VitePWA({
+        registerType: 'autoUpdate',
+        includeAssets: ['favicon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+        manifest: {
+          name: 'PodcastStudio',
+          short_name: 'PodcastStudio',
+          description: 'Estudio profesional de podcast con cámaras, grabación y transmisión en vivo',
+          theme_color: '#e8612a',
+          background_color: '#08080b',
+          display: 'standalone',
+          orientation: 'any',
+          lang: 'es',
+          start_url: '/',
+          scope: '/',
+          icons: [
+            { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+            { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+            { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          ],
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+          navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/api\//],
+        },
+      }),
+      aiApiDev(env),
+    ],
     server: { port: 3000 },
   }
 })

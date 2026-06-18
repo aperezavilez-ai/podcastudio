@@ -342,3 +342,23 @@
 }
 .footerBrand strong { color: var(--accent); }
 .footerCopy { font-size: 12px; color: var(--text-muted); }
+
+@media (max-width: 900px) {
+  .nav { padding: 0 16px; }
+  .navLinks { display: none; }
+  .navActions { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .btnGhost, .btnPrimary { padding: 7px 12px; font-size: 12px; }
+  .hero { padding: 56px 20px 48px; }
+  .heroSub br { display: none; }
+  .heroCtas { flex-direction: column; width: 100%; max-width: 320px; }
+  .btnHero, .btnHeroGhost { width: 100%; justify-content: center; }
+  .features, .formatSection, .pricing { padding: 56px 20px; }
+  .formatShowcase { gap: 32px; }
+  .footer { flex-direction: column; gap: 12px; padding: 20px; text-align: center; }
+}
+
+@media (max-width: 480px) {
+  .studioPreview { border-radius: var(--radius-lg); }
+  .spViewport { height: 180px; }
+  .planPrice > span:nth-child(2) { font-size: 40px; }
+}
