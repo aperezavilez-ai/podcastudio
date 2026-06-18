@@ -11,6 +11,7 @@ export const CINTILLO_STYLES = [
   { id: 'sport', name: 'Deportivo', desc: 'Vertical + evento', colors: { primary: '#e05050', secondary: '#e8612a' } },
   { id: 'corporate', name: 'Corporativo', desc: 'Rayas profesionales', colors: { primary: '#4a90d9', secondary: '#ffffff' } },
   { id: 'premium', name: 'Premium', desc: 'Bloque exclusivo', colors: { primary: '#7c5cbf', secondary: '#ffffff' } },
+  { id: 'glass', name: 'Glass', desc: 'Cristal broadcast', colors: { primary: '#e8612a', secondary: 'rgba(255,255,255,0.15)' } },
 ]
 
 export function getCintilloStyle(id) {

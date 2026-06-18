@@ -8,6 +8,7 @@ import styles from './Landing.module.css'
 const FEATURES = [
   { icon: 'ti-video', title: 'Switcher de 3 cámaras', desc: 'Conecta hasta 3 cámaras USB y cambia entre planos con un clic.' },
   { icon: 'ti-download', title: 'Graba y descarga', desc: 'Exporta tu episodio en WebM o MP4 con cintillos y logo incluidos.' },
+  { icon: 'ti-palette', title: 'Look Pro', desc: 'Presets de color, viñeta, LUTs y transiciones cinematográficas en la grabación.' },
   { icon: 'ti-sparkles', title: 'Cintillos con IA', desc: 'La IA genera y anima los cintillos de tu episodio automáticamente.' },
   { icon: 'ti-layout-bottombar', title: 'Logo en pantalla', desc: 'Tu logo en la esquina que elijas, siempre visible en la grabación.' },
   { icon: 'ti-music', title: 'Música sin copyright', desc: 'Biblioteca de música libre para usar como fondo de tus episodios.' },

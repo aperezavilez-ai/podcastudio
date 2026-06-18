@@ -22,6 +22,8 @@ import Teleprompter from '../components/Teleprompter.jsx'
 import TeleprompterDocUpload from '../components/TeleprompterDocUpload.jsx'
 import TeleprompterOverlay from '../components/TeleprompterOverlay.jsx'
 import PublishPanel, { connectYouTubeChannel, fetchYouTubeStatus } from '../components/PublishPanel.jsx'
+import { useLookSettings } from '../hooks/useLookSettings.js'
+import LookPanel from '../components/LookPanel.jsx'
 import SubtitleOverlay from '../components/SubtitleOverlay.jsx'
 import { useTeleprompter } from '../hooks/useTeleprompter.js'
 import { useAIProducer, applyAIProducerPlan } from '../hooks/useAIProducer.js'
@@ -123,6 +125,8 @@ export default function Studio({ project, user }) {
 
   const teleprompter = useTeleprompter(defaultScript, true)
 
+  const { look, setField: setLookField, applyPreset: applyLookPreset, resetLook } = useLookSettings()
+
   const { directorCrop, directorStatus } = useAIDirector({
     enabled: switchMode === 'ai',
     streams,
@@ -141,7 +145,13 @@ export default function Studio({ project, user }) {
     podcastName: proj.name || 'Mi Podcast',
     cintillo,
     cintilloPosition,
+    cintilloStyle,
+    animPhase,
+    animKey,
     directorCrop: switchMode === 'ai' ? directorCrop : null,
+    look,
+    recording,
+    recordDurationSec: duration,
   })
   const { buildRecordingStream } = useAudioMix()
 
@@ -475,7 +485,6 @@ export default function Studio({ project, user }) {
                 <ViewportComposer
                   getDisplayCanvas={getDisplayCanvas}
                   hasStream={!!streams[activeCamera ?? 0]}
-                  previewStream={streams[activeCamera ?? 0]}
                 />
                 <div className={styles.scanlines} />
                 {countdown != null && (
@@ -783,6 +792,20 @@ export default function Studio({ project, user }) {
                 {micLevel > 0 ? `-${Math.round(40 - micLevel * 0.32)} dB` : '–∞'}
               </span>
             </div>
+          </div>
+
+          {/* LOOK PRO */}
+          <div className={styles.prSection}>
+            <div className={styles.prTitle}>
+              Look Pro
+              <span className={styles.aiChipSm} style={{ marginLeft: 6 }}><i className="ti ti-palette" /> Color</span>
+            </div>
+            <LookPanel
+              look={look}
+              onPreset={applyLookPreset}
+              onField={setLookField}
+              onReset={resetLook}
+            />
           </div>
 
           {/* PUBLICAR */}

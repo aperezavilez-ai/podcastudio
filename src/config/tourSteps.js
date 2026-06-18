@@ -48,6 +48,18 @@ export const TOUR_STEPS = [
     ],
   },
   {
+    id: 'look',
+    icon: 'ti-palette',
+    title: 'Look Pro',
+    description: 'Presets de color, viñeta cinematográfica, LUTs y transiciones suaves entre cámaras. Todo se quema en la grabación.',
+    demoHint: 'Los ajustes de imagen se aplican en el compositor del estudio.',
+    plans: [
+      { id: 'starter', label: '3 presets', highlight: false },
+      { id: 'pro', label: 'Look + LUTs', highlight: true },
+      { id: 'annual', label: 'Look + LUTs', highlight: true },
+    ],
+  },
+  {
     id: 'posts',
     icon: 'ti-sparkles',
     title: 'Posts virales con IA',

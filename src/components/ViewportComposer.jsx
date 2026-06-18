@@ -1,8 +1,7 @@
 import React, { useEffect, useRef } from 'react'
-import CameraView from './CameraView.jsx'
 import styles from './ViewportComposer.module.css'
 
-export default function ViewportComposer({ getDisplayCanvas, hasStream, previewStream }) {
+export default function ViewportComposer({ getDisplayCanvas, hasStream }) {
   const containerRef = useRef(null)
 
   useEffect(() => {
@@ -52,13 +51,6 @@ export default function ViewportComposer({ getDisplayCanvas, hasStream, previewS
   }
 
   return (
-    <div ref={containerRef} className={styles.composer}>
-      {previewStream && (
-        <CameraView
-          stream={previewStream}
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: 0 }}
-        />
-      )}
-    </div>
+    <div ref={containerRef} className={styles.composer} />
   )
 }

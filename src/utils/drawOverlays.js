@@ -39,15 +39,26 @@ function getLogoPosition(position, w, h, boxW, boxH) {
   return map[position] || map.tr
 }
 
-export function drawCintillo(ctx, w, h, overlay) {
+export function drawCintillo(ctx, w, h, overlay, motion = null) {
   if (!overlay?.active || !overlay.text) return
 
   const accent = overlay.color || '#e8612a'
   const tag = (overlay.tag || 'INFO').toUpperCase()
   const text = overlay.text.slice(0, 90)
   const position = overlay.position || 'bl'
+  const styleId = overlay.styleId || 'classic'
 
   ctx.save()
+
+  if (motion) {
+    ctx.globalAlpha = motion.opacity ?? 1
+    const cx = w / 2
+    const cy = h / 2
+    ctx.translate(cx, cy)
+    ctx.scale(motion.scale ?? 1, motion.scale ?? 1)
+    ctx.translate(-cx, -cy + (motion.offsetY ?? 0))
+  }
+
   ctx.font = 'bold 20px "Segoe UI", system-ui, sans-serif'
   const tagW = ctx.measureText(tag).width + 28
   ctx.font = '600 30px "Segoe UI", system-ui, sans-serif'
@@ -62,6 +73,29 @@ export function drawCintillo(ctx, w, h, overlay) {
   ctx.shadowBlur = 12
   ctx.shadowOffsetY = 4
 
+  if (styleId === 'glass') {
+    ctx.fillStyle = 'rgba(255,255,255,0.12)'
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    roundRectPath(ctx, x, y, barW, totalH, 10)
+    ctx.fill()
+    ctx.stroke()
+    ctx.shadowBlur = 0
+    ctx.globalAlpha = (motion?.tagOpacity ?? 1) * (ctx.globalAlpha || 1)
+    ctx.fillStyle = accent
+    ctx.font = 'bold 16px "Segoe UI", system-ui, sans-serif'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(tag, x + 14, y + 18)
+    ctx.globalAlpha = (motion?.textOpacity ?? 1) * (motion?.opacity ?? 1)
+    ctx.fillStyle = '#fff'
+    ctx.font = '600 26px "Segoe UI", system-ui, sans-serif'
+    ctx.fillText(text, x + 14, y + tagH + barH / 2 - 2, barW - 28)
+    ctx.restore()
+    return
+  }
+
+  ctx.globalAlpha = (motion?.tagOpacity ?? 1) * (ctx.globalAlpha || 1)
   ctx.fillStyle = accent
   ctx.beginPath()
   roundRectPath(ctx, x, y, Math.min(tagW + 8, barW), tagH, 6)
@@ -72,6 +106,7 @@ export function drawCintillo(ctx, w, h, overlay) {
   ctx.textBaseline = 'middle'
   ctx.fillText(tag, x + 14, y + tagH / 2)
 
+  ctx.globalAlpha = (motion?.textOpacity ?? 1) * (motion?.opacity ?? 1)
   ctx.fillStyle = 'rgba(8,8,14,0.94)'
   ctx.beginPath()
   roundRectPath(ctx, x, y + tagH - 6, barW, barH, 6)

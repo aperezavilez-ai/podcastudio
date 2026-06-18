@@ -59,7 +59,7 @@ function VideoFeed({ sceneIndex, showScanlines = true }) {
 }
 
 function RightPanel({ stepId }) {
-  if (stepId === 'export' || stepId === 'posts') {
+  if (stepId === 'export' || stepId === 'posts' || stepId === 'look') {
     return (
       <div className={styles.panelRight}>
         <div className={styles.panelScroll}>
@@ -86,6 +86,14 @@ function RightPanel({ stepId }) {
               <div className={styles.prTitle}>Posts IA</div>
               <div className={styles.prPost}>Instagram · listo</div>
               <div className={styles.prPost}>TikTok · listo</div>
+            </div>
+          )}
+          {stepId === 'look' && (
+            <div className={styles.prSection}>
+              <div className={styles.prTitle}>Look Pro</div>
+              <div className={styles.prItem}><i className="ti ti-palette" /> Estudio cálido</div>
+              <div className={styles.prItem}><i className="ti ti-circle" /> Viñeta 32%</div>
+              <div className={styles.prItem}><i className="ti ti-switch-horizontal" /> Crossfade</div>
             </div>
           )}
         </div>
@@ -130,13 +138,13 @@ export default function TourPreview({ stepId, landing = false }) {
   const [activeCam, setActiveCam] = useState(0)
 
   useEffect(() => {
-    if (!['cameras', 'director', 'export', 'posts'].includes(stepId)) return undefined
+    if (!['cameras', 'director', 'export', 'posts', 'look'].includes(stepId)) return undefined
     const t = setInterval(() => setActiveCam(c => (c + 1) % 3), 3200)
     return () => clearInterval(t)
   }, [stepId])
 
-  const showCamStrip = ['cameras', 'director', 'export', 'posts'].includes(stepId)
-  const showCintillo = stepId === 'cintillos' || stepId === 'export'
+  const showCamStrip = ['cameras', 'director', 'export', 'posts', 'look'].includes(stepId)
+  const showCintillo = stepId === 'cintillos' || stepId === 'export' || stepId === 'look'
   const showDirector = stepId === 'director'
   const showPosts = stepId === 'posts'
 
