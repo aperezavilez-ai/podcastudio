@@ -1,11 +1,48 @@
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { preferVideoPreview } from '../lib/device.js'
+import { bindVideoKeepAlive } from '../utils/videoStream.js'
 import styles from './ViewportComposer.module.css'
 
-export default function ViewportComposer({ getDisplayCanvas, hasStream }) {
-  const containerRef = useRef(null)
+function MobileVideoPreview({ stream }) {
+  const videoRef = useRef(null)
 
   useEffect(() => {
-    if (!hasStream) return
+    const video = videoRef.current
+    if (!video || !stream) return undefined
+    video.srcObject = stream
+    video.play().catch(() => {})
+    const off = bindVideoKeepAlive(video)
+    return () => {
+      off()
+      if (video.srcObject === stream) video.srcObject = null
+    }
+  }, [stream])
+
+  return (
+    <video
+      ref={videoRef}
+      className={styles.previewVideo}
+      autoPlay
+      muted
+      playsInline
+    />
+  )
+}
+
+export default function ViewportComposer({ getDisplayCanvas, hasStream, previewStream }) {
+  const containerRef = useRef(null)
+  const [useVideoPreview, setUseVideoPreview] = useState(() => preferVideoPreview())
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px), (pointer: coarse)')
+    const update = () => setUseVideoPreview(preferVideoPreview())
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
+
+  useEffect(() => {
+    if (!hasStream || useVideoPreview) return undefined
 
     let rafId = 0
     const mount = () => {
@@ -37,7 +74,7 @@ export default function ViewportComposer({ getDisplayCanvas, hasStream }) {
         el.removeChild(canvas)
       }
     }
-  }, [getDisplayCanvas, hasStream])
+  }, [getDisplayCanvas, hasStream, useVideoPreview])
 
   if (!hasStream) {
     return (
@@ -46,6 +83,14 @@ export default function ViewportComposer({ getDisplayCanvas, hasStream }) {
           <i className="ti ti-video-off" />
           <span>Sin señal</span>
         </div>
+      </div>
+    )
+  }
+
+  if (useVideoPreview && previewStream) {
+    return (
+      <div className={styles.composer}>
+        <MobileVideoPreview stream={previewStream} />
       </div>
     )
   }

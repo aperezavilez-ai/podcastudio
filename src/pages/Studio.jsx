@@ -493,11 +493,17 @@ export default function Studio({ project, user }) {
           <div className={styles.stage}>
             {/* MAIN VIEWPORT */}
             <div className={styles.viewport}>
-              <div className={styles.viewportInner} style={{ aspectRatio: proj.format === '9:16' ? '9/16' : proj.format === '1:1' ? '1/1' : '16/9' }}>
+              <div
+                className={styles.viewportInner}
+                style={{
+                  '--viewport-aspect': proj.format === '9:16' ? '9 / 16' : proj.format === '1:1' ? '1 / 1' : '16 / 9',
+                }}
+              >
                 {/* ACTIVE CAMERA */}
                 <ViewportComposer
                   getDisplayCanvas={getDisplayCanvas}
                   hasStream={!!streams[activeCamera ?? 0]}
+                  previewStream={streams[activeCamera ?? 0]}
                 />
                 <div className={styles.scanlines} />
                 {countdown != null && (

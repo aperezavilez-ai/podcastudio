@@ -1,6 +1,6 @@
 .app {
-  height: 100vh;
-  height: 100dvh;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--app-bg);
@@ -11,7 +11,8 @@
 /* TOPBAR */
 .topbar {
   display: flex; align-items: center;
-  height: 44px; padding: 0 14px;
+  height: 44px;
+  padding: 0 14px;
   background: #0d0d13;
   border-bottom: 1px solid var(--border-1);
   flex-shrink: 0; gap: 12px;
@@ -148,12 +149,18 @@
 .viewport {
   flex: 1; display: flex; align-items: center; justify-content: center;
   overflow: hidden; background: #050508;
+  min-height: 0;
+  padding: 8px;
 }
 .viewportInner {
   position: relative; background: #0a0a10; overflow: hidden;
-  max-height: 100%; max-width: 100%;
-  height: 100%; width: 100%;
-  display: flex; align-items: center; justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: var(--viewport-aspect, 16 / 9);
+  margin: auto;
+  flex-shrink: 1;
+  min-height: 0;
 }
 .scanlines {
   position: absolute; inset: 0; pointer-events: none;
@@ -524,14 +531,14 @@
 
   .panelBackdrop {
     display: block;
-    top: 44px;
+    top: calc(44px + env(safe-area-inset-top, 0px));
   }
 
   .panelRight {
     position: fixed;
-    top: 44px;
+    top: calc(44px + env(safe-area-inset-top, 0px));
     right: 0;
-    bottom: 0;
+    bottom: env(safe-area-inset-bottom, 0px);
     width: min(320px, 92vw);
     z-index: 190;
     transform: translateX(100%);
@@ -550,52 +557,120 @@
 @media (max-width: 768px) {
   .layout {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto;
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
   .sidebarLeft {
     flex-direction: row;
     width: 100%;
-    height: 52px;
+    height: calc(52px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     border-right: none;
     border-top: 1px solid var(--border-1);
-    padding: 0 10px;
+    padding-left: 10px;
+    padding-right: 10px;
     justify-content: space-around;
     order: 2;
+    flex-shrink: 0;
   }
 
   .slDivider { width: 1px; height: 22px; margin: 0 4px; }
 
-  .stage { order: 1; min-height: 0; }
+  .stage {
+    order: 1;
+    min-height: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .viewport {
+    flex: 1;
+    min-height: 120px;
+    padding: 6px;
+    align-items: center;
+  }
+
+  .viewportInner {
+    width: 100%;
+    max-height: 100%;
+    height: auto;
+  }
 
   .panelRight {
     width: 100%;
     max-width: 100%;
+    bottom: 0;
   }
 
   .camStrip {
     height: auto;
-    min-height: 80px;
+    min-height: 72px;
     flex-wrap: wrap;
-    padding-bottom: 10px;
+    padding: 8px 10px 10px;
+    flex-shrink: 0;
   }
 
   .camStripLeft {
     width: 100%;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     padding-bottom: 4px;
+    flex-wrap: nowrap;
+  }
+
+  .switcherControls {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .directorBadge {
+    bottom: 8px;
+    max-width: calc(100% - 16px);
+    font-size: 9px;
   }
 
   .fmtSelector { margin-left: 0; width: 100%; justify-content: center; }
 
-  .switcherControls { flex-wrap: wrap; max-width: 100%; }
-
-  .topbar { padding: 0 10px; gap: 8px; }
+  .topbar { padding-left: 10px; padding-right: 10px; gap: 8px; }
   .brand { display: none; }
   .winBtns { display: none; }
   .aiChip { display: none; }
+  .producerChip { display: none; }
 
   .countdownNum { font-size: 72px; }
+}
+
+@media (max-width: 896px) and (orientation: landscape) {
+  .layout {
+    grid-template-columns: 44px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .sidebarLeft {
+    flex-direction: column;
+    width: 44px;
+    height: auto;
+    min-height: 0;
+    padding-bottom: 0;
+    border-top: none;
+    border-right: 1px solid var(--border-1);
+    order: 0;
+    justify-content: flex-start;
+  }
+
+  .stage { order: 1; }
+
+  .camStrip {
+    min-height: 64px;
+    padding: 6px 8px;
+  }
+
+  .camThumb { width: 96px; height: 54px; }
+
+  .viewport { padding: 4px; }
 }
 
 @media (max-width: 480px) {
