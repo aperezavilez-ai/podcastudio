@@ -27,4 +27,4 @@ Después de **cualquier** cambio, ajuste, fix o implementación nueva en Podcast
 ## Proyecto
 
 - Repo: `aperezavilez-ai/podcastudio`
-- Producción: `https://podcastudio-three.vercel.app` (Vercel, deploy en push a `main`)
+- Producción: `https://podcaststudio.mx` (Vercel, deploy en push a `main`)

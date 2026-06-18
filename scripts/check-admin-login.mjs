@@ -35,13 +35,13 @@ async function checkSupabase(url, anon, label) {
 
 async function checkProduction() {
   try {
-    const html = await fetch('https://podcastudio-three.vercel.app/').then((r) => r.text())
+    const html = await fetch('https://podcaststudio.mx/').then((r) => r.text())
     const jsPath = html.match(/src="(\/assets\/index-[^"]+\.js)"/)?.[1]
     if (!jsPath) {
       console.log('prod: no JS bundle found')
       return
     }
-    const code = await fetch(`https://podcastudio-three.vercel.app${jsPath}`).then((r) => r.text())
+    const code = await fetch(`https://podcaststudio.mx${jsPath}`).then((r) => r.text())
     const urls = [...new Set([...code.matchAll(/https:\/\/[a-z0-9]+\.supabase\.co/g)].map((m) => m[0]))]
     const keys = [...code.matchAll(/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g)].map((m) => m[0])
     const anon = keys[0]

@@ -31,5 +31,4 @@ async function checkDomain(base) {
   }
 }
 
-await checkDomain('https://podcastudio-three.vercel.app')
 await checkDomain('https://podcaststudio.mx')
