@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { PLANS } from '../config/plans.js'
 import styles from './Landing.module.css'
 
 const FEATURES = [
@@ -214,44 +215,29 @@ export default function Landing() {
         <div className={styles.sectionLabel}>Planes</div>
         <h2 className={styles.sectionTitle}>Sin contratos, cancela cuando quieras</h2>
         <div className={styles.plansGrid}>
-          <div className={styles.planCard}>
-            <div className={styles.planName}>Starter</div>
-            <div className={styles.planPrice}><span className={styles.planCurrency}>$</span>19<span className={styles.planPer}>/mes</span></div>
-            <ul className={styles.planFeatures}>
-              <li><i className="ti ti-check" />2 cámaras simultáneas</li>
-              <li><i className="ti ti-check" />1 plataforma en vivo</li>
-              <li><i className="ti ti-check" />Cintillos básicos</li>
-              <li><i className="ti ti-check" />5 posts IA / mes</li>
-              <li><i className="ti ti-check" />Exportación HD 720p</li>
-            </ul>
-            <button className={styles.planBtn} onClick={() => navigate('/auth')}>Comenzar</button>
-          </div>
-          <div className={`${styles.planCard} ${styles.planFeatured}`}>
-            <div className={styles.planBadge}>Más popular</div>
-            <div className={styles.planName}>Pro</div>
-            <div className={styles.planPrice}><span className={styles.planCurrency}>$</span>49<span className={styles.planPer}>/mes</span></div>
-            <ul className={styles.planFeatures}>
-              <li><i className="ti ti-check" />3 cámaras simultáneas</li>
-              <li><i className="ti ti-check" />4 plataformas en vivo</li>
-              <li><i className="ti ti-check" />Cintillos con IA ilimitados</li>
-              <li><i className="ti ti-check" />Posts IA ilimitados</li>
-              <li><i className="ti ti-check" />Exportación 4K</li>
-              <li><i className="ti ti-check" />Música sin copyright</li>
-              <li><i className="ti ti-check" />Logo personalizado</li>
-            </ul>
-            <button className={`${styles.planBtn} ${styles.planBtnPrimary}`} onClick={() => navigate('/auth')}>Comenzar Pro</button>
-          </div>
-          <div className={styles.planCard}>
-            <div className={styles.planName}>Anual Pro</div>
-            <div className={styles.planPrice}><span className={styles.planCurrency}>$</span>39<span className={styles.planPer}>/mes</span></div>
-            <div className={styles.planSave}>Ahorras $120 al año</div>
-            <ul className={styles.planFeatures}>
-              <li><i className="ti ti-check" />Todo lo de Pro</li>
-              <li><i className="ti ti-check" />Soporte prioritario</li>
-              <li><i className="ti ti-check" />Acceso anticipado a nuevas funciones</li>
-            </ul>
-            <button className={styles.planBtn} onClick={() => navigate('/auth')}>Comenzar anual</button>
-          </div>
+          {PLANS.map(plan => (
+            <div key={plan.id} className={`${styles.planCard} ${plan.featured ? styles.planFeatured : ''}`}>
+              {plan.badge && <div className={styles.planBadge}>{plan.badge}</div>}
+              <div className={styles.planName}>{plan.name}</div>
+              <div className={styles.planPrice}>
+                <span className={styles.planCurrency}>$</span>
+                {plan.price}
+                <span className={styles.planPer}>{plan.intervalLabel}</span>
+              </div>
+              {plan.save && <div className={styles.planSave}>{plan.save}</div>}
+              <ul className={styles.planFeatures}>
+                {plan.features.map(f => (
+                  <li key={f}><i className="ti ti-check" />{f}</li>
+                ))}
+              </ul>
+              <button
+                className={`${styles.planBtn} ${plan.featured ? styles.planBtnPrimary : ''}`}
+                onClick={() => navigate(`/auth?plan=${plan.id}`)}
+              >
+                {plan.featured ? `Comenzar ${plan.name}` : 'Comenzar'}
+              </button>
+            </div>
+          ))}
         </div>
       </section>
 

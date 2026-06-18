@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { notifyWelcome } from '../lib/notifications.js'
 import { signIn, signUp, isSupabaseConfigured } from '../lib/projects.js'
 import { mapSupabaseUser } from '../lib/supabase.js'
@@ -7,6 +7,8 @@ import styles from './Auth.module.css'
 
 export default function Auth({ onAuth }) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const pendingPlan = searchParams.get('plan')
   const [mode, setMode] = useState('login')
   const [form, setForm] = useState({ name: '', email: '', password: '' })
   const [loading, setLoading] = useState(false)
@@ -36,7 +38,7 @@ export default function Auth({ onAuth }) {
         onAuth(localUser)
         if (mode === 'register') notifyWelcome(localUser)
       }
-      navigate('/setup')
+      navigate(pendingPlan ? `/plans?plan=${pendingPlan}` : '/plans')
     } catch (err) {
       setError(err.message || 'Error al iniciar sesión')
     } finally {
