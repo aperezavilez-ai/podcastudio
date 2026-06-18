@@ -1,23 +1,10 @@
 import { applyChromaKey } from '../hooks/useChromaKey.js'
 import { drawSegmentedVideo } from './segmentationDraw.js'
 import { drawCintillo, drawLogo } from './drawOverlays.js'
-import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 import { STUDIO_BACKGROUND_URLS } from '../config/studioImages.js'
 
 const W = 1920
 const H = 1080
-
-function clipRoundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath()
-  if (ctx.roundRect) ctx.roundRect(x, y, w, h, r)
-  else ctx.rect(x, y, w, h)
-  ctx.clip()
-}
-
-function strokeRoundRect(ctx, x, y, w, h, r) {
-  if (ctx.roundRect) ctx.roundRect(x, y, w, h, r)
-  else ctx.rect(x, y, w, h)
-}
 
 export function drawImageCover(ctx, img, w, h) {
   const ir = img.width / img.height
@@ -142,47 +129,30 @@ export function drawCompositorFrame(ctx, w, h, {
   directorCrop = null,
 }) {
   const hasBg = backgroundTemplate !== 'none' || !!customImage
-  const template = getBackgroundTemplate(backgroundTemplate)
+  const useVirtualBg = hasBg && (chromaEnabled || aiBackgroundEnabled)
   const scale = cameraScale / 100
 
-  drawBackground(ctx, w, h, { backgroundTemplate, customImage, studioImage })
+  if (useVirtualBg) {
+    drawBackground(ctx, w, h, { backgroundTemplate, customImage, studioImage })
+  } else {
+    ctx.fillStyle = '#07070a'
+    ctx.fillRect(0, 0, w, h)
+  }
 
   if (video && video.readyState >= 2 && video.videoWidth) {
-  if (aiBackgroundEnabled && hasBg && segmentationMask) {
-    drawSegmentedVideo(ctx, video, segmentationMask, 0, 0, w, h, scale)
-  } else if (chromaEnabled && hasBg) {
-    const keyed = processChromaFrame(chromaCtx, chromaCanvas, video, chromaColor, chromaSimilarity, chromaSmoothness)
-    ctx.save()
-    ctx.translate(w / 2, h)
-    ctx.scale(scale, scale)
-    ctx.translate(-w / 2, -h)
-    drawImageCover(ctx, keyed, w, h)
-    ctx.restore()
-  } else if (hasBg) {
-    const cam = template.camera
-    const rectW = (cam.width / 100) * w
-    const rectH = (cam.height / 100) * h
-    const rectX = (cam.left / 100) * w
-    const rectY = (cam.top / 100) * h
-
-    ctx.save()
-    clipRoundRect(ctx, rectX, rectY, rectW, rectH, 8)
-    const cx = rectX + rectW / 2
-    const cy = rectY + rectH / 2
-    ctx.translate(cx, cy)
-    ctx.scale(scale, scale)
-    ctx.translate(-cx, -cy)
-    drawVideoCover(ctx, video, rectX, rectY, rectW, rectH, directorCrop)
-    ctx.restore()
-
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    strokeRoundRect(ctx, rectX, rectY, rectW, rectH, 8)
-    ctx.stroke()
-  } else {
-    drawVideoCover(ctx, video, 0, 0, w, h, directorCrop)
-  }
+    if (aiBackgroundEnabled && hasBg && segmentationMask) {
+      drawSegmentedVideo(ctx, video, segmentationMask, 0, 0, w, h, scale)
+    } else if (chromaEnabled && hasBg) {
+      const keyed = processChromaFrame(chromaCtx, chromaCanvas, video, chromaColor, chromaSimilarity, chromaSmoothness)
+      ctx.save()
+      ctx.translate(w / 2, h)
+      ctx.scale(scale, scale)
+      ctx.translate(-w / 2, -h)
+      drawImageCover(ctx, keyed, w, h)
+      ctx.restore()
+    } else {
+      drawVideoCover(ctx, video, 0, 0, w, h, directorCrop)
+    }
   }
 
   drawLogo(ctx, w, h, logoOverlay)

@@ -6,7 +6,7 @@ import { useAI } from '../hooks/useAI.js'
 import ViewportComposer from '../components/ViewportComposer.jsx'
 import BackgroundPicker from '../components/BackgroundPicker.jsx'
 import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
-import CameraView from '../components/CameraView.jsx'
+import CameraThumb from '../components/CameraThumb.jsx'
 import CameraConnectPanel from '../components/CameraConnectPanel.jsx'
 import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
@@ -78,7 +78,7 @@ export default function Studio({ project, user }) {
   const [showStylePicker, setShowStylePicker] = useState(true)
   const [showBgPicker, setShowBgPicker] = useState(true)
   const [backgroundTemplate, setBackgroundTemplate] = useState(() =>
-    project?.backgroundTemplate || localStorage.getItem('podcastudio_bg_template') || 'podcast-dark'
+    project?.backgroundTemplate || localStorage.getItem('podcastudio_bg_template') || 'none'
   )
   const [customBackgroundUrl, setCustomBackgroundUrl] = useState(project?.customBackgroundUrl || null)
   const [chromaEnabled, setChromaEnabled] = useState(() =>
@@ -448,7 +448,17 @@ export default function Studio({ project, user }) {
                       if (!streams[i]) connectNextCameraToSlot(i)
                     }}
                   >
-                    <CameraView stream={streams[i]} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 7 }} />
+                    <CameraThumb
+                      stream={streams[i]}
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 7 }}
+                      cintillo={cintillo?.active ? cintillo : null}
+                      cintilloPosition={cintilloPosition}
+                      logoOverlay={{
+                        podcastName: proj.name || 'Mi Podcast',
+                        position: proj.logoPosition || 'tr',
+                      }}
+                      directorCrop={switchMode === 'ai' && activeCamera === i ? directorCrop : null}
+                    />
                     {typeIcon && (
                       <div className={styles.camTypeBadge} title={meta?.label}>
                         <i className={`ti ${typeIcon}`} />

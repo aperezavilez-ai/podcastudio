@@ -64,6 +64,11 @@ export default function BackgroundPicker({
 
       {templateId !== 'none' && (
         <div className={styles.chromaSection}>
+          {!aiBackgroundEnabled && !chromaEnabled && (
+            <p className={styles.hint}>
+              Los sets solo aparecen dentro del video si activas quitar fondo con IA o croma key.
+            </p>
+          )}
           <label className={styles.chromaToggle}>
             <input
               type="checkbox"
