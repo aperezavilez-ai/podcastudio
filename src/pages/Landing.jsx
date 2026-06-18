@@ -124,7 +124,7 @@ export default function Landing() {
 
         {/* Preview idéntico al estudio real */}
         <div className={styles.studioPreviewWrap}>
-          <TourPreview stepId="live" />
+          <TourPreview stepId="live" landing />
         </div>
       </section>
 

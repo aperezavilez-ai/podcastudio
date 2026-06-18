@@ -1,6 +1,6 @@
 .app {
   width: 100%;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: 16 / 10;
   max-height: min(52vh, 420px);
   border-radius: 12px;
   overflow: hidden;
@@ -9,6 +9,12 @@
   display: flex;
   flex-direction: column;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+}
+
+.appLanding {
+  aspect-ratio: auto;
+  min-height: 400px;
+  max-height: min(58vh, 500px);
 }
 
 /* —— Topbar (igual que Studio) —— */
@@ -115,7 +121,7 @@
 .layout {
   flex: 1;
   display: grid;
-  grid-template-columns: 28px 1fr 72px;
+  grid-template-columns: 28px 1fr 118px;
   min-height: 0;
   overflow: hidden;
 }
@@ -152,6 +158,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   background: #050508;
 }
 
@@ -159,8 +166,7 @@
   flex: 1;
   position: relative;
   overflow: hidden;
-  min-height: 140px;
-  aspect-ratio: 16 / 9;
+  min-height: 0;
 }
 
 .videoFeed {
@@ -350,13 +356,80 @@
 
 .camStrip {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 6px;
   padding: 5px 6px;
-  height: 44px;
+  height: 52px;
+}
+
+.camStripLeft {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.switcherControls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+  flex-shrink: 0;
+  font-size: 6px;
+  color: var(--text-muted);
+}
+
+.switchLabel {
+  font-size: 6px;
+  color: var(--text-secondary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.switchIntervalVal {
+  font-size: 6px;
+  color: var(--text-muted);
+}
+
+.fmtSelector {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.fmtOpt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 4px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+}
+
+.fmtOpt span {
+  font-size: 5px;
+  color: var(--text-muted);
+}
+
+.fmtActive {
+  background: var(--purple-dim);
+  border-color: var(--purple-border);
+}
+
+.fmtActive span {
+  color: var(--purple);
 }
 
 .thumb {
   flex: 1;
+  min-width: 0;
+  max-width: 72px;
+  height: 40px;
   position: relative;
   border-radius: 5px;
   border: 1.5px solid var(--border-1);
@@ -433,12 +506,31 @@
   color: var(--green);
 }
 
+.rcLiveOn {
+  background: var(--green) !important;
+  border-color: var(--green) !important;
+  color: #fff !important;
+}
+
 /* Panel derecho */
 .panelRight {
   background: #0b0b10;
   border-left: 1px solid var(--border-1);
-  padding: 6px 5px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   overflow: hidden;
+}
+
+.panelScroll {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.prSection {
+  padding: 6px 7px;
+  border-bottom: 1px solid var(--border-1);
 }
 
 .prTitle {
@@ -520,14 +612,91 @@
   margin-bottom: 3px;
 }
 
+.platGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+}
+
+.platBtn {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 5px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+  font-size: 6px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.platBtnOn {
+  border-color: var(--green-border);
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.platDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.miniBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 5px;
+  margin-bottom: 3px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+  font-size: 6px;
+  color: var(--text-secondary);
+}
+
+.vuRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 18px;
+}
+
+.vuBar {
+  flex: 1;
+  min-height: 3px;
+  border-radius: 1px;
+  background: var(--green);
+}
+
+.recControls {
+  display: flex;
+  gap: 3px;
+  padding: 5px 6px 6px;
+  border-top: 1px solid var(--border-1);
+  flex-shrink: 0;
+}
+
+.recControls .rcBtn {
+  flex: 1;
+  padding: 5px 3px;
+  font-size: 6px;
+  justify-content: center;
+}
+
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
 
 @media (max-width: 640px) {
-  .app { max-height: 280px; }
-  .layout { grid-template-columns: 22px 1fr 58px; }
+  .app { max-height: 320px; min-height: 280px; }
+  .appLanding { min-height: 300px; max-height: 340px; }
+  .layout { grid-template-columns: 22px 1fr 90px; }
   .projectTag { display: none; }
   .producerChip { display: none; }
+  .switcherControls { display: none; }
+  .fmtSelector { display: none; }
 }

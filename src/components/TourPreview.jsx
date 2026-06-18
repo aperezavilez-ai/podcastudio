@@ -59,6 +59,51 @@ function VideoFeed({ sceneIndex, showScanlines = true }) {
 }
 
 function RightPanel({ stepId }) {
+  if (stepId === 'live') {
+    return (
+      <div className={styles.panelRight}>
+        <div className={styles.panelScroll}>
+          <div className={styles.prSection}>
+            <div className={styles.prTitle}>Cámaras</div>
+            <div className={styles.prItem}><i className="ti ti-plug-connected" /> USB · Cam 1</div>
+            <div className={styles.prItemMuted}>Cam 2 · Conectar</div>
+            <div className={styles.prItemMuted}>Cam 3 · Conectar</div>
+          </div>
+          <div className={styles.prSection}>
+            <div className={styles.prTitle}>Transmisión</div>
+            <div className={styles.platGrid}>
+              {PLATFORMS.map((p, i) => (
+                <span key={p.id} className={`${styles.platBtn} ${i < 3 ? styles.platBtnOn : ''}`}>
+                  <span className={styles.platDot} style={{ background: p.color }} />
+                  {p.label}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className={styles.prSection}>
+            <div className={styles.prTitle}>Cintillos</div>
+            <div className={styles.miniBtn}><i className="ti ti-layout-bottombar" /> Invitado</div>
+            <div className={styles.miniBtn}><i className="ti ti-hash" /> Tema</div>
+            <div className={styles.miniBtn}><i className="ti ti-sparkles" /> Generar IA</div>
+          </div>
+          <div className={styles.prSection}>
+            <div className={styles.prTitle}>Audio</div>
+            <div className={styles.vuRow}>
+              {Array.from({ length: 10 }).map((_, i) => (
+                <span key={i} className={styles.vuBar} style={{ height: `${30 + (i % 4) * 12}%`, opacity: i < 7 ? 1 : 0.35 }} />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className={styles.recControls}>
+          <span className={`${styles.rcBtn} ${styles.rcRec}`}><i className="ti ti-circle" /> Grabar</span>
+          <span className={`${styles.rcBtn} ${styles.rcLive} ${styles.rcLiveOn}`}><i className="ti ti-broadcast" /> En vivo</span>
+          <span className={styles.rcBtn}><i className="ti ti-download" /></span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={styles.panelRight}>
       {stepId === 'cameras' && (
@@ -84,17 +129,6 @@ function RightPanel({ stepId }) {
           <div className={styles.prItem}><i className="ti ti-script" /> Teleprompter</div>
         </>
       )}
-      {stepId === 'live' && (
-        <>
-          <div className={styles.prTitle}>En vivo</div>
-          <div className={styles.prItem}><i className="ti ti-broadcast" /> Restream activo</div>
-          <div className={styles.liveMiniPills}>
-            {PLATFORMS.map(p => (
-              <span key={p.id} style={{ background: p.color }}>{p.label}</span>
-            ))}
-          </div>
-        </>
-      )}
       {stepId === 'posts' && (
         <>
           <div className={styles.prTitle}>Posts IA</div>
@@ -107,13 +141,17 @@ function RightPanel({ stepId }) {
           <div className={styles.prTitle}>Grabación</div>
           <div className={styles.prItem}><i className="ti ti-circle-filled" style={{ color: 'var(--red)' }} /> HD 1080p</div>
           <div className={styles.prItem}><i className="ti ti-music" /> Música fondo</div>
+          <div className={styles.recControls}>
+            <span className={`${styles.rcBtn} ${styles.rcRec}`}><i className="ti ti-circle" /> Grabar</span>
+            <span className={`${styles.rcBtn} ${styles.rcLive}`}><i className="ti ti-broadcast" /> Ir en vivo</span>
+          </div>
         </>
       )}
     </div>
   )
 }
 
-export default function TourPreview({ stepId }) {
+export default function TourPreview({ stepId, landing = false }) {
   const [activeCam, setActiveCam] = useState(0)
 
   useEffect(() => {
@@ -127,11 +165,9 @@ export default function TourPreview({ stepId }) {
   const showDirector = stepId === 'director'
   const showLive = stepId === 'live'
   const showPosts = stepId === 'posts'
-  const showExport = stepId === 'export'
 
   return (
-    <div className={styles.app}>
-      {/* Topbar como Studio */}
+    <div className={`${styles.app} ${landing ? styles.appLanding : ''}`}>
       <div className={styles.topbar}>
         <div className={styles.topLeft}>
           <div className={styles.winBtns}>
@@ -154,7 +190,6 @@ export default function TourPreview({ stepId }) {
       </div>
 
       <div className={styles.layout}>
-        {/* Sidebar izquierdo */}
         <div className={styles.sidebarLeft}>
           {SIDEBAR.map((s, i) => (
             <div key={i} className={`${styles.slBtn} ${s.active ? styles.slBtnActive : ''}`}>
@@ -163,7 +198,6 @@ export default function TourPreview({ stepId }) {
           ))}
         </div>
 
-        {/* Escenario principal */}
         <div className={styles.stageCol}>
           <div className={styles.viewport}>
             <VideoFeed sceneIndex={activeCam} />
@@ -223,28 +257,36 @@ export default function TourPreview({ stepId }) {
             )}
           </div>
 
-          {/* Tira de cámaras + controles como Studio */}
           {showCamStrip && (
             <div className={styles.bottomBar}>
               <div className={styles.camStrip}>
-                {CAM_SCENES.map((s, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    className={`${styles.thumb} ${activeCam === i ? styles.thumbActive : ''}`}
-                    onClick={() => setActiveCam(i)}
-                  >
-                    <img src={s.src} alt="" style={{ objectPosition: s.pos }} />
-                    <span>{activeCam === i && <span className={styles.camDot} />} Cam {i + 1}</span>
-                  </button>
-                ))}
-              </div>
-              {showExport && (
-                <div className={styles.rcRow}>
-                  <span className={`${styles.rcBtn} ${styles.rcRec}`}><i className="ti ti-circle-filled" /> Grabar</span>
-                  <span className={`${styles.rcBtn} ${styles.rcLive}`}><i className="ti ti-broadcast" /> Ir en vivo</span>
+                <div className={styles.camStripLeft}>
+                  {CAM_SCENES.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className={`${styles.thumb} ${activeCam === i ? styles.thumbActive : ''}`}
+                      onClick={() => setActiveCam(i)}
+                    >
+                      <img src={s.src} alt="" style={{ objectPosition: s.pos }} />
+                      <span>{activeCam === i && <span className={styles.camDot} />} Cam {i + 1}</span>
+                    </button>
+                  ))}
                 </div>
-              )}
+                <div className={styles.switcherControls}>
+                  <i className="ti ti-switch-horizontal" />
+                  <span className={styles.switchLabel}>Director IA</span>
+                  <span className={styles.switchIntervalVal}>8s</span>
+                </div>
+                <div className={styles.fmtSelector}>
+                  {[{ f: '16:9', w: 14, h: 8 }, { f: '9:16', w: 7, h: 12 }, { f: '1:1', w: 10, h: 10 }].map(({ f, w, h }, i) => (
+                    <div key={f} className={`${styles.fmtOpt} ${i === 0 ? styles.fmtActive : ''}`}>
+                      <div style={{ width: w, height: h, border: `1px solid ${i === 0 ? 'var(--purple)' : 'var(--border-3)'}`, borderRadius: 2 }} />
+                      <span>{f}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>
