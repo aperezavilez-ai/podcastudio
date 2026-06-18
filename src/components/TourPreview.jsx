@@ -9,17 +9,17 @@ const PLATFORMS = [
   { id: 'ig', label: 'IG', color: '#e1306c' },
 ]
 
-/** Planos de estudio realistas — podcast con anfitrión/a */
+/** Planos de estudio realistas — URLs verificadas */
 const CAM_SCENES = [
   {
-    src: 'https://images.unsplash.com/photo-1478737274341-094acc4f03f6?w=1280&q=85&auto=format&fit=crop',
-    pos: '50% 25%',
-    scale: 1.08,
+    src: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=1280&q=85&auto=format&fit=crop',
+    pos: '50% 20%',
+    scale: 1.1,
     label: 'Plano general',
   },
   {
     src: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=1280&q=85&auto=format&fit=crop',
-    pos: '50% 20%',
+    pos: '50% 18%',
     scale: 1.12,
     label: 'Plano medio',
   },
@@ -40,21 +40,18 @@ const SIDEBAR = [
 function VideoFeed({ sceneIndex, showScanlines = true }) {
   const scene = CAM_SCENES[sceneIndex] || CAM_SCENES[0]
   return (
-    <div className={styles.videoFeed}>
-      {CAM_SCENES.map((s, i) => (
-        <img
-          key={s.src}
-          src={s.src}
-          alt=""
-          className={styles.videoImg}
-          style={{
-            objectPosition: s.pos,
-            transform: `scale(${s.scale})`,
-            opacity: i === sceneIndex ? 1 : 0,
-          }}
-          loading="lazy"
-        />
-      ))}
+    <div
+      className={styles.videoFeed}
+      style={{ backgroundImage: `url(${scene.src})`, backgroundPosition: scene.pos, backgroundSize: 'cover' }}
+    >
+      <img
+        src={scene.src}
+        alt=""
+        className={styles.videoImg}
+        style={{ objectPosition: scene.pos, transform: `scale(${scene.scale})` }}
+        loading="eager"
+        decoding="async"
+      />
       {showScanlines && <div className={styles.scanlines} />}
       <div className={styles.vignette} />
     </div>
@@ -120,8 +117,8 @@ export default function TourPreview({ stepId }) {
   const [activeCam, setActiveCam] = useState(0)
 
   useEffect(() => {
-    if (stepId !== 'cameras' && stepId !== 'director') return undefined
-    const t = setInterval(() => setActiveCam(c => (c + 1) % 3), 2800)
+    if (!['cameras', 'director', 'live', 'export'].includes(stepId)) return undefined
+    const t = setInterval(() => setActiveCam(c => (c + 1) % 3), 3200)
     return () => clearInterval(t)
   }, [stepId])
 

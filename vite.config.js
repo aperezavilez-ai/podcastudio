@@ -177,6 +177,33 @@ function aiApiDev(env) {
         const stripeHandled = await stripeDevHandlers(env)(req, res)
         if (stripeHandled !== false) return
 
+        if (url.pathname === '/api/auth/login') {
+          if (req.method !== 'POST') {
+            res.statusCode = 405
+            res.end('Method not allowed')
+            return
+          }
+          try {
+            const body = await readBody(req)
+            const { serverSignIn } = await import('./lib/supabase/serverLogin.js')
+            const data = await serverSignIn(body.email, body.password)
+            res.statusCode = 200
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+              expires_at: data.session.expires_at,
+              user: data.user,
+            }))
+          } catch (e) {
+            const msg = (e?.message || '').toLowerCase()
+            res.statusCode = msg.includes('invalid') ? 401 : 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: e?.message || 'Error al iniciar sesión' }))
+          }
+          return
+        }
+
         if (req.url === '/api/email/status' || req.url.startsWith('/api/email/status?')) {
           if (req.method !== 'GET') {
             res.statusCode = 405

@@ -42,10 +42,32 @@ export async function loadProject(userId) {
 
 export async function signIn(email, password) {
   if (!supabase) throw new Error('Supabase no está configurado')
+
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) throw error
-  if (!data?.user) throw new Error('No se pudo iniciar sesión')
-  return data
+  if (!error && data?.user) return data
+
+  // Fallback: login vía API con env de servidor (Vercel puede tener Supabase distinto al bundle)
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) throw error || new Error(body.error || 'Error al iniciar sesión')
+
+    const { error: sessionError } = await supabase.auth.setSession({
+      access_token: body.access_token,
+      refresh_token: body.refresh_token,
+    })
+    if (sessionError) throw sessionError
+    if (!body.user) throw new Error('No se pudo guardar la sesión')
+
+    return { user: body.user, session: { access_token: body.access_token, refresh_token: body.refresh_token } }
+  } catch (fallbackErr) {
+    if (error) throw error
+    throw fallbackErr
+  }
 }
 
 export async function signUp(email, password, name) {
