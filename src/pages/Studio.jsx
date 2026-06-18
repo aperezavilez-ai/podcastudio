@@ -19,7 +19,9 @@ import { useAIDirector } from '../hooks/useAIDirector.js'
 import { useStudioCompositor } from '../hooks/useStudioCompositor.js'
 import { useAudioMix } from '../hooks/useAudioMix.js'
 import VUMeter from '../components/VUMeter.jsx'
+import MicSelector from '../components/MicSelector.jsx'
 import Teleprompter from '../components/Teleprompter.jsx'
+import TeleprompterDocUpload from '../components/TeleprompterDocUpload.jsx'
 import TeleprompterOverlay from '../components/TeleprompterOverlay.jsx'
 import LiveStreamPanel from '../components/LiveStreamPanel.jsx'
 import { useTeleprompter } from '../hooks/useTeleprompter.js'
@@ -44,10 +46,10 @@ export default function Studio({ project, user }) {
     micLevel, bluetoothSupported, wifiConnecting, btScanning, wifiPresets,
     autoConnecting, connectedCount,
     enumerateDevices, startCamera, autoConnectAll, connectNextCameraToSlot, stopCamera, connectWifiCamera,
-    scanBluetoothCamera, connectBluetoothWifiStream, startMic, getMicStream,
+    scanBluetoothCamera, connectBluetoothWifiStream, startPreferredMic, switchMic, selectedMicId, micLabel, getMicStream,
   } = useWebcam()
   const { recording, duration, recordings, converting, convertProgress, startRecording, stopRecording, downloadRecording, downloadRecordingMp4, formatDuration } = useRecorder()
-  const { generateCintillo, generateTeleprompterScript, loadingCintillo, loadingScript, aiConfigured, checkAIStatus } = useAI()
+  const { generateCintillo, generateTeleprompterScript, formatTeleprompterDocument, loadingCintillo, loadingScript, aiConfigured, checkAIStatus } = useAI()
   const [showAiInfo, setShowAiInfo] = useState(false)
 
   const [tab, setTab] = useState('studio')
@@ -107,7 +109,7 @@ export default function Studio({ project, user }) {
     cintillo, animPhase, animKey, showManual, showCustom, hide: hideCintillo,
   } = useCintilloRotation({ project: proj, enabled: autoCintillos, displaySec: cintDisplaySec })
 
-  const defaultScript = [
+  const defaultScript = proj.teleprompterScript || [
     proj.episodeTitle && `Hoy hablamos de: ${proj.episodeTitle}`,
     proj.guestName && `Con nosotros: ${proj.guestName}${proj.guestRole ? `, ${proj.guestRole}` : ''}`,
     proj.cintillos?.topic,
@@ -209,12 +211,12 @@ export default function Studio({ project, user }) {
       } else {
         setInitError('No se detectaron cámaras USB. Conecta una y autoriza el acceso.')
       }
-      if (devs.microphones.length > 0) await startMic(devs.microphones[0]?.deviceId)
+      if (devs.microphones.length > 0) await startPreferredMic(devs.microphones)
       await checkAIStatus()
       setInitialized(true)
     }
     init()
-  }, [enumerateDevices, autoConnectAll, startMic, checkAIStatus])
+  }, [enumerateDevices, autoConnectAll, startPreferredMic, checkAIStatus])
 
   // Re-scan for newly plugged cameras
   useEffect(() => {
@@ -699,15 +701,38 @@ export default function Studio({ project, user }) {
                 onGenerateScript={handleGenerateScript}
                 generatingScript={loadingScript}
                 aiConfigured={aiConfigured}
+                docUpload={(
+                  <TeleprompterDocUpload
+                    compact
+                    aiConfigured={aiConfigured}
+                    processing={loadingScript}
+                    onScriptReady={(text) => { teleprompter.setScript(text); teleprompter.reset(); teleprompter.setVisible(true) }}
+                    onFormatWithAI={(raw) => formatTeleprompterDocument(raw, {
+                      podcast: proj.name,
+                      topic: proj.episodeTitle,
+                      guest: proj.guestName,
+                    })}
+                  />
+                )}
               />
             )}
           </div>
 
-          {/* AUDIO */}
+          {/* AUDIO / MIC */}
           <div className={styles.prSection}>
             <div className={styles.prTitle}>Audio</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <i className="ti ti-microphone" style={{ fontSize: 13, color: 'var(--text-muted)' }} />
+            <MicSelector
+              microphones={devices.microphones}
+              selectedMicId={selectedMicId}
+              micLabel={micLabel}
+              micLevel={micLevel}
+              onSelectMic={switchMic}
+              onRefresh={async () => {
+                const devs = await enumerateDevices(false)
+                await startPreferredMic(devs.microphones)
+              }}
+            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
               <VUMeter level={micLevel} bars={14} />
               <span style={{ fontSize: 10, color: 'var(--text-muted)', minWidth: 32 }}>
                 {micLevel > 0 ? `-${Math.round(40 - micLevel * 0.32)} dB` : '–∞'}

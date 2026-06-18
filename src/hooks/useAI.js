@@ -51,6 +51,36 @@ Responde SOLO el texto del cintillo, máximo 60 caracteres, sin comillas ni expl
     }
   }, [])
 
+  const formatTeleprompterDocument = useCallback(async (rawText, { podcast, topic, guest } = {}) => {
+    setLoadingScript(true)
+    setError('')
+    try {
+      const prompt = `Eres editor profesional de guiones para teleprompter de podcasts en español latinoamericano.
+
+Texto extraído de un documento Word:
+---
+${rawText.slice(0, 14000)}
+---
+
+Tu trabajo:
+1. Corrige ortografía, gramática y puntuación
+2. Adapta el texto para lectura en voz alta frente a cámara (tono natural y conversacional)
+3. Divide en párrafos cortos de 1-3 líneas para facilitar el scroll del teleprompter
+4. Elimina numeración de páginas, encabezados técnicos, tablas rotas y basura de formato
+5. Conserva el mensaje, datos y nombres importantes del autor
+${podcast ? `Podcast: ${podcast}` : ''}${topic ? `\nTema del episodio: ${topic}` : ''}${guest ? `\nInvitado: ${guest}` : ''}
+
+Responde SOLO con el guion final listo para teleprompter. Sin títulos, sin explicaciones, sin markdown.`
+      const text = await callAI(prompt)
+      return text.trim()
+    } catch (e) {
+      setError(e.message || 'Error al formatear el documento')
+      return null
+    } finally {
+      setLoadingScript(false)
+    }
+  }, [])
+
   const generateTeleprompterScript = useCallback(async ({ podcast, topic, guest, role, durationMin = 5 }) => {
     setLoadingScript(true)
     setError('')
@@ -114,7 +144,7 @@ Incluye SOLO las plataformas: ${platList}`
   }, [])
 
   return {
-    generateCintillo, generateTeleprompterScript, generatePosts,
+    generateCintillo, generateTeleprompterScript, formatTeleprompterDocument, generatePosts,
     loadingPosts, loadingCintillo, loadingScript,
     posts, setPosts, error, aiConfigured, checkAIStatus,
   }

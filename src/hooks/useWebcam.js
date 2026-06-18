@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { pickPreferredMicrophone, isBuiltInMicrophone } from '../utils/micDevices.js'
 
 const WIFI_PRESETS = [
   { label: 'IP Webcam (Android)', url: 'http://192.168.1.100:8080/video' },
@@ -144,6 +145,8 @@ export function useWebcam() {
   const [activeCamera, setActiveCamera] = useState(null)
   const [error, setError] = useState(null)
   const [micLevel, setMicLevel] = useState(0)
+  const [selectedMicId, setSelectedMicId] = useState(null)
+  const [micLabel, setMicLabel] = useState('')
   const [bluetoothSupported, setBluetoothSupported] = useState(false)
   const [wifiConnecting, setWifiConnecting] = useState(false)
   const [btScanning, setBtScanning] = useState(false)
@@ -151,8 +154,10 @@ export function useWebcam() {
   const [connectedCount, setConnectedCount] = useState(0)
 
   const micRef = useRef(null)
+  const audioCtxRef = useRef(null)
   const analyserRef = useRef(null)
   const rafRef = useRef(null)
+  const selectedMicIdRef = useRef(null)
   const cleanupRef = useRef({})
   const streamsRef = useRef({})
   const cameraMetaRef = useRef({})
@@ -169,6 +174,8 @@ export function useWebcam() {
     cleanupRef.current[slotIndex] = fn
   }, [])
 
+  useEffect(() => { selectedMicIdRef.current = selectedMicId }, [selectedMicId])
+
   const enumerateDevices = useCallback(async (requestPermission = true) => {
     try {
       if (requestPermission) {
@@ -179,6 +186,11 @@ export function useWebcam() {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         }
         stream?.getTracks().forEach(t => t.stop())
+
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+          audioStream.getTracks().forEach(t => t.stop())
+        } catch { /* mic permission optional */ }
       }
       const all = await navigator.mediaDevices.enumerateDevices()
       const cams = uniqueCameras(all.filter(d => d.kind === 'videoinput'))
@@ -410,13 +422,61 @@ export function useWebcam() {
     return result
   }, [cameraMeta, connectWifiCamera])
 
+  const stopMic = useCallback(() => {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    rafRef.current = null
+    if (micRef.current) micRef.current.getTracks().forEach(t => t.stop())
+    micRef.current = null
+    if (audioCtxRef.current?.state !== 'closed') {
+      audioCtxRef.current?.close().catch(() => {})
+    }
+    audioCtxRef.current = null
+    analyserRef.current = null
+    setMicLevel(0)
+  }, [])
+
   const startMic = useCallback(async (deviceId) => {
+    stopMic()
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
-      })
+      const constraints = {
+        audio: deviceId
+          ? {
+            deviceId: { exact: deviceId },
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          }
+          : {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        video: false,
+      }
+
+      let stream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints)
+      } catch {
+        if (!deviceId) throw new Error('no mic')
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { ideal: deviceId } },
+          video: false,
+        })
+      }
+
+      const track = stream.getAudioTracks()[0]
+      const activeId = track?.getSettings?.().deviceId || deviceId
+      const label = track?.label || devices.microphones.find(m => m.deviceId === activeId)?.label || ''
+
       micRef.current = stream
+      setSelectedMicId(activeId)
+      setMicLabel(label)
+      selectedMicIdRef.current = activeId
+      if (activeId) localStorage.setItem('podcastudio_mic_id', activeId)
+
       const ctx = new AudioContext()
+      audioCtxRef.current = ctx
       const src = ctx.createMediaStreamSource(stream)
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 256
@@ -430,16 +490,31 @@ export function useWebcam() {
         rafRef.current = requestAnimationFrame(tick)
       }
       tick()
+      setError(null)
+      return stream
     } catch {
-      setError('No se pudo acceder al micrófono.')
+      setError('No se pudo acceder al micrófono seleccionado.')
+      return null
     }
-  }, [])
+  }, [devices.microphones, stopMic])
 
-  const stopMic = useCallback(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    if (micRef.current) micRef.current.getTracks().forEach(t => t.stop())
-    micRef.current = null
-  }, [])
+  const switchMic = useCallback(async (deviceId) => {
+    if (!deviceId) return null
+    return startMic(deviceId)
+  }, [startMic])
+
+  const startPreferredMic = useCallback(async (microphoneList) => {
+    const mics = microphoneList || devices.microphones
+    if (!mics.length) return null
+
+    const savedId = localStorage.getItem('podcastudio_mic_id')
+    const saved = savedId && mics.find(m => m.deviceId === savedId)
+    const preferred = pickPreferredMicrophone(mics)
+    const savedIsExternal = saved && !isBuiltInMicrophone(saved.label)
+    const deviceId = savedIsExternal ? saved.deviceId : preferred?.deviceId
+
+    return startMic(deviceId)
+  }, [devices.microphones, startMic])
 
   const getMicStream = useCallback(() => micRef.current, [])
 
@@ -453,13 +528,27 @@ export function useWebcam() {
     if (!navigator.mediaDevices?.addEventListener) return
 
     const onDeviceChange = async () => {
-      const { cameras } = await enumerateDevices(false)
+      const { cameras, microphones } = await enumerateDevices(false)
       await autoConnectAll(cameras)
+
+      if (microphones.length === 0) return
+
+      const preferred = pickPreferredMicrophone(microphones)
+      const currentId = selectedMicIdRef.current
+      const currentMic = microphones.find(m => m.deviceId === currentId)
+      const currentIsBuiltin = !currentId || isBuiltInMicrophone(currentMic?.label)
+      const preferredIsExternal = preferred && !isBuiltInMicrophone(preferred.label)
+
+      if (preferredIsExternal && (currentIsBuiltin || preferred.deviceId !== currentId)) {
+        await startMic(preferred.deviceId)
+      } else if (!currentId && preferred) {
+        await startMic(preferred.deviceId)
+      }
     }
 
     navigator.mediaDevices.addEventListener('devicechange', onDeviceChange)
     return () => navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange)
-  }, [enumerateDevices, autoConnectAll])
+  }, [enumerateDevices, autoConnectAll, startMic])
 
   return {
     devices,
@@ -470,6 +559,8 @@ export function useWebcam() {
     error,
     setError,
     micLevel,
+    selectedMicId,
+    micLabel,
     bluetoothSupported,
     wifiConnecting,
     btScanning,
@@ -485,6 +576,8 @@ export function useWebcam() {
     scanBluetoothCamera,
     connectBluetoothWifiStream,
     startMic,
+    startPreferredMic,
+    switchMic,
     stopMic,
     getMicStream,
   }

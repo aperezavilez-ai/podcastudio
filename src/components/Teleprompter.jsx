@@ -5,10 +5,11 @@ export default function Teleprompter({
   script, onScriptChange, playing, onToggle, onReset,
   speed, onSpeedChange, fontSize, onFontSizeChange,
   mirror, onMirrorChange, direction, onDirectionChange,
-  onGenerateScript, generatingScript, aiConfigured,
+  onGenerateScript, generatingScript, aiConfigured, docUpload,
 }) {
   return (
     <div className={styles.docked}>
+      {docUpload}
       <div className={styles.toolbar}>
         <div className={styles.tools}>
           <button type="button" className={`${styles.playBtn} ${playing ? styles.playing : ''}`} onClick={onToggle}>

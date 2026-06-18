@@ -9,6 +9,8 @@ import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 import { CINTILLO_SETUP_TYPES } from '../config/cintilloPresets.js'
 import { saveProject } from '../lib/projects.js'
 import { notifyProjectReady } from '../lib/notifications.js'
+import { useAI } from '../hooks/useAI.js'
+import TeleprompterDocUpload from '../components/TeleprompterDocUpload.jsx'
 
 const CINTILLO_POSITIONS = [
   { id: 'bl', label: 'Abajo izquierda' },
@@ -42,6 +44,7 @@ export default function ProjectSetup({ user, onProject }) {
   const [step, setStep] = useState(0)
   const [project, setProject] = useState({
     name: '', episodeTitle: '', guestName: '', guestRole: '',
+    teleprompterScript: '',
     logoFile: null, logoUrl: null, logoPosition: 'tr',
     cintillos: { guest: '', topic: '', promo: '', social: '', contact: '' },
     cintilloStyle: 'angled',
@@ -56,6 +59,7 @@ export default function ProjectSetup({ user, onProject }) {
   })
   const fileRef = useRef()
   const bgFileRef = useRef()
+  const { formatTeleprompterDocument, loadingScript, aiConfigured } = useAI()
 
   const upd = (k, v) => setProject(p => ({ ...p, [k]: v }))
   const updCint = (k, v) => setProject(p => ({ ...p, cintillos: { ...p.cintillos, [k]: v } }))
@@ -155,6 +159,32 @@ export default function ProjectSetup({ user, onProject }) {
                     ))}
                   </div>
                 </div>
+              </div>
+
+              <div className={styles.field} style={{ marginTop: 8 }}>
+                <label>Guion del teleprompter</label>
+                <p className={styles.stepDesc} style={{ margin: '4px 0 10px', fontSize: 12 }}>
+                  Sube tu documento Word (.docx) y la IA lo corrige y formatea para leerlo en pantalla.
+                </p>
+                <TeleprompterDocUpload
+                  aiConfigured={aiConfigured}
+                  processing={loadingScript}
+                  onScriptReady={(text) => upd('teleprompterScript', text)}
+                  onFormatWithAI={(raw) => formatTeleprompterDocument(raw, {
+                    podcast: project.name,
+                    topic: project.episodeTitle,
+                    guest: project.guestName,
+                  })}
+                />
+                {project.teleprompterScript && (
+                  <textarea
+                    className={styles.scriptPreview}
+                    value={project.teleprompterScript}
+                    onChange={e => upd('teleprompterScript', e.target.value)}
+                    rows={5}
+                    placeholder="Vista previa del guion..."
+                  />
+                )}
               </div>
             </div>
           )}
@@ -341,6 +371,7 @@ export default function ProjectSetup({ user, onProject }) {
                 <div className={styles.summaryRow}><i className="ti ti-layout-bottombar" />Logo: {LOGO_POSITIONS.find(p => p.id === project.logoPosition)?.label}</div>
                 <div className={styles.summaryRow}><i className="ti ti-palette" />Cintillo: {getCintilloStyle(project.cintilloStyle).name}</div>
                 <div className={styles.summaryRow}><i className="ti ti-photo" />Fondo: {project.customBackgroundUrl ? 'Set personalizado' : getBackgroundTemplate(project.backgroundTemplate).name}{project.chromaEnabled ? ' + Croma' : ''}</div>
+                {project.teleprompterScript && <div className={styles.summaryRow}><i className="ti ti-script" />Guion teleprompter cargado</div>}
               </div>
             </div>
           )}
