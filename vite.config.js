@@ -75,6 +75,69 @@ function aiApiDev(env) {
           return
         }
 
+        if (req.url === '/api/stripe/status' || req.url.startsWith('/api/stripe/status?')) {
+          if (req.method !== 'GET') {
+            res.statusCode = 405
+            res.end('Method not allowed')
+            return
+          }
+          const configured = !!env.STRIPE_SECRET_KEY
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ configured, provider: 'stripe', currency: 'usd' }))
+          return
+        }
+
+        if (req.url?.startsWith('/api/stripe/session')) {
+          if (req.method !== 'GET') {
+            res.statusCode = 405
+            res.end('Method not allowed')
+            return
+          }
+          try {
+            if (!env.STRIPE_SECRET_KEY) throw new Error('Añade STRIPE_SECRET_KEY en .env.local')
+            const url = new URL(req.url, 'http://localhost')
+            const sessionId = url.searchParams.get('session_id')
+            const { retrieveCheckoutSession } = await import('./lib/stripe/client.js')
+            const session = await retrieveCheckoutSession(sessionId)
+            const paid = session.payment_status === 'paid' || session.status === 'complete'
+            res.statusCode = 200
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({
+              ok: paid,
+              planId: session.metadata?.planId || null,
+              customerEmail: session.customer_details?.email || session.customer_email,
+            }))
+          } catch (e) {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: e.message }))
+          }
+          return
+        }
+
+        if (req.url === '/api/stripe/checkout' || req.url.startsWith('/api/stripe/checkout?')) {
+          if (req.method !== 'POST') {
+            res.statusCode = 405
+            res.end('Method not allowed')
+            return
+          }
+          try {
+            if (!env.STRIPE_SECRET_KEY) throw new Error('Añade STRIPE_SECRET_KEY en .env.local')
+            const body = await readBody(req)
+            const { createCheckoutSession } = await import('./lib/stripe/client.js')
+            const session = await createCheckoutSession({ planId: body.planId, customerEmail: body.email })
+            res.statusCode = 200
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ url: session.url, sessionId: session.id }))
+          } catch (e) {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: e.message }))
+          }
+          return
+        }
+
         if (!req.url?.startsWith('/api/ai')) return next()
 
         if (req.url === '/api/ai/status' || req.url.startsWith('/api/ai/status?')) {
