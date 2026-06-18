@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { detectBrowser } from '../lib/pwaBrowser.js'
+import {
+  detectInstalledRelatedApp,
+  isStandaloneMode,
+  markPwaInstalled,
+  wasPwaInstalled,
+} from '../lib/pwaStorage.js'
 
 function waitForInstallPrompt(existing, timeoutMs = 5000) {
   if (existing) return Promise.resolve(existing)
@@ -22,28 +28,50 @@ function waitForInstallPrompt(existing, timeoutMs = 5000) {
 
 export function usePwaInstall() {
   const [deferred, setDeferred] = useState(null)
-  const [installed, setInstalled] = useState(false)
+  const [isStandalone, setIsStandalone] = useState(() => isStandaloneMode())
+  const [installedOnDevice, setInstalledOnDevice] = useState(() => wasPwaInstalled())
+  const [updateAvailable, setUpdateAvailable] = useState(false)
   const [browser] = useState(() => detectBrowser())
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) {
-      setInstalled(true)
+    setIsStandalone(isStandaloneMode())
+
+    async function detect() {
+      if (wasPwaInstalled() || isStandaloneMode()) {
+        setInstalledOnDevice(true)
+        setReady(true)
+        return
+      }
+      const related = await detectInstalledRelatedApp()
+      if (related) {
+        markPwaInstalled()
+        setInstalledOnDevice(true)
+      }
+      setReady(true)
     }
+
+    detect()
 
     const onPrompt = (e) => {
       e.preventDefault()
       setDeferred(e)
     }
     const onInstalled = () => {
-      setInstalled(true)
+      markPwaInstalled()
+      setInstalledOnDevice(true)
+      setIsStandalone(isStandaloneMode())
       setDeferred(null)
     }
+    const onUpdate = () => setUpdateAvailable(true)
 
     window.addEventListener('beforeinstallprompt', onPrompt)
     window.addEventListener('appinstalled', onInstalled)
+    window.addEventListener('pwa-update-available', onUpdate)
     return () => {
       window.removeEventListener('beforeinstallprompt', onPrompt)
       window.removeEventListener('appinstalled', onInstalled)
+      window.removeEventListener('pwa-update-available', onUpdate)
     }
   }, [])
 
@@ -55,14 +83,28 @@ export function usePwaInstall() {
     await prompt.prompt()
     const { outcome } = await prompt.userChoice
     if (outcome === 'accepted') {
+      markPwaInstalled()
+      setInstalledOnDevice(true)
       setDeferred(null)
-      setInstalled(true)
     }
     return outcome === 'accepted'
   }, [deferred])
 
-  const canInstall = !!deferred && !installed
-  const canShowInstall = !installed
+  const canInstall = !!deferred && !installedOnDevice && !isStandalone
+  const showInstallUi = ready && !isStandalone && !installedOnDevice
+  const showUpdateUi = ready && updateAvailable && (isStandalone || installedOnDevice)
 
-  return { canInstall, canShowInstall, installed, browser, install }
+  return {
+    ready,
+    canInstall,
+    showInstallUi,
+    showUpdateUi,
+    isStandalone,
+    installedOnDevice,
+    updateAvailable,
+    installed: isStandalone,
+    browser,
+    install,
+    setUpdateAvailable,
+  }
 }

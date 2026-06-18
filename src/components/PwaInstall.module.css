@@ -336,6 +336,22 @@
   margin-right: auto;
 }
 
+.landingInstalledNote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  font-size: 13px;
+  color: var(--green);
+  background: var(--green-dim);
+  border: 1px solid var(--green-border);
+  border-radius: 10px;
+  margin: 0;
+}
+
+.landingInstalledNote i { font-size: 16px; }
+
 @media (max-width: 480px) {
   .card { flex-wrap: wrap; }
   .actions { width: 100%; justify-content: flex-end; }

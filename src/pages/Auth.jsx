@@ -27,7 +27,7 @@ export default function Auth({ onAuth }) {
       return 'Sin conexión al servidor. Comprueba internet o intenta más tarde.'
     }
     if (msg.includes('invalid login') || msg.includes('invalid_credentials')) {
-      return 'Correo o contraseña incorrectos.'
+      return 'Correo o contraseña incorrectos. Revisa que el correo esté bien escrito (alfonsoavilery@icloud.com).'
     }
     return err?.message || 'Error al iniciar sesión'
   }

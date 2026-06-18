@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { getManualInstallSteps } from '../lib/pwaBrowser.js'
+import { triggerPwaUpdate } from '../lib/pwaUpdate.js'
 import { usePwaInstall } from './usePwaInstall.js'
 
 const PREP_STEPS = [
@@ -12,6 +13,13 @@ const PREP_STEPS = [
   { pct: 63, label: 'Preparando acceso sin conexión…' },
 ]
 
+const UPDATE_STEPS = [
+  { pct: 20, label: 'Buscando actualización…' },
+  { pct: 45, label: 'Descargando nueva versión…' },
+  { pct: 70, label: 'Aplicando cambios…' },
+  { pct: 90, label: 'Reiniciando aplicación…' },
+]
+
 function wait(ms) {
   return new Promise((r) => setTimeout(r, ms))
 }
@@ -22,7 +30,28 @@ export function usePwaInstallFlow() {
   const [progress, setProgress] = useState(null)
   const [installGuide, setInstallGuide] = useState(null)
 
+  const runUpdate = useCallback(async () => {
+    if (installing) return false
+    setInstalling(true)
+    setInstallGuide(null)
+    try {
+      for (const step of UPDATE_STEPS) {
+        setProgress(step)
+        await wait(280)
+      }
+      setProgress({ pct: 100, label: '¡Actualización lista!' })
+      triggerPwaUpdate()
+      pwa.setUpdateAvailable(false)
+      await wait(500)
+      setProgress(null)
+      return true
+    } finally {
+      setInstalling(false)
+    }
+  }, [installing, pwa])
+
   const runInstall = useCallback(async ({ onSuccess } = {}) => {
+    if (pwa.showUpdateUi) return runUpdate()
     if (installing) return false
     setInstalling(true)
     setInstallGuide(null)
@@ -57,12 +86,12 @@ export function usePwaInstallFlow() {
     } finally {
       setInstalling(false)
     }
-  }, [installing, pwa])
+  }, [installing, pwa, runUpdate])
 
   const clearGuide = useCallback(() => {
     setInstallGuide(null)
     setProgress(null)
   }, [])
 
-  return { ...pwa, installing, progress, installGuide, runInstall, clearGuide }
+  return { ...pwa, installing, progress, installGuide, runInstall, runUpdate, clearGuide }
 }

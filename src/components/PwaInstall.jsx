@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { getBrowserLabel, getReadyHint } from '../lib/pwaBrowser.js'
+import { PWA_DISMISS_KEY } from '../lib/pwaStorage.js'
 import { usePwaInstallFlow } from '../hooks/usePwaInstallFlow.js'
 import styles from './PwaInstall.module.css'
 
-const DISMISS_KEY = 'podcastudio_pwa_dismiss'
 const PwaContext = createContext(null)
 
 export function PwaInstallProvider({ children }) {
@@ -51,35 +51,45 @@ export function PwaInstallProgress() {
   )
 }
 
-/** Tarjeta de instalación en la landing. Oculta dentro de la PWA instalada. */
+/** Tarjeta en landing: instalar solo si no está instalada; actualizar si hay nueva versión. */
 export function PwaLandingInstall() {
   const {
-    canInstall, canShowInstall, installed, browser,
-    installing, progress, installGuide, runInstall, clearGuide,
+    showInstallUi, showUpdateUi, installedOnDevice, isStandalone, browser,
+    installing, progress, installGuide, runInstall, runUpdate, clearGuide,
   } = usePwa()
 
-  if (!canShowInstall) return null
+  if (isStandalone && !showUpdateUi) return null
+  if (installedOnDevice && !showUpdateUi && !showInstallUi) return null
 
-  const idleHint = getReadyHint(browser, canInstall)
+  const isUpdate = showUpdateUi
+  const idleHint = isUpdate
+    ? 'Hay una nueva versión de PodcastStudio disponible.'
+    : getReadyHint(browser, showInstallUi)
   const statusLabel = installing && progress ? progress.label : idleHint
   const statusPct = installing && progress ? progress.pct : (installGuide ? 100 : 0)
 
   return (
-    <section className={styles.landingInstall} aria-label="Instalar aplicación">
+    <section className={styles.landingInstall} aria-label={isUpdate ? 'Actualizar aplicación' : 'Instalar aplicación'}>
       <div className={styles.landingInstallHead}>
         <div className={styles.landingInstallLogo}>
-          <i className="ti ti-microphone" />
+          <i className={isUpdate ? 'ti ti-refresh' : 'ti ti-microphone'} />
         </div>
         <div>
           <strong>PodcastStudio</strong>
-          <span>Instalación en {getBrowserLabel(browser)}</span>
+          <span>
+            {isUpdate
+              ? 'Actualización disponible'
+              : installedOnDevice
+                ? 'App instalada en tu dispositivo'
+                : `Instalación en ${getBrowserLabel(browser)}`}
+          </span>
         </div>
       </div>
 
       <div className={styles.landingInstallCard}>
         <div className={styles.landingInstallStatus}>
           <div className={styles.landingInstallIcon}>
-            <i className="ti ti-download" />
+            <i className={isUpdate ? 'ti ti-refresh' : 'ti ti-download'} />
           </div>
           <div className={styles.landingInstallStatusText}>
             <em>Estado</em>
@@ -107,60 +117,103 @@ export function PwaLandingInstall() {
           </ol>
         )}
 
-        <button
-          type="button"
-          className={styles.landingInstallBtn}
-          disabled={installing}
-          onClick={() => (installGuide ? clearGuide() : runInstall())}
-        >
-          <i className={installGuide ? 'ti ti-refresh' : 'ti ti-download'} />
-          {installing
-            ? 'Instalando…'
-            : installGuide
-              ? 'Intentar de nuevo'
-              : 'Instalar en este dispositivo'}
-        </button>
+        {isUpdate && (
+          <button
+            type="button"
+            className={styles.landingInstallBtn}
+            disabled={installing}
+            onClick={() => runUpdate()}
+          >
+            <i className="ti ti-refresh" />
+            {installing ? 'Actualizando…' : 'Instalar actualización'}
+          </button>
+        )}
+
+        {showInstallUi && !isUpdate && (
+          <button
+            type="button"
+            className={styles.landingInstallBtn}
+            disabled={installing}
+            onClick={() => (installGuide ? clearGuide() : runInstall())}
+          >
+            <i className={installGuide ? 'ti ti-refresh' : 'ti ti-download'} />
+            {installing
+              ? 'Instalando…'
+              : installGuide
+                ? 'Intentar de nuevo'
+                : 'Instalar en este dispositivo'}
+          </button>
+        )}
+
+        {installedOnDevice && !isUpdate && !showInstallUi && (
+          <p className={styles.landingInstalledNote}>
+            <i className="ti ti-circle-check" /> Ya tienes la app instalada. Ábrela desde tu pantalla de inicio.
+          </p>
+        )}
       </div>
 
-      <p className={styles.landingInstallFoot}>
-        Compatible con Chrome, Edge, Brave, Firefox, Safari y Samsung Internet.
-        Al completar la instalación podrás iniciar sesión y usar el estudio desde la app.
-      </p>
+      {!installedOnDevice && (
+        <p className={styles.landingInstallFoot}>
+          Compatible con Chrome, Edge, Brave, Firefox y Safari. Solo se instala una vez por dispositivo.
+        </p>
+      )}
     </section>
   )
 }
 
+/** Banner flotante: solo actualizaciones o primera instalación (no en landing ni si ya instalada). */
 export function PwaInstallBanner() {
   const location = useLocation()
-  const { canShowInstall, browser, canInstall, installed, installing, runInstall } = usePwa()
-  const [dismissed, setDismissed] = useState(() => localStorage.getItem(DISMISS_KEY) === '1')
+  const {
+    showInstallUi, showUpdateUi, installedOnDevice, isStandalone,
+    browser, installing, runInstall, runUpdate,
+  } = usePwa()
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(PWA_DISMISS_KEY) === '1')
 
   useEffect(() => {
-    if (installed) localStorage.removeItem(DISMISS_KEY)
-  }, [installed])
+    if (installedOnDevice || isStandalone) localStorage.removeItem(PWA_DISMISS_KEY)
+  }, [installedOnDevice, isStandalone])
 
-  if (location.pathname === '/' || !canShowInstall || dismissed || installing) return null
+  if (location.pathname === '/' || installing) return null
+  if (isStandalone && !showUpdateUi) return null
+  if (installedOnDevice && !showUpdateUi) return null
+  if (!showInstallUi && !showUpdateUi) return null
+  if (!showUpdateUi && dismissed) return null
+
+  const isUpdate = showUpdateUi
 
   const dismiss = () => {
-    localStorage.setItem(DISMISS_KEY, '1')
+    if (!isUpdate) localStorage.setItem(PWA_DISMISS_KEY, '1')
     setDismissed(true)
   }
 
   return (
-    <div className={styles.wrap} role="dialog" aria-label="Instalar aplicación">
+    <div className={styles.wrap} role="dialog" aria-label={isUpdate ? 'Actualizar aplicación' : 'Instalar aplicación'}>
       <div className={styles.card}>
-        <div className={styles.icon}><i className="ti ti-download" /></div>
+        <div className={styles.icon}>
+          <i className={isUpdate ? 'ti ti-refresh' : 'ti ti-download'} />
+        </div>
         <div className={styles.text}>
-          <strong>Instalar PodcastStudio</strong>
-          <span>{getReadyHint(browser, canInstall)}</span>
+          <strong>{isUpdate ? 'Actualización disponible' : 'Instalar PodcastStudio'}</strong>
+          <span>
+            {isUpdate
+              ? 'Hay una nueva versión lista. No necesitas volver a instalar la app.'
+              : getReadyHint(browser, showInstallUi)}
+          </span>
         </div>
         <div className={styles.actions}>
-          <button type="button" className={styles.installBtn} onClick={() => runInstall({ onSuccess: dismiss })}>
-            Instalar
+          <button
+            type="button"
+            className={styles.installBtn}
+            onClick={() => (isUpdate ? runUpdate() : runInstall({ onSuccess: dismiss }))}
+          >
+            {isUpdate ? 'Actualizar' : 'Instalar'}
           </button>
-          <button type="button" className={styles.dismissBtn} onClick={dismiss} aria-label="Cerrar">
-            <i className="ti ti-x" />
-          </button>
+          {!isUpdate && (
+            <button type="button" className={styles.dismissBtn} onClick={dismiss} aria-label="Cerrar">
+              <i className="ti ti-x" />
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -169,14 +222,16 @@ export function PwaInstallBanner() {
 
 export function PwaInstallNavButton() {
   const location = useLocation()
-  const { canShowInstall, installed, installing, runInstall } = usePwa()
+  const { showInstallUi, showUpdateUi, isStandalone, installedOnDevice, installing, runInstall, runUpdate } = usePwa()
 
-  if (location.pathname === '/' || !canShowInstall || installed || installing) return null
+  if (location.pathname === '/' || isStandalone || installing) return null
+  if (installedOnDevice && !showUpdateUi) return null
+  if (!showInstallUi && !showUpdateUi) return null
 
   return (
-    <button type="button" className={styles.navBtn} onClick={() => runInstall()}>
-      <i className="ti ti-download" />
-      Instalar app
+    <button type="button" className={styles.navBtn} onClick={() => (showUpdateUi ? runUpdate() : runInstall())}>
+      <i className={showUpdateUi ? 'ti ti-refresh' : 'ti ti-download'} />
+      {showUpdateUi ? 'Actualizar' : 'Instalar app'}
     </button>
   )
 }
