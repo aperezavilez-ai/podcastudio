@@ -14,6 +14,7 @@ async function callAI(prompt, systemPrompt = '') {
 export function useAI() {
   const [loadingPosts, setLoadingPosts] = useState(false)
   const [loadingCintillo, setLoadingCintillo] = useState(false)
+  const [loadingScript, setLoadingScript] = useState(false)
   const [posts, setPosts] = useState(null)
   const [error, setError] = useState('')
   const [aiConfigured, setAiConfigured] = useState(false)
@@ -47,6 +48,28 @@ Responde SOLO el texto del cintillo, máximo 60 caracteres, sin comillas ni expl
       return null
     } finally {
       setLoadingCintillo(false)
+    }
+  }, [])
+
+  const generateTeleprompterScript = useCallback(async ({ podcast, topic, guest, role, durationMin = 5 }) => {
+    setLoadingScript(true)
+    setError('')
+    try {
+      const prompt = `Escribe un guion de teleprompter para un episodio de podcast en español latinoamericano.
+Podcast: ${podcast}
+Tema: ${topic}
+Invitado: ${guest || 'sin invitado'}${role ? ` (${role})` : ''}
+Duración aproximada: ${durationMin} minutos al leer en voz alta.
+
+Estructura: saludo, presentación, desarrollo del tema en párrafos cortos, cierre con llamada a la acción.
+Escribe SOLO el guion, sin títulos. Tono conversacional, como si hablaras a cámara.`
+      const text = await callAI(prompt)
+      return text.trim()
+    } catch (e) {
+      setError(e.message || 'Error al generar guion')
+      return null
+    } finally {
+      setLoadingScript(false)
     }
   }, [])
 
@@ -90,5 +113,9 @@ Incluye SOLO las plataformas: ${platList}`
     }
   }, [])
 
-  return { generateCintillo, generatePosts, loadingPosts, loadingCintillo, posts, setPosts, error, aiConfigured, checkAIStatus }
+  return {
+    generateCintillo, generateTeleprompterScript, generatePosts,
+    loadingPosts, loadingCintillo, loadingScript,
+    posts, setPosts, error, aiConfigured, checkAIStatus,
+  }
 }

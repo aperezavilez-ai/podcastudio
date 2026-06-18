@@ -44,7 +44,8 @@ export default function Studio({ project, user }) {
     scanBluetoothCamera, connectBluetoothWifiStream, startMic, getMicStream,
   } = useWebcam()
   const { recording, duration, recordings, converting, convertProgress, startRecording, stopRecording, downloadRecording, downloadRecordingMp4, formatDuration } = useRecorder()
-  const { generateCintillo, loadingCintillo, aiConfigured, checkAIStatus } = useAI()
+  const { generateCintillo, generateTeleprompterScript, loadingCintillo, loadingScript, aiConfigured, checkAIStatus } = useAI()
+  const [showAiInfo, setShowAiInfo] = useState(false)
 
   const [tab, setTab] = useState('studio')
   const [liveOn, setLiveOn] = useState(false)
@@ -257,6 +258,20 @@ export default function Studio({ project, user }) {
     showManual(preset)
   }
 
+  const handleGenerateScript = async () => {
+    const text = await generateTeleprompterScript({
+      podcast: proj.name,
+      topic: proj.episodeTitle,
+      guest: proj.guestName,
+      role: proj.guestRole,
+    })
+    if (text) {
+      teleprompter.setScript(text)
+      teleprompter.reset()
+      teleprompter.setVisible(true)
+    }
+  }
+
   const handleAICintillo = async () => {
     const text = await generateCintillo({ topic: proj.episodeTitle, guest: proj.guestName, role: proj.guestRole, type: 'guest' })
     if (text) {
@@ -313,15 +328,41 @@ export default function Studio({ project, user }) {
         </div>
         <div className={styles.topRight}>
           {initialized && (
-            <div className={`${styles.aiChip} ${aiConfigured ? '' : styles.aiChipOff}`} title={aiConfigured ? 'Claude Sonnet activo' : 'Añade ANTHROPIC_API_KEY en Vercel'}>
+            <button
+              type="button"
+              className={`${styles.aiChip} ${aiConfigured ? '' : styles.aiChipOff}`}
+              onClick={() => setShowAiInfo(s => !s)}
+              title={aiConfigured ? 'Claude activo — clic para ver funciones' : 'IA sin configurar — clic para ver cómo activarla'}
+            >
               <i className="ti ti-sparkles" style={{ fontSize: 9 }} />
               {aiConfigured ? 'IA activa' : 'IA sin configurar'}
-            </div>
+            </button>
           )}
           <button className={styles.iconBtn} title="Ayuda"><i className="ti ti-help" style={{ fontSize: 13 }} /></button>
           <button className={styles.iconBtn} title="Configuración"><i className="ti ti-settings" style={{ fontSize: 13 }} /></button>
         </div>
       </div>
+
+      {showAiInfo && (
+        <div className={styles.aiInfoBar}>
+          <div className={styles.aiInfoInner}>
+            <strong><i className="ti ti-sparkles" /> ¿Qué hace la IA en PodcastStudio?</strong>
+            <ul>
+              <li><b>Guion IA</b> — escribe el teleprompter del episodio</li>
+              <li><b>Cintillos IA</b> — genera textos para pantalla (invitado, tema)</li>
+              <li><b>Posts IA</b> — crea publicaciones y hashtags para redes</li>
+            </ul>
+            {!aiConfigured && (
+              <p className={styles.aiInfoSetup}>
+                Para activarla: añade <code>ANTHROPIC_API_KEY</code> en Vercel → Settings → Environment Variables y redeploy.
+              </p>
+            )}
+            <button type="button" className={styles.aiInfoClose} onClick={() => setShowAiInfo(false)}>
+              <i className="ti ti-x" /> Cerrar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* LAYOUT */}
       <div className={styles.layout}>
@@ -354,23 +395,6 @@ export default function Studio({ project, user }) {
                   getDisplayCanvas={getDisplayCanvas}
                   hasStream={!!streams[activeCamera ?? 0]}
                 />
-                {teleprompter.visible && (
-                  <Teleprompter
-                    script={teleprompter.script}
-                    onScriptChange={teleprompter.setScript}
-                    playing={teleprompter.playing}
-                    onToggle={teleprompter.toggle}
-                    onReset={teleprompter.reset}
-                    speed={teleprompter.speed}
-                    onSpeedChange={teleprompter.setSpeed}
-                    fontSize={teleprompter.fontSize}
-                    onFontSizeChange={teleprompter.setFontSize}
-                    mirror={teleprompter.mirror}
-                    onMirrorChange={teleprompter.setMirror}
-                    offset={teleprompter.offset}
-                    onClose={() => teleprompter.setVisible(false)}
-                  />
-                )}
                 <div className={styles.scanlines} />
                 {liveOn && (
                   <div className={styles.liveInds}>
@@ -578,6 +602,26 @@ export default function Studio({ project, user }) {
               <span>Teleprompter {teleprompter.visible ? '(activo)' : ''}</span>
               <i className={`ti ti-chevron-${teleprompter.visible ? 'up' : 'down'}`} style={{ marginLeft: 'auto', fontSize: 11 }} />
             </button>
+            {teleprompter.visible && (
+              <Teleprompter
+                script={teleprompter.script}
+                onScriptChange={teleprompter.setScript}
+                playing={teleprompter.playing}
+                onToggle={teleprompter.toggle}
+                onReset={teleprompter.reset}
+                speed={teleprompter.speed}
+                onSpeedChange={teleprompter.setSpeed}
+                fontSize={teleprompter.fontSize}
+                onFontSizeChange={teleprompter.setFontSize}
+                mirror={teleprompter.mirror}
+                onMirrorChange={teleprompter.setMirror}
+                offset={teleprompter.offset}
+                onMaxScrollChange={teleprompter.setMaxScroll}
+                onGenerateScript={handleGenerateScript}
+                generatingScript={loadingScript}
+                aiConfigured={aiConfigured}
+              />
+            )}
           </div>
 
           {/* AUDIO */}

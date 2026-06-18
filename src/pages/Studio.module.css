@@ -48,6 +48,44 @@
 }
 .aiChipOff {
   background: rgba(255,180,60,.08); border-color: rgba(255,180,60,.25); color: #e8a84a;
+  cursor: pointer;
+}
+.aiChip { cursor: pointer; }
+.aiInfoBar {
+  background: rgba(157, 140, 232, 0.08);
+  border-bottom: 1px solid rgba(157, 140, 232, 0.2);
+  padding: 10px 16px;
+}
+.aiInfoInner {
+  max-width: 720px;
+  margin: 0 auto;
+  font-size: 11px;
+  color: var(--text-secondary);
+  position: relative;
+}
+.aiInfoInner strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #9d8ce8;
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+.aiInfoInner ul { margin: 0 0 8px; padding-left: 18px; line-height: 1.6; }
+.aiInfoSetup { margin: 0; font-size: 10px; color: #e8a84a; }
+.aiInfoSetup code { background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 3px; }
+.aiInfoClose {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 .iconBtn {
   width: 28px; height: 28px; border-radius: 7px;
