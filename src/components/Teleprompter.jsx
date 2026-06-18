@@ -1,23 +1,12 @@
-import React, { useRef, useEffect } from 'react'
+import React from 'react'
 import styles from './Teleprompter.module.css'
 
 export default function Teleprompter({
   script, onScriptChange, playing, onToggle, onReset,
   speed, onSpeedChange, fontSize, onFontSizeChange,
-  mirror, onMirrorChange, offset, onMaxScrollChange,
+  mirror, onMirrorChange, direction, onDirectionChange,
   onGenerateScript, generatingScript, aiConfigured,
 }) {
-  const textRef = useRef(null)
-  const viewRef = useRef(null)
-
-  useEffect(() => {
-    const textEl = textRef.current
-    const viewEl = viewRef.current
-    if (!textEl || !viewEl) return
-    const max = Math.max(0, textEl.scrollHeight - viewEl.clientHeight + 40)
-    onMaxScrollChange?.(max)
-  }, [script, fontSize, onMaxScrollChange])
-
   return (
     <div className={styles.docked}>
       <div className={styles.toolbar}>
@@ -49,7 +38,7 @@ export default function Teleprompter({
         value={script}
         onChange={e => onScriptChange(e.target.value)}
         placeholder="Escribe tu guion aquí o usa «Guion IA»..."
-        rows={4}
+        rows={5}
       />
 
       <div className={styles.sliders}>
@@ -59,7 +48,7 @@ export default function Teleprompter({
         </label>
         <label>
           <span>Texto</span>
-          <input type="range" min={16} max={36} value={fontSize} onChange={e => onFontSizeChange(+e.target.value)} />
+          <input type="range" min={18} max={48} value={fontSize} onChange={e => onFontSizeChange(+e.target.value)} />
         </label>
         <label className={styles.mirrorToggle}>
           <input type="checkbox" checked={mirror} onChange={e => onMirrorChange(e.target.checked)} />
@@ -67,24 +56,27 @@ export default function Teleprompter({
         </label>
       </div>
 
-      <div className={styles.prompter} ref={viewRef}>
-        <div className={styles.readLine} />
-        <div
-          ref={textRef}
-          className={styles.prompterText}
-          style={{
-            fontSize,
-            transform: mirror
-              ? `scaleX(-1) translateY(calc(50% - ${offset}px))`
-              : `translateY(calc(50% - ${offset}px))`,
-          }}
+      <div className={styles.directionRow}>
+        <span>Dirección</span>
+        <button
+          type="button"
+          className={`${styles.dirBtn} ${direction === 'up' ? styles.dirBtnActive : ''}`}
+          onClick={() => onDirectionChange('up')}
         >
-          {script || 'El guion aparecerá aquí...'}
-        </div>
-        <div className={styles.prompterFade} />
+          <i className="ti ti-arrow-up" /> Abajo → arriba
+        </button>
+        <button
+          type="button"
+          className={`${styles.dirBtn} ${direction === 'down' ? styles.dirBtnActive : ''}`}
+          onClick={() => onDirectionChange('down')}
+        >
+          <i className="ti ti-arrow-down" /> Arriba → abajo
+        </button>
       </div>
 
-      <p className={styles.hint}>Solo tú ves el teleprompter — no sale en la grabación.</p>
+      <p className={styles.hint}>
+        El guion aparece sobre el visor (solo tú lo ves). Pulsa <kbd>Espacio</kbd> para iniciar o pausar el scroll.
+      </p>
     </div>
   )
 }

@@ -4,8 +4,9 @@ export function useTeleprompter(initialScript = '', autoScrollWithRecord = true)
   const [script, setScript] = useState(initialScript)
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(35)
-  const [fontSize, setFontSize] = useState(22)
+  const [fontSize, setFontSize] = useState(28)
   const [mirror, setMirror] = useState(false)
+  const [direction, setDirection] = useState('up') // up = abajo→arriba (clásico), down = arriba→abajo
   const [offset, setOffset] = useState(0)
   const [visible, setVisible] = useState(false)
   const [maxScroll, setMaxScroll] = useState(0)
@@ -59,7 +60,7 @@ export function useTeleprompter(initialScript = '', autoScrollWithRecord = true)
 
   return {
     script, setScript, playing, toggle, reset, speed, setSpeed,
-    fontSize, setFontSize, mirror, setMirror, offset, visible, setVisible,
-    setRecordingActive, maxScroll, setMaxScroll,
+    fontSize, setFontSize, mirror, setMirror, direction, setDirection,
+    offset, visible, setVisible, setRecordingActive, maxScroll, setMaxScroll,
   }
 }

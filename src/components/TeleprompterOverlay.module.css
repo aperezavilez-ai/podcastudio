@@ -1,0 +1,73 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.prompter {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.readLine {
+  position: absolute;
+  top: 42%;
+  left: 6%;
+  right: 6%;
+  height: 2px;
+  background: rgba(232, 97, 42, 0.85);
+  z-index: 2;
+  box-shadow: 0 0 12px rgba(232, 97, 42, 0.55);
+}
+
+.prompterText {
+  padding-left: 8%;
+  padding-right: 8%;
+  color: #fff;
+  line-height: 1.65;
+  font-weight: 600;
+  white-space: pre-wrap;
+  text-align: center;
+  will-change: transform;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.95),
+    0 2px 12px rgba(0, 0, 0, 0.8),
+    0 0 24px rgba(0, 0, 0, 0.6);
+}
+
+.prompterFade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0.55) 0%,
+    transparent 22%,
+    transparent 62%,
+    rgba(0, 0, 0, 0.65) 100%
+  );
+  z-index: 1;
+}
+
+.statusBar {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 10px;
+}
+
+.statusLive { color: var(--green); display: flex; align-items: center; gap: 4px; }
+.statusPaused { color: var(--accent); display: flex; align-items: center; gap: 4px; }
+.spaceHint { color: rgba(255, 255, 255, 0.55); font-size: 9px; }

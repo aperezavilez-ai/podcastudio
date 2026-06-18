@@ -20,6 +20,7 @@ import { useStudioCompositor } from '../hooks/useStudioCompositor.js'
 import { useAudioMix } from '../hooks/useAudioMix.js'
 import VUMeter from '../components/VUMeter.jsx'
 import Teleprompter from '../components/Teleprompter.jsx'
+import TeleprompterOverlay from '../components/TeleprompterOverlay.jsx'
 import LiveStreamPanel from '../components/LiveStreamPanel.jsx'
 import { useTeleprompter } from '../hooks/useTeleprompter.js'
 import styles from './Studio.module.css'
@@ -175,6 +176,21 @@ export default function Studio({ project, user }) {
     if (project.chromaSmoothness != null) setChromaSmoothness(project.chromaSmoothness)
     if (project.cameraScale != null) setCameraScale(project.cameraScale)
   }, [project])
+
+  useEffect(() => {
+    if (tab !== 'studio' || !teleprompter.visible) return
+
+    const onKeyDown = (e) => {
+      if (e.code !== 'Space' && e.key !== ' ') return
+      const tag = e.target?.tagName
+      if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || e.target?.isContentEditable) return
+      e.preventDefault()
+      teleprompter.toggle()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [tab, teleprompter.visible, teleprompter.toggle])
 
   const handleBgUpload = (e) => {
     const f = e.target.files?.[0]
@@ -429,6 +445,17 @@ export default function Studio({ project, user }) {
                     <span>{directorStatus}</span>
                   </div>
                 )}
+                {teleprompter.visible && (
+                  <TeleprompterOverlay
+                    script={teleprompter.script}
+                    playing={teleprompter.playing}
+                    offset={teleprompter.offset}
+                    fontSize={teleprompter.fontSize}
+                    mirror={teleprompter.mirror}
+                    direction={teleprompter.direction}
+                    onMaxScrollChange={teleprompter.setMaxScroll}
+                  />
+                )}
               </div>
             </div>
 
@@ -651,8 +678,8 @@ export default function Studio({ project, user }) {
                 onFontSizeChange={teleprompter.setFontSize}
                 mirror={teleprompter.mirror}
                 onMirrorChange={teleprompter.setMirror}
-                offset={teleprompter.offset}
-                onMaxScrollChange={teleprompter.setMaxScroll}
+                direction={teleprompter.direction}
+                onDirectionChange={(d) => { teleprompter.setDirection(d); teleprompter.reset() }}
                 onGenerateScript={handleGenerateScript}
                 generatingScript={loadingScript}
                 aiConfigured={aiConfigured}
