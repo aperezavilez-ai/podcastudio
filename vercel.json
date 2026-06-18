@@ -2,14 +2,6 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "redirects": [
-    {
-      "source": "/:path*",
-      "has": [{ "type": "host", "value": "podcastudio-three.vercel.app" }],
-      "destination": "https://podcaststudio.mx/:path*",
-      "permanent": true
-    }
-  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
