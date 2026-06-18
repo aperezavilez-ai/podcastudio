@@ -35,8 +35,8 @@ export default function Auth({ onAuth }) {
     if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed to fetch')) {
       return 'Sin conexión al servidor. Comprueba internet o intenta más tarde.'
     }
-    if (msg.includes('invalid login') || msg.includes('invalid_credentials')) {
-      return `Correo o contraseña incorrectos. El admin es: ${ADMIN_EMAIL}`
+    if (msg.includes('invalid login') || msg.includes('invalid_credentials') || msg.includes('incorrectos')) {
+      return 'Contraseña incorrecta. Escribe la contraseña manualmente (no uses autocompletar del navegador).'
     }
     return err?.message || 'Error al iniciar sesión'
   }
@@ -105,7 +105,7 @@ export default function Auth({ onAuth }) {
           </div>
           <div className={styles.field}>
             <label>Contraseña</label>
-            <input name="password" type="password" value={form.password} onChange={handle} placeholder="••••••••" />
+            <input name="password" type="password" value={form.password} onChange={handle} placeholder="••••••••" autoComplete="off" />
           </div>
           {error && <div className={styles.error}><i className="ti ti-alert-circle" /> {error}</div>}
           <button className={styles.submitBtn} type="submit" disabled={loading}>
