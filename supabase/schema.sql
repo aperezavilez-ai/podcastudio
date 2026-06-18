@@ -1,4 +1,5 @@
 -- Ejecutar en Supabase SQL Editor (Dashboard → SQL)
+-- Seguro para volver a ejecutar: usa DROP POLICY IF EXISTS antes de cada política.
 
 create table if not exists public.projects (
   id uuid primary key default gen_random_uuid(),
@@ -9,6 +10,7 @@ create table if not exists public.projects (
 
 alter table public.projects enable row level security;
 
+drop policy if exists "Users manage own projects" on public.projects;
 create policy "Users manage own projects"
   on public.projects for all
   using (auth.uid() = user_id)
@@ -30,6 +32,7 @@ create index if not exists subscriptions_stripe_customer_idx
 
 alter table public.subscriptions enable row level security;
 
+drop policy if exists "Users read own subscription" on public.subscriptions;
 create policy "Users read own subscription"
   on public.subscriptions for select
   using (auth.uid() = user_id);
@@ -55,6 +58,7 @@ create index if not exists recordings_user_idx on public.recordings (user_id, cr
 
 alter table public.recordings enable row level security;
 
+drop policy if exists "Users read own recordings" on public.recordings;
 create policy "Users read own recordings"
   on public.recordings for select
   using (auth.uid() = user_id);
@@ -72,6 +76,7 @@ create table if not exists public.youtube_connections (
 
 alter table public.youtube_connections enable row level security;
 
+drop policy if exists "Users read own youtube" on public.youtube_connections;
 create policy "Users read own youtube"
   on public.youtube_connections for select
   using (auth.uid() = user_id);
@@ -89,6 +94,7 @@ create table if not exists public.live_sessions (
 
 alter table public.live_sessions enable row level security;
 
+drop policy if exists "Users read own live sessions" on public.live_sessions;
 create policy "Users read own live sessions"
   on public.live_sessions for select
   using (auth.uid() = user_id);
