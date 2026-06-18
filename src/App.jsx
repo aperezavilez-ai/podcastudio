@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Landing from './pages/Landing.jsx'
 import Auth from './pages/Auth.jsx'
 import Plans from './pages/Plans.jsx'
@@ -7,56 +7,24 @@ import Tour from './pages/Tour.jsx'
 import ProjectSetup from './pages/ProjectSetup.jsx'
 import Studio from './pages/Studio.jsx'
 import { PwaInstallBanner, PwaInstallProvider } from './components/PwaInstall.jsx'
-import { supabase, mapSupabaseUser, isSupabaseConfigured, withTimeout } from './lib/supabase.js'
+import { supabase, mapSupabaseUser, withTimeout } from './lib/supabase.js'
+import { redirectToCanonicalDomain } from './lib/site.js'
 import { loadProject } from './lib/projects.js'
 
-const bootStyles = {
-  screen: {
-    minHeight: '100dvh',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    padding: 24,
-    background: '#08080b',
-    color: '#e8e8f0',
-    fontFamily: 'Inter, system-ui, sans-serif',
-  },
-  logo: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
-    background: 'rgba(232,97,42,0.15)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#e8612a',
-    fontSize: 22,
-  },
-  muted: { color: '#8888a0', fontSize: 14, textAlign: 'center', maxWidth: 320 },
-}
-
-function BootScreen({ message }) {
-  return (
-    <div style={bootStyles.screen}>
-      <div style={bootStyles.logo}><i className="ti ti-microphone" /></div>
-      <p style={bootStyles.muted}>{message || 'Cargando PodcastStudio…'}</p>
-    </div>
-  )
-}
-
 export default function App() {
+  const location = useLocation()
   const [user, setUser] = useState(null)
   const [project, setProject] = useState(null)
-  const [authReady, setAuthReady] = useState(!isSupabaseConfigured)
   const [bootError, setBootError] = useState(null)
+
+  useEffect(() => {
+    redirectToCanonicalDomain()
+  }, [location.pathname, location.search, location.hash])
 
   useEffect(() => {
     if (!supabase) {
       const saved = localStorage.getItem('podcastudio_user')
       if (saved) setUser(JSON.parse(saved))
-      setAuthReady(true)
       return
     }
 
@@ -78,17 +46,13 @@ export default function App() {
       try {
         const { data: { session } } = await withTimeout(
           supabase.auth.getSession(),
-          8000,
+          4000,
           { data: { session: null } },
         )
-        if (!cancelled) {
-          await hydrateUser(session?.user)
-          setAuthReady(true)
-        }
+        if (!cancelled) await hydrateUser(session?.user)
       } catch {
         if (!cancelled) {
           setBootError('No se pudo conectar con el servidor. Revisa tu conexión.')
-          setAuthReady(true)
         }
       }
     }
@@ -113,8 +77,6 @@ export default function App() {
   const handleProject = (p) => {
     setProject(p)
   }
-
-  if (!authReady) return <BootScreen />
 
   return (
     <PwaInstallProvider>

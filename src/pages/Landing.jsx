@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PLANS } from '../config/plans.js'
 import { PwaInstallNavButton } from '../components/PwaInstall.jsx'
+import TourPreview from '../components/TourPreview.jsx'
 import styles from './Landing.module.css'
 
 const FEATURES = [
@@ -25,12 +26,16 @@ export default function Landing() {
   const [activeFormat, setActiveFormat] = useState(0)
 
   useEffect(() => {
+    if (window.matchMedia('(max-width: 768px)').matches) return undefined
     const canvas = canvasRef.current
-    if (!canvas) return
+    if (!canvas) return undefined
     const ctx = canvas.getContext('2d')
+    if (!ctx) return undefined
     let raf, t = 0
-    const W = canvas.width = canvas.offsetWidth
-    const H = canvas.height = canvas.offsetHeight
+    let W = canvas.offsetWidth || window.innerWidth
+    let H = canvas.offsetHeight || window.innerHeight
+    canvas.width = W
+    canvas.height = H
     const particles = Array.from({ length: 60 }, () => ({
       x: Math.random() * W, y: Math.random() * H,
       r: Math.random() * 1.5 + 0.3,
@@ -115,54 +120,9 @@ export default function Landing() {
           </button>
         </div>
 
-        {/* MINI STUDIO PREVIEW */}
-        <div className={styles.studioPreview}>
-          <div className={styles.spTopbar}>
-            <div className={styles.winBtns}>
-              <div className={`${styles.wb} ${styles.wbR}`} />
-              <div className={`${styles.wb} ${styles.wbY}`} />
-              <div className={`${styles.wb} ${styles.wbG}`} />
-            </div>
-            <div className={styles.spBrand}>Podcast<span>Studio</span></div>
-            <div className={styles.spRec}><div className={styles.recDot} />REC 00:42:17</div>
-          </div>
-          <div className={styles.spBody}>
-            <div className={styles.spViewport}>
-              <div className={styles.spPerson} style={{ left: '20%' }}>
-                <div className={styles.spHead} />
-                <div className={styles.spBody2} />
-              </div>
-              <div className={styles.spPerson} style={{ left: '52%' }}>
-                <div className={styles.spHead} style={{ width: 50, height: 50 }} />
-                <div className={styles.spBody2} style={{ width: 100 }} />
-              </div>
-              <div className={styles.spLogo}>
-                <div className={styles.spLogoIcon}><i className="ti ti-microphone" style={{ fontSize: 10, color: '#fff' }} /></div>
-                <span>Mi Podcast</span>
-              </div>
-              <div className={styles.spLiveInds}>
-                <span className={styles.spLivePill} style={{ background: '#1565a0' }}>YT</span>
-                <span className={styles.spLivePill} style={{ background: '#9b1c1c' }}>FB</span>
-                <span className={styles.spLivePill} style={{ background: '#222' }}>TK</span>
-              </div>
-              <div className={styles.spCintillo}>
-                <div className={styles.spCintAccent} />
-                <div>
-                  <div className={styles.spCintLabel}>Invitado</div>
-                  <div className={styles.spCintName}>Carlos Pérez · CEO TechCo</div>
-                </div>
-                <div className={styles.spViewers}><i className="ti ti-eye" style={{ fontSize: 9 }} /> 1,248</div>
-              </div>
-            </div>
-            <div className={styles.spCamStrip}>
-              {[1, 2, 3].map(n => (
-                <div key={n} className={`${styles.spCamThumb} ${n === 1 ? styles.spCamActive : ''}`}>
-                  <i className="ti ti-video" style={{ fontSize: 12, color: '#444' }} />
-                  <span>Cam {n}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* Preview idéntico al estudio real */}
+        <div className={styles.studioPreviewWrap}>
+          <TourPreview stepId="live" />
         </div>
       </section>
 

@@ -9,24 +9,24 @@ const PLATFORMS = [
   { id: 'ig', label: 'IG', color: '#e1306c' },
 ]
 
-/** Planos de estudio realistas (Unsplash) — simulan 3 cámaras */
+/** Planos de estudio realistas — podcast con anfitrión/a */
 const CAM_SCENES = [
   {
-    src: 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=1280&q=82&auto=format&fit=crop',
-    pos: '50% 40%',
-    scale: 1.05,
+    src: 'https://images.unsplash.com/photo-1478737274341-094acc4f03f6?w=1280&q=85&auto=format&fit=crop',
+    pos: '50% 25%',
+    scale: 1.08,
     label: 'Plano general',
   },
   {
-    src: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=1280&q=82&auto=format&fit=crop',
-    pos: '55% 35%',
-    scale: 1.15,
+    src: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=1280&q=85&auto=format&fit=crop',
+    pos: '50% 20%',
+    scale: 1.12,
     label: 'Plano medio',
   },
   {
-    src: 'https://images.unsplash.com/photo-1516280440614-37979bbacd81?w=1280&q=82&auto=format&fit=crop',
-    pos: '48% 30%',
-    scale: 1.2,
+    src: 'https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=1280&q=85&auto=format&fit=crop',
+    pos: '50% 40%',
+    scale: 1.05,
     label: 'Plano cerrado',
   },
 ]

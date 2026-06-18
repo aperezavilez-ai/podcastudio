@@ -34,9 +34,14 @@
   -webkit-font-smoothing: antialiased;
 }
 
+html {
+  height: -webkit-fill-available;
+}
+
 html, body {
   min-height: 100%;
   min-height: 100dvh;
+  min-height: -webkit-fill-available;
   background: var(--app-bg);
   color: var(--text-primary);
 }
@@ -44,10 +49,14 @@ html, body {
 #root {
   min-height: 100%;
   min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  display: flex;
+  flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
   padding-left: env(safe-area-inset-left);
   padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 button { font-family: inherit; cursor: pointer; border: none; background: none; }
