@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { pickPreferredMicrophone, isBuiltInMicrophone } from '../utils/micDevices.js'
+import { openCameraStream, waitMs } from '../utils/openCamera.js'
 
 const WIFI_PRESETS = [
   { label: 'IP Webcam (Android)', url: 'http://192.168.1.100:8080/video' },
@@ -158,6 +159,9 @@ export function useWebcam() {
   const analyserRef = useRef(null)
   const rafRef = useRef(null)
   const selectedMicIdRef = useRef(null)
+  const autoConnectLockRef = useRef(false)
+  const connectedCountRef = useRef(0)
+  const deviceChangeTimerRef = useRef(null)
   const cleanupRef = useRef({})
   const streamsRef = useRef({})
   const cameraMetaRef = useRef({})
@@ -186,6 +190,7 @@ export function useWebcam() {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
         }
         stream?.getTracks().forEach(t => t.stop())
+        await waitMs(250)
 
         try {
           const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
@@ -232,69 +237,67 @@ export function useWebcam() {
   const startCamera = useCallback(async (deviceId, slotIndex, labelOverride) => {
     try {
       stopCamera(slotIndex)
-      const constraints = {
-        video: deviceId
-          ? { deviceId: { ideal: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-          : { width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: false,
-      }
-      let stream
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints)
-      } catch {
-        if (!deviceId) throw new Error('no device')
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: false,
-        })
-      }
+      const stream = await openCameraStream(deviceId)
+      const track = stream.getVideoTracks()[0]
+      const activeId = track?.getSettings?.().deviceId || deviceId
       const label = labelOverride
-        || devices.cameras.find(c => c.deviceId === deviceId)?.label
+        || devices.cameras.find(c => c.deviceId === activeId || c.deviceId === deviceId)?.label
+        || track?.label
         || `USB Cam ${slotIndex + 1}`
-      attachStream(slotIndex, stream, { type: 'usb', label, deviceId })
+      attachStream(slotIndex, stream, { type: 'usb', label, deviceId: activeId || deviceId })
       return stream
-    } catch {
-      setError(`No se pudo iniciar la cámara USB ${slotIndex + 1}`)
+    } catch (e) {
+      console.error('startCamera:', e)
+      setError(`No se pudo iniciar la cámara ${slotIndex + 1}. Cierra otras apps que usen la cámara e intenta de nuevo.`)
       return null
     }
   }, [attachStream, devices.cameras, stopCamera])
 
   const autoConnectAll = useCallback(async (cameraList) => {
+    if (autoConnectLockRef.current) return connectedCountRef.current
+
     const list = uniqueCameras(cameraList || devices.cameras)
     if (!list.length) {
       setConnectedCount(0)
+      connectedCountRef.current = 0
       return 0
     }
 
+    autoConnectLockRef.current = true
     setAutoConnecting(true)
     setError(null)
     let connected = 0
 
-    const usedDeviceIds = getAssignedDeviceIds(cameraMetaRef.current, streamsRef.current)
-    let camIdx = 0
+    try {
+      const usedDeviceIds = getAssignedDeviceIds(cameraMetaRef.current, streamsRef.current)
+      let camIdx = 0
 
-    for (let slot = 0; slot < 3; slot++) {
-      if (streamsRef.current[slot]) {
-        connected++
-        continue
+      for (let slot = 0; slot < 3; slot++) {
+        if (streamsRef.current[slot]) {
+          connected++
+          continue
+        }
+
+        while (camIdx < list.length && usedDeviceIds.has(list[camIdx].deviceId)) camIdx++
+        if (camIdx >= list.length) break
+
+        const cam = list[camIdx++]
+        usedDeviceIds.add(cam.deviceId)
+        const stream = await startCamera(cam.deviceId, slot, cam.label || `USB Cam ${slot + 1}`)
+        if (stream) {
+          connected++
+          await delay(300)
+        }
       }
 
-      while (camIdx < list.length && usedDeviceIds.has(list[camIdx].deviceId)) camIdx++
-      if (camIdx >= list.length) break
-
-      const cam = list[camIdx++]
-      usedDeviceIds.add(cam.deviceId)
-      const stream = await startCamera(cam.deviceId, slot, cam.label || `USB Cam ${slot + 1}`)
-      if (stream) {
-        connected++
-        await delay(450)
-      }
+      if (connected > 0) setActiveCamera(prev => (prev === null ? 0 : prev))
+      setConnectedCount(connected)
+      connectedCountRef.current = connected
+      return connected
+    } finally {
+      autoConnectLockRef.current = false
+      setAutoConnecting(false)
     }
-
-    if (connected > 0) setActiveCamera(prev => (prev === null ? 0 : prev))
-    setConnectedCount(connected)
-    setAutoConnecting(false)
-    return connected
   }, [devices.cameras, startCamera])
 
   const connectNextCameraToSlot = useCallback(async (slotIndex) => {
@@ -527,23 +530,27 @@ export function useWebcam() {
   useEffect(() => {
     if (!navigator.mediaDevices?.addEventListener) return
 
-    const onDeviceChange = async () => {
-      const { cameras, microphones } = await enumerateDevices(false)
-      await autoConnectAll(cameras)
+    const onDeviceChange = () => {
+      clearTimeout(deviceChangeTimerRef.current)
+      deviceChangeTimerRef.current = setTimeout(async () => {
+        const { cameras, microphones } = await enumerateDevices(false)
+        const connected = Object.values(streamsRef.current).filter(Boolean).length
+        if (cameras.length > connected) await autoConnectAll(cameras)
 
-      if (microphones.length === 0) return
+        if (microphones.length === 0) return
 
-      const preferred = pickPreferredMicrophone(microphones)
-      const currentId = selectedMicIdRef.current
-      const currentMic = microphones.find(m => m.deviceId === currentId)
-      const currentIsBuiltin = !currentId || isBuiltInMicrophone(currentMic?.label)
-      const preferredIsExternal = preferred && !isBuiltInMicrophone(preferred.label)
+        const preferred = pickPreferredMicrophone(microphones)
+        const currentId = selectedMicIdRef.current
+        const currentMic = microphones.find(m => m.deviceId === currentId)
+        const currentIsBuiltin = !currentId || isBuiltInMicrophone(currentMic?.label)
+        const preferredIsExternal = preferred && !isBuiltInMicrophone(preferred.label)
 
-      if (preferredIsExternal && (currentIsBuiltin || preferred.deviceId !== currentId)) {
-        await startMic(preferred.deviceId)
-      } else if (!currentId && preferred) {
-        await startMic(preferred.deviceId)
-      }
+        if (preferredIsExternal && (currentIsBuiltin || preferred.deviceId !== currentId)) {
+          await startMic(preferred.deviceId)
+        } else if (!currentId && preferred) {
+          await startMic(preferred.deviceId)
+        }
+      }, 600)
     }
 
     navigator.mediaDevices.addEventListener('devicechange', onDeviceChange)

@@ -96,6 +96,7 @@ export default function Studio({ project, user }) {
   )
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
+  const initRanRef = useRef(false)
 
   const proj = project || {
     name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
@@ -201,12 +202,19 @@ export default function Studio({ project, user }) {
     setCustomBackgroundUrl(URL.createObjectURL(f))
   }
 
-  // Initialize cameras and mic on mount
+  // Initialize cameras and mic once on mount (evita bucle de reconexión)
   useEffect(() => {
+    if (initRanRef.current) return
+    initRanRef.current = true
+
     async function init() {
       const devs = await enumerateDevices()
       if (devs.cameras.length > 0) {
-        const n = await autoConnectAll(devs.cameras)
+        let n = await autoConnectAll(devs.cameras)
+        if (n === 0 && devs.cameras[0]) {
+          await startCamera(devs.cameras[0].deviceId, 0, devs.cameras[0].label)
+          n = 1
+        }
         if (n === 0) setInitError('Permite el acceso a la cámara en el navegador y pulsa reconectar.')
       } else {
         setInitError('No se detectaron cámaras USB. Conecta una y autoriza el acceso.')
@@ -216,18 +224,18 @@ export default function Studio({ project, user }) {
       setInitialized(true)
     }
     init()
-  }, [enumerateDevices, autoConnectAll, startPreferredMic, checkAIStatus])
+  }, [])
 
   // Re-scan for newly plugged cameras
   useEffect(() => {
     if (!initialized) return
     const id = setInterval(async () => {
       const { cameras } = await enumerateDevices(false)
-      const connected = Object.values(streams).filter(Boolean).length
+      const connected = Object.keys(streams).filter(k => streams[k]).length
       if (cameras.length > connected) await autoConnectAll(cameras)
-    }, 10000)
+    }, 12000)
     return () => clearInterval(id)
-  }, [initialized, enumerateDevices, autoConnectAll, streams])
+  }, [initialized])
 
   // Simulate viewer counts when live
   useEffect(() => {
@@ -440,6 +448,7 @@ export default function Studio({ project, user }) {
                 <ViewportComposer
                   getDisplayCanvas={getDisplayCanvas}
                   hasStream={!!streams[activeCamera ?? 0]}
+                  previewStream={streams[activeCamera ?? 0]}
                 />
                 <div className={styles.scanlines} />
                 {liveOn && (
@@ -612,7 +621,14 @@ export default function Studio({ project, user }) {
               cameraMeta={cameraMeta}
               autoConnecting={autoConnecting}
               connectedCount={connectedCount}
-              onReconnectAll={() => autoConnectAll()}
+              onReconnectAll={async () => {
+                setCamError(null)
+                const devs = await enumerateDevices(true)
+                let n = await autoConnectAll(devs.cameras)
+                if (n === 0 && devs.cameras[0]) {
+                  await startCamera(devs.cameras[0].deviceId, camSlot, devs.cameras[0].label)
+                }
+              }}
               bluetoothSupported={bluetoothSupported}
               wifiConnecting={wifiConnecting}
               btScanning={btScanning}
