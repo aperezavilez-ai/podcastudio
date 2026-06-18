@@ -39,7 +39,11 @@ export function useStudioCompositor({
     canvas.width = COMPOSITOR_W
     canvas.height = COMPOSITOR_H
     canvasRef.current = canvas
-    outputStreamRef.current = canvas.captureStream(30)
+    try {
+      outputStreamRef.current = canvas.captureStream?.(30) || null
+    } catch {
+      outputStreamRef.current = null
+    }
   }
 
   if (animKeyRef.current !== animKey) {
@@ -175,32 +179,37 @@ export function useStudioCompositor({
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = 'high'
 
-      drawCompositorFrame(ctx, COMPOSITOR_W, COMPOSITOR_H, {
-        video,
-        videoFrom: videoFrom && s.transitionStartMs ? videoFrom : null,
-        transitionMode: s.transitionMode,
-        transitionStartMs: s.transitionStartMs,
-        logoOverlay: {
-          podcastName: s.podcastName,
-          position: s.logoPosition,
-          logoImage: logoImageRef.current,
-        },
-        cintilloOverlay: c?.active ? {
-          active: true,
-          tag: c.tag,
-          text: c.text,
-          color: c.color,
-          position: s.cintilloPosition,
-          styleId: s.cintilloStyle,
-        } : null,
-        cintilloMotion,
-        directorCrop: s.directorCrop,
-        fromCrop: null,
-        look: s.look,
-        recording: s.recording,
-        recordStartMs: s.recordStartMs,
-        recordDurationSec: s.recordDurationSec,
-      })
+      try {
+        drawCompositorFrame(ctx, COMPOSITOR_W, COMPOSITOR_H, {
+          video,
+          videoFrom: videoFrom && s.transitionStartMs ? videoFrom : null,
+          transitionMode: s.transitionMode,
+          transitionStartMs: s.transitionStartMs,
+          logoOverlay: {
+            podcastName: s.podcastName,
+            position: s.logoPosition,
+            logoImage: logoImageRef.current,
+          },
+          cintilloOverlay: c?.active ? {
+            active: true,
+            tag: c.tag,
+            text: c.text,
+            color: c.color,
+            position: s.cintilloPosition,
+            styleId: s.cintilloStyle,
+          } : null,
+          cintilloMotion,
+          directorCrop: s.directorCrop,
+          fromCrop: null,
+          look: s.look,
+          recording: s.recording,
+          recordStartMs: s.recordStartMs,
+          recordDurationSec: s.recordDurationSec,
+        })
+      } catch {
+        ctx.fillStyle = '#07070a'
+        ctx.fillRect(0, 0, COMPOSITOR_W, COMPOSITOR_H)
+      }
 
       rafRef.current = requestAnimationFrame(draw)
     }

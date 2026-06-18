@@ -1,14 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
+import { safeStorage } from './safeStorage.js'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY
-
-/** localStorage seguro en Safari iOS (modo privado puede lanzar excepción). */
-const safeStorage = {
-  getItem: (k) => { try { return localStorage.getItem(k) } catch { return null } },
-  setItem: (k, v) => { try { localStorage.setItem(k, v) } catch { /* noop */ } },
-  removeItem: (k) => { try { localStorage.removeItem(k) } catch { /* noop */ } },
-}
 
 export const supabase = url && key
   ? createClient(url, key, {

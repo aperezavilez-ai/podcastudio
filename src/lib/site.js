@@ -28,7 +28,12 @@ export function redirectToCanonicalDomain() {
   if (isLocalDevHost(hostname)) return false
 
   const canonicalHost = getCanonicalHost()
-  if (hostname === canonicalHost || hostname === 'podcastudio.mx') return false
+  if (hostname === canonicalHost) return false
+
+  if (hostname === 'podcastudio.mx') {
+    window.location.replace(`${CANONICAL_SITE_URL}${pathname}${search}${hash}`)
+    return true
+  }
 
   if (hostname.endsWith('.vercel.app')) {
     window.location.replace(`${CANONICAL_SITE_URL}${pathname}${search}${hash}`)

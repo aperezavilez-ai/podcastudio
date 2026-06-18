@@ -5,6 +5,12 @@
   "redirects": [
     {
       "source": "/:path*",
+      "has": [{ "type": "host", "value": "podcastudio.mx" }],
+      "destination": "https://www.podcastudio.mx/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
       "has": [{ "type": "host", "value": "podcastudio-three.vercel.app" }],
       "destination": "https://www.podcastudio.mx/:path*",
       "permanent": true

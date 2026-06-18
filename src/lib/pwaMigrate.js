@@ -1,21 +1,34 @@
+import { safeStorage } from './safeStorage.js'
+
 /** Limpia service workers viejos que dejan pantalla negra en móvil/PWA. */
-const SW_VERSION = '3'
+const SW_VERSION = '4'
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(resolve, ms)),
+  ])
+}
 
 export async function migrateServiceWorker() {
   if (!('serviceWorker' in navigator)) return
 
-  const stored = localStorage.getItem('podcastudio_sw_version')
+  const stored = safeStorage.getItem('podcastudio_sw_version')
   if (stored === SW_VERSION) return
 
   try {
-    const regs = await navigator.serviceWorker.getRegistrations()
-    await Promise.all(regs.map((r) => r.unregister()))
-    if ('caches' in window) {
-      const keys = await caches.keys()
-      await Promise.all(keys.map((k) => caches.delete(k)))
+    const regs = await withTimeout(navigator.serviceWorker.getRegistrations(), 4000)
+    if (Array.isArray(regs)) {
+      await Promise.all(regs.map((r) => withTimeout(r.unregister(), 2000)))
     }
-    localStorage.setItem('podcastudio_sw_version', SW_VERSION)
+    if ('caches' in window) {
+      const keys = await withTimeout(caches.keys(), 3000)
+      if (Array.isArray(keys)) {
+        await Promise.all(keys.map((k) => withTimeout(caches.delete(k), 2000)))
+      }
+    }
+    safeStorage.setItem('podcastudio_sw_version', SW_VERSION)
   } catch {
-    /* noop */
+    safeStorage.setItem('podcastudio_sw_version', SW_VERSION)
   }
 }

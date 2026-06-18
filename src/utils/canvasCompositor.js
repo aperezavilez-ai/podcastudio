@@ -45,10 +45,17 @@ function drawVideoLayer(ctx, video, w, h, directorCrop, look) {
   if (!video) return
   ctx.save()
   const filter = buildCanvasFilter(look)
-  if (filter && filter !== 'none') ctx.filter = filter
-  drawVideoCover(ctx, video, 0, 0, w, h, directorCrop)
+  try {
+    if (filter && filter !== 'none') ctx.filter = filter
+    drawVideoCover(ctx, video, 0, 0, w, h, directorCrop)
+  } catch {
+    ctx.filter = 'none'
+    drawVideoCover(ctx, video, 0, 0, w, h, directorCrop)
+  }
   ctx.filter = 'none'
-  applyLutOverlay(ctx, w, h, look?.lutId)
+  try {
+    applyLutOverlay(ctx, w, h, look?.lutId)
+  } catch { /* composite ops no soportados en algunos móviles */ }
   ctx.restore()
 }
 

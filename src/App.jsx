@@ -1,15 +1,33 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Landing from './pages/Landing.jsx'
 import Auth from './pages/Auth.jsx'
-import Plans from './pages/Plans.jsx'
-import Tour from './pages/Tour.jsx'
-import ProjectSetup from './pages/ProjectSetup.jsx'
-import Studio from './pages/Studio.jsx'
 import { PwaInstallBanner, PwaInstallProvider } from './components/PwaInstall.jsx'
 import { supabase, mapSupabaseUser, withTimeout } from './lib/supabase.js'
 import { redirectToCanonicalDomain } from './lib/site.js'
 import { loadProject } from './lib/projects.js'
+
+const Plans = lazy(() => import('./pages/Plans.jsx'))
+const Tour = lazy(() => import('./pages/Tour.jsx'))
+const ProjectSetup = lazy(() => import('./pages/ProjectSetup.jsx'))
+const Studio = lazy(() => import('./pages/Studio.jsx'))
+
+function RouteFallback() {
+  return (
+    <div style={{
+      minHeight: '100dvh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#08080b',
+      color: '#8888a0',
+      fontSize: 14,
+      paddingTop: 'env(safe-area-inset-top)',
+    }}>
+      Cargando…
+    </div>
+  )
+}
 
 export default function App() {
   const location = useLocation()
@@ -90,15 +108,17 @@ export default function App() {
           {bootError}
         </div>
       )}
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/auth" element={<Auth onAuth={handleAuth} />} />
-        <Route path="/tour" element={<Tour user={user} />} />
-        <Route path="/plans" element={<Plans user={user} onContinue={() => {}} />} />
-        <Route path="/setup" element={<ProjectSetup user={user} onProject={handleProject} />} />
-        <Route path="/studio" element={<Studio project={project} user={user} onProjectSave={handleProject} />} />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/auth" element={<Auth onAuth={handleAuth} />} />
+          <Route path="/tour" element={<Tour user={user} />} />
+          <Route path="/plans" element={<Plans user={user} onContinue={() => {}} />} />
+          <Route path="/setup" element={<ProjectSetup user={user} onProject={handleProject} />} />
+          <Route path="/studio" element={<Studio project={project} user={user} onProjectSave={handleProject} />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </Suspense>
       <PwaInstallBanner />
     </PwaInstallProvider>
   )
