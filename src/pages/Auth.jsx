@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { signIn, isSupabaseConfigured } from '../lib/projects.js'
 import { mapSupabaseUser, checkSupabaseHealth } from '../lib/supabase.js'
 import { hasSeenTour } from '../config/tourSteps.js'
-import { ADMIN_EMAIL } from '../lib/adminEmail.js'
+import { ADMIN_EMAIL, WRONG_EMAIL_EXAMPLE, isKnownEmailTypo, normalizeLoginEmail } from '../lib/adminEmail.js'
 import styles from './Auth.module.css'
 
 export default function Auth({ onAuth }) {
@@ -21,6 +21,14 @@ export default function Auth({ onAuth }) {
   }, [])
 
   const handle = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }))
+
+  const handleEmailBlur = () => {
+    if (isKnownEmailTypo(form.email)) {
+      setForm(f => ({ ...f, email: normalizeLoginEmail(f.email) }))
+    }
+  }
+
+  const emailTypo = isKnownEmailTypo(form.email)
 
   const friendlyAuthError = (err) => {
     const msg = (err?.message || '').toLowerCase()
@@ -82,12 +90,18 @@ export default function Auth({ onAuth }) {
           </div>
         )}
         <p className={styles.adminHint}>
-          <i className="ti ti-user-check" /> Admin: <strong>{ADMIN_EMAIL}</strong>
+          <i className="ti ti-user-check" /> Correo correcto: <strong>{ADMIN_EMAIL}</strong>
+          <span className={styles.adminWrong}> (no {WRONG_EMAIL_EXAMPLE})</span>
         </p>
         <form className={styles.form} onSubmit={submit}>
           <div className={styles.field}>
             <label>Correo electrónico</label>
-            <input name="email" type="email" value={form.email} onChange={handle} placeholder={ADMIN_EMAIL} autoComplete="email" autoFocus />
+            <input name="email" type="email" value={form.email} onChange={handle} onBlur={handleEmailBlur} placeholder={ADMIN_EMAIL} autoComplete="email" autoFocus />
+            {emailTypo && (
+              <p className={styles.typoWarn}>
+                Ese correo está mal escrito. El correcto es <strong>{ADMIN_EMAIL}</strong>
+              </p>
+            )}
           </div>
           <div className={styles.field}>
             <label>Contraseña</label>

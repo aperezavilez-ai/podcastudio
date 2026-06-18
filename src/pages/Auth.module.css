@@ -66,6 +66,11 @@
   word-break: break-all;
 }
 .adminHint strong { color: var(--accent); font-weight: 600; }
+.adminWrong { display: block; font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.typoWarn {
+  font-size: 11px; color: #e8a84a; margin-top: 4px; line-height: 1.4;
+}
+.typoWarn strong { color: var(--accent); }
 .submitBtn {
   width: 100%; padding: 12px;
   border-radius: var(--radius-md); background: var(--accent); border: none;
