@@ -23,6 +23,12 @@ export default function CintilloOverlay({
   const secondary = styleDef.colors.secondary
 
   const posClass = {
+    tl: styles.posTl,
+    tc: styles.posTc,
+    tr: styles.posTr,
+    ml: styles.posMl,
+    mc: styles.posMc,
+    mr: styles.posMr,
     bl: styles.posBl,
     bc: styles.posBc,
     br: styles.posBr,

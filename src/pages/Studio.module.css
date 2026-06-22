@@ -581,9 +581,36 @@
 }
 .posBtn:hover { background: var(--surface-3); color: var(--text-secondary); }
 .posBtnActive {
-  border-color: var(--accent-border) !important;
-  background: var(--accent-dim) !important;
+  border-color: var(--accent) !important;
   color: var(--accent) !important;
+  background: rgba(232, 97, 42, 0.12) !important;
+}
+
+.cintCameraBlock {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.cintCameraHead {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 6px;
+  letter-spacing: .04em;
+}
+
+.posGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  margin-bottom: 6px;
+}
+
+.posGrid .posBtn {
+  width: 100%;
+  min-height: 26px;
+  padding: 3px 0;
 }
 .cintDivider {
   height: 1px;

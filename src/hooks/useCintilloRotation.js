@@ -1,16 +1,48 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { getRotationPresets, resolveCintilloText } from '../config/cintilloPresets.js'
+import {
+  getRotationPresets,
+  resolveCintilloText,
+} from '../config/cintilloPresets.js'
+import {
+  getPresetCameraSlot,
+  getPositionForPreset,
+  DEFAULT_CINTILLO_POSITIONS,
+} from '../config/cintilloCameraMap.js'
 
 const ENTER_MS = 900
 const EXIT_MS = 450
 const DEFAULT_DISPLAY_SEC = 6
 
-export function useCintilloRotation({ project, enabled, displaySec = DEFAULT_DISPLAY_SEC }) {
-  const [cintillo, setCintillo] = useState({ active: false, tag: '', text: '', color: '#4a90d9', presetId: null })
+function buildCintilloState(preset, project, positions, overrides = {}) {
+  const presetId = preset?.id || overrides.presetId || 'custom'
+  const text = overrides.text ?? (preset ? resolveCintilloText(preset.id, project) : '')
+  return {
+    active: true,
+    tag: overrides.tag ?? preset?.tag ?? 'INFO',
+    text,
+    color: overrides.color ?? preset?.color ?? '#e8612a',
+    presetId,
+    targetSlot: overrides.targetSlot ?? getPresetCameraSlot(presetId),
+    position: overrides.position ?? getPositionForPreset(presetId, positions),
+  }
+}
+
+export function useCintilloRotation({
+  project,
+  enabled,
+  displaySec = DEFAULT_DISPLAY_SEC,
+  positions = DEFAULT_CINTILLO_POSITIONS,
+}) {
+  const [cintillo, setCintillo] = useState({
+    active: false, tag: '', text: '', color: '#4a90d9', presetId: null, targetSlot: 1, position: 'bc',
+  })
   const [animPhase, setAnimPhase] = useState('hold')
   const [animKey, setAnimKey] = useState(0)
   const indexRef = useRef(0)
   const timersRef = useRef([])
+  const positionsRef = useRef(positions)
+
+  positionsRef.current = positions
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach(clearTimeout)
@@ -24,16 +56,9 @@ export function useCintilloRotation({ project, enabled, displaySec = DEFAULT_DIS
   }, [])
 
   const showPreset = useCallback((preset) => {
-    const text = resolveCintilloText(preset.id, project)
     setAnimKey(k => k + 1)
     setAnimPhase('enter')
-    setCintillo({
-      active: true,
-      tag: preset.tag,
-      text,
-      color: preset.color,
-      presetId: preset.id,
-    })
+    setCintillo(buildCintilloState(preset, project, positionsRef.current))
   }, [project])
 
   const runCycle = useCallback(() => {
@@ -63,30 +88,25 @@ export function useCintilloRotation({ project, enabled, displaySec = DEFAULT_DIS
     indexRef.current = 0
     runCycle()
     return clearTimers
-  }, [enabled, project, displaySec, runCycle, clearTimers])
+  }, [enabled, project, displaySec, positions, runCycle, clearTimers])
 
   const showManual = useCallback((preset) => {
     clearTimers()
-    const text = resolveCintilloText(preset.id, project)
     setAnimKey(k => k + 1)
     setAnimPhase('enter')
-    setCintillo({
-      active: true,
-      tag: preset.tag,
-      text,
-      color: preset.color,
-      presetId: preset.id,
-    })
+    setCintillo(buildCintilloState(preset, project, positionsRef.current))
     schedule(() => setAnimPhase('hold'), ENTER_MS)
   }, [clearTimers, project, schedule])
 
-  const showCustom = useCallback(({ tag, text, color = '#e8612a' }) => {
+  const showCustom = useCallback(({ tag, text, color = '#e8612a', targetSlot, position, presetId = 'custom' }) => {
     clearTimers()
     setAnimKey(k => k + 1)
     setAnimPhase('enter')
-    setCintillo({ active: true, tag, text, color, presetId: 'custom' })
+    setCintillo(buildCintilloState(null, project, positionsRef.current, {
+      tag, text, color, targetSlot, position, presetId,
+    }))
     schedule(() => setAnimPhase('hold'), ENTER_MS)
-  }, [clearTimers, schedule])
+  }, [clearTimers, project, schedule])
 
   const hide = useCallback(() => {
     clearTimers()
