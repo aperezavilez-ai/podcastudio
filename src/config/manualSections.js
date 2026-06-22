@@ -73,11 +73,11 @@ export const MANUAL_SECTIONS = [
     title: 'Cintillos en pantalla',
     summary: 'Textos, estilos e IA.',
     steps: [
-      { action: 'Activar un cintillo', detail: 'Panel Cintillos → pulsa un preset (Invitado, Tema, Redes, etc.). Aparece en el visor y en la grabación.' },
-      { action: 'Generar con IA', detail: 'Botón «Generar con IA» junto al cintillo. La IA crea el texto según tu episodio e invitado.' },
-      { action: 'Cintillo personalizado', detail: '«+ Personalizado»: escribe etiqueta y texto, pulsa Mostrar.' },
-      { action: 'Estilo y posición', detail: 'Selector de estilo (clásico, angled, glass…) y posición (abajo izq/centro/der).' },
-      { action: 'Rotación automática', detail: 'Activa «Auto cintillos» para que roten solos cada X segundos mientras grabas.' },
+      { action: 'Activar un cintillo', detail: 'Panel Cintillos → cada preset va a su cámara: conductor CAM 1 (izq.), invitado CAM 3 (der.), centrales en MASTER.' },
+      { action: 'Generar con IA', detail: 'Botón «Generar cintillo IA (invitado)» crea texto para CAM 3 según tu episodio e invitado.' },
+      { action: 'Cintillo personalizado', detail: '«+ Personalizado»: elige cámara, etiqueta y texto.' },
+      { action: 'Estilo y esquina', detail: 'Diseño global + en cada bloque de cámara elige esquina (9 posiciones).' },
+      { action: 'Rotación automática', detail: 'Tema (MASTER) → Invitado (CAM 3) → Conductor (CAM 1) → Redes → Contacto → Promo.' },
     ],
   },
   {
