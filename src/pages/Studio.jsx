@@ -10,8 +10,10 @@ import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
 import { CINTILLO_PRESETS } from '../config/cintilloPresets.js'
 import { useCintilloRotation } from '../hooks/useCintilloRotation.js'
-import { MUSIC_TRACKS, MUSIC_GENRES } from '../config/musicTracks.js'
+import { MUSIC_TRACKS, MUSIC_GENRES, MUSIC_SFX } from '../config/musicTracks.js'
 import { useBackgroundMusic } from '../hooks/useBackgroundMusic.js'
+import { useSoundEffect } from '../hooks/useSoundEffect.js'
+import MusicBank from '../components/MusicBank.jsx'
 import { useAutoSwitcher } from '../hooks/useAutoSwitcher.js'
 import { useAIDirector } from '../hooks/useAIDirector.js'
 import { useStudioCompositor } from '../hooks/useStudioCompositor.js'
@@ -87,6 +89,7 @@ export default function Studio({ project, user }) {
     loading: musicLoading, error: musicError, currentTrack: currentMusic,
     getAudioElement, selectTrackById, setPlaying: setMusicPlaying,
   } = useBackgroundMusic(MUSIC_TRACKS, 30)
+  const { playSfx, playingSfxId, sfxError } = useSoundEffect()
   const [countdown, setCountdown] = useState(null)
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState('')
@@ -1134,30 +1137,22 @@ export default function Studio({ project, user }) {
           {/* MUSIC */}
           <div className={styles.prSection}>
             <div className={styles.prTitle}>Música sin copyright</div>
-            <div className={styles.musicRow}>
-              <div className={`${styles.musicThumb} ${musicPlaying ? styles.musicThumbActive : ''}`}>
-                <i className={`ti ${musicLoading ? 'ti-loader' : 'ti-music'}`} style={musicLoading ? { animation: 'spin 1s linear infinite' } : {}} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className={styles.musicTitle}>{currentMusic.name}</div>
-                <div className={styles.musicSub}>
-                  {proj.podcastGenre && `${MUSIC_GENRES[proj.podcastGenre] || proj.podcastGenre} · `}
-                  {musicPlaying ? 'Reproduciendo...' : musicError || currentMusic.sub}
-                  {proj.aiPlan && !musicPlaying ? ' · elegida por IA' : ''}
-                </div>
-              </div>
-              <button type="button" className={styles.musicBtn} onClick={toggleMusic} title={musicPlaying ? 'Pausar' : 'Reproducir'}>
-                <i className={`ti ${musicPlaying ? 'ti-player-pause' : 'ti-player-play'}`} style={{ fontSize: 13 }} />
-              </button>
-              <button type="button" className={styles.musicBtn} onClick={nextMusicTrack} title="Siguiente pista">
-                <i className="ti ti-arrow-shuffle" style={{ fontSize: 12 }} />
-              </button>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-              <i className="ti ti-volume" style={{ fontSize: 11, color: 'var(--text-muted)' }} />
-              <input type="range" min={0} max={100} step={1} value={musicVol} onChange={e => setMusicVol(+e.target.value)} style={{ flex: 1 }} />
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', minWidth: 28 }}>{musicVol}%</span>
-            </div>
+            <MusicBank
+              tracks={MUSIC_TRACKS}
+              sfxList={MUSIC_SFX}
+              currentTrack={currentMusic}
+              playing={musicPlaying}
+              loading={musicLoading}
+              error={musicError}
+              volume={musicVol}
+              onVolumeChange={setMusicVol}
+              onSelectTrack={(id, autoPlay) => selectTrackById(id, autoPlay)}
+              onTogglePlay={toggleMusic}
+              onPlaySfx={playSfx}
+              playingSfxId={playingSfxId}
+              sfxError={sfxError}
+              podcastGenre={proj.podcastGenre}
+            />
           </div>
 
           {/* RECORD CONTROLS */}

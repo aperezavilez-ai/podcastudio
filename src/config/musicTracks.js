@@ -33,6 +33,31 @@ export const MUSIC_TRACKS = [
   { id: 'general-02', name: 'Open Studio', sub: 'Ambiente abierto', genre: 'general', mood: 'light', url: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-16.mp3' },
 ]
 
+/** Efectos musicales cortos — Mixkit (libre de derechos). */
+export const SFX_CATEGORIES = {
+  intro: 'Intros',
+  transition: 'Transiciones',
+  outro: 'Cierres',
+  applause: 'Aplausos',
+  impact: 'Impacto',
+  notification: 'Notificaciones',
+}
+
+export const MUSIC_SFX = [
+  { id: 'sfx-intro-01', name: 'Apertura épica', sub: 'Intro de episodio', category: 'intro', url: 'https://assets.mixkit.co/active_storage/sfx/211/211-preview.mp3' },
+  { id: 'sfx-intro-02', name: 'Logo reveal', sub: 'Identidad de marca', category: 'intro', url: 'https://assets.mixkit.co/active_storage/sfx/2763/2763-preview.mp3' },
+  { id: 'sfx-trans-01', name: 'Whoosh suave', sub: 'Cambio de sección', category: 'transition', url: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3' },
+  { id: 'sfx-trans-02', name: 'Swipe digital', sub: 'Transición moderna', category: 'transition', url: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3' },
+  { id: 'sfx-outro-01', name: 'Cierre cálido', sub: 'Despedida del episodio', category: 'outro', url: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3' },
+  { id: 'sfx-outro-02', name: 'Fade out suave', sub: 'Final gradual', category: 'outro', url: 'https://assets.mixkit.co/active_storage/sfx/2572/2572-preview.mp3' },
+  { id: 'sfx-appl-01', name: 'Aplauso de estudio', sub: 'Cierre triunfal', category: 'applause', url: 'https://assets.mixkit.co/active_storage/sfx/528/528-preview.mp3' },
+  { id: 'sfx-appl-02', name: 'Ovación corta', sub: 'Invitado especial', category: 'applause', url: 'https://assets.mixkit.co/active_storage/sfx/529/529-preview.mp3' },
+  { id: 'sfx-imp-01', name: 'Golpe cinematográfico', sub: 'Momento clave', category: 'impact', url: 'https://assets.mixkit.co/active_storage/sfx/1110/1110-preview.mp3' },
+  { id: 'sfx-imp-02', name: 'Boom profundo', sub: 'Revelación', category: 'impact', url: 'https://assets.mixkit.co/active_storage/sfx/2083/2083-preview.mp3' },
+  { id: 'sfx-notif-01', name: 'Campana positiva', sub: 'Dato importante', category: 'notification', url: 'https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3' },
+  { id: 'sfx-notif-02', name: 'Alerta suave', sub: 'Llamada a la acción', category: 'notification', url: 'https://assets.mixkit.co/active_storage/sfx/2997/2997-preview.mp3' },
+]
+
 export function getTrackById(id) {
   return MUSIC_TRACKS.find(t => t.id === id) || null
 }
