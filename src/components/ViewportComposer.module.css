@@ -55,7 +55,7 @@
 }
 
 .noSignal i { font-size: 22px; }
-.noSignal span { font-size: 10px; color: #2a2a3e; }
+.noSignal span { font-size: 11px; color: #666680; }
 
 .cameraWrap {
   position: absolute;

@@ -1,9 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { preferVideoPreview } from '../lib/device.js'
+import React, { useEffect, useRef } from 'react'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 import styles from './ViewportComposer.module.css'
 
-function MobileVideoPreview({ stream, cameraKey }) {
+function LiveVideoPreview({ stream, cameraKey }) {
   const videoRef = useRef(null)
 
   useEffect(() => {
@@ -41,80 +40,23 @@ function MobileVideoPreview({ stream, cameraKey }) {
 }
 
 export default function ViewportComposer({
-  getDisplayCanvas,
-  hasStream,
   previewStream,
   cameraKey = 0,
 }) {
-  const containerRef = useRef(null)
-  const [useVideoPreview, setUseVideoPreview] = useState(() => preferVideoPreview())
-
-  useEffect(() => {
-    const update = () => setUseVideoPreview(preferVideoPreview())
-    update()
-    window.addEventListener('resize', update)
-    window.addEventListener('orientationchange', update)
-    return () => {
-      window.removeEventListener('resize', update)
-      window.removeEventListener('orientationchange', update)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!hasStream || useVideoPreview) return undefined
-
-    let rafId = 0
-    const mount = () => {
-      const canvas = getDisplayCanvas?.()
-      const el = containerRef.current
-      if (canvas && el) {
-        canvas.className = styles.programCanvas
-        if (canvas.parentNode !== el) {
-          el.appendChild(canvas)
-        }
-        return true
-      }
-      return false
-    }
-
-    if (!mount()) {
-      const retry = () => {
-        if (mount()) return
-        rafId = requestAnimationFrame(retry)
-      }
-      rafId = requestAnimationFrame(retry)
-    }
-
-    return () => {
-      cancelAnimationFrame(rafId)
-      const canvas = getDisplayCanvas?.()
-      const el = containerRef.current
-      if (canvas && el && canvas.parentNode === el) {
-        el.removeChild(canvas)
-      }
-    }
-  }, [getDisplayCanvas, hasStream, useVideoPreview])
-
-  if (!hasStream) {
+  if (!previewStream) {
     return (
       <div className={styles.empty}>
         <div className={styles.noSignal}>
           <i className="ti ti-video-off" />
-          <span>Sin señal</span>
+          <span>Sin señal — conecta una cámara</span>
         </div>
       </div>
     )
   }
 
-  if (useVideoPreview && previewStream) {
-    return (
-      <div className={styles.composer}>
-        <MobileVideoPreview stream={previewStream} cameraKey={cameraKey} />
-      </div>
-    )
-  }
-
   return (
-    <div ref={containerRef} className={styles.composer} />
+    <div className={styles.composer}>
+      <LiveVideoPreview stream={previewStream} cameraKey={cameraKey} />
+    </div>
   )
 }

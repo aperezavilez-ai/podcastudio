@@ -259,7 +259,10 @@ export function useWebcam() {
         || track?.label
         || `USB Cam ${slotIndex + 1}`
       attachStream(slotIndex, stream, { type: 'usb', label, deviceId: activeId || deviceId })
-      if (slotIndex === PRIMARY_CAMERA_SLOT) setActiveCamera(PRIMARY_CAMERA_SLOT)
+      setActiveCamera((prev) => {
+        if (prev !== null && streamsRef.current[prev]) return prev
+        return slotIndex
+      })
       return stream
     } catch (e) {
       console.error('startCamera:', e)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useWebcam } from '../hooks/useWebcam.js'
 import { useRecorder } from '../hooks/useRecorder.js'
@@ -37,7 +37,7 @@ import { fetchCloudRecordings, fetchIntegrationStatus, publishToYouTube } from '
 import { fetchSubscription } from '../lib/billing.js'
 import { isAdminUser, canAccessStudio } from '../lib/access.js'
 import { isTouchDevice } from '../lib/device.js'
-import { PRIMARY_CAMERA_SLOT, CAM_SLOT_LABELS } from '../config/cameraSlots.js'
+import { PRIMARY_CAMERA_SLOT, CAM_SLOT_LABELS, pickPrimaryActiveSlot } from '../config/cameraSlots.js'
 import LandscapeGate from '../components/LandscapeGate.jsx'
 import GuideModal from '../components/GuideModal.jsx'
 import styles from './Studio.module.css'
@@ -159,12 +159,17 @@ export default function Studio({ project, user }) {
     return () => panel.removeEventListener('wheel', onWheel)
   }, [])
 
-  const programCamera = activeCamera ?? PRIMARY_CAMERA_SLOT
+  const programCamera = useMemo(() => {
+    const preferred = activeCamera ?? PRIMARY_CAMERA_SLOT
+    if (streams[preferred]) return preferred
+    return pickPrimaryActiveSlot(streams)
+  }, [activeCamera, streams])
 
   useEffect(() => {
     if (!initialized || userPickedCameraRef.current) return
-    if (streams[PRIMARY_CAMERA_SLOT]) setActiveCamera(PRIMARY_CAMERA_SLOT)
-  }, [initialized, streams, setActiveCamera])
+    const slot = pickPrimaryActiveSlot(streams)
+    if (streams[slot] && activeCamera !== slot) setActiveCamera(slot)
+  }, [initialized, streams, activeCamera, setActiveCamera])
 
   const subtitleLang = proj.subtitleLanguage || 'es-MX'
   const { displayText: subtitleText, interim: subtitleInterim, supported: subtitlesSupported } = useSpeechSubtitles({
@@ -198,9 +203,9 @@ export default function Studio({ project, user }) {
     shotCycleSec: Math.max(switchInterval, 5),
   })
 
-  const { getProgramStream, getDisplayCanvas } = useStudioCompositor({
+  const { getProgramStream } = useStudioCompositor({
     streams,
-    activeCamera,
+    activeCamera: programCamera,
     logoUrl: proj.logoUrl,
     logoPosition: proj.logoPosition || 'tr',
     podcastName: proj.name || 'Mi Podcast',
@@ -625,8 +630,6 @@ export default function Studio({ project, user }) {
                 }}
               >
                 <ViewportComposer
-                  getDisplayCanvas={getDisplayCanvas}
-                  hasStream={!!streams[programCamera]}
                   previewStream={streams[programCamera]}
                   cameraKey={programCamera}
                 />
