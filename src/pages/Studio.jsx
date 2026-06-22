@@ -122,6 +122,11 @@ export default function Studio({ project, user }) {
     if (project?.format) setOutputFormat(project.format)
   }, [project?.format])
 
+  useEffect(() => {
+    document.body.classList.add('studio-active')
+    return () => document.body.classList.remove('studio-active')
+  }, [])
+
   const subtitleLang = proj.subtitleLanguage || 'es-MX'
   const { displayText: subtitleText, interim: subtitleInterim, supported: subtitlesSupported } = useSpeechSubtitles({
     enabled: subtitlesOn && recording,
