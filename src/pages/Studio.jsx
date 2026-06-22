@@ -77,7 +77,10 @@ export default function Studio({ project, user }) {
   const { runProducer, shouldAutoRun, markRan } = useAIProducer({ analyzeEventWithAI, aiConfigured })
   const [showAiInfo, setShowAiInfo] = useState(false)
   const [showGuide, setShowGuide] = useState(false)
-  const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(() => {
+    if (typeof window === 'undefined') return true
+    return window.matchMedia('(min-width: 1025px)').matches
+  })
   const [enrichedProject, setEnrichedProject] = useState(null)
   const [producerStatus, setProducerStatus] = useState('')
   const [subtitlesOn, setSubtitlesOn] = useState(false)
@@ -187,6 +190,35 @@ export default function Studio({ project, user }) {
 
     panel.addEventListener('wheel', onWheel, { passive: false })
     return () => panel.removeEventListener('wheel', onWheel)
+  }, [])
+
+  const openControlsPanel = useCallback(() => {
+    setTab('studio')
+    setPanelOpen(true)
+    requestAnimationFrame(() => {
+      panelScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      panelRightRef.current?.classList.add(styles.panelPulse)
+      window.setTimeout(() => {
+        panelRightRef.current?.classList.remove(styles.panelPulse)
+      }, 700)
+    })
+  }, [])
+
+  const closeControlsPanel = useCallback(() => setPanelOpen(false), [])
+
+  const toggleControlsPanel = useCallback(() => {
+    setTab('studio')
+    setPanelOpen((was) => {
+      if (was) return false
+      requestAnimationFrame(() => {
+        panelScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+        panelRightRef.current?.classList.add(styles.panelPulse)
+        window.setTimeout(() => {
+          panelRightRef.current?.classList.remove(styles.panelPulse)
+        }, 700)
+      })
+      return true
+    })
   }, [])
 
   const programCamera = useMemo(() => {
@@ -550,7 +582,7 @@ export default function Studio({ project, user }) {
           <button
             type="button"
             className={`${styles.iconBtn} ${styles.mobileOnly}`}
-            onClick={() => setMobilePanelOpen(true)}
+            onClick={() => openControlsPanel()}
             title="Abrir controles"
           >
             <i className="ti ti-layout-sidebar-right" style={{ fontSize: 13 }} />
@@ -567,7 +599,7 @@ export default function Studio({ project, user }) {
             type="button"
             className={styles.iconBtn}
             title="Controles y ajustes"
-            onClick={() => setMobilePanelOpen(true)}
+            onClick={() => openControlsPanel()}
           >
             <i className="ti ti-settings" style={{ fontSize: 13 }} />
           </button>
@@ -597,7 +629,7 @@ export default function Studio({ project, user }) {
       )}
 
       {/* LAYOUT */}
-      <div className={styles.layout}>
+      <div className={`${styles.layout} ${!panelOpen ? styles.layoutPanelClosed : ''}`}>
         {/* LEFT SIDEBAR */}
         <div className={styles.sidebarLeft}>
           <button
@@ -606,7 +638,7 @@ export default function Studio({ project, user }) {
             onClick={() => {
               setTab('studio')
               setCamSlot(PRIMARY_CAMERA_SLOT)
-              if (isTouchDevice()) setMobilePanelOpen(true)
+              if (isTouchDevice()) openControlsPanel()
             }}
             title="Vista de cámaras"
           >
@@ -632,7 +664,7 @@ export default function Studio({ project, user }) {
               className={`${styles.slBtn} ${tab === item.id ? styles.slBtnActive : ''}`}
               onClick={() => {
                 setTab(item.id)
-                setMobilePanelOpen(false)
+                closeControlsPanel()
                 setShowGuide(false)
               }}
               title={item.label}
@@ -645,12 +677,9 @@ export default function Studio({ project, user }) {
           <div style={{ flex: 1 }} />
           <button
             type="button"
-            className={styles.slBtn}
-            title="Controles y ajustes"
-            onClick={() => {
-              setTab('studio')
-              setMobilePanelOpen(true)
-            }}
+            className={`${styles.slBtn} ${panelOpen ? styles.slBtnActive : ''}`}
+            title={panelOpen ? 'Ocultar controles y ajustes' : 'Mostrar controles y ajustes'}
+            onClick={toggleControlsPanel}
           >
             <i className="ti ti-adjustments" />
             <span className={styles.slBtnLabel}>Ajustes</span>
@@ -901,18 +930,18 @@ export default function Studio({ project, user }) {
         )}
 
         {/* RIGHT PANEL */}
-        {mobilePanelOpen && (
+        {panelOpen && (
           <button
             type="button"
             className={styles.panelBackdrop}
-            onClick={() => setMobilePanelOpen(false)}
+            onClick={closeControlsPanel}
             aria-label="Cerrar panel"
           />
         )}
-        <div ref={panelRightRef} className={`${styles.panelRight} ${mobilePanelOpen ? styles.panelRightOpen : ''}`}>
+        <div ref={panelRightRef} className={`${styles.panelRight} ${panelOpen ? styles.panelRightOpen : ''}`}>
           <div className={styles.panelMobileHead}>
-            <span>Controles</span>
-            <button type="button" className={styles.panelCloseBtn} onClick={() => setMobilePanelOpen(false)}>
+            <span>Controles y ajustes</span>
+            <button type="button" className={styles.panelCloseBtn} onClick={closeControlsPanel}>
               <i className="ti ti-x" /> Cerrar
             </button>
           </div>
@@ -1228,7 +1257,7 @@ export default function Studio({ project, user }) {
               className={styles.rcBtn}
               onClick={() => {
                 setTab('posts')
-                setMobilePanelOpen(false)
+                closeControlsPanel()
               }}
               title="Generar posts para redes"
             >

@@ -162,6 +162,16 @@
   overflow: hidden;
 }
 
+@media (min-width: 1025px) {
+  .layoutPanelClosed {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .layoutPanelClosed .panelRight {
+    display: none;
+  }
+}
+
 .layout > .sidebarLeft,
 .layout > .stage,
 .layout > .panelRight {
@@ -449,6 +459,11 @@
   max-height: 100%;
   position: relative;
   isolation: isolate;
+  transition: box-shadow 0.25s ease;
+}
+
+.panelPulse {
+  box-shadow: -4px 0 0 var(--accent), -12px 0 32px rgba(232, 97, 42, 0.15);
 }
 .panelScroll {
   flex: 1 1 0;
