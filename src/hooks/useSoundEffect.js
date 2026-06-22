@@ -1,39 +1,70 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 
 export function useSoundEffect() {
-  const audioRef = useRef(null)
+  const stopRef = useRef(null)
   const [playingId, setPlayingId] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => () => {
-    audioRef.current?.pause()
-    audioRef.current = null
+    stopRef.current?.()
+    stopRef.current = null
+  }, [])
+
+  const stopSfx = useCallback(() => {
+    stopRef.current?.()
+    stopRef.current = null
+    setPlayingId(null)
   }, [])
 
   const playSfx = useCallback((sfx) => {
     if (!sfx?.url) return
-    if (!audioRef.current) audioRef.current = new Audio()
-    const audio = audioRef.current
-    audio.pause()
-    audio.loop = false
+
+    stopRef.current?.()
+    stopRef.current = null
+
+    const audio = new Audio()
+    audio.preload = 'auto'
     audio.src = sfx.url
     audio.volume = 0.9
+
+    let disposed = false
+    const dispose = () => {
+      if (disposed) return
+      disposed = true
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+      if (stopRef.current === dispose) stopRef.current = null
+    }
+
+    stopRef.current = dispose
     setPlayingId(sfx.id)
     setError(null)
-    audio.play().catch(() => {
-      setError('No se pudo reproducir el efecto')
-      setPlayingId(null)
-    })
-    audio.onended = () => setPlayingId(null)
-    audio.onerror = () => {
-      setError('Efecto no disponible')
+
+    audio.onended = () => {
+      dispose()
       setPlayingId(null)
     }
-  }, [])
 
-  const stopSfx = useCallback(() => {
-    audioRef.current?.pause()
-    setPlayingId(null)
+    audio.onerror = () => {
+      dispose()
+      setPlayingId(null)
+      setError(`"${sfx.name}" no está disponible. Prueba otro efecto.`)
+    }
+
+    const tryPlay = () => {
+      audio.play().catch(() => {
+        dispose()
+        setPlayingId(null)
+        setError('No se pudo reproducir. Haz clic de nuevo en el efecto.')
+      })
+    }
+
+    if (audio.readyState >= 2) tryPlay()
+    else {
+      audio.addEventListener('canplay', tryPlay, { once: true })
+      audio.load()
+    }
   }, [])
 
   return { playSfx, stopSfx, playingSfxId: playingId, sfxError: error }

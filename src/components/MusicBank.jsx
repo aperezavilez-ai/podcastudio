@@ -123,7 +123,7 @@ export default function MusicBank({
       {tab === 'sfx' && (
         <>
           <p className={styles.sfxHint}>
-            Efectos cortos para intros, transiciones, aplausos y momentos clave. Clic para preescuchar.
+            Aplausos, risas, ovaciones, choques, autos y más. Clic para preescuchar en el estudio.
           </p>
 
           <div className={styles.filterRow}>
