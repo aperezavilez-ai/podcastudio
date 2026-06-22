@@ -38,7 +38,7 @@ import { fetchSubscription } from '../lib/billing.js'
 import { isAdminUser, canAccessStudio } from '../lib/access.js'
 import { isTouchDevice } from '../lib/device.js'
 import { PRIMARY_CAMERA_SLOT, CAM_SLOT_LABELS, pickPrimaryActiveSlot } from '../config/cameraSlots.js'
-import LandscapeGate from '../components/LandscapeGate.jsx'
+import { handleTeleprompterKeydown } from '../utils/teleprompterKeys.js'
 import GuideModal from '../components/GuideModal.jsx'
 
 const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
@@ -126,6 +126,7 @@ export default function Studio({ project, user }) {
   const initRanRef = useRef(false)
   const panelRightRef = useRef(null)
   const panelScrollRef = useRef(null)
+  const teleprompterKeyRef = useRef(0)
 
   const proj = {
     ...(enrichedProject || project || {
@@ -337,16 +338,16 @@ export default function Studio({ project, user }) {
     if (tab !== 'studio' || !teleprompter.visible) return
 
     const onKeyDown = (e) => {
-      if (e.code !== 'Space' && e.key !== ' ') return
-      const tag = e.target?.tagName
-      if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT' || e.target?.isContentEditable) return
-      e.preventDefault()
-      teleprompter.toggle()
+      handleTeleprompterKeydown(e, {
+        onToggle: teleprompter.toggle,
+        onReset: teleprompter.reset,
+        lastActionRef: teleprompterKeyRef,
+      })
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [tab, teleprompter.visible, teleprompter.toggle])
+  }, [tab, teleprompter.visible, teleprompter.toggle, teleprompter.reset])
 
   // Initialize cameras and mic once on mount (evita bucle de reconexión)
   useEffect(() => {

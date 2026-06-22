@@ -59,7 +59,7 @@ export default function TeleprompterOverlay({
           <i className={`ti ${playing ? 'ti-player-play' : 'ti-player-pause'}`} />
           {playing ? 'Leyendo' : 'Pausado'}
         </span>
-        <span className={styles.spaceHint}>Espacio — iniciar / pausar</span>
+        <span className={styles.spaceHint}>Pluma: Av. Pág · play/pausa</span>
       </div>
     </div>
   )

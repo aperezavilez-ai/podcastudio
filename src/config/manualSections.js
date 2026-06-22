@@ -89,7 +89,7 @@ export const MANUAL_SECTIONS = [
       { action: 'Abrir teleprompter', detail: 'Panel Teleprompter → activar visibilidad. El texto aparece sobre el visor.' },
       { action: 'Escribir o pegar guion', detail: 'Edita el texto en el panel. Ajusta velocidad y tamaño de letra.' },
       { action: 'Subir Word (.docx)', detail: 'Botón «Subir documento». La IA corrige y formatea el texto para leerlo en pantalla.' },
-      { action: 'Control en vivo', detail: 'Espacio = pausar/reanudar scroll. Solo funciona cuando el foco no está en un campo de texto.' },
+      { action: 'Control en vivo', detail: 'Pluma o teclado: Av. Pág / Enter / → = play-pausa · Re. Pág / Inicio = reiniciar. Haz clic en el estudio antes de empezar.' },
     ],
   },
   {

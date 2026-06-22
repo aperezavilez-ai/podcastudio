@@ -76,7 +76,12 @@ export default function Teleprompter({
       </div>
 
       <p className={styles.hint}>
-        El guion aparece sobre el visor (solo tú lo ves). Pulsa <kbd>Espacio</kbd> para iniciar o pausar el scroll.
+        El guion aparece sobre el visor (solo tú lo ves). Haz clic en el estudio y usa tu pluma o teclado:
+      </p>
+      <p className={styles.remoteHint}>
+        <kbd>Espacio</kbd> <kbd>Av. Pág</kbd> <kbd>Enter</kbd> <kbd>→</kbd> play/pausa
+        {' · '}
+        <kbd>Re. Pág</kbd> <kbd>Inicio</kbd> reiniciar
       </p>
     </div>
   )

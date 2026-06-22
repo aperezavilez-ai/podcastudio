@@ -184,3 +184,21 @@
   margin: 0;
   text-align: center;
 }
+
+.remoteHint {
+  font-size: 8px;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+  text-align: center;
+  line-height: 1.5;
+  opacity: 0.9;
+}
+
+.remoteHint kbd {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-2);
+  font-size: 7px;
+  font-family: inherit;
+}
