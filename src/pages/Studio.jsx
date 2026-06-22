@@ -108,6 +108,8 @@ export default function Studio({ project, user }) {
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
   const initRanRef = useRef(false)
+  const panelRightRef = useRef(null)
+  const panelScrollRef = useRef(null)
 
   const proj = {
     ...(enrichedProject || project || {
@@ -126,6 +128,32 @@ export default function Studio({ project, user }) {
   useEffect(() => {
     document.body.classList.add('studio-active')
     return () => document.body.classList.remove('studio-active')
+  }, [])
+
+  // Rueda del mouse en panel derecho (body con overflow:hidden bloquea scroll nativo)
+  useEffect(() => {
+    const panel = panelRightRef.current
+    const scroll = panelScrollRef.current
+    if (!panel || !scroll) return undefined
+
+    const onWheel = (e) => {
+      if (e.target.closest('input[type="range"]')) return
+      if (scroll.scrollHeight <= scroll.clientHeight) return
+
+      const atTop = scroll.scrollTop <= 0
+      const atBottom = scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 1
+
+      if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) {
+        e.preventDefault()
+        return
+      }
+
+      e.preventDefault()
+      scroll.scrollTop += e.deltaY
+    }
+
+    panel.addEventListener('wheel', onWheel, { passive: false })
+    return () => panel.removeEventListener('wheel', onWheel)
   }, [])
 
   const programCamera = activeCamera ?? PRIMARY_CAMERA_SLOT
@@ -826,14 +854,14 @@ export default function Studio({ project, user }) {
             aria-label="Cerrar panel"
           />
         )}
-        <div className={`${styles.panelRight} ${mobilePanelOpen ? styles.panelRightOpen : ''}`}>
+        <div ref={panelRightRef} className={`${styles.panelRight} ${mobilePanelOpen ? styles.panelRightOpen : ''}`}>
           <div className={styles.panelMobileHead}>
             <span>Controles</span>
             <button type="button" className={styles.panelCloseBtn} onClick={() => setMobilePanelOpen(false)}>
               <i className="ti ti-x" /> Cerrar
             </button>
           </div>
-          <div className={styles.panelScroll}>
+          <div ref={panelScrollRef} className={styles.panelScroll}>
           <div className={styles.panelScrollInner}>
           {/* CAMERAS */}
           <div className={styles.prSection}>
