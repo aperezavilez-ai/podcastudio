@@ -5,6 +5,18 @@
   "redirects": [
     {
       "source": "/:path*",
+      "has": [{ "type": "host", "value": "podcaststudio.mx" }],
+      "destination": "https://www.podcastudio.mx/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.podcaststudio.mx" }],
+      "destination": "https://www.podcastudio.mx/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path*",
       "has": [{ "type": "host", "value": "podcastudio.mx" }],
       "destination": "https://www.podcastudio.mx/:path*",
       "permanent": true

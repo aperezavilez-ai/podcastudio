@@ -53,6 +53,31 @@
   letter-spacing: 0.02em;
   user-select: all;
 }
+.domainWarn {
+  position: fixed;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #2a1808;
+  border: 1px solid rgba(232, 97, 42, 0.5);
+  color: #ffb080;
+  font-size: 11px;
+  font-weight: 500;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  max-width: min(92vw, 520px);
+  text-align: center;
+}
+.domainWarn a {
+  color: #fff;
+  text-decoration: underline;
+  font-weight: 600;
+}
 .aiChip {
   display: inline-flex; align-items: center; gap: 4px;
   background: var(--green-dim); border: 1px solid var(--green-border);
@@ -192,51 +217,28 @@
 }
 
 .stageStack {
-  display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
   min-height: 0;
   height: 100%;
+  max-height: 100%;
   overflow: hidden;
 }
 
 .viewport {
-  grid-row: 1;
-  min-height: 200px;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
+  flex: 1 1 0;
+  min-height: 0;
+  position: relative;
   overflow: hidden;
   background: #050508;
   padding: 4px 8px 2px;
 }
 .viewportInner {
-  position: relative;
+  position: absolute;
+  inset: 0;
   background: #0a0a10;
   overflow: hidden;
-  flex: 1 1 auto;
-  width: 100%;
-  min-height: 180px;
-  max-height: 100%;
-  aspect-ratio: var(--viewport-aspect, 16 / 9);
-  margin: 0;
-}
-@supports (width: 1cqw) {
-  .viewport {
-    min-height: 0;
-    container-type: size;
-    container-name: program;
-    align-items: center;
-  }
-  .viewportInner {
-    flex: 0 0 auto;
-    width: min(100cqw, calc(100cqh * var(--vp-ar, 1.777777778)));
-    height: min(100cqh, calc(100cqw / var(--vp-ar, 1.777777778)));
-    min-height: 0;
-    max-width: 100%;
-    max-height: 100%;
-  }
 }
 .scanlines {
   position: absolute; inset: 0; pointer-events: none;
@@ -284,9 +286,23 @@
 }
 .cintClose:hover { background: var(--surface-2); color: var(--text-primary); }
 
+.noSignalViewport {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #666680;
+  background: #07070a;
+  z-index: 1;
+}
+.noSignalViewport i { font-size: 28px; color: #333; }
+.noSignalViewport span { font-size: 12px; }
+
 /* CAM STRIP */
 .camStrip {
-  grid-row: 2;
   flex-shrink: 0;
   background: #0b0b10;
   border-top: 1px solid var(--border-1);
@@ -833,13 +849,10 @@
   .viewport {
     min-height: 0;
     padding: 4px 6px 0;
-    align-items: flex-start;
   }
 
   .viewportInner {
-    width: min(100cqw, calc(100cqh * var(--vp-ar, 1.777777778)));
-    height: min(100cqh, calc(100cqw / var(--vp-ar, 1.777777778)));
-    margin: 0;
+    inset: 0;
   }
 
   .panelRight {

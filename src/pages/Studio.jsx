@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useWebcam } from '../hooks/useWebcam.js'
 import { useRecorder } from '../hooks/useRecorder.js'
 import { useAI } from '../hooks/useAI.js'
-import ViewportComposer from '../components/ViewportComposer.jsx'
 import CameraThumb from '../components/CameraThumb.jsx'
 import CameraConnectPanel from '../components/CameraConnectPanel.jsx'
 import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
@@ -42,6 +41,13 @@ import LandscapeGate from '../components/LandscapeGate.jsx'
 import GuideModal from '../components/GuideModal.jsx'
 
 const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
+const CANONICAL_STUDIO = 'https://www.podcastudio.mx/studio'
+
+function isWrongStudioHost() {
+  if (typeof window === 'undefined') return false
+  const host = window.location.hostname.toLowerCase()
+  return host.includes('podcaststudio') || (host !== 'www.podcastudio.mx' && host !== 'localhost' && !host.endsWith('.vercel.app') && host !== '127.0.0.1')
+}
 import styles from './Studio.module.css'
 
 const ROTATION_PRESETS = CINTILLO_PRESETS.filter(p => ['topic', 'guest', 'social', 'contact'].includes(p.id))
@@ -131,11 +137,33 @@ export default function Studio({ project, user }) {
   }, [project?.format])
 
   useEffect(() => {
+    document.documentElement.classList.add('studio-active')
     document.body.classList.add('studio-active')
-    return () => document.body.classList.remove('studio-active')
+    return () => {
+      document.documentElement.classList.remove('studio-active')
+      document.body.classList.remove('studio-active')
+    }
   }, [])
 
-  // Rueda del mouse en panel derecho (body con overflow:hidden bloquea scroll nativo)
+  // Bloquear scroll de página: solo el panel derecho se mueve
+  useEffect(() => {
+    const onWheel = (e) => {
+      if (panelRightRef.current?.contains(e.target)) return
+      e.preventDefault()
+    }
+    const onTouchMove = (e) => {
+      if (panelScrollRef.current?.contains(e.target)) return
+      e.preventDefault()
+    }
+    document.addEventListener('wheel', onWheel, { passive: false })
+    document.addEventListener('touchmove', onTouchMove, { passive: false })
+    return () => {
+      document.removeEventListener('wheel', onWheel)
+      document.removeEventListener('touchmove', onTouchMove)
+    }
+  }, [])
+
+  // Rueda del mouse en panel derecho
   useEffect(() => {
     const panel = panelRightRef.current
     const scroll = panelScrollRef.current
@@ -162,8 +190,7 @@ export default function Studio({ project, user }) {
   }, [])
 
   const programCamera = useMemo(() => {
-    const preferred = activeCamera ?? PRIMARY_CAMERA_SLOT
-    if (streams[preferred]) return preferred
+    if (userPickedCameraRef.current && streams[activeCamera]) return activeCamera
     return pickPrimaryActiveSlot(streams)
   }, [activeCamera, streams])
 
@@ -467,6 +494,16 @@ export default function Studio({ project, user }) {
   return (
     <LandscapeGate>
     <div className={`${styles.app} ${isTouchDevice() ? styles.touchStudio : ''}`}>
+      {isWrongStudioHost() && (
+        <div className={styles.domainWarn}>
+          <i className="ti ti-alert-triangle" />
+          <span>
+            Estás en un dominio antiguo. Abre{' '}
+            <a href={CANONICAL_STUDIO}>www.podcastudio.mx/studio</a>
+            {' '}para ver los cambios.
+          </span>
+        </div>
+      )}
       {/* TOPBAR */}
       <div className={styles.topbar}>
         <div className={styles.topLeft}>
@@ -633,10 +670,18 @@ export default function Studio({ project, user }) {
                   '--vp-ar': proj.format === '9:16' ? '0.5625' : proj.format === '1:1' ? '1' : '1.777777778',
                 }}
               >
-                <ViewportComposer
-                  previewStream={streams[programCamera]}
-                  cameraKey={programCamera}
-                />
+                {streams[programCamera] ? (
+                  <CameraThumb
+                    stream={streams[programCamera]}
+                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 0 }}
+                    directorCrop={switchMode === 'ai' && activeCamera === programCamera ? directorCrop : null}
+                  />
+                ) : (
+                  <div className={styles.noSignalViewport}>
+                    <i className="ti ti-video-off" />
+                    <span>Sin señal — conecta una cámara</span>
+                  </div>
+                )}
                 <div className={styles.scanlines} />
                 {countdown != null && (
                   <div className={styles.countdownOverlay}>

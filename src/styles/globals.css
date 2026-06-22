@@ -62,13 +62,20 @@ html, body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* Estudio: solo el panel derecho hace scroll, no la vista de cámaras */
+/* Estudio: solo el panel derecho hace scroll — nada más se mueve */
+html.studio-active,
 body.studio-active,
 body.studio-active #root {
-  overflow: hidden;
+  overflow: hidden !important;
   height: 100dvh;
   max-height: 100dvh;
   min-height: 100dvh;
+  overscroll-behavior: none;
+}
+
+body.studio-active #root {
+  display: flex;
+  flex-direction: column;
 }
 
 button { font-family: inherit; cursor: pointer; border: none; background: none; }
