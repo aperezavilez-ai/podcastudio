@@ -590,6 +590,7 @@ export default function Studio({ project, user }) {
                 className={styles.viewportInner}
                 style={{
                   '--viewport-aspect': proj.format === '9:16' ? '9 / 16' : proj.format === '1:1' ? '1 / 1' : '16 / 9',
+                  '--vp-ar': proj.format === '9:16' ? '0.5625' : proj.format === '1:1' ? '1' : '1.777777778',
                 }}
               >
                 <ViewportComposer

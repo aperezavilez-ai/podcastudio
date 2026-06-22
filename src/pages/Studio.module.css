@@ -184,8 +184,8 @@
 }
 
 .stageStack {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   flex: 1;
   min-height: 0;
   height: 100%;
@@ -193,29 +193,27 @@
 }
 
 .viewport {
-  flex: 1 1 auto;
+  grid-row: 1;
   min-height: 0;
+  container-type: size;
+  container-name: program;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
+  align-items: flex-start;
+  justify-content: center;
   overflow: hidden;
   background: #050508;
-  padding: 8px 10px 4px;
+  padding: 4px 8px 2px;
 }
 .viewportInner {
   position: relative;
   background: #0a0a10;
   overflow: hidden;
-  width: 100%;
+  flex: 0 0 auto;
+  width: min(100cqw, calc(100cqh * var(--vp-ar, 1.777777778)));
+  height: min(100cqh, calc(100cqw / var(--vp-ar, 1.777777778)));
   max-width: 100%;
   max-height: 100%;
-  flex: 1 1 auto;
-  min-height: 120px;
-  aspect-ratio: var(--viewport-aspect, 16 / 9);
   margin: 0;
-  align-self: center;
-  height: auto;
 }
 .scanlines {
   position: absolute; inset: 0; pointer-events: none;
@@ -265,6 +263,7 @@
 
 /* CAM STRIP */
 .camStrip {
+  grid-row: 2;
   flex-shrink: 0;
   background: #0b0b10;
   border-top: 1px solid var(--border-1);
@@ -811,16 +810,14 @@
   }
 
   .viewport {
-    flex: 1 1 auto;
-    min-height: 120px;
-    padding: 6px 6px 2px;
-    justify-content: flex-start;
+    min-height: 0;
+    padding: 4px 6px 0;
+    align-items: flex-start;
   }
 
   .viewportInner {
-    width: 100%;
-    max-height: 100%;
-    height: auto;
+    width: min(100cqw, calc(100cqh * var(--vp-ar, 1.777777778)));
+    height: min(100cqh, calc(100cqw / var(--vp-ar, 1.777777778)));
     margin: 0;
   }
 
@@ -924,7 +921,7 @@
   .camThumb { width: 96px; height: 54px; }
   .camThumbMaster { width: 108px; height: 60px; }
 
-  .viewport { padding: 4px 4px 2px; }
+  .viewport { padding: 2px 4px 0; }
 }
 
 @media (max-width: 480px) {
