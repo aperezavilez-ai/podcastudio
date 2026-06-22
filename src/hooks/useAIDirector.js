@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { PRIMARY_CAMERA_SLOT } from '../config/cameraSlots.js'
 
 const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm'
 const FACE_MODEL = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite'
 
-const SHOT_ZOOM = { wide: 1, medium: 1.38, close: 1.85 }
-const SHOT_ORDER = ['wide', 'medium', 'close']
+const SIDE_SLOTS = [0, 2]
+const FACE_ZOOM = 1.78
+const WIDE_HOLD_MS = 4_000
+const FACE_ZOOM_SEC = 10
+const DEFAULT_CROP = { focusX: 0.5, focusY: 0.42, zoom: 1 }
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v))
@@ -31,6 +35,20 @@ function sampleMotion(ctx, video, prevData, region) {
   return diff / (w * h * 3)
 }
 
+function emptyCrops() {
+  return {
+    0: { ...DEFAULT_CROP },
+    1: { ...DEFAULT_CROP },
+    2: { ...DEFAULT_CROP },
+  }
+}
+
+function slotLabel(slot) {
+  if (slot === 0) return 'CAM 1 · Izquierda'
+  if (slot === 2) return 'CAM 3 · Derecha'
+  return 'CAM 2 · MASTER'
+}
+
 export function useAIDirector({
   enabled,
   streams,
@@ -38,20 +56,19 @@ export function useAIDirector({
   activeCamera,
   setActiveCamera,
   minCutSec = 4,
-  shotCycleSec = 7,
   micThreshold = 12,
+  faceZoomSec = FACE_ZOOM_SEC,
 }) {
-  const [directorCrop, setDirectorCrop] = useState({ focusX: 0.5, focusY: 0.42, zoom: 1 })
+  const zoomHoldMs = Math.max(6, faceZoomSec) * 1000
+  const [directorCrops, setDirectorCrops] = useState(emptyCrops)
   const [directorStatus, setDirectorStatus] = useState('')
   const detectorRef = useRef(null)
   const videosRef = useRef({})
   const motionCtxRef = useRef(null)
   const prevMotionRef = useRef({})
   const lastSwitchRef = useRef(0)
-  const shotStartRef = useRef(Date.now())
-  const shotIndexRef = useRef(0)
-  const smoothRef = useRef({ focusX: 0.5, focusY: 0.42, zoom: 1 })
-  const faceMetaRef = useRef({})
+  const smoothRef = useRef(emptyCrops())
+  const cycleRef = useRef({ 0: null, 2: null })
 
   useEffect(() => {
     if (!enabled) return
@@ -61,10 +78,18 @@ export function useAIDirector({
       try {
         const { FaceDetector, FilesetResolver } = await import('@mediapipe/tasks-vision')
         const vision = await FilesetResolver.forVisionTasks(WASM)
-        const detector = await FaceDetector.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: FACE_MODEL, delegate: 'GPU' },
-          runningMode: 'VIDEO',
-        })
+        let detector
+        try {
+          detector = await FaceDetector.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: FACE_MODEL, delegate: 'GPU' },
+            runningMode: 'VIDEO',
+          })
+        } catch {
+          detector = await FaceDetector.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: FACE_MODEL, delegate: 'CPU' },
+            runningMode: 'VIDEO',
+          })
+        }
         if (!cancelled) detectorRef.current = detector
       } catch (e) {
         console.error('Director IA init:', e)
@@ -100,14 +125,56 @@ export function useAIDirector({
       videosRef.current[i].play().catch(() => {})
     })
 
-    Object.keys(videosRef.current).forEach(key => {
+    Object.keys(videosRef.current).forEach((key) => {
       if (!streams[key]) delete videosRef.current[key]
     })
   }, [enabled, streams])
 
+  const resolveSideTarget = useCallback((slot, face, now) => {
+    const hasFace = (face?.faceScore ?? 0) > 0.06
+    if (!cycleRef.current[slot]) {
+      cycleRef.current[slot] = {
+        phase: hasFace ? 'zoom' : 'wide',
+        phaseStart: now,
+      }
+    }
+
+    const cycle = cycleRef.current[slot]
+    const elapsed = now - cycle.phaseStart
+
+    if (cycle.phase === 'zoom') {
+      if (elapsed >= zoomHoldMs) {
+        cycle.phase = 'wide'
+        cycle.phaseStart = now
+        return { crop: { ...DEFAULT_CROP }, status: 'Toma general' }
+      }
+      const remaining = Math.ceil((zoomHoldMs - elapsed) / 1000)
+      if (hasFace) {
+        return {
+          crop: { focusX: face.fx, focusY: face.fy, zoom: FACE_ZOOM },
+          status: `Zoom rostro · ${remaining}s`,
+        }
+      }
+      return { crop: { ...DEFAULT_CROP }, status: `Zoom rostro · ${remaining}s` }
+    }
+
+    if (elapsed >= WIDE_HOLD_MS && hasFace) {
+      cycle.phase = 'zoom'
+      cycle.phaseStart = now
+      return {
+        crop: hasFace
+          ? { focusX: face.fx, focusY: face.fy, zoom: FACE_ZOOM }
+          : { ...DEFAULT_CROP },
+        status: `Zoom rostro · ${Math.ceil(zoomHoldMs / 1000)}s`,
+      }
+    }
+
+    return { crop: { ...DEFAULT_CROP }, status: 'Toma general' }
+  }, [zoomHoldMs])
+
   const analyze = useCallback(() => {
     const detector = detectorRef.current
-    const slots = [0, 1, 2].filter(i => streams[i] && videosRef.current[i]?.videoWidth)
+    const slots = [0, 1, 2].filter((i) => streams[i] && videosRef.current[i]?.videoWidth)
     if (slots.length === 0) return
 
     if (!motionCtxRef.current) {
@@ -118,6 +185,7 @@ export function useAIDirector({
     const speaking = micLevel >= micThreshold
     const scores = {}
     const faces = {}
+    const now = Date.now()
 
     for (const slot of slots) {
       const video = videosRef.current[slot]
@@ -154,55 +222,67 @@ export function useAIDirector({
       faces[slot] = { fx, fy, faceScore, motion }
     }
 
-    faceMetaRef.current = faces
-
     if (speaking && slots.length > 1) {
-      const best = slots.reduce((a, b) => (scores[a] >= scores[b] ? a : b))
-      const now = Date.now()
-      const current = activeCamera ?? slots[0]
+      const sideActive = SIDE_SLOTS.filter((s) => streams[s])
+      const pool = sideActive.length > 0 ? sideActive : slots.filter((s) => s !== PRIMARY_CAMERA_SLOT)
+      const best = pool.reduce((a, b) => (scores[a] >= scores[b] ? a : b))
+      const current = activeCamera ?? PRIMARY_CAMERA_SLOT
 
-      if (best !== current && scores[best] > scores[current] * 1.2 && now - lastSwitchRef.current > minCutSec * 1000) {
+      if (
+        best !== current
+        && scores[best] > (scores[current] ?? 0) * 1.15
+        && now - lastSwitchRef.current > minCutSec * 1000
+      ) {
         setActiveCamera(best)
         lastSwitchRef.current = now
-        shotStartRef.current = now
-        shotIndexRef.current = 0
       }
     }
 
-    const cam = activeCamera ?? slots[0]
-    const face = faces[cam]
-    let targetZoom = SHOT_ZOOM.wide
-    let targetFx = face?.fx ?? 0.5
-    let targetFy = face?.fy ?? 0.42
+    const nextCrops = emptyCrops()
+    let statusDetail = ''
 
-    if (speaking && face?.faceScore > 0.1) {
-      const elapsed = Date.now() - shotStartRef.current
-      if (elapsed > shotCycleSec * 1000) {
-        shotIndexRef.current = (shotIndexRef.current + 1) % SHOT_ORDER.length
-        shotStartRef.current = Date.now()
+    for (const slot of [0, 1, 2]) {
+      const smooth = smoothRef.current[slot] || { ...DEFAULT_CROP }
+
+      if (slot === PRIMARY_CAMERA_SLOT || !streams[slot]) {
+        smooth.focusX += (0.5 - smooth.focusX) * 0.2
+        smooth.focusY += (0.42 - smooth.focusY) * 0.2
+        smooth.zoom += (1 - smooth.zoom) * 0.2
+        nextCrops[slot] = { focusX: smooth.focusX, focusY: smooth.focusY, zoom: smooth.zoom }
+        smoothRef.current[slot] = smooth
+        continue
       }
-      targetZoom = SHOT_ZOOM[SHOT_ORDER[shotIndexRef.current]]
+
+      const { crop, status } = resolveSideTarget(slot, faces[slot], now)
+      if (slot === (activeCamera ?? PRIMARY_CAMERA_SLOT)) statusDetail = status
+
+      smooth.focusX += (crop.focusX - smooth.focusX) * 0.14
+      smooth.focusY += (crop.focusY - smooth.focusY) * 0.14
+      smooth.zoom += (crop.zoom - smooth.zoom) * 0.08
+      nextCrops[slot] = { focusX: smooth.focusX, focusY: smooth.focusY, zoom: smooth.zoom }
+      smoothRef.current[slot] = smooth
     }
 
-    const smooth = smoothRef.current
-    smooth.focusX += (targetFx - smooth.focusX) * 0.12
-    smooth.focusY += (targetFy - smooth.focusY) * 0.12
-    smooth.zoom += (targetZoom - smooth.zoom) * 0.06
+    setDirectorCrops(nextCrops)
 
-    setDirectorCrop({ focusX: smooth.focusX, focusY: smooth.focusY, zoom: smooth.zoom })
-
-    const shotName = SHOT_ORDER[shotIndexRef.current]
-    const shotLabels = { wide: 'General', medium: 'Medio', close: 'Primer plano' }
-    setDirectorStatus(
-      speaking
-        ? `Cam ${cam + 1} · ${shotLabels[shotName]}${slots.length > 1 ? ' · siguiendo voz' : ''}`
-        : 'En espera de voz...',
-    )
-  }, [streams, micLevel, activeCamera, setActiveCamera, minCutSec, shotCycleSec, micThreshold])
+    const cam = activeCamera ?? PRIMARY_CAMERA_SLOT
+    const camLabel = slotLabel(cam)
+    if (cam === PRIMARY_CAMERA_SLOT) {
+      setDirectorStatus(speaking ? `${camLabel} · toma fija` : 'En espera de voz…')
+    } else {
+      setDirectorStatus(
+        speaking
+          ? `${camLabel} · ${statusDetail || 'siguiendo voz'}`
+          : `${camLabel} · en espera de rostro`,
+      )
+    }
+  }, [streams, micLevel, activeCamera, setActiveCamera, minCutSec, micThreshold, resolveSideTarget])
 
   useEffect(() => {
     if (!enabled) {
-      setDirectorCrop({ focusX: 0.5, focusY: 0.42, zoom: 1 })
+      cycleRef.current = { 0: null, 2: null }
+      smoothRef.current = emptyCrops()
+      setDirectorCrops(emptyCrops())
       setDirectorStatus('')
       return
     }
@@ -210,5 +290,12 @@ export function useAIDirector({
     return () => clearInterval(id)
   }, [enabled, analyze])
 
-  return { directorCrop, directorStatus }
+  const getDirectorCrop = useCallback((slot) => {
+    if (slot === PRIMARY_CAMERA_SLOT) return null
+    const crop = directorCrops[slot]
+    if (!crop || crop.zoom <= 1.02) return null
+    return crop
+  }, [directorCrops])
+
+  return { directorCrops, getDirectorCrop, directorStatus }
 }

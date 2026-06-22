@@ -256,14 +256,14 @@ export default function Studio({ project, user }) {
 
   const { look, setField: setLookField, applyPreset: applyLookPreset, resetLook } = useLookSettings()
 
-  const { directorCrop, directorStatus } = useAIDirector({
+  const { getDirectorCrop, directorStatus } = useAIDirector({
     enabled: switchMode === 'ai',
     streams,
     micLevel,
     activeCamera,
     setActiveCamera,
     minCutSec: switchInterval,
-    shotCycleSec: Math.max(switchInterval, 5),
+    faceZoomSec: 10,
   })
 
   const { getProgramStream } = useStudioCompositor({
@@ -277,7 +277,7 @@ export default function Studio({ project, user }) {
     cintilloStyle,
     animPhase,
     animKey,
-    directorCrop: switchMode === 'ai' ? directorCrop : null,
+    directorCrop: switchMode === 'ai' ? getDirectorCrop(programCamera) : null,
     look,
     recording,
     recordDurationSec: duration,
@@ -713,7 +713,7 @@ export default function Studio({ project, user }) {
                     stream={streams[programCamera]}
                     cameraKey={programCamera}
                     look={look}
-                    directorCrop={switchMode === 'ai' ? directorCrop : null}
+                    directorCrop={switchMode === 'ai' ? getDirectorCrop(programCamera) : null}
                   />
                 ) : (
                   <div className={styles.noSignalViewport}>
@@ -781,7 +781,7 @@ export default function Studio({ project, user }) {
                         podcastName: proj.name || 'Mi Podcast',
                         position: proj.logoPosition || 'tr',
                       }}
-                      directorCrop={switchMode === 'ai' && activeCamera === i ? directorCrop : null}
+                      directorCrop={switchMode === 'ai' ? getDirectorCrop(i) : null}
                     />
                     {typeIcon && (
                       <div className={styles.camTypeBadge} title={meta?.label}>
@@ -832,7 +832,7 @@ export default function Studio({ project, user }) {
                       onChange={e => setSwitchInterval(+e.target.value)}
                       className={styles.switchInterval}
                       title={switchMode === 'ai'
-                        ? `Corte mín. ${switchInterval}s · plano cada ${Math.max(switchInterval, 5)}s`
+                        ? `Corte mín. ${switchInterval}s entre CAM 1/CAM 3 · zoom rostro 10s en laterales`
                         : `Cada ${switchInterval}s`}
                     />
                     <span className={styles.switchIntervalVal}>{switchInterval}s</span>
