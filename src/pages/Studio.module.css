@@ -177,24 +177,45 @@
 /* STAGE */
 .stage {
   background: #07070a;
-  display: flex; flex-direction: column;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.stageStack {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
   overflow: hidden;
 }
+
 .viewport {
-  flex: 1; display: flex; align-items: center; justify-content: center;
-  overflow: hidden; background: #050508;
+  flex: 1 1 auto;
   min-height: 0;
-  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: hidden;
+  background: #050508;
+  padding: 8px 10px 4px;
 }
 .viewportInner {
-  position: relative; background: #0a0a10; overflow: hidden;
+  position: relative;
+  background: #0a0a10;
+  overflow: hidden;
   width: 100%;
   max-width: 100%;
   max-height: 100%;
+  flex: 1 1 auto;
+  min-height: 120px;
   aspect-ratio: var(--viewport-aspect, 16 / 9);
-  margin: auto;
-  flex-shrink: 1;
-  min-height: 0;
+  margin: 0;
+  align-self: center;
+  height: auto;
 }
 .scanlines {
   position: absolute; inset: 0; pointer-events: none;
@@ -244,9 +265,33 @@
 
 /* CAM STRIP */
 .camStrip {
-  height: 80px; background: #0b0b10; border-top: 1px solid var(--border-1);
-  display: flex; align-items: center; padding: 0 12px; gap: 10px;
   flex-shrink: 0;
+  background: #0b0b10;
+  border-top: 1px solid var(--border-1);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 10px;
+}
+.camStripCams {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.camStripTools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.camStripTools .fmtSelector {
+  margin-left: auto;
 }
 .camStripLeft { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }
 .switcherControls {
@@ -290,6 +335,24 @@
   cursor: pointer; position: relative; overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0; transition: border-color .2s;
+}
+.camThumbMaster {
+  width: 124px;
+  height: 70px;
+  border-color: rgba(232, 97, 42, 0.45);
+}
+.camMasterBadge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 6;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(232, 97, 42, 0.9);
+  color: #fff;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 .camThumb:hover { border-color: var(--border-3); }
 .camActive { border-color: var(--accent) !important; }
@@ -748,16 +811,17 @@
   }
 
   .viewport {
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 120px;
-    padding: 6px;
-    align-items: center;
+    padding: 6px 6px 2px;
+    justify-content: flex-start;
   }
 
   .viewportInner {
     width: 100%;
     max-height: 100%;
     height: auto;
+    margin: 0;
   }
 
   .panelRight {
@@ -790,19 +854,18 @@
   }
 
   .camStrip {
-    height: auto;
-    min-height: 72px;
-    flex-wrap: wrap;
-    padding: 8px 10px 10px;
-    flex-shrink: 0;
+    min-height: auto;
+    padding: 6px 8px 8px;
+    gap: 6px;
   }
 
-  .camStripLeft {
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 4px;
-    flex-wrap: nowrap;
+  .camStripCams {
+    justify-content: center;
+    padding-bottom: 2px;
+  }
+
+  .camStripTools {
+    justify-content: flex-start;
   }
 
   .switcherControls {
@@ -854,13 +917,14 @@
   .stage { order: 1; }
 
   .camStrip {
-    min-height: 64px;
-    padding: 6px 8px;
+    min-height: auto;
+    padding: 4px 6px 6px;
   }
 
   .camThumb { width: 96px; height: 54px; }
+  .camThumbMaster { width: 108px; height: 60px; }
 
-  .viewport { padding: 4px; }
+  .viewport { padding: 4px 4px 2px; }
 }
 
 @media (max-width: 480px) {

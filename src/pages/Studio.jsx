@@ -91,6 +91,7 @@ export default function Studio({ project, user }) {
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState('')
   const [camSlot, setCamSlot] = useState(PRIMARY_CAMERA_SLOT)
+  const userPickedCameraRef = useRef(false)
   const [switchMode, setSwitchMode] = useState('ai')
   const [switchInterval, setSwitchInterval] = useState(8)
   const [showCintForm, setShowCintForm] = useState(false)
@@ -126,6 +127,13 @@ export default function Studio({ project, user }) {
     document.body.classList.add('studio-active')
     return () => document.body.classList.remove('studio-active')
   }, [])
+
+  const programCamera = activeCamera ?? PRIMARY_CAMERA_SLOT
+
+  useEffect(() => {
+    if (!initialized || userPickedCameraRef.current) return
+    if (streams[PRIMARY_CAMERA_SLOT]) setActiveCamera(PRIMARY_CAMERA_SLOT)
+  }, [initialized, streams, setActiveCamera])
 
   const subtitleLang = proj.subtitleLanguage || 'es-MX'
   const { displayText: subtitleText, interim: subtitleInterim, supported: subtitlesSupported } = useSpeechSubtitles({
@@ -575,7 +583,8 @@ export default function Studio({ project, user }) {
         {/* STAGE — shown when tab === studio */}
         {tab === 'studio' && (
           <div className={styles.stage}>
-            {/* MAIN VIEWPORT */}
+            <div className={styles.stageStack}>
+            {/* MAIN VIEWPORT — arriba */}
             <div className={styles.viewport}>
               <div
                 className={styles.viewportInner}
@@ -583,12 +592,11 @@ export default function Studio({ project, user }) {
                   '--viewport-aspect': proj.format === '9:16' ? '9 / 16' : proj.format === '1:1' ? '1 / 1' : '16 / 9',
                 }}
               >
-                {/* ACTIVE CAMERA */}
                 <ViewportComposer
                   getDisplayCanvas={getDisplayCanvas}
-                  hasStream={!!streams[activeCamera ?? PRIMARY_CAMERA_SLOT]}
-                  previewStream={streams[activeCamera ?? PRIMARY_CAMERA_SLOT]}
-                  cameraKey={activeCamera ?? PRIMARY_CAMERA_SLOT}
+                  hasStream={!!streams[programCamera]}
+                  previewStream={streams[programCamera]}
+                  cameraKey={programCamera}
                 />
                 <div className={styles.scanlines} />
                 {countdown != null && (
@@ -621,22 +629,27 @@ export default function Studio({ project, user }) {
               </div>
             </div>
 
-            {/* CAM STRIP */}
+            {/* 3 CÁMARAS — justo debajo del visor; CAM 2 centro = MASTER */}
             <div className={styles.camStrip}>
-              <div className={styles.camStripLeft}>
+              <div className={styles.camStripCams}>
               {[0, 1, 2].map(i => {
                 const meta = cameraMeta[i]
+                const isMaster = i === PRIMARY_CAMERA_SLOT
                 const typeIcon = meta?.type === 'wifi' ? 'ti-wifi' : meta?.type === 'bluetooth' ? 'ti-bluetooth' : meta?.type === 'usb' ? 'ti-plug' : null
                 return (
                   <div
                     key={i}
-                    className={`${styles.camThumb} ${activeCamera === i ? styles.camActive : ''}`}
+                    className={`${styles.camThumb} ${isMaster ? styles.camThumbMaster : ''} ${programCamera === i ? styles.camActive : ''}`}
                     onClick={() => {
+                      userPickedCameraRef.current = true
                       setActiveCamera(i)
                       setCamSlot(i)
                       if (!streams[i]) connectNextCameraToSlot(i)
                     }}
                   >
+                    {isMaster && (
+                      <div className={styles.camMasterBadge}>MASTER</div>
+                    )}
                     <CameraThumb
                       stream={streams[i]}
                       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 7 }}
@@ -662,6 +675,7 @@ export default function Studio({ project, user }) {
                 )
               })}
               </div>
+              <div className={styles.camStripTools}>
               {isTouchDevice() && (
                 <button
                   type="button"
@@ -718,7 +732,9 @@ export default function Studio({ project, user }) {
                   </button>
                 ))}
               </div>
+              </div>
             </div>
+            </div>{/* stageStack */}
           </div>
         )}
 
