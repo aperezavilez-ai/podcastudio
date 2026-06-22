@@ -1,0 +1,64 @@
+.preview {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #07070a;
+}
+
+.video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #666680;
+  background: #07070a;
+}
+
+.empty i { font-size: 28px; color: #333; }
+.empty span { font-size: 12px; }
+
+.lut {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: soft-light;
+}
+
+.lut_teal_orange {
+  background: linear-gradient(135deg, rgba(15, 70, 110, 0.18) 0%, rgba(255, 120, 40, 0.12) 100%);
+  mix-blend-mode: soft-light;
+}
+
+.lut_golden_hour {
+  background: rgba(255, 180, 60, 0.14);
+  mix-blend-mode: soft-light;
+}
+
+.lut_mono_warm {
+  background: rgba(255, 220, 180, 0.1);
+  mix-blend-mode: color;
+}
+
+.lut_vibrant {
+  background: rgba(255, 80, 120, 0.08);
+  mix-blend-mode: saturation;
+}
+
+.vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}

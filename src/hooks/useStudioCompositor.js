@@ -18,6 +18,7 @@ export function useStudioCompositor({
   look = null,
   recording = false,
   recordDurationSec = 0,
+  compositorActive = false,
 }) {
   const canvasRef = useRef(null)
   const outputStreamRef = useRef(null)
@@ -156,10 +157,22 @@ export function useStudioCompositor({
 
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d', { alpha: false })
+    if (!canvas || !compositorActive) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+      return undefined
+    }
 
-    const draw = () => {
+    const ctx = canvas.getContext('2d', { alpha: false })
+    let lastFrame = 0
+
+    const draw = (now) => {
+      if (now - lastFrame < 32) {
+        rafRef.current = requestAnimationFrame(draw)
+        return
+      }
+      lastFrame = now
+
       const s = settingsRef.current
       if (s.transitionStartMs && getTransitionProgress(s.transitionStartMs, TRANSITION_DURATION_MS) >= 1) {
         transitionStartRef.current = null
@@ -177,7 +190,7 @@ export function useStudioCompositor({
         : null
 
       ctx.imageSmoothingEnabled = true
-      ctx.imageSmoothingQuality = 'high'
+      ctx.imageSmoothingQuality = 'medium'
 
       try {
         drawCompositorFrame(ctx, COMPOSITOR_W, COMPOSITOR_H, {
@@ -214,11 +227,12 @@ export function useStudioCompositor({
       rafRef.current = requestAnimationFrame(draw)
     }
 
-    draw()
+    rafRef.current = requestAnimationFrame(draw)
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
     }
-  }, [])
+  }, [compositorActive])
 
   const getProgramStream = useCallback(() => outputStreamRef.current, [])
   const getDisplayCanvas = useCallback(() => canvasRef.current, [])

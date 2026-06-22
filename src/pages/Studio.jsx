@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useWebcam } from '../hooks/useWebcam.js'
 import { useRecorder } from '../hooks/useRecorder.js'
 import { useAI } from '../hooks/useAI.js'
+import ProgramPreview from '../components/ProgramPreview.jsx'
 import CameraThumb from '../components/CameraThumb.jsx'
 import CameraConnectPanel from '../components/CameraConnectPanel.jsx'
 import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
@@ -102,6 +103,7 @@ export default function Studio({ project, user }) {
   } = useBackgroundMusic(MUSIC_TRACKS, 30)
   const { playSfx, playingSfxId, sfxError } = useSoundEffect()
   const [countdown, setCountdown] = useState(null)
+  const [preparingRecord, setPreparingRecord] = useState(false)
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState('')
   const [camSlot, setCamSlot] = useState(PRIMARY_CAMERA_SLOT)
@@ -279,6 +281,7 @@ export default function Studio({ project, user }) {
     look,
     recording,
     recordDurationSec: duration,
+    compositorActive: recording || countdown !== null || preparingRecord,
   })
   const { buildRecordingStream } = useAudioMix()
 
@@ -437,6 +440,7 @@ export default function Studio({ project, user }) {
     if (recording) { handleStopRecord(); return }
     if (countdown) return
 
+    setPreparingRecord(true)
     for (let i = 3; i >= 1; i--) {
       setCountdown(i)
       await new Promise(r => setTimeout(r, 1000))
@@ -444,7 +448,10 @@ export default function Studio({ project, user }) {
     setCountdown(null)
 
     const videoStream = getProgramStream()
-    if (!videoStream) return
+    if (!videoStream) {
+      setPreparingRecord(false)
+      return
+    }
     try {
       const combined = await buildRecordingStream(videoStream, {
         micStream: getMicStream(),
@@ -458,6 +465,8 @@ export default function Studio({ project, user }) {
       console.error('Recording mix error:', e)
       teleprompter.setRecordingActive(true)
       startRecording(videoStream)
+    } finally {
+      setPreparingRecord(false)
     }
   }
 
@@ -700,10 +709,11 @@ export default function Studio({ project, user }) {
                 }}
               >
                 {streams[programCamera] ? (
-                  <CameraThumb
+                  <ProgramPreview
                     stream={streams[programCamera]}
-                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 0 }}
-                    directorCrop={switchMode === 'ai' && activeCamera === programCamera ? directorCrop : null}
+                    cameraKey={programCamera}
+                    look={look}
+                    directorCrop={switchMode === 'ai' ? directorCrop : null}
                   />
                 ) : (
                   <div className={styles.noSignalViewport}>
@@ -711,7 +721,6 @@ export default function Studio({ project, user }) {
                     <span>Sin señal — conecta una cámara</span>
                   </div>
                 )}
-                <div className={styles.scanlines} />
                 {countdown != null && (
                   <div className={styles.countdownOverlay}>
                     <span className={styles.countdownNum}>{countdown}</span>

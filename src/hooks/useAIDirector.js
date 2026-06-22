@@ -206,7 +206,7 @@ export function useAIDirector({
       setDirectorStatus('')
       return
     }
-    const id = setInterval(analyze, 350)
+    const id = setInterval(analyze, 650)
     return () => clearInterval(id)
   }, [enabled, analyze])
 

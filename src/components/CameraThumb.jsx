@@ -12,6 +12,7 @@ export default function CameraThumb({
   cintilloPosition = 'bl',
   logoOverlay = null,
   directorCrop = null,
+  maxFps = 12,
 }) {
   const canvasRef = useRef(null)
   const videoRef = useRef(null)
@@ -35,8 +36,15 @@ export default function CameraThumb({
     const canvas = canvasRef.current
     const ctx = canvas.getContext('2d')
     let rafId = 0
+    let lastFrame = 0
+    const minFrameMs = maxFps > 0 ? 1000 / maxFps : 0
 
-    const draw = () => {
+    const draw = (ts) => {
+      if (minFrameMs && ts - lastFrame < minFrameMs) {
+        rafId = requestAnimationFrame(draw)
+        return
+      }
+      lastFrame = ts
       const tw = canvas.clientWidth || 108
       const th = canvas.clientHeight || 62
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
@@ -48,7 +56,7 @@ export default function CameraThumb({
       }
 
       ctx.imageSmoothingEnabled = true
-      ctx.imageSmoothingQuality = 'high'
+      ctx.imageSmoothingQuality = 'medium'
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.fillStyle = '#07070a'
       ctx.fillRect(0, 0, pw, ph)
@@ -74,12 +82,12 @@ export default function CameraThumb({
       rafId = requestAnimationFrame(draw)
     }
 
-    draw()
+    rafId = requestAnimationFrame(draw)
     return () => {
       cancelAnimationFrame(rafId)
       unbindKeepAlive()
     }
-  }, [stream, cintillo, cintilloPosition, logoOverlay, directorCrop])
+  }, [stream, cintillo, cintilloPosition, logoOverlay, directorCrop, maxFps])
 
   if (!stream) {
     return (
