@@ -45,6 +45,14 @@
   border: 1px solid var(--green-border); border-radius: 6px; padding: 3px 10px;
 }
 .topRight { display: flex; align-items: center; gap: 6px; position: relative; z-index: 20; flex-shrink: 0; }
+.buildStamp {
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--text-muted);
+  opacity: 0.55;
+  letter-spacing: 0.02em;
+  user-select: all;
+}
 .aiChip {
   display: inline-flex; align-items: center; gap: 4px;
   background: var(--green-dim); border: 1px solid var(--green-border);

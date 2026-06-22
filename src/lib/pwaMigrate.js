@@ -1,7 +1,7 @@
 import { safeStorage } from './safeStorage.js'
 
 /** Limpia service workers viejos que dejan pantalla negra en móvil/PWA. */
-const SW_VERSION = '4'
+const SW_VERSION = '5'
 
 function withTimeout(promise, ms) {
   return Promise.race([
@@ -15,6 +15,8 @@ export async function migrateServiceWorker() {
 
   const stored = safeStorage.getItem('podcastudio_sw_version')
   if (stored === SW_VERSION) return
+
+  const hadOldVersion = !!stored
 
   try {
     const regs = await withTimeout(navigator.serviceWorker.getRegistrations(), 4000)
@@ -30,5 +32,9 @@ export async function migrateServiceWorker() {
     safeStorage.setItem('podcastudio_sw_version', SW_VERSION)
   } catch {
     safeStorage.setItem('podcastudio_sw_version', SW_VERSION)
+  }
+
+  if (hadOldVersion && typeof window !== 'undefined') {
+    window.location.reload()
   }
 }

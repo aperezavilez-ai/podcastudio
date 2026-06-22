@@ -40,6 +40,8 @@ import { isTouchDevice } from '../lib/device.js'
 import { PRIMARY_CAMERA_SLOT, CAM_SLOT_LABELS, pickPrimaryActiveSlot } from '../config/cameraSlots.js'
 import LandscapeGate from '../components/LandscapeGate.jsx'
 import GuideModal from '../components/GuideModal.jsx'
+
+const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
 import styles from './Studio.module.css'
 
 const ROTATION_PRESETS = CINTILLO_PRESETS.filter(p => ['topic', 'guest', 'social', 'contact'].includes(p.id))
@@ -301,7 +303,6 @@ export default function Studio({ project, user }) {
           n = 1
         }
         if (n === 0) setInitError('Permite el acceso a la cámara en el navegador y pulsa reconectar.')
-        else setActiveCamera(PRIMARY_CAMERA_SLOT)
       } else {
         setInitError('No se detectaron cámaras USB. Conecta una y autoriza el acceso.')
       }
@@ -489,6 +490,9 @@ export default function Studio({ project, user }) {
           )}
         </div>
         <div className={styles.topRight}>
+          <span className={styles.buildStamp} title="Versión desplegada — si no coincide, recarga sin caché">
+            v{APP_BUILD}
+          </span>
           {producerStatus && aiConfigured && (
             <div className={styles.producerChip} title="IA Productora">
               <i className="ti ti-robot" style={{ fontSize: 9 }} />

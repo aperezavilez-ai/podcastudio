@@ -9,7 +9,8 @@
   background: #07070a;
 }
 
-.previewVideo {
+.previewVideo,
+.previewCanvas {
   position: absolute;
   inset: 0;
   width: 100%;

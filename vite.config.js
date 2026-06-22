@@ -302,7 +302,11 @@ function aiApiDev(env) {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  const appBuild = `${new Date().toISOString().slice(0, 10)}-${mode}`
   return {
+    define: {
+      __APP_BUILD__: JSON.stringify(appBuild),
+    },
     plugins: [
       react(),
       VitePWA({
