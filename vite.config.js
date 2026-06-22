@@ -315,7 +315,7 @@ export default defineConfig(({ mode }) => {
           theme_color: '#e8612a',
           background_color: '#08080b',
           display: 'standalone',
-          orientation: 'any',
+          orientation: 'landscape',
           lang: 'es',
           start_url: '/',
           scope: '/',

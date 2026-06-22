@@ -22,6 +22,7 @@ import Teleprompter from '../components/Teleprompter.jsx'
 import TeleprompterDocUpload from '../components/TeleprompterDocUpload.jsx'
 import TeleprompterOverlay from '../components/TeleprompterOverlay.jsx'
 import PublishPanel, { connectYouTubeChannel, fetchYouTubeStatus } from '../components/PublishPanel.jsx'
+import PostsPanel from '../components/PostsPanel.jsx'
 import { useLookSettings } from '../hooks/useLookSettings.js'
 import LookPanel from '../components/LookPanel.jsx'
 import SubtitleOverlay from '../components/SubtitleOverlay.jsx'
@@ -33,6 +34,10 @@ import { useMuxUpload } from '../hooks/useMuxUpload.js'
 import { fetchCloudRecordings, fetchIntegrationStatus, publishToYouTube } from '../lib/integrations.js'
 import { fetchSubscription } from '../lib/billing.js'
 import { isAdminUser, canAccessStudio } from '../lib/access.js'
+import { isTouchDevice } from '../lib/device.js'
+import { PRIMARY_CAMERA_SLOT, CAM_SLOT_LABELS } from '../config/cameraSlots.js'
+import LandscapeGate from '../components/LandscapeGate.jsx'
+import GuideModal from '../components/GuideModal.jsx'
 import styles from './Studio.module.css'
 
 const ROTATION_PRESETS = CINTILLO_PRESETS.filter(p => ['topic', 'guest', 'social', 'contact'].includes(p.id))
@@ -52,14 +57,16 @@ export default function Studio({ project, user }) {
   const {
     devices, streams, cameraMeta, activeCamera, setActiveCamera, error: camError, setError: setCamError,
     micLevel, bluetoothSupported, wifiConnecting, btScanning, wifiPresets,
-    autoConnecting, connectedCount,
-    enumerateDevices, startCamera, autoConnectAll, connectNextCameraToSlot, stopCamera, connectWifiCamera,
+    autoConnecting, connectedCount, mobilePrimaryFacing,
+    enumerateDevices, startCamera, initMobileCameras, switchMobilePrimaryFacing,
+    autoConnectAll, connectNextCameraToSlot, stopCamera, connectWifiCamera,
     scanBluetoothCamera, connectBluetoothWifiStream, startPreferredMic, switchMic, selectedMicId, micLabel, getMicStream,
   } = useWebcam()
   const { recording, duration, recordings, converting, convertProgress, startRecording, stopRecording, downloadRecording, downloadRecordingMp4, formatDuration } = useRecorder()
   const { generateCintillo, generateTeleprompterScript, formatTeleprompterDocument, analyzeEventWithAI, loadingCintillo, loadingScript, loadingProducer, aiConfigured, checkAIStatus } = useAI()
   const { runProducer, shouldAutoRun, markRan } = useAIProducer({ analyzeEventWithAI, aiConfigured })
   const [showAiInfo, setShowAiInfo] = useState(false)
+  const [showGuide, setShowGuide] = useState(false)
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false)
   const [enrichedProject, setEnrichedProject] = useState(null)
   const [producerStatus, setProducerStatus] = useState('')
@@ -83,7 +90,7 @@ export default function Studio({ project, user }) {
   const [countdown, setCountdown] = useState(null)
   const [initialized, setInitialized] = useState(false)
   const [initError, setInitError] = useState('')
-  const [camSlot, setCamSlot] = useState(0)
+  const [camSlot, setCamSlot] = useState(PRIMARY_CAMERA_SLOT)
   const [switchMode, setSwitchMode] = useState('ai')
   const [switchInterval, setSwitchInterval] = useState(8)
   const [showCintForm, setShowCintForm] = useState(false)
@@ -235,13 +242,17 @@ export default function Studio({ project, user }) {
 
     async function init() {
       const devs = await enumerateDevices()
-      if (devs.cameras.length > 0) {
+      if (isTouchDevice()) {
+        const n = await initMobileCameras()
+        if (n === 0) setInitError('Permite el acceso a la cámara en el navegador y pulsa reconectar.')
+      } else if (devs.cameras.length > 0) {
         let n = await autoConnectAll(devs.cameras)
         if (n === 0 && devs.cameras[0]) {
-          await startCamera(devs.cameras[0].deviceId, 0, devs.cameras[0].label)
+          await startCamera(devs.cameras[0].deviceId, PRIMARY_CAMERA_SLOT, devs.cameras[0].label)
           n = 1
         }
         if (n === 0) setInitError('Permite el acceso a la cámara en el navegador y pulsa reconectar.')
+        else setActiveCamera(PRIMARY_CAMERA_SLOT)
       } else {
         setInitError('No se detectaron cámaras USB. Conecta una y autoriza el acceso.')
       }
@@ -288,7 +299,11 @@ export default function Studio({ project, user }) {
     const id = setInterval(async () => {
       const { cameras } = await enumerateDevices(false)
       const connected = Object.keys(streams).filter(k => streams[k]).length
-      if (cameras.length > connected) await autoConnectAll(cameras)
+      if (isTouchDevice()) {
+        if (connected === 0) await initMobileCameras()
+      } else if (cameras.length > connected) {
+        await autoConnectAll(cameras)
+      }
     }, 12000)
     return () => clearInterval(id)
   }, [initialized])
@@ -400,7 +415,8 @@ export default function Studio({ project, user }) {
   }
 
   return (
-    <div className={styles.app}>
+    <LandscapeGate>
+    <div className={`${styles.app} ${isTouchDevice() ? styles.touchStudio : ''}`}>
       {/* TOPBAR */}
       <div className={styles.topbar}>
         <div className={styles.topLeft}>
@@ -452,10 +468,10 @@ export default function Studio({ project, user }) {
           <button
             type="button"
             className={styles.iconBtn}
-            title="Manual de operación"
-            onClick={() => navigate('/guia?from=studio')}
+            title="Guía de operación"
+            onClick={() => setShowGuide(true)}
           >
-            <i className="ti ti-help" style={{ fontSize: 13 }} />
+            <i className="ti ti-book" style={{ fontSize: 13 }} />
           </button>
           <button
             type="button"
@@ -494,19 +510,60 @@ export default function Studio({ project, user }) {
       <div className={styles.layout}>
         {/* LEFT SIDEBAR */}
         <div className={styles.sidebarLeft}>
+          <button
+            type="button"
+            className={`${styles.slBtn} ${tab === 'studio' ? styles.slBtnActive : ''}`}
+            onClick={() => {
+              setTab('studio')
+              setCamSlot(PRIMARY_CAMERA_SLOT)
+              if (isTouchDevice()) setMobilePanelOpen(true)
+            }}
+            title="Vista de cámaras"
+          >
+            <i className="ti ti-video" />
+            <span className={styles.slBtnLabel}>Live</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles.slBtn} ${showGuide ? styles.slBtnActive : ''}`}
+            onClick={() => setShowGuide(true)}
+            title="Guía de operación"
+          >
+            <i className="ti ti-book" />
+            <span className={styles.slBtnLabel}>Guía</span>
+          </button>
           {[
-            { id: 'studio', icon: 'ti-video', label: 'Estudio' },
-            { id: 'posts', icon: 'ti-sparkles', label: 'Posts IA' },
-            { id: 'recordings', icon: 'ti-files', label: 'Grabaciones' },
+            { id: 'posts', icon: 'ti-sparkles', label: 'Posts IA', short: 'Posts' },
+            { id: 'recordings', icon: 'ti-files', label: 'Grabaciones', short: 'Clips' },
           ].map(item => (
-            <button key={item.id} className={`${styles.slBtn} ${tab === item.id ? styles.slBtnActive : ''}`} onClick={() => setTab(item.id)} title={item.label}>
+            <button
+              key={item.id}
+              type="button"
+              className={`${styles.slBtn} ${tab === item.id ? styles.slBtnActive : ''}`}
+              onClick={() => {
+                setTab(item.id)
+                setMobilePanelOpen(false)
+                setShowGuide(false)
+              }}
+              title={item.label}
+            >
               <i className={`ti ${item.icon}`} />
+              <span className={styles.slBtnLabel}>{item.short}</span>
             </button>
           ))}
           <div className={styles.slDivider} />
           <div style={{ flex: 1 }} />
-          <button className={styles.slBtn} title="Mi cuenta" onClick={() => navigate('/')}>
-            <i className="ti ti-user-circle" />
+          <button
+            type="button"
+            className={styles.slBtn}
+            title="Controles y ajustes"
+            onClick={() => {
+              setTab('studio')
+              setMobilePanelOpen(true)
+            }}
+          >
+            <i className="ti ti-adjustments" />
+            <span className={styles.slBtnLabel}>Ajustes</span>
           </button>
         </div>
 
@@ -524,9 +581,9 @@ export default function Studio({ project, user }) {
                 {/* ACTIVE CAMERA */}
                 <ViewportComposer
                   getDisplayCanvas={getDisplayCanvas}
-                  hasStream={!!streams[activeCamera ?? 0]}
-                  previewStream={streams[activeCamera ?? 0]}
-                  cameraKey={activeCamera ?? 0}
+                  hasStream={!!streams[activeCamera ?? PRIMARY_CAMERA_SLOT]}
+                  previewStream={streams[activeCamera ?? PRIMARY_CAMERA_SLOT]}
+                  cameraKey={activeCamera ?? PRIMARY_CAMERA_SLOT}
                 />
                 <div className={styles.scanlines} />
                 {countdown != null && (
@@ -593,13 +650,25 @@ export default function Studio({ project, user }) {
                     )}
                     <div className={styles.camLabel}>
                       {streams[i]
-                        ? <><div className={styles.camLiveDot} />{meta?.label?.slice(0, 12) || `Cam ${i + 1}`}</>
-                        : `Cam ${i + 1}`}
+                        ? <><div className={styles.camLiveDot} />{meta?.label?.slice(0, 14) || CAM_SLOT_LABELS[i]}</>
+                        : CAM_SLOT_LABELS[i]}
                     </div>
                   </div>
                 )
               })}
               </div>
+              {isTouchDevice() && (
+                <button
+                  type="button"
+                  className={styles.flipCamBtn}
+                  onClick={() => switchMobilePrimaryFacing()}
+                  disabled={autoConnecting}
+                  title={mobilePrimaryFacing === 'environment' ? 'Cambiar a cámara frontal' : 'Cambiar a cámara trasera'}
+                >
+                  <i className={`ti ${mobilePrimaryFacing === 'environment' ? 'ti-camera-selfie' : 'ti-camera'}`} />
+                  {mobilePrimaryFacing === 'environment' ? 'Frontal' : 'Trasera'}
+                </button>
+              )}
               <div className={styles.switcherControls}>
                 <i className="ti ti-switch-horizontal" style={{ fontSize: 11, color: 'var(--text-muted)' }} />
                 <select
@@ -743,6 +812,7 @@ export default function Studio({ project, user }) {
             </button>
           </div>
           <div className={styles.panelScroll}>
+          <div className={styles.panelScrollInner}>
           {/* CAMERAS */}
           <div className={styles.prSection}>
             <div className={styles.prTitle}>Cámaras</div>
@@ -755,9 +825,13 @@ export default function Studio({ project, user }) {
               onReconnectAll={async () => {
                 setCamError(null)
                 const devs = await enumerateDevices(true)
-                let n = await autoConnectAll(devs.cameras)
-                if (n === 0 && devs.cameras[0]) {
-                  await startCamera(devs.cameras[0].deviceId, camSlot, devs.cameras[0].label)
+                if (isTouchDevice()) {
+                  await initMobileCameras()
+                } else {
+                  let n = await autoConnectAll(devs.cameras)
+                  if (n === 0 && devs.cameras[0]) {
+                    await startCamera(devs.cameras[0].deviceId, PRIMARY_CAMERA_SLOT, devs.cameras[0].label)
+                  }
                 }
               }}
               bluetoothSupported={bluetoothSupported}
@@ -979,9 +1053,6 @@ export default function Studio({ project, user }) {
             )}
           </div>
 
-          </div>{/* panelScroll */}
-
-          <div className={styles.panelFooter}>
           {aiConfigured && (
             <div className={styles.prSection}>
               <div className={styles.prTitle}>
@@ -1025,10 +1096,10 @@ export default function Studio({ project, user }) {
                   {proj.aiPlan && !musicPlaying ? ' · elegida por IA' : ''}
                 </div>
               </div>
-              <button className={styles.musicBtn} onClick={toggleMusic} title={musicPlaying ? 'Pausar' : 'Reproducir'}>
+              <button type="button" className={styles.musicBtn} onClick={toggleMusic} title={musicPlaying ? 'Pausar' : 'Reproducir'}>
                 <i className={`ti ${musicPlaying ? 'ti-player-pause' : 'ti-player-play'}`} style={{ fontSize: 13 }} />
               </button>
-              <button className={styles.musicBtn} onClick={nextMusicTrack} title="Siguiente pista">
+              <button type="button" className={styles.musicBtn} onClick={nextMusicTrack} title="Siguiente pista">
                 <i className="ti ti-arrow-shuffle" style={{ fontSize: 12 }} />
               </button>
             </div>
@@ -1041,11 +1112,12 @@ export default function Studio({ project, user }) {
 
           {/* RECORD CONTROLS */}
           <div className={styles.recControls}>
-            <button className={`${styles.rcBtn} ${styles.rcRec} ${recording ? styles.rcRecOn : ''}`} onClick={handleRecord}>
+            <button type="button" className={`${styles.rcBtn} ${styles.rcRec} ${recording ? styles.rcRecOn : ''}`} onClick={handleRecord}>
               <i className={`ti ${recording ? 'ti-player-stop' : 'ti-circle'}`} style={{ fontSize: 13 }} />
               {recording ? 'Detener' : 'Grabar'}
             </button>
             <button
+              type="button"
               className={styles.rcBtn}
               onClick={() => { if (recordings.length > 0) downloadRecording(recordings[recordings.length - 1]) }}
               disabled={recordings.length === 0}
@@ -1055,17 +1127,24 @@ export default function Studio({ project, user }) {
               Descargar
             </button>
             <button
+              type="button"
               className={styles.rcBtn}
-              onClick={() => setTab('posts')}
+              onClick={() => {
+                setTab('posts')
+                setMobilePanelOpen(false)
+              }}
               title="Generar posts para redes"
             >
               <i className="ti ti-sparkles" style={{ fontSize: 13 }} />
               Posts
             </button>
           </div>
-          </div>{/* panelFooter */}
+          </div>{/* panelScrollInner */}
+          </div>{/* panelScroll */}
         </div>
       </div>
+
+      <GuideModal open={showGuide} onClose={() => setShowGuide(false)} />
 
       {/* DEVICE INIT OVERLAY */}
       {!initialized && (
@@ -1083,5 +1162,6 @@ export default function Studio({ project, user }) {
         </div>
       )}
     </div>
+    </LandscapeGate>
   )
 }

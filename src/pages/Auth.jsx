@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { signIn, isSupabaseConfigured } from '../lib/projects.js'
 import { mapSupabaseUser, checkSupabaseHealth } from '../lib/supabase.js'
 import { hasSeenTour } from '../config/tourSteps.js'
-import { ADMIN_EMAIL, WRONG_EMAIL_EXAMPLE, isKnownEmailTypo, normalizeLoginEmail } from '../lib/adminEmail.js'
+import { isKnownEmailTypo, normalizeLoginEmail } from '../lib/adminEmail.js'
 import { getPostLoginPath } from '../lib/access.js'
 import styles from './Auth.module.css'
 
@@ -88,17 +88,13 @@ export default function Auth({ onAuth }) {
             <i className="ti ti-wifi-off" /> No hay conexión con la plataforma. El proyecto Supabase puede estar mal configurado o inactivo.
           </div>
         )}
-        <p className={styles.adminHint}>
-          <i className="ti ti-user-check" /> Correo correcto: <strong>{ADMIN_EMAIL}</strong>
-          <span className={styles.adminWrong}> (no {WRONG_EMAIL_EXAMPLE})</span>
-        </p>
         <form className={styles.form} onSubmit={submit}>
           <div className={styles.field}>
             <label>Correo electrónico</label>
-            <input name="email" type="email" value={form.email} onChange={handle} onBlur={handleEmailBlur} placeholder={ADMIN_EMAIL} autoComplete="email" autoFocus />
+            <input name="email" type="email" value={form.email} onChange={handle} onBlur={handleEmailBlur} placeholder="tu@correo.com" autoComplete="email" autoFocus />
             {emailTypo && (
               <p className={styles.typoWarn}>
-                Ese correo está mal escrito. El correcto es <strong>{ADMIN_EMAIL}</strong>
+                Revisa la ortografía de tu correo e intenta de nuevo.
               </p>
             )}
           </div>

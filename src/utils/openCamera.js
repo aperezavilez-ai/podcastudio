@@ -5,6 +5,25 @@ const HD_VIDEO = {
   aspectRatio: { ideal: 16 / 9 },
 }
 
+export async function openCameraStreamFacing(facingMode) {
+  const attempts = [
+    { facingMode: { exact: facingMode }, ...HD_VIDEO },
+    { facingMode: { ideal: facingMode }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+    { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    { facingMode },
+  ]
+
+  let lastError = null
+  for (const video of attempts) {
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video, audio: false })
+    } catch (e) {
+      lastError = e
+    }
+  }
+  throw lastError || new Error('No se pudo abrir la cámara')
+}
+
 export async function openCameraStream(deviceId) {
   const videoAttempts = deviceId
     ? [

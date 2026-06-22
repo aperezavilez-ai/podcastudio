@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { pickPreferredMicrophone, isBuiltInMicrophone } from '../utils/micDevices.js'
-import { openCameraStream, waitMs } from '../utils/openCamera.js'
+import { openCameraStream, openCameraStreamFacing, waitMs } from '../utils/openCamera.js'
 import { applyStreamQualityHints } from '../utils/videoStream.js'
+import { isTouchDevice } from '../lib/device.js'
+import { PRIMARY_CAMERA_SLOT, pickPrimaryActiveSlot } from '../config/cameraSlots.js'
 
 const WIFI_PRESETS = [
   { label: 'IP Webcam (Android)', url: 'http://192.168.1.100:8080/video' },
@@ -154,6 +156,7 @@ export function useWebcam() {
   const [btScanning, setBtScanning] = useState(false)
   const [autoConnecting, setAutoConnecting] = useState(false)
   const [connectedCount, setConnectedCount] = useState(0)
+  const [mobilePrimaryFacing, setMobilePrimaryFacing] = useState('environment')
 
   const micRef = useRef(null)
   const audioCtxRef = useRef(null)
@@ -210,9 +213,16 @@ export function useWebcam() {
   }, [])
 
   const attachStream = useCallback((slotIndex, stream, meta) => {
-    setStreams(prev => ({ ...prev, [slotIndex]: stream }))
-    setCameraMeta(prev => ({ ...prev, [slotIndex]: meta }))
-    setActiveCamera(prev => (prev === null ? slotIndex : prev))
+    setStreams(prev => {
+      const next = { ...prev, [slotIndex]: stream }
+      streamsRef.current = next
+      return next
+    })
+    setCameraMeta(prev => {
+      const next = { ...prev, [slotIndex]: meta }
+      cameraMetaRef.current = next
+      return next
+    })
     setError(null)
   }, [])
 
@@ -225,12 +235,14 @@ export function useWebcam() {
       if (s) s.getTracks().forEach(t => t.stop())
       const next = { ...prev }
       delete next[slotIndex]
+      streamsRef.current = next
       return next
     })
 
     setCameraMeta(prev => {
       const next = { ...prev }
       delete next[slotIndex]
+      cameraMetaRef.current = next
       return next
     })
   }, [setSlotCleanup])
@@ -247,6 +259,7 @@ export function useWebcam() {
         || track?.label
         || `USB Cam ${slotIndex + 1}`
       attachStream(slotIndex, stream, { type: 'usb', label, deviceId: activeId || deviceId })
+      if (slotIndex === PRIMARY_CAMERA_SLOT) setActiveCamera(PRIMARY_CAMERA_SLOT)
       return stream
     } catch (e) {
       console.error('startCamera:', e)
@@ -255,8 +268,70 @@ export function useWebcam() {
     }
   }, [attachStream, devices.cameras, stopCamera])
 
+  const initMobileCameras = useCallback(async () => {
+    if (autoConnectLockRef.current) return connectedCountRef.current
+
+    autoConnectLockRef.current = true
+    setAutoConnecting(true)
+    setError(null)
+
+    try {
+      for (let slot = 0; slot < 3; slot++) stopCamera(slot)
+
+      let facing = 'environment'
+      let stream = null
+
+      try {
+        stream = await openCameraStreamFacing('environment')
+      } catch {
+        facing = 'user'
+        stream = await openCameraStreamFacing('user')
+      }
+
+      applyStreamQualityHints(stream)
+      const label = facing === 'user' ? 'Cámara frontal' : 'Cámara trasera'
+      attachStream(PRIMARY_CAMERA_SLOT, stream, { type: 'usb', label, facing })
+      setMobilePrimaryFacing(facing)
+      setActiveCamera(PRIMARY_CAMERA_SLOT)
+      setConnectedCount(1)
+      connectedCountRef.current = 1
+      return 1
+    } catch (e) {
+      console.error('initMobileCameras:', e)
+      setError('No se pudo iniciar la cámara. Autoriza el acceso e intenta de nuevo.')
+      setConnectedCount(0)
+      connectedCountRef.current = 0
+      return 0
+    } finally {
+      autoConnectLockRef.current = false
+      setAutoConnecting(false)
+    }
+  }, [attachStream, stopCamera])
+
+  const switchMobilePrimaryFacing = useCallback(async () => {
+    const next = mobilePrimaryFacing === 'environment' ? 'user' : 'environment'
+    setAutoConnecting(true)
+    setError(null)
+
+    try {
+      stopCamera(PRIMARY_CAMERA_SLOT)
+      const stream = await openCameraStreamFacing(next)
+      applyStreamQualityHints(stream)
+      const label = next === 'user' ? 'Cámara frontal' : 'Cámara trasera'
+      attachStream(PRIMARY_CAMERA_SLOT, stream, { type: 'usb', label, facing: next })
+      setMobilePrimaryFacing(next)
+      setActiveCamera(PRIMARY_CAMERA_SLOT)
+    } catch (e) {
+      console.error('switchMobilePrimaryFacing:', e)
+      setError('No se pudo cambiar de cámara. Cierra otras apps que usen la cámara.')
+    } finally {
+      setAutoConnecting(false)
+    }
+  }, [attachStream, mobilePrimaryFacing, stopCamera])
+
   const autoConnectAll = useCallback(async (cameraList) => {
     if (autoConnectLockRef.current) return connectedCountRef.current
+    if (isTouchDevice()) return initMobileCameras()
 
     const list = uniqueCameras(cameraList || devices.cameras)
     if (!list.length) {
@@ -272,27 +347,37 @@ export function useWebcam() {
 
     try {
       const usedDeviceIds = getAssignedDeviceIds(cameraMetaRef.current, streamsRef.current)
-      let camIdx = 0
 
-      for (let slot = 0; slot < 3; slot++) {
-        if (streamsRef.current[slot]) {
-          connected++
-          continue
+      if (list.length === 1) {
+        if (!streamsRef.current[PRIMARY_CAMERA_SLOT]) {
+          const cam = list[0]
+          const stream = await startCamera(cam.deviceId, PRIMARY_CAMERA_SLOT, cam.label || 'CAM 2 · Centro')
+          if (stream) connected = 1
+        } else {
+          connected = 1
         }
+      } else {
+        let camIdx = 0
+        for (let slot = 0; slot < 3; slot++) {
+          if (streamsRef.current[slot]) {
+            connected++
+            continue
+          }
 
-        while (camIdx < list.length && usedDeviceIds.has(list[camIdx].deviceId)) camIdx++
-        if (camIdx >= list.length) break
+          while (camIdx < list.length && usedDeviceIds.has(list[camIdx].deviceId)) camIdx++
+          if (camIdx >= list.length) break
 
-        const cam = list[camIdx++]
-        usedDeviceIds.add(cam.deviceId)
-        const stream = await startCamera(cam.deviceId, slot, cam.label || `USB Cam ${slot + 1}`)
-        if (stream) {
-          connected++
-          await delay(300)
+          const cam = list[camIdx++]
+          usedDeviceIds.add(cam.deviceId)
+          const stream = await startCamera(cam.deviceId, slot, cam.label || `USB Cam ${slot + 1}`)
+          if (stream) {
+            connected++
+            await delay(300)
+          }
         }
       }
 
-      if (connected > 0) setActiveCamera(prev => (prev === null ? 0 : prev))
+      setActiveCamera(pickPrimaryActiveSlot(streamsRef.current))
       setConnectedCount(connected)
       connectedCountRef.current = connected
       return connected
@@ -300,7 +385,7 @@ export function useWebcam() {
       autoConnectLockRef.current = false
       setAutoConnecting(false)
     }
-  }, [devices.cameras, startCamera])
+  }, [devices.cameras, initMobileCameras, startCamera])
 
   const connectNextCameraToSlot = useCallback(async (slotIndex) => {
     const { cameras } = await enumerateDevices(false)
@@ -537,7 +622,11 @@ export function useWebcam() {
       deviceChangeTimerRef.current = setTimeout(async () => {
         const { cameras, microphones } = await enumerateDevices(false)
         const connected = Object.values(streamsRef.current).filter(Boolean).length
-        if (cameras.length > connected) await autoConnectAll(cameras)
+        if (isTouchDevice()) {
+          if (connected === 0) await initMobileCameras()
+        } else if (cameras.length > connected) {
+          await autoConnectAll(cameras)
+        }
 
         if (microphones.length === 0) return
 
@@ -557,7 +646,7 @@ export function useWebcam() {
 
     navigator.mediaDevices.addEventListener('devicechange', onDeviceChange)
     return () => navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange)
-  }, [enumerateDevices, autoConnectAll, startMic])
+  }, [enumerateDevices, autoConnectAll, initMobileCameras, startMic])
 
   return {
     devices,
@@ -575,9 +664,12 @@ export function useWebcam() {
     btScanning,
     autoConnecting,
     connectedCount,
+    mobilePrimaryFacing,
     wifiPresets: WIFI_PRESETS,
     enumerateDevices,
     startCamera,
+    initMobileCameras,
+    switchMobilePrimaryFacing,
     autoConnectAll,
     connectNextCameraToSlot,
     stopCamera,

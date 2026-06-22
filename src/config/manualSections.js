@@ -32,8 +32,8 @@ export const MANUAL_SECTIONS = [
     title: 'Recorrido del estudio',
     summary: 'Dónde está cada control en pantalla.',
     steps: [
-      { action: 'Barra superior', detail: 'Nombre del episodio, indicador REC al grabar, chip «IA activa» y botón ? de ayuda (este manual).' },
-      { action: 'Barra izquierda (iconos)', detail: 'Estudio (cámaras), Posts IA, Grabaciones. Abajo: icono de cuenta.' },
+      { action: 'Barra superior', detail: 'Nombre del episodio, indicador REC al grabar, chip «IA activa» y botón Guía (libro) que abre el manual sin salir del estudio.' },
+      { action: 'Barra izquierda (iconos)', detail: 'Live (cámaras), Guía (manual en popup), Posts IA, Grabaciones. Abajo: Ajustes.' },
       { action: 'Centro — visor', detail: 'Vista previa en vivo con cintillos, logo y look aplicado. Es lo que se grabará.' },
       { action: 'Miniaturas de cámaras', detail: 'Debajo del visor: haz clic en CAM 1, 2 o 3 para cambiar el plano activo.' },
       { action: 'Panel derecho', detail: 'En PC aparece fijo. En móvil pulsa el icono de panel (sidebar) arriba a la derecha para abrirlo.' },
@@ -153,7 +153,7 @@ export const MANUAL_SECTIONS = [
       { action: 'Sin cámara / sin señal', detail: 'Revisa permisos del navegador (cámara/mic). En Chrome: candado junto a la URL → Permisos.' },
       { action: 'No puedo entrar al estudio', detail: 'Necesitas un plan activo (pago con Stripe) o cuenta de administrador. Ve a /plans para contratar.' },
       { action: 'IA no responde', detail: 'Funciones IA requieren ANTHROPIC_API_KEY en el servidor. Sin ella, cintillos y posts manuales siguen funcionando.' },
-      { action: 'Login falla', detail: 'Verifica correo exacto (alfonsoavilez@icloud.com). Escribe la contraseña a mano sin autocompletar.' },
+      { action: 'Login falla', detail: 'Verifica que el correo esté bien escrito. Escribe la contraseña a mano sin autocompletar del navegador.' },
     ],
   },
 ]

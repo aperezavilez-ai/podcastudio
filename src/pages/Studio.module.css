@@ -131,13 +131,33 @@
   align-items: center; padding: 10px 0; gap: 4px;
 }
 .slBtn {
-  width: 34px; height: 34px; border-radius: 9px;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-muted); font-size: 16px; cursor: pointer;
-  border: 1px solid transparent; transition: all .15s;
+  width: 38px; min-height: 38px; border-radius: 9px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px;
+  color: var(--accent); font-size: 17px; cursor: pointer;
+  border: 1px solid rgba(232, 97, 42, 0.25); transition: all .15s;
+  background: rgba(232, 97, 42, 0.06);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  flex-shrink: 0;
 }
-.slBtn:hover { background: var(--surface-2); color: var(--text-secondary); }
-.slBtnActive { background: var(--purple-dim) !important; border-color: var(--purple-border) !important; color: var(--purple) !important; }
+.slBtnLabel {
+  display: none;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--accent);
+  line-height: 1;
+  text-transform: uppercase;
+}
+.slBtn:hover { background: rgba(232, 97, 42, 0.14); color: var(--accent); }
+.slBtnActive {
+  background: rgba(232, 97, 42, 0.22) !important;
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+  box-shadow: 0 0 0 1px rgba(232, 97, 42, 0.35);
+}
+.slBtnActive .slBtnLabel { color: var(--accent); }
 .slDivider { width: 22px; height: 1px; background: var(--border-1); margin: 4px 0; }
 
 /* STAGE */
@@ -233,6 +253,15 @@
   border: none; cursor: pointer; max-width: 88px;
 }
 .switchModeSelect:focus { outline: none; }
+.flipCamBtn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 10px; border-radius: 8px;
+  background: var(--surface-2); border: 1px solid var(--border-1);
+  color: var(--text-secondary); font-size: 10px; font-weight: 600;
+  cursor: pointer; flex-shrink: 0; white-space: nowrap;
+}
+.flipCamBtn:disabled { opacity: 0.5; cursor: wait; }
+.flipCamBtn i { font-size: 14px; color: var(--accent); }
 .directorBadge {
   position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
   z-index: 12; display: flex; align-items: center; gap: 5px;
@@ -303,13 +332,17 @@
   min-height: 0;
 }
 .panelScroll {
-  flex: 1;
-  overflow-y: auto;
+  flex: 1 1 auto;
+  overflow-y: scroll;
   overflow-x: hidden;
   min-height: 0;
+  max-height: 100%;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   touch-action: pan-y;
+}
+.panelScrollInner {
+  padding-bottom: 12px;
 }
 .panelScroll::-webkit-scrollbar { width: 5px; }
 .panelScroll::-webkit-scrollbar-thumb { background: var(--border-3); border-radius: 3px; }
@@ -317,7 +350,6 @@
   flex-shrink: 0;
   border-top: 1px solid var(--border-1);
   background: #0b0b10;
-  box-shadow: 0 -4px 16px rgba(0,0,0,.35);
 }
 
 .panelMobileHead {
@@ -552,11 +584,58 @@
 .panelBackdrop {
   display: none;
   position: fixed;
-  inset: 0;
+  top: calc(44px + env(safe-area-inset-top, 0px));
+  right: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: 48px;
   z-index: 180;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.45);
   border: none;
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+.touchStudio .layout {
+  grid-template-columns: 48px minmax(0, 1fr);
+}
+
+.touchStudio .panelRight {
+  position: fixed;
+  top: calc(44px + env(safe-area-inset-top, 0px));
+  bottom: env(safe-area-inset-bottom, 0px);
+  width: min(340px, 94vw);
+  z-index: 190;
+  right: 0;
+  transform: none;
+  transition: visibility 0.25s, opacity 0.25s;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: -12px 0 32px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.touchStudio .panelRightOpen {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.touchStudio .panelBackdrop {
+  display: block;
+  left: 48px;
+}
+
+.touchStudio .panelMobileHead {
+  display: flex;
+}
+
+.touchStudio .sidebarLeft {
+  position: relative;
+  z-index: 210;
 }
 
 @media (max-width: 1024px) {
@@ -570,8 +649,12 @@
 
   .panelBackdrop {
     display: block;
-    top: calc(44px + env(safe-area-inset-top, 0px));
-    z-index: 180;
+    left: 48px;
+  }
+
+  .sidebarLeft {
+    position: relative;
+    z-index: 210;
   }
 
   .panelRight {
@@ -663,10 +746,25 @@
   }
 
   .panelScroll {
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     max-height: none;
-    padding-bottom: 8px;
+    overflow-y: scroll;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .rcBtn, .musicBtn, .panelCloseBtn, .flipCamBtn, .camThumb {
+    min-height: 44px;
+    touch-action: manipulation;
+  }
+
+  .slBtn {
+    width: 42px;
+    min-height: 42px;
+  }
+
+  .slBtnLabel {
+    display: block;
   }
 
   .camStrip {
@@ -716,7 +814,7 @@
 
   .sidebarLeft {
     flex-direction: column;
-    width: 44px;
+    width: 48px;
     height: auto;
     min-height: 0;
     padding-bottom: 0;
@@ -724,6 +822,11 @@
     border-right: 1px solid var(--border-1);
     order: 0;
     justify-content: flex-start;
+    z-index: 210;
+  }
+
+  .panelBackdrop {
+    left: 48px;
   }
 
   .stage { order: 1; }
