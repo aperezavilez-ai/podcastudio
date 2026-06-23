@@ -28,12 +28,20 @@ export default function ProtectedRoute({
   subscription,
   authReady,
   subscriptionLoading,
+  projectLoading = false,
   require = 'auth',
   children,
 }) {
   const location = useLocation()
+  const needsSubscriptionCheck = (require === 'subscription' || require === 'project')
+    && user
+    && !isAdminUser(user)
 
-  if (!authReady || (require === 'subscription' && subscriptionLoading && user && !isAdminUser(user))) {
+  if (!authReady || (needsSubscriptionCheck && subscriptionLoading)) {
+    return <RouteFallback />
+  }
+
+  if (require === 'project' && projectLoading && user && !project) {
     return <RouteFallback />
   }
 
@@ -50,7 +58,7 @@ export default function ProtectedRoute({
     if (!canAccessStudio(user, subscription)) {
       return <Navigate to="/plans" replace />
     }
-    if (!project) {
+    if (!project && !isAdminUser(user)) {
       return <Navigate to="/setup" replace />
     }
   }

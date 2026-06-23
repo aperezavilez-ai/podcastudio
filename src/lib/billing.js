@@ -1,4 +1,4 @@
-import { supabase } from './supabase.js'
+import { supabase, withTimeout } from './supabase.js'
 
 async function authHeaders() {
   if (!supabase) return {}
@@ -43,10 +43,19 @@ export async function syncCheckoutSession(sessionId) {
 export async function fetchSubscription() {
   const headers = await authHeaders()
   if (!headers.Authorization) return null
-  const res = await fetch('/api/stripe/subscription', { headers })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) return null
-  return data
+  try {
+    const res = await withTimeout(
+      fetch('/api/stripe/subscription', { headers }),
+      8000,
+      null,
+    )
+    if (!res) return null
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return null
+    return data
+  } catch {
+    return null
+  }
 }
 
 export async function openBillingPortal() {

@@ -38,6 +38,7 @@ export default function App() {
   const [project, setProject] = useState(null)
   const [subscription, setSubscription] = useState(null)
   const [subscriptionLoading, setSubscriptionLoading] = useState(false)
+  const [projectLoading, setProjectLoading] = useState(false)
   const [authReady, setAuthReady] = useState(!supabase)
   const [bootError, setBootError] = useState(null)
 
@@ -47,8 +48,12 @@ export default function App() {
 
   useEffect(() => {
     if (!supabase) {
-      const saved = localStorage.getItem('podcastudio_user')
-      if (saved) setUser(JSON.parse(saved))
+      try {
+        const saved = localStorage.getItem('podcastudio_user')
+        if (saved) setUser(JSON.parse(saved))
+      } catch {
+        localStorage.removeItem('podcastudio_user')
+      }
       setAuthReady(true)
       return
     }
@@ -59,12 +64,16 @@ export default function App() {
       const u = mapSupabaseUser(sessionUser)
       setUser(u)
       if (u) {
+        setProjectLoading(true)
         loadProject(u.id).catch(() => null).then((p) => {
           if (!cancelled && p) setProject(p)
+        }).finally(() => {
+          if (!cancelled) setProjectLoading(false)
         })
       } else {
         setProject(null)
         setSubscription(null)
+        setProjectLoading(false)
       }
     }
 
@@ -177,6 +186,7 @@ export default function App() {
                 subscription={subscription}
                 authReady={authReady}
                 subscriptionLoading={subscriptionLoading}
+                projectLoading={projectLoading}
                 require="project"
               >
                 <Studio
