@@ -18,7 +18,9 @@ export default class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.error) {
-      const wrongHost = typeof window !== 'undefined' && isWrongAppHost()
+      const wrongHost = typeof window !== 'undefined' && (
+        isWrongAppHost() || /podcaststudio/i.test(window.location.hostname)
+      )
       const browser = getBrowserLabel(detectBrowser())
       const reloadHint = /mac/i.test(navigator.platform)
         ? 'Cmd+Shift+R'
@@ -87,6 +89,20 @@ export default class ErrorBoundary extends React.Component {
                 Ir a www.podcastudio.mx
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => {
+                window.location.href = `${CANONICAL_SITE_URL}/studio`
+              }}
+              style={{
+                padding: '10px 20px', borderRadius: 8,
+                border: '1px solid rgba(255,255,255,0.15)',
+                background: 'transparent', color: '#e8e8f0', fontSize: 14, fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Abrir estudio
+            </button>
           </div>
         </div>
       )
