@@ -5,13 +5,33 @@ const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/wasm'
 const FACE_MODEL = 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite'
 
 const SIDE_SLOTS = [0, 2]
-const FACE_ZOOM = 1.78
 const WIDE_HOLD_MS = 4_000
 const FACE_ZOOM_SEC = 10
 const DEFAULT_CROP = { focusX: 0.5, focusY: 0.42, zoom: 1 }
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v))
+}
+
+/** Encuadre instantáneo: rostro, cabeza o hombros según tamaño detectado. */
+function cropFromFace(bb, vw, vh) {
+  const faceWRatio = bb.width / vw
+  const fx = clamp((bb.originX + bb.width / 2) / vw, 0.12, 0.88)
+  const fy = clamp((bb.originY + bb.height * 0.46) / vh, 0.18, 0.62)
+
+  let zoom
+  if (faceWRatio < 0.09) {
+    // Plano lejano → hombros y cabeza
+    zoom = clamp(0.28 / faceWRatio, 1.22, 1.42)
+  } else if (faceWRatio < 0.18) {
+    // Plano medio → cabeza completa
+    zoom = clamp(0.34 / faceWRatio, 1.42, 1.68)
+  } else {
+    // Plano cercano → rostro
+    zoom = clamp(0.52 / faceWRatio, 1.65, 2.05)
+  }
+
+  return { focusX: fx, focusY: fy, zoom }
 }
 
 function sampleMotion(ctx, video, prevData, region) {
@@ -59,7 +79,7 @@ export function useAIDirector({
   micThreshold = 12,
   faceZoomSec = FACE_ZOOM_SEC,
 }) {
-  const zoomHoldMs = Math.max(6, faceZoomSec) * 1000
+  const zoomHoldMs = faceZoomSec * 1000
   const [directorCrops, setDirectorCrops] = useState(emptyCrops)
   const [directorStatus, setDirectorStatus] = useState('')
   const detectorRef = useRef(null)
@@ -67,8 +87,8 @@ export function useAIDirector({
   const motionCtxRef = useRef(null)
   const prevMotionRef = useRef({})
   const lastSwitchRef = useRef(0)
-  const smoothRef = useRef(emptyCrops())
   const cycleRef = useRef({ 0: null, 2: null })
+  const appliedCropRef = useRef(emptyCrops())
 
   useEffect(() => {
     if (!enabled) return
@@ -134,8 +154,9 @@ export function useAIDirector({
     const hasFace = (face?.faceScore ?? 0) > 0.06
     if (!cycleRef.current[slot]) {
       cycleRef.current[slot] = {
-        phase: hasFace ? 'zoom' : 'wide',
+        phase: 'wide',
         phaseStart: now,
+        lockedCrop: null,
       }
     }
 
@@ -146,31 +167,31 @@ export function useAIDirector({
       if (elapsed >= zoomHoldMs) {
         cycle.phase = 'wide'
         cycle.phaseStart = now
-        return { crop: { ...DEFAULT_CROP }, status: 'Toma general' }
+        cycle.lockedCrop = null
+        return { crop: { ...DEFAULT_CROP }, status: 'Plano general' }
       }
       const remaining = Math.ceil((zoomHoldMs - elapsed) / 1000)
-      if (hasFace) {
-        return {
-          crop: { focusX: face.fx, focusY: face.fy, zoom: FACE_ZOOM },
-          status: `Zoom rostro · ${remaining}s`,
-        }
-      }
-      return { crop: { ...DEFAULT_CROP }, status: `Zoom rostro · ${remaining}s` }
+      const crop = cycle.lockedCrop || { ...DEFAULT_CROP }
+      return { crop, status: `Plano cerrado · ${remaining}s` }
     }
 
-    if (elapsed >= WIDE_HOLD_MS && hasFace) {
+    // Plano general — sin zoom, sin deslizamiento
+    if (elapsed >= WIDE_HOLD_MS && hasFace && face.boundingBox) {
       cycle.phase = 'zoom'
       cycle.phaseStart = now
+      cycle.lockedCrop = cropFromFace(
+        face.boundingBox,
+        face.videoWidth,
+        face.videoHeight,
+      )
       return {
-        crop: hasFace
-          ? { focusX: face.fx, focusY: face.fy, zoom: FACE_ZOOM }
-          : { ...DEFAULT_CROP },
-        status: `Zoom rostro · ${Math.ceil(zoomHoldMs / 1000)}s`,
+        crop: cycle.lockedCrop,
+        status: `Plano cerrado · ${faceZoomSec}s`,
       }
     }
 
-    return { crop: { ...DEFAULT_CROP }, status: 'Toma general' }
-  }, [zoomHoldMs])
+    return { crop: { ...DEFAULT_CROP }, status: 'Plano general' }
+  }, [zoomHoldMs, faceZoomSec])
 
   const analyze = useCallback(() => {
     const detector = detectorRef.current
@@ -193,23 +214,24 @@ export function useAIDirector({
       let fx = 0.5
       let fy = 0.42
       let motion = 0
+      let boundingBox = null
+      const vw = video.videoWidth
+      const vh = video.videoHeight
 
       if (detector && video.readyState >= 2) {
         try {
           const result = detector.detectForVideo(video, performance.now())
           const det = result.detections?.[0]
           if (det?.boundingBox) {
-            const bb = det.boundingBox
-            const vw = video.videoWidth
-            const vh = video.videoHeight
-            fx = (bb.originX + bb.width / 2) / vw
-            fy = (bb.originY + bb.height * 0.55) / vh
-            faceScore = (bb.width * bb.height) / (vw * vh) * 8
-            const mouthY = (bb.originY + bb.height * 0.72) / vh
+            boundingBox = det.boundingBox
+            fx = (boundingBox.originX + boundingBox.width / 2) / vw
+            fy = (boundingBox.originY + boundingBox.height * 0.55) / vh
+            faceScore = (boundingBox.width * boundingBox.height) / (vw * vh) * 8
+            const mouthY = (boundingBox.originY + boundingBox.height * 0.72) / vh
             motion = sampleMotion(mctx, video, prevMotionRef.current[slot], {
-              x: fx - bb.width / vw / 2,
+              x: fx - boundingBox.width / vw / 2,
               y: mouthY - 0.04,
-              rw: bb.width / vw,
+              rw: boundingBox.width / vw,
               rh: 0.12,
             })
             prevMotionRef.current[slot] = new Uint8ClampedArray(mctx.getImageData(0, 0, 80, 60).data)
@@ -219,7 +241,7 @@ export function useAIDirector({
 
       const motionBoost = speaking ? motion * 2.2 : motion * 0.3
       scores[slot] = faceScore + motionBoost + (slot === activeCamera ? 0.15 : 0)
-      faces[slot] = { fx, fy, faceScore, motion }
+      faces[slot] = { fx, fy, faceScore, motion, boundingBox, videoWidth: vw, videoHeight: vh }
     }
 
     if (speaking && slots.length > 1) {
@@ -242,25 +264,19 @@ export function useAIDirector({
     let statusDetail = ''
 
     for (const slot of [0, 1, 2]) {
-      const smooth = smoothRef.current[slot] || { ...DEFAULT_CROP }
-
+      // MASTER: siempre plano general, sin zoom
       if (slot === PRIMARY_CAMERA_SLOT || !streams[slot]) {
-        smooth.focusX += (0.5 - smooth.focusX) * 0.2
-        smooth.focusY += (0.42 - smooth.focusY) * 0.2
-        smooth.zoom += (1 - smooth.zoom) * 0.2
-        nextCrops[slot] = { focusX: smooth.focusX, focusY: smooth.focusY, zoom: smooth.zoom }
-        smoothRef.current[slot] = smooth
+        nextCrops[slot] = { ...DEFAULT_CROP }
+        appliedCropRef.current[slot] = { ...DEFAULT_CROP }
         continue
       }
 
       const { crop, status } = resolveSideTarget(slot, faces[slot], now)
       if (slot === (activeCamera ?? PRIMARY_CAMERA_SLOT)) statusDetail = status
 
-      smooth.focusX += (crop.focusX - smooth.focusX) * 0.14
-      smooth.focusY += (crop.focusY - smooth.focusY) * 0.14
-      smooth.zoom += (crop.zoom - smooth.zoom) * 0.08
-      nextCrops[slot] = { focusX: smooth.focusX, focusY: smooth.focusY, zoom: smooth.zoom }
-      smoothRef.current[slot] = smooth
+      // Corte directo: sin interpolación tipo slider
+      nextCrops[slot] = { ...crop }
+      appliedCropRef.current[slot] = { ...crop }
     }
 
     setDirectorCrops(nextCrops)
@@ -281,7 +297,7 @@ export function useAIDirector({
   useEffect(() => {
     if (!enabled) {
       cycleRef.current = { 0: null, 2: null }
-      smoothRef.current = emptyCrops()
+      appliedCropRef.current = emptyCrops()
       setDirectorCrops(emptyCrops())
       setDirectorStatus('')
       return

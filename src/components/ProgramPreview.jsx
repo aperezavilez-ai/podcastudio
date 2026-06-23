@@ -94,6 +94,7 @@ export default function ProgramPreview({
             filter: cssFilter,
             transform: zoom > 1 ? `scale(${zoom})` : undefined,
             transformOrigin: `${originX} ${originY}`,
+            transition: 'none',
           }}
         />
         <LookOverlays look={look} />
@@ -110,10 +111,11 @@ export default function ProgramPreview({
         muted
         playsInline
         style={{
-          filter: cssFilter,
-          transform: zoom > 1 ? `scale(${zoom})` : undefined,
-          transformOrigin: `${originX} ${originY}`,
-        }}
+            filter: cssFilter,
+            transform: zoom > 1 ? `scale(${zoom})` : undefined,
+            transformOrigin: `${originX} ${originY}`,
+            transition: 'none',
+          }}
       />
       <LookOverlays look={look} />
     </div>
