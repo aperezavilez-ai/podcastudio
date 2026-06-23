@@ -85,11 +85,13 @@ export async function signIn(email, password) {
 }
 
 export async function signUp(email, password, name) {
-  if (!supabase) return { demo: true }
+  if (!supabase) throw new Error('Supabase no está configurado')
+
+  const loginEmail = normalizeLoginEmail(email)
   const { data, error } = await supabase.auth.signUp({
-    email,
+    email: loginEmail,
     password,
-    options: { data: { name } },
+    options: { data: { name: name?.trim() || loginEmail.split('@')[0] } },
   })
   if (error) throw error
   return data

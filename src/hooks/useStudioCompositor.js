@@ -19,6 +19,7 @@ export function useStudioCompositor({
   recording = false,
   recordDurationSec = 0,
   compositorActive = false,
+  background = null,
 }) {
   const canvasRef = useRef(null)
   const outputStreamRef = useRef(null)
@@ -26,6 +27,7 @@ export function useStudioCompositor({
   const keepAliveRef = useRef([])
   const rafRef = useRef(null)
   const logoImageRef = useRef(null)
+  const customBgImageRef = useRef(null)
   const settingsRef = useRef({})
 
   const prevCameraRef = useRef(activeCamera ?? 0)
@@ -90,6 +92,7 @@ export function useStudioCompositor({
     transitionMode: look?.transition || 'crossfade',
     fromCamera: transitionFromRef.current,
     cintilloMotionEnabled: look?.cintilloMotion !== false,
+    background,
   }
 
   useEffect(() => {
@@ -150,6 +153,17 @@ export function useStudioCompositor({
     img.onload = () => { logoImageRef.current = img }
     img.src = logoUrl
   }, [logoUrl])
+
+  useEffect(() => {
+    if (!background?.customUrl) {
+      customBgImageRef.current = null
+      return
+    }
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => { customBgImageRef.current = img }
+    img.src = background.customUrl
+  }, [background?.customUrl])
 
   useEffect(() => {
     animPhaseStartRef.current = performance.now()
@@ -218,6 +232,10 @@ export function useStudioCompositor({
           recording: s.recording,
           recordStartMs: s.recordStartMs,
           recordDurationSec: s.recordDurationSec,
+          background: s.background ? {
+            ...s.background,
+            customImage: customBgImageRef.current,
+          } : null,
         })
       } catch {
         ctx.fillStyle = '#07070a'

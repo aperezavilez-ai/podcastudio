@@ -1,9 +1,7 @@
-import { ADMIN_EMAIL, normalizeLoginEmail } from './adminEmail.js'
-
+/** Admin vía Supabase app_metadata.role = 'admin' (mapSupabaseUser). */
 export function isAdminUser(user) {
   if (!user) return false
-  if (user.isAdmin || user.role === 'admin') return true
-  return normalizeLoginEmail(user.email || '') === ADMIN_EMAIL
+  return user.isAdmin === true || user.role === 'admin'
 }
 
 /** Ruta tras login según rol y contexto. */

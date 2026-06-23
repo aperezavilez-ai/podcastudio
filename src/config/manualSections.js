@@ -33,7 +33,7 @@ export const MANUAL_SECTIONS = [
     summary: 'Dónde está cada control en pantalla.',
     steps: [
       { action: 'Barra superior', detail: 'Nombre del episodio, indicador REC al grabar, chip «IA activa» y botón Guía (libro) que abre el manual sin salir del estudio.' },
-      { action: 'Barra izquierda (iconos)', detail: 'Live (cámaras), Guía (manual en popup), Posts IA, Grabaciones. Abajo: Ajustes.' },
+      { action: 'Barra izquierda (iconos)', detail: 'Cámaras, Guía (manual en popup), Posts IA, Grabaciones. Abajo: Ajustes.' },
       { action: 'Centro — visor', detail: 'Vista previa en vivo con cintillos, logo y look aplicado. Es lo que se grabará.' },
       { action: 'Miniaturas de cámaras', detail: 'Debajo del visor: haz clic en CAM 1, 2 o 3 para cambiar el plano activo.' },
       { action: 'Panel derecho', detail: 'En PC aparece fijo. En móvil pulsa el icono de panel (sidebar) arriba a la derecha para abrirlo.' },

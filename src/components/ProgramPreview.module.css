@@ -15,6 +15,17 @@
   will-change: transform;
 }
 
+.videoInset {
+  position: absolute;
+  object-fit: cover;
+  display: block;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  will-change: transform;
+  border-radius: 4px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
+}
+
 .empty {
   position: absolute;
   inset: 0;

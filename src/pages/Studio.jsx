@@ -43,12 +43,14 @@ import { useSpeechSubtitles } from '../hooks/useSpeechSubtitles.js'
 import { notifyRecordingReady } from '../lib/notifications.js'
 import { useMuxUpload } from '../hooks/useMuxUpload.js'
 import { fetchCloudRecordings, fetchIntegrationStatus, publishToYouTube } from '../lib/integrations.js'
-import { fetchSubscription } from '../lib/billing.js'
-import { isAdminUser, canAccessStudio } from '../lib/access.js'
-import { isTouchDevice } from '../lib/device.js'
-import { PRIMARY_CAMERA_SLOT, CAM_SLOT_LABELS, pickPrimaryActiveSlot } from '../config/cameraSlots.js'
 import { handleTeleprompterKeydown } from '../utils/teleprompterKeys.js'
 import GuideModal from '../components/GuideModal.jsx'
+import BackgroundPicker from '../components/BackgroundPicker.jsx'
+import { useStudioBackground } from '../hooks/useStudioBackground.js'
+import { getPlanLimits } from '../lib/planLimits.js'
+import { aiPostsRemaining } from '../lib/aiUsage.js'
+import { isTouchDevice } from '../lib/device.js'
+import { PRIMARY_CAMERA_SLOT, CAM_SLOT_LABELS, pickPrimaryActiveSlot } from '../config/cameraSlots.js'
 
 const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
 const CANONICAL_STUDIO = 'https://www.podcastudio.mx/studio'
@@ -71,8 +73,16 @@ const POS_MAP = {
   br: { bottom: 50, right: 10 },
 }
 
-export default function Studio({ project, user }) {
+export default function Studio({ project, user, subscription, onProjectSave }) {
   const navigate = useNavigate()
+  const planLimits = useMemo(() => getPlanLimits(user, subscription), [user, subscription])
+  const [postsQuotaTick, setPostsQuotaTick] = useState(0)
+  const postsRemaining = useMemo(
+    () => (planLimits.maxAiPostsPerMonth != null ? aiPostsRemaining(user?.id, planLimits) : null),
+    [user?.id, planLimits, postsQuotaTick],
+  )
+  const studioBg = useStudioBackground()
+  const [planMsg, setPlanMsg] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
   const {
     devices, streams, cameraMeta, activeCamera, setActiveCamera, error: camError, setError: setCamError,
@@ -271,7 +281,7 @@ export default function Studio({ project, user }) {
   const { look, setField: setLookField, applyPreset: applyLookPreset, resetLook } = useLookSettings()
 
   const { getDirectorCrop, directorStatus } = useAIDirector({
-    enabled: switchMode === 'ai',
+    enabled: switchMode === 'ai' && planLimits.aiDirector,
     streams,
     micLevel,
     activeCamera,
@@ -279,6 +289,13 @@ export default function Studio({ project, user }) {
     minCutSec: switchInterval,
     faceZoomSec: 10,
   })
+
+  const compositorBackground = useMemo(() => ({
+    hasVirtualSet: studioBg.hasVirtualSet,
+    templateId: studioBg.templateId,
+    customUrl: studioBg.customUrl,
+    cameraRect: studioBg.cameraRect,
+  }), [studioBg.hasVirtualSet, studioBg.templateId, studioBg.customUrl, studioBg.cameraRect])
 
   const { getProgramStream } = useStudioCompositor({
     streams,
@@ -296,6 +313,7 @@ export default function Studio({ project, user }) {
     recording,
     recordDurationSec: duration,
     compositorActive: recording || countdown !== null || preparingRecord,
+    background: compositorBackground,
   })
   const { buildRecordingStream } = useAudioMix()
 
@@ -318,21 +336,8 @@ export default function Studio({ project, user }) {
   }, [cintilloStyle])
 
   useEffect(() => {
-    localStorage.setItem('podcastudio_bg_template', 'none')
-    localStorage.setItem('podcastudio_chroma', 'false')
-    localStorage.setItem('podcastudio_ai_bg', 'false')
-  }, [])
-
-  useEffect(() => {
-    if (isAdminUser(user)) return undefined
-    let cancelled = false
-    fetchSubscription().then((sub) => {
-      if (!cancelled && !canAccessStudio(user, sub)) {
-        navigate('/plans', { replace: true })
-      }
-    })
-    return () => { cancelled = true }
-  }, [user, navigate])
+    if (!planLimits.aiDirector && switchMode === 'ai') setSwitchMode('timer')
+  }, [planLimits.aiDirector, switchMode])
 
   useEffect(() => {
     if (!project) return
@@ -341,7 +346,7 @@ export default function Studio({ project, user }) {
       return project.aiPlan ? applyAIProducerPlan(project, project.aiPlan) : null
     })
     if (project.subtitlesEnabled) setSubtitlesOn(true)
-    if (project.directorMode === 'ai') setSwitchMode('ai')
+    if (project.directorMode === 'ai' && planLimits.aiDirector) setSwitchMode('ai')
     if (project.autoCintillos != null) setAutoCintillos(project.autoCintillos)
     if (project.musicVolume != null) setMusicVol(project.musicVolume)
     if (project.musicTrackId) selectTrackById(project.musicTrackId)
@@ -373,7 +378,7 @@ export default function Studio({ project, user }) {
         const n = await initMobileCameras()
         if (n === 0) setInitError('Permite el acceso a la cámara en el navegador y pulsa reconectar.')
       } else if (devs.cameras.length > 0) {
-        let n = await autoConnectAll(devs.cameras)
+        let n = await autoConnectAll(devs.cameras, planLimits.maxCameras)
         if (n === 0 && devs.cameras[0]) {
           await startCamera(devs.cameras[0].deviceId, PRIMARY_CAMERA_SLOT, devs.cameras[0].label)
           n = 1
@@ -671,7 +676,7 @@ export default function Studio({ project, user }) {
             title="Vista de cámaras"
           >
             <i className="ti ti-video" />
-            <span className={styles.slBtnLabel}>Live</span>
+            <span className={styles.slBtnLabel}>Cámaras</span>
           </button>
           <button
             type="button"
@@ -732,7 +737,13 @@ export default function Studio({ project, user }) {
                     stream={streams[programCamera]}
                     cameraKey={programCamera}
                     look={look}
-                    directorCrop={switchMode === 'ai' ? getDirectorCrop(programCamera) : null}
+                    directorCrop={switchMode === 'ai' && planLimits.aiDirector ? getDirectorCrop(programCamera) : null}
+                    virtualSet={studioBg.hasVirtualSet ? {
+                      enabled: true,
+                      templateId: studioBg.templateId,
+                      customUrl: studioBg.customUrl,
+                      cameraRect: studioBg.cameraRect,
+                    } : null}
                   />
                 ) : (
                   <div className={styles.noSignalViewport}>
@@ -797,7 +808,14 @@ export default function Studio({ project, user }) {
                       userPickedCameraRef.current = true
                       setActiveCamera(i)
                       setCamSlot(i)
-                      if (!streams[i]) connectNextCameraToSlot(i)
+                      if (!streams[i]) {
+                        const activeStreams = Object.values(streams).filter(Boolean).length
+                        if (activeStreams >= planLimits.maxCameras) {
+                          setPlanMsg(`Tu plan permite ${planLimits.maxCameras} cámaras simultáneas. Mejora a Pro para 3.`)
+                          return
+                        }
+                        connectNextCameraToSlot(i)
+                      }
                     }}
                   >
                     {isMaster && (
@@ -851,7 +869,7 @@ export default function Studio({ project, user }) {
                 >
                   <option value="off">Manual</option>
                   <option value="timer">Auto tiempo</option>
-                  <option value="ai">Director IA</option>
+                  {planLimits.aiDirector && <option value="ai">Director IA</option>}
                 </select>
                 {switchMode !== 'off' && (
                   <>
@@ -894,7 +912,16 @@ export default function Studio({ project, user }) {
         {/* POSTS TAB */}
         {tab === 'posts' && (
           <div className={styles.stage} style={{ overflow: 'hidden' }}>
-            <PostsPanel project={proj} />
+            <PostsPanel
+              project={proj}
+              user={user}
+              postsRemaining={postsRemaining}
+              onLimitReached={() => {
+                setPlanMsg('Límite de posts IA alcanzado este mes. Mejora a Pro para ilimitados.')
+                setPostsQuotaTick(t => t + 1)
+              }}
+              onPostsGenerated={() => setPostsQuotaTick(t => t + 1)}
+            />
           </div>
         )}
 
@@ -987,6 +1014,12 @@ export default function Studio({ project, user }) {
           </div>
           <div ref={panelScrollRef} className={styles.panelScroll}>
           <div className={styles.panelScrollInner}>
+          {planMsg && (
+            <div className={styles.planMsg}>
+              <i className="ti ti-info-circle" /> {planMsg}
+              <button type="button" onClick={() => setPlanMsg('')} aria-label="Cerrar"><i className="ti ti-x" /></button>
+            </div>
+          )}
           {/* CAMERAS */}
           <div className={styles.prSection}>
             <div className={styles.prTitle}>Cámaras</div>
@@ -1107,6 +1140,23 @@ export default function Studio({ project, user }) {
               onPreset={applyLookPreset}
               onField={setLookField}
               onReset={resetLook}
+              limits={planLimits}
+            />
+          </div>
+
+          {/* SET VIRTUAL */}
+          <div className={styles.prSection}>
+            <div className={styles.prTitle}>Set de estudio</div>
+            <BackgroundPicker
+              compact
+              virtualSetOnly
+              templateId={studioBg.templateId}
+              customUrl={studioBg.customUrl}
+              cameraScale={studioBg.cameraScale}
+              onTemplateChange={studioBg.setTemplateId}
+              onCustomUpload={studioBg.onCustomUpload}
+              onClearCustom={studioBg.clearCustom}
+              onCameraScaleChange={studioBg.setCameraScale}
             />
           </div>
 
@@ -1244,8 +1294,13 @@ export default function Studio({ project, user }) {
                 {producerStatus || 'Director IA, cintillos y música se configuran solos según tu evento.'}
               </p>
               <label className={styles.autoCintToggle}>
-                <input type="checkbox" checked={switchMode === 'ai'} onChange={e => setSwitchMode(e.target.checked ? 'ai' : 'off')} />
-                Director IA de cámaras
+                <input
+                  type="checkbox"
+                  checked={switchMode === 'ai'}
+                  disabled={!planLimits.aiDirector}
+                  onChange={e => setSwitchMode(e.target.checked ? 'ai' : 'off')}
+                />
+                Director IA de cámaras{!planLimits.aiDirector ? ' (Pro)' : ''}
               </label>
               <label className={styles.autoCintToggle}>
                 <input type="checkbox" checked={autoCintillos} onChange={e => setAutoCintillos(e.target.checked)} />

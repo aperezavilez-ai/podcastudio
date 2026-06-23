@@ -332,7 +332,7 @@ export function useWebcam() {
     }
   }, [attachStream, mobilePrimaryFacing, stopCamera])
 
-  const autoConnectAll = useCallback(async (cameraList) => {
+  const autoConnectAll = useCallback(async (cameraList, maxCameras = 3) => {
     if (autoConnectLockRef.current) return connectedCountRef.current
     if (isTouchDevice()) return initMobileCameras()
 
@@ -361,7 +361,7 @@ export function useWebcam() {
         }
       } else {
         let camIdx = 0
-        for (let slot = 0; slot < 3; slot++) {
+        for (let slot = 0; slot < 3 && connected < maxCameras; slot++) {
           if (streamsRef.current[slot]) {
             connected++
             continue

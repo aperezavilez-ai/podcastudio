@@ -16,20 +16,54 @@ function Slider({ label, value, min, max, onChange, unit = '' }) {
   )
 }
 
-export default function LookPanel({ look, onPreset, onField, onReset }) {
+export default function LookPanel({ look, onPreset, onField, onReset, limits = null }) {
+  const presets = limits?.starterLookOnly
+    ? LOOK_PRESETS.filter(p => p.starter || p.id === 'none')
+    : LOOK_PRESETS
+
+  const luts = limits?.proLuts === false
+    ? LUT_PRESETS.filter(l => l.id === 'none')
+    : LUT_PRESETS
+
+  const transitions = limits?.proTransitions === false
+    ? TRANSITION_MODES.filter(t => t.id === 'cut' || t.id === 'crossfade')
+    : TRANSITION_MODES
+
+  const handlePreset = (id) => {
+    const preset = LOOK_PRESETS.find(p => p.id === id)
+    if (limits?.starterLookOnly && preset && !preset.starter && preset.id !== 'none') return
+    onPreset(id)
+  }
+
+  const handleLut = (id) => {
+    if (limits?.proLuts === false && id !== 'none') return
+    onField('lutId', id)
+  }
+
+  const handleTransition = (id) => {
+    if (limits?.proTransitions === false && id !== 'cut' && id !== 'crossfade') return
+    onField('transition', id)
+  }
+
   return (
     <div className={styles.panel}>
       <p className={styles.lead}>
         Ajustes quemados en la grabación — preview y export idénticos.
       </p>
 
+      {limits?.starterLookOnly && (
+        <p className={styles.lead} style={{ fontSize: 11, opacity: 0.85 }}>
+          Plan Starter: 3 presets de color. Mejora a Pro para el catálogo completo y LUTs.
+        </p>
+      )}
+
       <div className={styles.presetGrid}>
-        {LOOK_PRESETS.map(p => (
+        {presets.map(p => (
           <button
             key={p.id}
             type="button"
             className={`${styles.presetBtn} ${look.presetId === p.id ? styles.presetActive : ''}`}
-            onClick={() => onPreset(p.id)}
+            onClick={() => handlePreset(p.id)}
             title={p.desc}
           >
             <span className={styles.presetName}>{p.name}</span>
@@ -52,12 +86,12 @@ export default function LookPanel({ look, onPreset, onField, onReset }) {
       <div className={styles.section}>
         <div className={styles.sectionTitle}>LUT / Color grade</div>
         <div className={styles.lutRow}>
-          {LUT_PRESETS.map(lut => (
+          {luts.map(lut => (
             <button
               key={lut.id}
               type="button"
               className={`${styles.lutBtn} ${look.lutId === lut.id ? styles.lutActive : ''}`}
-              onClick={() => onField('lutId', lut.id)}
+              onClick={() => handleLut(lut.id)}
               title={lut.desc}
             >
               {lut.name}
@@ -69,12 +103,12 @@ export default function LookPanel({ look, onPreset, onField, onReset }) {
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Transición de cámaras</div>
         <div className={styles.lutRow}>
-          {TRANSITION_MODES.map(t => (
+          {transitions.map(t => (
             <button
               key={t.id}
               type="button"
               className={`${styles.lutBtn} ${look.transition === t.id ? styles.lutActive : ''}`}
-              onClick={() => onField('transition', t.id)}
+              onClick={() => handleTransition(t.id)}
               title={t.desc}
             >
               {t.name}

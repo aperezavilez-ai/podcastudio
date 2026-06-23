@@ -18,6 +18,13 @@
 }
 .platChip:hover { background: var(--surface-3); }
 .platActive { background: var(--surface-3) !important; }
+.limitHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+
 .errorMsg {
   display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--red);
   background: var(--red-dim); border: 1px solid rgba(224,80,80,.3);

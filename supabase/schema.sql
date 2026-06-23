@@ -1,4 +1,5 @@
--- Ejecutar en Supabase SQL Editor (Dashboard → SQL)
+-- Admin: en Supabase Dashboard → Authentication → Users → usuario → App Metadata → {"role": "admin"}
+-- El rol se lee en el cliente vía mapSupabaseUser (app_metadata.role).
 -- Seguro para volver a ejecutar: usa DROP POLICY IF EXISTS antes de cada política.
 
 create table if not exists public.projects (

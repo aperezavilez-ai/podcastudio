@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useAI } from '../hooks/useAI.js'
+import { incrementAiPostCount } from '../lib/aiUsage.js'
 import styles from './PostsPanel.module.css'
 
 const PLATFORMS = [
@@ -9,7 +10,7 @@ const PLATFORMS = [
   { id: 'youtube', label: 'YouTube', icon: 'ti-brand-youtube', color: '#e05050' },
 ]
 
-export default function PostsPanel({ project }) {
+export default function PostsPanel({ project, user, postsRemaining, onLimitReached, onPostsGenerated }) {
   const { generatePosts, loadingPosts, posts, error } = useAI()
   const [form, setForm] = useState({
     podcast: project?.name || '',
@@ -28,9 +29,17 @@ export default function PostsPanel({ project }) {
     }))
   }
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!form.topic) return
-    generatePosts(form)
+    if (postsRemaining === 0) {
+      onLimitReached?.()
+      return
+    }
+    const result = await generatePosts(form)
+    if (result && user?.id) {
+      incrementAiPostCount(user.id)
+      onPostsGenerated?.()
+    }
   }
 
   const copyPost = (id) => {
@@ -46,6 +55,13 @@ export default function PostsPanel({ project }) {
     <div className={styles.panel}>
       <div className={styles.formSection}>
         <div className={styles.sectionTitle}><i className="ti ti-sparkles" /> Generar posts con IA</div>
+        {postsRemaining != null && (
+          <p className={styles.limitHint}>
+            {postsRemaining > 0
+              ? `${postsRemaining} generaciones restantes este mes (plan Starter).`
+              : 'Límite mensual alcanzado. Mejora a Pro para posts ilimitados.'}
+          </p>
+        )}
         <div className={styles.field}>
           <label>Podcast</label>
           <input value={form.podcast} onChange={e => setForm(f => ({ ...f, podcast: e.target.value }))} placeholder="Nombre del podcast" />
@@ -78,7 +94,7 @@ export default function PostsPanel({ project }) {
           </div>
         </div>
         {error && <div className={styles.errorMsg}><i className="ti ti-alert-circle" /> {error}</div>}
-        <button className={styles.genBtn} onClick={handleGenerate} disabled={loadingPosts || !form.topic}>
+        <button className={styles.genBtn} onClick={handleGenerate} disabled={loadingPosts || !form.topic || postsRemaining === 0}>
           {loadingPosts
             ? <><i className="ti ti-loader" style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }} /> Generando...</>
             : <><i className="ti ti-sparkles" /> Generar posts y hashtags</>

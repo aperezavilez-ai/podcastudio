@@ -19,6 +19,7 @@ export default function BackgroundPicker({
   onChromaSmoothnessChange,
   onCameraScaleChange,
   onAiBackgroundChange,
+  virtualSetOnly = false,
   compact = false,
 }) {
   const fileRef = useRef()
@@ -62,7 +63,28 @@ export default function BackgroundPicker({
         )}
       </div>
 
-      {templateId !== 'none' && (
+      {templateId !== 'none' && virtualSetOnly && (
+        <>
+          <p className={styles.hint}>
+            Set virtual: tu cámara se coloca sobre el escenario. También se incluye en la grabación.
+          </p>
+          <div className={styles.chromaSection}>
+            <div className={styles.sliderRow}>
+              <span>Escala cámara</span>
+              <input
+                type="range"
+                min={70}
+                max={130}
+                value={cameraScale}
+                onChange={e => onCameraScaleChange(+e.target.value)}
+              />
+              <span className={styles.val}>{cameraScale}%</span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {templateId !== 'none' && !virtualSetOnly && (
         <div className={styles.chromaSection}>
           {!aiBackgroundEnabled && !chromaEnabled && (
             <p className={styles.hint}>

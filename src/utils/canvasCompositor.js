@@ -7,6 +7,7 @@ import {
   getTransitionProgress,
   TRANSITION_DURATION_MS,
 } from './videoLook.js'
+import { drawSetBackground, drawVideoInset } from './drawSetBackground.js'
 
 const W = 1920
 const H = 1080
@@ -126,15 +127,38 @@ export function drawCompositorFrame(ctx, w, h, {
   recording = false,
   recordStartMs = null,
   recordDurationSec = 0,
+  background = null,
 }) {
-  ctx.fillStyle = '#07070a'
-  ctx.fillRect(0, 0, w, h)
+  const useVirtualSet = background?.hasVirtualSet && background?.cameraRect
+
+  if (useVirtualSet) {
+    if (background.customImage) {
+      ctx.drawImage(background.customImage, 0, 0, w, h)
+    } else if (background.templateId && background.templateId !== 'none') {
+      drawSetBackground(ctx, w, h, background.templateId)
+    } else {
+      ctx.fillStyle = '#07070a'
+      ctx.fillRect(0, 0, w, h)
+    }
+  } else {
+    ctx.fillStyle = '#07070a'
+    ctx.fillRect(0, 0, w, h)
+  }
 
   const progress = transitionMode === 'cut'
     ? 1
     : getTransitionProgress(transitionStartMs, TRANSITION_DURATION_MS)
 
-  if (videoFrom && videoFrom !== video && progress < 1) {
+  const drawMainVideo = (v, crop) => {
+    if (!v || v.readyState < 2 || !v.videoWidth) return
+    if (useVirtualSet) {
+      drawVideoInset(ctx, v, w, h, background.cameraRect, crop, look)
+    } else {
+      drawVideoLayer(ctx, v, w, h, crop, look)
+    }
+  }
+
+  if (videoFrom && videoFrom !== video && progress < 1 && !useVirtualSet) {
     drawCameraTransition(ctx, w, h, {
       videoFrom,
       videoTo: video,
@@ -145,7 +169,7 @@ export function drawCompositorFrame(ctx, w, h, {
       progress,
     })
   } else if (video && video.readyState >= 2 && video.videoWidth) {
-    drawVideoLayer(ctx, video, w, h, directorCrop, look)
+    drawMainVideo(video, directorCrop)
   }
 
   let vignette = look?.vignette ?? 0

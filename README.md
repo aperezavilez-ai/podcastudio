@@ -1,116 +1,67 @@
 # PodcastStudio
 
-Plataforma profesional de grabación y transmisión en vivo para podcasters.
+Estudio profesional de grabación multicámara para podcasters — React 19, Vite 8, Supabase, Stripe, Claude API. Producción: [podcastudio.mx](https://www.podcastudio.mx).
 
-## Tecnologías
-- React 19 + Vite 8
-- WebRTC para acceso a cámaras y micrófono
-- MediaRecorder API para grabación
-- Claude API (claude-sonnet-4-6) para cintillos IA y posts virales
-- React Router para navegación
+## Stack
 
-## Instalación
+| Capa | Tecnología |
+|------|------------|
+| Frontend | React 19, Vite 8, PWA |
+| Auth / DB | Supabase (`projects`, `subscriptions`, `recordings`) |
+| Pagos | Stripe Checkout + webhooks |
+| IA | Claude API (`/api/ai`) — cintillos, guiones, posts |
+| Email | Resend (`/api/email/send`) |
+| Cloud (opcional) | Mux upload, YouTube OAuth publish |
+| Deploy | Vercel — push a `main` |
+
+## Desarrollo local
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
-- **Local:** http://localhost:3000
-- **Producción (Vercel):** conectado al repo `aperezavilez-ai/podcastudio` — cada push a `main` despliega automáticamente.
+Abre http://localhost:3000
 
-## Estructura
+## Variables de entorno
 
-```
-src/
-  pages/
-    Landing.jsx       — Página de marketing
-    Auth.jsx          — Login / registro
-    ProjectSetup.jsx  — Wizard de configuración del episodio
-    Studio.jsx        — Estudio principal de grabación
-    Plans.jsx         — Planes de pago (Stripe — pendiente)
-  components/
-    CameraView.jsx    — Componente de vista de cámara real
-    VUMeter.jsx       — Medidor de audio animado
-    PostsPanel.jsx    — Panel de generación de posts con IA
-  hooks/
-    useWebcam.js      — WebRTC: detecta y controla cámaras/micrófono
-    useRecorder.js    — Grabación con MediaRecorder
-    useAI.js          — Llamadas a Claude API
-```
+Copia `.env.example` → `.env.local` (local) y configura las mismas en Vercel (producción).
 
-## Funciones implementadas
+**Cliente (VITE_*):** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SITE_URL`
 
-- [x] Landing page profesional con canvas animado
-- [x] Auth (login / registro)
-- [x] Wizard de configuración de proyecto (4 pasos)
-- [x] Detección real de cámaras USB vía WebRTC
-- [x] Conexión de cámaras WiFi (MJPEG / video por URL)
-- [x] Emparejamiento Bluetooth + activación de stream WiFi
-- [x] Switcher de 3 cámaras en vivo
-- [x] Logo del podcast en esquina seleccionable (9 posiciones)
-- [x] Cintillos con animación (invitado, tema, promo, redes, custom)
-- [x] Generación de cintillos con IA (Claude API)
-- [x] Grabación en WebM (HD) con descarga
-- [x] Transmisión en vivo simulada (Facebook, YouTube, TikTok, Instagram)
-- [x] VU meter de audio en tiempo real
-- [x] Música de fondo sin copyright (UI lista)
-- [x] Posts virales con hashtags por IA para 4 plataformas
-- [x] Formatos: 16:9, 9:16, 1:1
-- [x] Contador de espectadores simulado cuando en vivo
+**Servidor:** `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `STRIPE_*`, `RESEND_*`, `SITE_URL`
 
-## Dependencias externas pendientes de conectar
+**Opcional:** `MUX_*`, `GOOGLE_*` (YouTube), `RESTREAM_*`, `LIVEPEER_*`
 
-### 1. Pagos — Stripe
-```bash
-npm install @stripe/stripe-js @stripe/react-stripe-js
-```
-Crear cuenta en stripe.com, obtener claves públicas/privadas.
-Agregar backend (Node.js/Supabase Edge Functions) para crear PaymentIntents.
+## Base de datos
 
-### 2. Base de datos / Auth — Supabase
-```bash
-npm install @supabase/supabase-js
-```
-Crear proyecto en supabase.com.
-Reemplazar la auth simulada en Auth.jsx con supabase.auth.signInWithPassword() / signUp().
-Guardar proyectos y configuraciones del usuario en tabla `projects`.
+Ejecuta `supabase/schema.sql` en el SQL Editor de Supabase.
 
-### 3. Streaming en vivo real — RTMP
-Para transmisión real a YouTube/Facebook/TikTok se necesita:
-- Servidor backend con Node.js + ffmpeg
-- Módulo node-media-server o similar
-- O usar un servicio como Mux (mux.com) o LivePeer
-El navegador envía el stream vía WebRTC al servidor, que lo reenvía por RTMP a cada plataforma.
+Para cuenta **admin** (acceso al estudio sin suscripción): Dashboard → Authentication → Users → App Metadata → `{"role": "admin"}`.
 
-### 4. Música sin copyright
-Integrar API de:
-- Pixabay Audio API (gratuita): https://pixabay.com/api/docs/
-- Jamendo API: https://developer.jamendo.com/
+## Flujo de usuario
 
-### 5. Claude API — Clave real
-En src/hooks/useAI.js la CLAUDE_API ya apunta a la URL correcta.
-El navegador necesita una clave de API. Para producción usar un proxy/backend para no exponer la clave.
-Obtener clave en: https://console.anthropic.com/
+1. Registro / login (`/auth`) — Supabase Auth
+2. Tour (primera visita) → Planes (`/plans`) — Stripe
+3. Setup (`/setup`) — wizard del episodio
+4. Studio (`/studio`) — grabación multicámara
 
-## Producción (Vercel)
+Rutas protegidas: `/plans` requiere sesión; `/setup` y `/studio` requieren suscripción activa (excepto admin).
 
-El proyecto incluye `vercel.json` con rewrites para React Router (rutas como `/studio`, `/auth`, etc.).
+## Funciones del estudio
 
-### Variables de entorno en Vercel
+- Switcher 3 cámaras (USB, WiFi, móvil dual)
+- Look Pro — presets, LUTs, viñeta, transiciones (límites por plan)
+- Sets virtuales de estudio (preview + grabación)
+- Cintillos animados + IA, teleprompter, música/SFX
+- Director IA de cámaras (plan Pro)
+- Grabación WebM/MP4 local
+- Posts IA para redes (20/mes Starter, ilimitado Pro)
+- Publicar: descarga local, Mux cloud, YouTube (si configurado)
 
-En **Project Settings → Environment Variables**:
-
-| Variable | Uso |
-|----------|-----|
-| `VITE_SITE_URL` | URL pública con tu dominio propio (ej. `https://podcastudio.tudominio.com`) |
-| `VITE_ANTHROPIC_API_KEY` | Clave Claude (recomendado: proxy backend, no exponer en frontend) |
-
-### Build local
+## Build
 
 ```bash
 npm run build
-npm run preview
 ```
-
-El output en `/dist` se sirve automáticamente en Vercel tras cada push a `main`.

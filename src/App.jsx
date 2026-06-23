@@ -2,10 +2,12 @@ import React, { useState, useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Landing from './pages/Landing.jsx'
 import Auth from './pages/Auth.jsx'
+import ProtectedRoute from './components/ProtectedRoute.jsx'
 import { PwaInstallBanner, PwaInstallProvider } from './components/PwaInstall.jsx'
 import { supabase, mapSupabaseUser, withTimeout } from './lib/supabase.js'
 import { redirectToCanonicalDomain } from './lib/site.js'
 import { loadProject } from './lib/projects.js'
+import { fetchSubscription } from './lib/billing.js'
 
 const Plans = lazy(() => import('./pages/Plans.jsx'))
 const Tour = lazy(() => import('./pages/Tour.jsx'))
@@ -34,6 +36,9 @@ export default function App() {
   const location = useLocation()
   const [user, setUser] = useState(null)
   const [project, setProject] = useState(null)
+  const [subscription, setSubscription] = useState(null)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false)
+  const [authReady, setAuthReady] = useState(!supabase)
   const [bootError, setBootError] = useState(null)
 
   useEffect(() => {
@@ -44,6 +49,7 @@ export default function App() {
     if (!supabase) {
       const saved = localStorage.getItem('podcastudio_user')
       if (saved) setUser(JSON.parse(saved))
+      setAuthReady(true)
       return
     }
 
@@ -58,6 +64,7 @@ export default function App() {
         })
       } else {
         setProject(null)
+        setSubscription(null)
       }
     }
 
@@ -73,20 +80,36 @@ export default function App() {
         if (!cancelled) {
           setBootError('No se pudo conectar con el servidor. Revisa tu conexión.')
         }
+      } finally {
+        if (!cancelled) setAuthReady(true)
       }
     }
 
     initAuth()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
       hydrateUser(session?.user)
     })
 
     return () => {
       cancelled = true
-      subscription.unsubscribe()
+      authSub.unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    if (!user?.id) {
+      setSubscription(null)
+      setSubscriptionLoading(false)
+      return undefined
+    }
+    let cancelled = false
+    setSubscriptionLoading(true)
+    fetchSubscription()
+      .then((sub) => { if (!cancelled) setSubscription(sub) })
+      .finally(() => { if (!cancelled) setSubscriptionLoading(false) })
+    return () => { cancelled = true }
+  }, [user?.id])
 
   const handleAuth = (u) => {
     setUser(u)
@@ -95,6 +118,14 @@ export default function App() {
 
   const handleProject = (p) => {
     setProject(p)
+  }
+
+  const handleSignOut = async () => {
+    if (supabase) await supabase.auth.signOut()
+    setUser(null)
+    setProject(null)
+    setSubscription(null)
+    localStorage.removeItem('podcastudio_user')
   }
 
   return (
@@ -111,13 +142,53 @@ export default function App() {
       )}
       <Suspense fallback={<RouteFallback />}>
         <Routes>
-          <Route path="/" element={<Landing />} />
+          <Route path="/" element={<Landing user={user} />} />
           <Route path="/auth" element={<Auth onAuth={handleAuth} />} />
           <Route path="/tour" element={<Tour user={user} />} />
           <Route path="/guia" element={<Manual />} />
-          <Route path="/plans" element={<Plans user={user} onContinue={() => {}} />} />
-          <Route path="/setup" element={<ProjectSetup user={user} onProject={handleProject} />} />
-          <Route path="/studio" element={<Studio project={project} user={user} onProjectSave={handleProject} />} />
+          <Route
+            path="/plans"
+            element={(
+              <ProtectedRoute user={user} authReady={authReady} require="auth">
+                <Plans user={user} subscription={subscription} onContinue={() => {}} />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/setup"
+            element={(
+              <ProtectedRoute
+                user={user}
+                subscription={subscription}
+                authReady={authReady}
+                subscriptionLoading={subscriptionLoading}
+                require="subscription"
+              >
+                <ProjectSetup user={user} onProject={handleProject} />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/studio"
+            element={(
+              <ProtectedRoute
+                user={user}
+                project={project}
+                subscription={subscription}
+                authReady={authReady}
+                subscriptionLoading={subscriptionLoading}
+                require="project"
+              >
+                <Studio
+                  project={project}
+                  user={user}
+                  subscription={subscription}
+                  onProjectSave={handleProject}
+                  onSignOut={handleSignOut}
+                />
+              </ProtectedRoute>
+            )}
+          />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Suspense>

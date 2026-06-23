@@ -97,7 +97,7 @@ export default function Landing() {
         <div className={styles.navActions}>
           <PwaInstallNavButton />
           <button className={styles.btnGhost} onClick={() => navigate('/auth')}>Iniciar sesión</button>
-          <button className={styles.btnPrimary} onClick={() => navigate('/plans')}>Ver planes</button>
+          <button className={styles.btnPrimary} onClick={() => navigate('/auth?mode=signup')}>Crear cuenta</button>
         </div>
       </nav>
 
