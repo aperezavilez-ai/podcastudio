@@ -29,6 +29,7 @@ import { useStudioCompositor } from '../hooks/useStudioCompositor.js'
 import { useAudioMix } from '../hooks/useAudioMix.js'
 import VUMeter from '../components/VUMeter.jsx'
 import MicSelector from '../components/MicSelector.jsx'
+import MicMuteButton from '../components/MicMuteButton.jsx'
 import Teleprompter from '../components/Teleprompter.jsx'
 import TeleprompterDocUpload from '../components/TeleprompterDocUpload.jsx'
 import TeleprompterOverlay from '../components/TeleprompterOverlay.jsx'
@@ -73,7 +74,7 @@ const POS_MAP = {
   br: { bottom: 50, right: 10 },
 }
 
-export default function Studio({ project, user, subscription, onProjectSave }) {
+export default function Studio({ project, user, subscription, onProjectSave, onSignOut }) {
   const navigate = useNavigate()
   const planLimits = useMemo(() => getPlanLimits(user, subscription), [user, subscription])
   const [postsQuotaTick, setPostsQuotaTick] = useState(0)
@@ -112,7 +113,7 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
   const [uploadMsg, setUploadMsg] = useState('')
   const [youtubeConnected, setYoutubeConnected] = useState(false)
   const [autoCintillos, setAutoCintillos] = useState(true)
-  const [cintDisplaySec, setCintDisplaySec] = useState(6)
+  const [cintDisplaySec, setCintDisplaySec] = useState(10)
   const {
     trackIndex: musicTrack, playing: musicPlaying, toggle: toggleMusic,
     nextTrack: nextMusicTrack, volume: musicVol, setVolume: setMusicVol,
@@ -137,6 +138,7 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
   )
   const [cintilloPositions, setCintilloPositions] = useState(loadCintilloPositions)
   const [outputFormat, setOutputFormat] = useState(() => project?.format || '16:9')
+  const [micMuted, setMicMuted] = useState(false)
   const [showStylePicker, setShowStylePicker] = useState(true)
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
@@ -144,8 +146,6 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
   const panelRightRef = useRef(null)
   const panelScrollRef = useRef(null)
   const teleprompterKeyRef = useRef(0)
-  const lastMasterCintilloRef = useRef(null)
-
   const proj = {
     ...(enrichedProject || project || {
       name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
@@ -268,30 +268,23 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
     return cintillo
   }, [cintillo])
 
-  useEffect(() => {
-    if (cintillo?.active && cintillo.targetSlot === PRIMARY_CAMERA_SLOT) {
-      lastMasterCintilloRef.current = cintillo
-    }
-  }, [cintillo])
-
-  /** Visor principal: cintillo grande en MASTER sin apagarse entre rotaciones laterales. */
+  /** Visor principal: solo el cintillo activo de esa cámara (tema/promo 10s en MASTER, sin pegarse). */
   const cintilloForMainView = useCallback((slot) => {
-    if (cintillo?.active && cintillo.targetSlot === slot) {
-      return {
-        ...cintillo,
-        position: cintillo.position || cintilloPositions[getRoleForSlot(slot)] || cintilloPositions.master,
-      }
+    const c = cintilloForSlot(slot)
+    if (!c) return null
+    return {
+      ...c,
+      position: c.position || cintilloPositions[getRoleForSlot(slot)] || cintilloPositions.master,
     }
-    if (slot === PRIMARY_CAMERA_SLOT && lastMasterCintilloRef.current?.active) {
-      return {
-        ...lastMasterCintilloRef.current,
-        position: cintilloPositions.master || lastMasterCintilloRef.current.position,
-      }
-    }
-    return null
-  }, [cintillo, cintilloPositions])
+  }, [cintilloForSlot, cintilloPositions])
 
-  useMicMonitor(getMicStream())
+  useEffect(() => {
+    getMicStream()?.getAudioTracks?.()?.forEach(track => {
+      track.enabled = !micMuted
+    })
+  }, [micMuted, micLabel, getMicStream])
+
+  useMicMonitor(getMicStream(), micMuted)
 
   const defaultScript = proj.teleprompterScript || [
     proj.episodeTitle && `Hoy hablamos de: ${proj.episodeTitle}`,
@@ -561,6 +554,16 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
     }
   }
 
+  const handleSignOut = useCallback(async () => {
+    try {
+      await onSignOut?.()
+    } finally {
+      navigate('/auth')
+    }
+  }, [onSignOut, navigate])
+
+  const toggleMicMute = useCallback(() => setMicMuted(m => !m), [])
+
   const submitCustomCint = () => {
     if (!cintFormText.trim()) return
     setAutoCintillos(false)
@@ -636,6 +639,14 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
             title="Abrir controles"
           >
             <i className="ti ti-layout-sidebar-right" style={{ fontSize: 13 }} />
+          </button>
+          <button
+            type="button"
+            className={styles.iconBtn}
+            title="Cerrar sesión"
+            onClick={handleSignOut}
+          >
+            <i className="ti ti-logout" style={{ fontSize: 13 }} />
           </button>
           <button
             type="button"
@@ -905,8 +916,9 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
                   </>
                 )}
               </div>
-              {/* FORMAT SELECTOR */}
+              {/* FORMAT SELECTOR + MIC MUTE */}
               <div className={styles.fmtSelector}>
+                <MicMuteButton muted={micMuted} onToggle={toggleMicMute} />
                 {[{ f: '16:9', w: 26, h: 15 }, { f: '9:16', w: 12, h: 22 }, { f: '1:1', w: 18, h: 18 }].map(({ f, w, h }) => (
                   <button
                     key={f}
@@ -1249,7 +1261,7 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
             {autoCintillos && (
               <div className={styles.sliderRow} style={{ marginBottom: 8 }}>
                 <span>Duración</span>
-                <input type="range" min={4} max={12} value={cintDisplaySec} onChange={e => setCintDisplaySec(+e.target.value)} style={{ flex: 1 }} />
+                <input type="range" min={8} max={15} value={cintDisplaySec} onChange={e => setCintDisplaySec(+e.target.value)} style={{ flex: 1 }} />
                 <span className={styles.val}>{cintDisplaySec}s</span>
               </div>
             )}

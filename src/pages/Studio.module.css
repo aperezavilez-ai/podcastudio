@@ -336,10 +336,13 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .camStripTools .fmtSelector {
   margin-left: auto;
+  flex-shrink: 0;
 }
 .camStripLeft { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; }
 .switcherControls {
@@ -432,7 +435,14 @@
   flex-shrink: 0;
 }
 .camError button:hover { color: var(--text-primary); }
-.fmtSelector { display: flex; gap: 5px; margin-left: auto; }
+.fmtSelector {
+  display: flex;
+  gap: 5px;
+  margin-left: auto;
+  flex-shrink: 0;
+  align-items: flex-end;
+  padding: 2px 0;
+}
 .fmtOpt {
   display: flex;
   flex-direction: column;

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 /** Reproduce el micrófono en altavoces para escucharte en vivo (el video va mute por autoplay). */
-export function useMicMonitor(micStream) {
+export function useMicMonitor(micStream, muted = false) {
   const audioRef = useRef(null)
 
   useEffect(() => {
@@ -15,7 +15,7 @@ export function useMicMonitor(micStream) {
 
     const el = audioRef.current || new Audio()
     el.autoplay = true
-    el.muted = false
+    el.muted = muted
     el.volume = 1
     if (el.srcObject !== micStream) el.srcObject = micStream
 
@@ -30,5 +30,5 @@ export function useMicMonitor(micStream) {
       el.pause()
       el.srcObject = null
     }
-  }, [micStream])
+  }, [micStream, muted])
 }

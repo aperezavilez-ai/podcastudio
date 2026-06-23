@@ -11,7 +11,7 @@ import {
 
 const ENTER_MS = 900
 const EXIT_MS = 450
-const DEFAULT_DISPLAY_SEC = 6
+const DEFAULT_DISPLAY_SEC = 10
 
 function buildCintilloState(preset, project, positions, overrides = {}) {
   const presetId = preset?.id || overrides.presetId || 'custom'
