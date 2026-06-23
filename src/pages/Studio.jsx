@@ -46,8 +46,6 @@ import { fetchCloudRecordings, fetchIntegrationStatus, publishToYouTube } from '
 import { handleTeleprompterKeydown } from '../utils/teleprompterKeys.js'
 import GuideModal from '../components/GuideModal.jsx'
 import LandscapeGate from '../components/LandscapeGate.jsx'
-import BackgroundPicker from '../components/BackgroundPicker.jsx'
-import { useStudioBackground } from '../hooks/useStudioBackground.js'
 import { getPlanLimits } from '../lib/planLimits.js'
 import { aiPostsRemaining } from '../lib/aiUsage.js'
 import { isTouchDevice } from '../lib/device.js'
@@ -82,7 +80,6 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
     () => (planLimits.maxAiPostsPerMonth != null ? aiPostsRemaining(user?.id, planLimits) : null),
     [user?.id, planLimits, postsQuotaTick],
   )
-  const studioBg = useStudioBackground()
   const [planMsg, setPlanMsg] = useState('')
   const [searchParams, setSearchParams] = useSearchParams()
   const {
@@ -291,13 +288,6 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
     faceZoomSec: 10,
   })
 
-  const compositorBackground = useMemo(() => ({
-    hasVirtualSet: studioBg.hasVirtualSet,
-    templateId: studioBg.templateId,
-    customUrl: studioBg.customUrl,
-    cameraRect: studioBg.cameraRect,
-  }), [studioBg.hasVirtualSet, studioBg.templateId, studioBg.customUrl, studioBg.cameraRect])
-
   const { getProgramStream } = useStudioCompositor({
     streams,
     activeCamera: programCamera,
@@ -314,7 +304,6 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
     recording,
     recordDurationSec: duration,
     compositorActive: recording || countdown !== null || preparingRecord,
-    background: compositorBackground,
   })
   const { buildRecordingStream } = useAudioMix()
 
@@ -739,12 +728,6 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
                     cameraKey={programCamera}
                     look={look}
                     directorCrop={switchMode === 'ai' && planLimits.aiDirector ? getDirectorCrop(programCamera) : null}
-                    virtualSet={studioBg.hasVirtualSet ? {
-                      enabled: true,
-                      templateId: studioBg.templateId,
-                      customUrl: studioBg.customUrl,
-                      cameraRect: studioBg.cameraRect,
-                    } : null}
                   />
                 ) : (
                   <div className={styles.noSignalViewport}>
@@ -1142,22 +1125,6 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
               onField={setLookField}
               onReset={resetLook}
               limits={planLimits}
-            />
-          </div>
-
-          {/* SET VIRTUAL */}
-          <div className={styles.prSection}>
-            <div className={styles.prTitle}>Set de estudio</div>
-            <BackgroundPicker
-              compact
-              virtualSetOnly
-              templateId={studioBg.templateId}
-              customUrl={studioBg.customUrl}
-              cameraScale={studioBg.cameraScale}
-              onTemplateChange={studioBg.setTemplateId}
-              onCustomUpload={studioBg.onCustomUpload}
-              onClearCustom={studioBg.clearCustom}
-              onCameraScaleChange={studioBg.setCameraScale}
             />
           </div>
 
