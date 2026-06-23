@@ -67,9 +67,10 @@ export function useAudioMix() {
     setMicStream(micStream)
     setMusicMix({ musicEl, volume: musicVolume, playing: musicPlaying })
 
+    const audioTracks = dest.stream.getAudioTracks()
     const tracks = [
       ...videoStream.getVideoTracks(),
-      ...dest.stream.getAudioTracks(),
+      ...(audioTracks.length ? audioTracks : (micStream?.getAudioTracks() || [])),
     ]
     return new MediaStream(tracks)
   }, [ensureContext, setMicStream, setMusicMix])

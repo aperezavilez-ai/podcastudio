@@ -28,6 +28,57 @@
 .posBc.preview { transform: translateX(-50%) scale(0.72); transform-origin: bottom center; }
 .posBr.preview { transform: scale(0.72); transform-origin: bottom right; }
 
+/* Visor principal — cintillo grande en MASTER */
+.wrapLarge {
+  max-width: min(94%, 780px);
+  z-index: 11;
+}
+
+.wrapLarge .mainText {
+  font-size: clamp(22px, 3.2vw, 38px);
+  max-width: min(82vw, 680px);
+  white-space: normal;
+  line-height: 1.22;
+}
+
+.wrapLarge .tag {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+}
+
+.wrapLarge .subText {
+  font-size: 13px;
+}
+
+.wrapLarge.classicBody,
+.wrapLarge .angledBody,
+.wrapLarge .broadcastBar,
+.wrapLarge .profileBody,
+.wrapLarge .tabBody,
+.wrapLarge .newsBody,
+.wrapLarge .elegantBody,
+.wrapLarge .waveContent,
+.wrapLarge .neonBody,
+.wrapLarge .sportBar,
+.wrapLarge .corpBody,
+.wrapLarge .premiumMain {
+  padding: 12px 20px;
+}
+
+.wrapLarge.posBc {
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.wrapLarge.posBl { bottom: 20px; }
+.wrapLarge.posBr { bottom: 20px; }
+
+.wrapLarge.posBc.phaseEnter,
+.wrapLarge.posBc.phaseExit {
+  transform: translateX(-50%);
+}
+
 .tag {
   display: block;
   font-size: 8px;
@@ -428,20 +479,7 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-.posBc:not(.preview) { animation: cintSlideUpCenter .3s ease; }
-.posBr:not(.preview) { animation: cintSlideUpRight .3s ease; }
-
-@keyframes cintSlideUpCenter {
-  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
-@keyframes cintSlideUpRight {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* Ensamblaje por partes */
+/* Animación de entrada/salida controlada por phaseEnter/phaseExit — sin slide duplicado */
 .phaseEnter .animPart1 {
   opacity: 0;
   animation: partSlideLeft .55s cubic-bezier(.22, 1, .36, 1) forwards;
@@ -460,7 +498,7 @@
 }
 
 .phaseExit {
-  animation: cintExit .45s cubic-bezier(.55, 0, 1, .45) forwards;
+  animation: cintExit .35s cubic-bezier(.55, 0, 1, .45) forwards;
 }
 
 @keyframes partSlideLeft {

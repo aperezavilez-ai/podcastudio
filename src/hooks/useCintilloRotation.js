@@ -44,6 +44,11 @@ export function useCintilloRotation({
 
   positionsRef.current = positions
 
+  const projectRef = useRef(project)
+  projectRef.current = project
+
+  const cintillosKey = JSON.stringify(project?.cintillos || {})
+
   const clearTimers = useCallback(() => {
     timersRef.current.forEach(clearTimeout)
     timersRef.current = []
@@ -58,12 +63,12 @@ export function useCintilloRotation({
   const showPreset = useCallback((preset) => {
     setAnimKey(k => k + 1)
     setAnimPhase('enter')
-    setCintillo(buildCintilloState(preset, project, positionsRef.current))
-  }, [project])
+    setCintillo(buildCintilloState(preset, projectRef.current, positionsRef.current))
+  }, [])
 
   const runCycle = useCallback(() => {
     clearTimers()
-    const items = getRotationPresets(project)
+    const items = getRotationPresets(projectRef.current)
     if (!items.length) {
       setCintillo(c => ({ ...c, active: false }))
       return
@@ -73,12 +78,11 @@ export function useCintilloRotation({
     showPreset(preset)
 
     schedule(() => setAnimPhase('hold'), ENTER_MS)
-    schedule(() => setAnimPhase('exit'), ENTER_MS + displaySec * 1000)
     schedule(() => {
       indexRef.current = (indexRef.current + 1) % items.length
       runCycle()
-    }, ENTER_MS + displaySec * 1000 + EXIT_MS)
-  }, [project, displaySec, clearTimers, schedule, showPreset])
+    }, ENTER_MS + displaySec * 1000)
+  }, [displaySec, clearTimers, schedule, showPreset])
 
   useEffect(() => {
     if (!enabled) {
@@ -88,25 +92,25 @@ export function useCintilloRotation({
     indexRef.current = 0
     runCycle()
     return clearTimers
-  }, [enabled, project, displaySec, positions, runCycle, clearTimers])
+  }, [enabled, displaySec, cintillosKey, positions, runCycle, clearTimers])
 
   const showManual = useCallback((preset) => {
     clearTimers()
     setAnimKey(k => k + 1)
     setAnimPhase('enter')
-    setCintillo(buildCintilloState(preset, project, positionsRef.current))
+    setCintillo(buildCintilloState(preset, projectRef.current, positionsRef.current))
     schedule(() => setAnimPhase('hold'), ENTER_MS)
-  }, [clearTimers, project, schedule])
+  }, [clearTimers, schedule])
 
   const showCustom = useCallback(({ tag, text, color = '#e8612a', targetSlot, position, presetId = 'custom' }) => {
     clearTimers()
     setAnimKey(k => k + 1)
     setAnimPhase('enter')
-    setCintillo(buildCintilloState(null, project, positionsRef.current, {
+    setCintillo(buildCintilloState(null, projectRef.current, positionsRef.current, {
       tag, text, color, targetSlot, position, presetId,
     }))
     schedule(() => setAnimPhase('hold'), ENTER_MS)
-  }, [clearTimers, project, schedule])
+  }, [clearTimers, schedule])
 
   const hide = useCallback(() => {
     clearTimers()

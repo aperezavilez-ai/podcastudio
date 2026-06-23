@@ -1,0 +1,43 @@
+.wrap {
+  position: absolute;
+  z-index: 12;
+  pointer-events: none;
+  line-height: 0;
+}
+
+.large .logoImg {
+  height: 56px;
+  max-width: 160px;
+}
+
+.logoImg {
+  height: 44px;
+  width: auto;
+  max-width: 130px;
+  object-fit: contain;
+  display: block;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.nameOnly {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.posTl { top: 12px; left: 12px; }
+.posTc { top: 12px; left: 50%; transform: translateX(-50%); }
+.posTr { top: 12px; right: 12px; }
+.posMl { top: 50%; left: 12px; transform: translateY(-50%); }
+.posMc { top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.posMr { top: 50%; right: 12px; transform: translateY(-50%); }
+.posBl { bottom: 56px; left: 12px; }
+.posBc { bottom: 56px; left: 50%; transform: translateX(-50%); }
+.posBr { bottom: 56px; right: 12px; }

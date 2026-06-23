@@ -50,6 +50,7 @@ import { getPlanLimits } from '../lib/planLimits.js'
 import { aiPostsRemaining } from '../lib/aiUsage.js'
 import { isTouchDevice } from '../lib/device.js'
 import { PRIMARY_CAMERA_SLOT, CAM_SLOT_LABELS, pickPrimaryActiveSlot } from '../config/cameraSlots.js'
+import { useMicMonitor } from '../hooks/useMicMonitor.js'
 import styles from './Studio.module.css'
 
 const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
@@ -143,6 +144,7 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
   const panelRightRef = useRef(null)
   const panelScrollRef = useRef(null)
   const teleprompterKeyRef = useRef(0)
+  const lastMasterCintilloRef = useRef(null)
 
   const proj = {
     ...(enrichedProject || project || {
@@ -265,6 +267,31 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
     if (!cintillo?.active || cintillo.targetSlot !== slot) return null
     return cintillo
   }, [cintillo])
+
+  useEffect(() => {
+    if (cintillo?.active && cintillo.targetSlot === PRIMARY_CAMERA_SLOT) {
+      lastMasterCintilloRef.current = cintillo
+    }
+  }, [cintillo])
+
+  /** Visor principal: cintillo grande en MASTER sin apagarse entre rotaciones laterales. */
+  const cintilloForMainView = useCallback((slot) => {
+    if (cintillo?.active && cintillo.targetSlot === slot) {
+      return {
+        ...cintillo,
+        position: cintillo.position || cintilloPositions[getRoleForSlot(slot)] || cintilloPositions.master,
+      }
+    }
+    if (slot === PRIMARY_CAMERA_SLOT && lastMasterCintilloRef.current?.active) {
+      return {
+        ...lastMasterCintilloRef.current,
+        position: cintilloPositions.master || lastMasterCintilloRef.current.position,
+      }
+    }
+    return null
+  }, [cintillo, cintilloPositions])
+
+  useMicMonitor(getMicStream())
 
   const defaultScript = proj.teleprompterScript || [
     proj.episodeTitle && `Hoy hablamos de: ${proj.episodeTitle}`,
@@ -735,18 +762,24 @@ export default function Studio({ project, user, subscription, onProjectSave }) {
                     <span>Sin señal — conecta una cámara</span>
                   </div>
                 )}
-                {cintilloForSlot(programCamera) && (
-                  <CintilloOverlay
-                    styleId={cintilloStyle}
-                    tag={cintillo.tag}
-                    text={cintillo.text}
-                    accentColor={cintillo.color}
-                    position={cintillo.position}
-                    animPhase={animPhase}
-                    animKey={animKey}
-                    onClose={hideCintillo}
-                  />
-                )}
+                {(() => {
+                  const mainCint = cintilloForMainView(programCamera)
+                  if (!mainCint) return null
+                  const isLive = cintillo?.active && cintillo.targetSlot === programCamera
+                  return (
+                    <CintilloOverlay
+                      styleId={cintilloStyle}
+                      tag={mainCint.tag}
+                      text={mainCint.text}
+                      accentColor={mainCint.color}
+                      position={mainCint.position}
+                      size={programCamera === PRIMARY_CAMERA_SLOT ? 'large' : 'normal'}
+                      animPhase={isLive ? animPhase : 'hold'}
+                      animKey={isLive ? animKey : 0}
+                      onClose={hideCintillo}
+                    />
+                  )
+                })()}
                 {countdown != null && (
                   <div className={styles.countdownOverlay}>
                     <span className={styles.countdownNum}>{countdown}</span>
