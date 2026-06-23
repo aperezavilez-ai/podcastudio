@@ -8,6 +8,10 @@ import ErrorBoundary from './components/ErrorBoundary.jsx'
 import App from './App.jsx'
 import './styles/globals.css'
 
+import { redirectToCanonicalDomain } from './lib/site.js'
+
+redirectToCanonicalDomain()
+
 function renderApp() {
   const root = document.getElementById('root')
   if (!root) return

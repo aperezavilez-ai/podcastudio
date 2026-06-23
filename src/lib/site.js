@@ -20,7 +20,12 @@ export function isLocalDevHost(hostname = window.location.hostname) {
   )
 }
 
-/** Redirige vercel.app al dominio propio (www.podcastudio.mx). */
+export function isWrongAppHost(hostname = window.location.hostname) {
+  const h = (hostname || '').toLowerCase()
+  return h.includes('podcaststudio') || h === 'podcastudio.mx'
+}
+
+/** Redirige dominios incorrectos o vercel.app al sitio canónico. */
 export function redirectToCanonicalDomain() {
   if (!import.meta.env.PROD || typeof window === 'undefined') return false
 
@@ -30,12 +35,7 @@ export function redirectToCanonicalDomain() {
   const canonicalHost = getCanonicalHost()
   if (hostname === canonicalHost) return false
 
-  if (hostname === 'podcastudio.mx') {
-    window.location.replace(`${CANONICAL_SITE_URL}${pathname}${search}${hash}`)
-    return true
-  }
-
-  if (hostname.endsWith('.vercel.app')) {
+  if (isWrongAppHost(hostname) || hostname.endsWith('.vercel.app')) {
     window.location.replace(`${CANONICAL_SITE_URL}${pathname}${search}${hash}`)
     return true
   }

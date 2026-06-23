@@ -1,7 +1,7 @@
 import { safeStorage } from './safeStorage.js'
 
 /** Limpia service workers viejos que dejan pantalla negra en móvil/PWA. */
-const SW_VERSION = '7'
+const SW_VERSION = '8'
 
 function withTimeout(promise, ms) {
   return Promise.race([

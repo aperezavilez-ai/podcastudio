@@ -51,6 +51,7 @@ import { getPlanLimits } from '../lib/planLimits.js'
 import { aiPostsRemaining } from '../lib/aiUsage.js'
 import { isTouchDevice } from '../lib/device.js'
 import { PRIMARY_CAMERA_SLOT, CAM_SLOT_LABELS, pickPrimaryActiveSlot } from '../config/cameraSlots.js'
+import styles from './Studio.module.css'
 
 const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
 const CANONICAL_STUDIO = 'https://www.podcastudio.mx/studio'
@@ -60,7 +61,6 @@ function isWrongStudioHost() {
   const host = window.location.hostname.toLowerCase()
   return host.includes('podcaststudio') || (host !== 'www.podcastudio.mx' && host !== 'localhost' && !host.endsWith('.vercel.app') && host !== '127.0.0.1')
 }
-import styles from './Studio.module.css'
 
 const CINTILLO_PRESET_MAP = Object.fromEntries(CINTILLO_PRESETS.map(p => [p.id, p]))
 
