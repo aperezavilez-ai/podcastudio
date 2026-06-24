@@ -363,7 +363,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   }, [project])
 
   useEffect(() => {
-    if (tab !== 'studio' || !teleprompter.visible) return
+    if (tab !== 'studio') return
+    if (!teleprompter.visible && !recording && countdown == null) return
 
     const onKeyDown = (e) => {
       handleTeleprompterKeydown(e, {
@@ -375,7 +376,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [tab, teleprompter.visible, teleprompter.toggle, teleprompter.reset])
+  }, [tab, teleprompter.visible, teleprompter.toggle, teleprompter.reset, recording, countdown])
 
   // Initialize cameras and mic once on mount (evita bucle de reconexión)
   useEffect(() => {
@@ -470,6 +471,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     if (countdown) return
 
     setPreparingRecord(true)
+    teleprompter.setVisible(true)
+    teleprompter.reset()
     for (let i = 3; i >= 1; i--) {
       setCountdown(i)
       await new Promise(r => setTimeout(r, 1000))
@@ -802,7 +805,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     <span>{directorStatus}</span>
                   </div>
                 )}
-                {teleprompter.visible && (
+                {(teleprompter.visible || recording || preparingRecord || countdown != null) && (
                   <TeleprompterOverlay
                     script={teleprompter.script}
                     playing={teleprompter.playing}
