@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import Landing from './pages/Landing.jsx'
 import Auth from './pages/Auth.jsx'
 import ProtectedRoute from './components/ProtectedRoute.jsx'
@@ -33,7 +33,6 @@ function RouteFallback() {
 }
 
 export default function App() {
-  const location = useLocation()
   const [user, setUser] = useState(null)
   const [project, setProject] = useState(null)
   const [subscription, setSubscription] = useState(null)
@@ -44,7 +43,7 @@ export default function App() {
 
   useEffect(() => {
     redirectToCanonicalDomain()
-  }, [location.pathname, location.search, location.hash])
+  }, [])
 
   useEffect(() => {
     if (!supabase) {

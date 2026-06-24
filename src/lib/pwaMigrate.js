@@ -1,7 +1,7 @@
 import { safeStorage } from './safeStorage.js'
+import { PWA_CACHE_VERSION } from './pwaCacheVersion.js'
 
-/** Limpia service workers viejos que dejan pantalla negra en móvil/PWA. */
-const SW_VERSION = '9'
+const MIGRATE_RELOAD_KEY = 'podcastudio_sw_migrate_reload'
 
 function withTimeout(promise, ms) {
   return Promise.race([
@@ -10,11 +10,12 @@ function withTimeout(promise, ms) {
   ])
 }
 
+/** Limpia service workers viejos que dejan pantalla negra o bucle de recarga. */
 export async function migrateServiceWorker() {
   if (!('serviceWorker' in navigator)) return
 
   const stored = safeStorage.getItem('podcastudio_sw_version')
-  if (stored === SW_VERSION) return
+  if (stored === PWA_CACHE_VERSION) return
 
   const hadOldVersion = !!stored
 
@@ -29,12 +30,17 @@ export async function migrateServiceWorker() {
         await Promise.all(keys.map((k) => withTimeout(caches.delete(k), 2000)))
       }
     }
-    safeStorage.setItem('podcastudio_sw_version', SW_VERSION)
+    safeStorage.setItem('podcastudio_sw_version', PWA_CACHE_VERSION)
   } catch {
-    safeStorage.setItem('podcastudio_sw_version', SW_VERSION)
+    safeStorage.setItem('podcastudio_sw_version', PWA_CACHE_VERSION)
   }
 
-  if (hadOldVersion && typeof window !== 'undefined') {
+  if (
+    hadOldVersion
+    && typeof window !== 'undefined'
+    && !sessionStorage.getItem(MIGRATE_RELOAD_KEY)
+  ) {
+    sessionStorage.setItem(MIGRATE_RELOAD_KEY, '1')
     window.location.reload()
   }
 }
