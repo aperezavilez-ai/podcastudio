@@ -6,9 +6,9 @@ export default async function handler(req, res) {
     return
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) {
-    res.status(503).json({ error: 'IA no configurada. Añade ANTHROPIC_API_KEY en Vercel.' })
+  const projectKey = process.env.GAFCORE_PROXY_PROJECT_KEY
+  if (!projectKey) {
+    res.status(503).json({ error: 'IA no configurada. Añade GAFCORE_PROXY_PROJECT_KEY en Vercel.' })
     return
   }
 
@@ -19,9 +19,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const text = await callClaude({ prompt, systemPrompt, apiKey })
+    const text = await callClaude({ prompt, systemPrompt, projectKey })
     res.status(200).json({ text })
   } catch (e) {
-    res.status(500).json({ error: e.message || 'Error al llamar a Claude' })
+    res.status(500).json({ error: e.message || 'Error al llamar a la IA' })
   }
 }

@@ -4,10 +4,10 @@ export default function handler(req, res) {
     return
   }
 
-  const configured = !!process.env.ANTHROPIC_API_KEY
+  const configured = !!process.env.GAFCORE_PROXY_PROJECT_KEY
   res.status(200).json({
     configured,
-    provider: 'claude',
-    model: 'claude-sonnet-4-6',
+    provider: 'gafcore-pool-cheap',
+    model: 'llama-3.1-8b-instant',
   })
 }

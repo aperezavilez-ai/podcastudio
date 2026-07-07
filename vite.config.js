@@ -167,7 +167,7 @@ function stripeDevHandlers(env) {
 }
 
 function aiApiDev(env) {
-  const apiKey = env.ANTHROPIC_API_KEY
+  const projectKey = env.GAFCORE_PROXY_PROJECT_KEY
   return {
     name: 'ai-api-dev',
     configureServer(server) {
@@ -265,9 +265,9 @@ function aiApiDev(env) {
           res.statusCode = 200
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify({
-            configured: !!apiKey,
-            provider: 'claude',
-            model: 'claude-sonnet-4-6',
+            configured: !!projectKey,
+            provider: 'gafcore-pool-cheap',
+            model: 'llama-3.1-8b-instant',
           }))
           return
         }
@@ -279,14 +279,14 @@ function aiApiDev(env) {
         }
 
         try {
-          if (!apiKey) {
+          if (!projectKey) {
             res.statusCode = 503
             res.setHeader('Content-Type', 'application/json')
-            res.end(JSON.stringify({ error: 'Añade ANTHROPIC_API_KEY en .env.local' }))
+            res.end(JSON.stringify({ error: 'Añade GAFCORE_PROXY_PROJECT_KEY en .env.local' }))
             return
           }
           const body = await readBody(req)
-          const text = await callClaude({ prompt: body.prompt, systemPrompt: body.systemPrompt, apiKey })
+          const text = await callClaude({ prompt: body.prompt, systemPrompt: body.systemPrompt, projectKey })
           res.statusCode = 200
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify({ text }))

@@ -26,7 +26,7 @@ export default function Teleprompter({
             className={styles.aiBtn}
             onClick={onGenerateScript}
             disabled={generatingScript || !aiConfigured}
-            title={aiConfigured ? 'Generar guion con IA' : 'Configura ANTHROPIC_API_KEY en Vercel'}
+            title={aiConfigured ? 'Generar guion con IA' : 'Configura GAFCORE_PROXY_PROJECT_KEY en Vercel'}
           >
             <i className={`ti ${generatingScript ? 'ti-loader' : 'ti-sparkles'}`} style={generatingScript ? { animation: 'spin 1s linear infinite' } : {}} />
             {generatingScript ? 'Generando...' : 'Guion IA'}
