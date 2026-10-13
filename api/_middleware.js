@@ -84,9 +84,18 @@ export default function middleware(req, res) {
     'https://www.podcastudio.mx',
     'https://podcastudio.mx',
     'http://localhost:3000',
+    // Vercel preview URLs
+    /^https:\/\/podcastudio.*\.vercel\.app$/,
   ]
 
-  if (allowedOrigins.includes(origin)) {
+  // Verificar origin
+  const isAllowed = allowedOrigins.some(allowed => {
+    if (typeof allowed === 'string') return allowed === origin
+    if (allowed instanceof RegExp) return allowed.test(origin)
+    return false
+  })
+
+  if (isAllowed && origin) {
     res.setHeader('Access-Control-Allow-Origin', origin)
   }
 
