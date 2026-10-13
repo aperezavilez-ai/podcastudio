@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv2weggu_86ed10",
+  "task": "Analiza quirúrgicamente este proyecto. Solo hechos verificados.",
+  "createdAt": 1791667217119,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-10T21:20:17.119Z",
+  "meta": {}
+}

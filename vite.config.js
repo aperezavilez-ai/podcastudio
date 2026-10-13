@@ -1,7 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import { callClaude } from './lib/ai/claude.js'
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -33,21 +32,21 @@ function json(res, status, data) {
   res.end(JSON.stringify(data))
 }
 
-function stripeDevHandlers(env) {
+function mercadopagoDevHandlers(env) {
   return async (req, res) => {
     const url = new URL(req.url, 'http://localhost')
 
-    if (url.pathname === '/api/stripe/status') {
+    if (url.pathname === '/api/mercadopago/status') {
       if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' })
-      const { isStripeConfigured } = await import('./lib/stripe/client.js')
+      const { isMercadoPagoConfigured } = await import('./lib/mercadopago/client.js')
       const { isSupabaseAdminConfigured } = await import('./lib/supabase/admin.js')
-      const { PLANS } = await import('./lib/stripe/plans.js')
+      const { PLANS } = await import('./src/config/plans.js')
       return json(res, 200, {
-        configured: isStripeConfigured(),
-        webhook: !!env.STRIPE_WEBHOOK_SECRET,
+        configured: isMercadoPagoConfigured(),
+        webhook: !!env.MERCADO_PAGO_WEBHOOK_SECRET,
         supabaseSync: isSupabaseAdminConfigured(),
-        provider: 'stripe',
-        currency: 'usd',
+        provider: 'mercadopago',
+        currency: 'MXN',
         plans: PLANS.map(p => ({
           id: p.id,
           name: p.name,
@@ -58,104 +57,83 @@ function stripeDevHandlers(env) {
       })
     }
 
-    if (url.pathname === '/api/stripe/session') {
+    if (url.pathname === '/api/mercadopago/session') {
       if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' })
       try {
-        if (!env.STRIPE_SECRET_KEY) throw new Error('Añade STRIPE_SECRET_KEY en .env.local')
-        const sessionId = url.searchParams.get('session_id')
-        const { retrieveCheckoutSession } = await import('./lib/stripe/client.js')
-        const session = await retrieveCheckoutSession(sessionId)
-        const paid = session.payment_status === 'paid' || session.status === 'complete'
+        if (!env.MERCADO_PAGO_ACCESS_TOKEN) throw new Error('Añade MERCADO_PAGO_ACCESS_TOKEN en .env.local')
+        const paymentId = url.searchParams.get('payment_id')
+        const { getPayment } = await import('./lib/mercadopago/client.js')
+        const payment = await getPayment(paymentId)
+        const approved = payment.status === 'approved'
         return json(res, 200, {
-          ok: paid,
-          planId: session.metadata?.planId || null,
-          customerEmail: session.customer_details?.email || session.customer_email,
+          ok: approved,
+          planId: payment.metadata?.plan_id || null,
+          customerEmail: payment.payer?.email,
         })
       } catch (e) {
         return json(res, 500, { error: e.message })
       }
     }
 
-    if (url.pathname === '/api/stripe/checkout') {
+    if (url.pathname === '/api/mercadopago/checkout') {
       if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' })
       try {
-        if (!env.STRIPE_SECRET_KEY) throw new Error('Añade STRIPE_SECRET_KEY en .env.local')
+        if (!env.MERCADO_PAGO_ACCESS_TOKEN) throw new Error('Añade MERCADO_PAGO_ACCESS_TOKEN en .env.local')
         const body = await readBody(req)
-        const { createCheckoutSession } = await import('./lib/stripe/client.js')
-        const session = await createCheckoutSession({
+        const { createPreference } = await import('./lib/mercadopago/client.js')
+        const preference = await createPreference({
           planId: body.planId,
           customerEmail: body.email,
           userId: body.userId,
         })
-        return json(res, 200, { url: session.url, sessionId: session.id })
+        return json(res, 200, { url: preference.init_point, preferenceId: preference.id })
       } catch (e) {
         return json(res, 500, { error: e.message })
       }
     }
 
-    if (url.pathname === '/api/stripe/subscription') {
+    if (url.pathname === '/api/mercadopago/subscription') {
       if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' })
       try {
         const { getUserFromAuthHeader } = await import('./lib/supabase/auth.js')
-        const { getSubscriptionByUserId, isActiveSubscription } = await import('./lib/stripe/subscriptions.js')
+        const { getSubscriptionByUserId, isActivePayment } = await import('./lib/mercadopago/subscriptions.js')
         const user = await getUserFromAuthHeader(req.headers.authorization)
         if (!user) return json(res, 401, { error: 'No autorizado' })
         const sub = await getSubscriptionByUserId(user.id)
         return json(res, 200, {
           planId: sub?.plan_id || null,
           status: sub?.status || null,
-          active: sub ? isActiveSubscription(sub.status) : false,
+          active: sub ? isActivePayment(sub.status) : false,
           currentPeriodEnd: sub?.current_period_end || null,
-          hasStripeCustomer: !!sub?.stripe_customer_id,
+          hasMPPreference: !!sub?.mp_preference_id,
         })
       } catch (e) {
         return json(res, 500, { error: e.message })
       }
     }
 
-    if (url.pathname === '/api/stripe/sync') {
+    if (url.pathname === '/api/mercadopago/sync') {
       if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' })
       try {
         const { getUserFromAuthHeader } = await import('./lib/supabase/auth.js')
-        const { syncCheckoutSessionForUser } = await import('./lib/stripe/sync.js')
+        const { syncPaymentForUser } = await import('./lib/mercadopago/sync.js')
         const user = await getUserFromAuthHeader(req.headers.authorization)
         if (!user) return json(res, 401, { error: 'Inicia sesión para activar tu plan' })
         const body = await readBody(req)
-        const result = await syncCheckoutSessionForUser(body.sessionId, user.id)
+        const result = await syncPaymentForUser(body.paymentId, user.id)
         return json(res, 200, result)
       } catch (e) {
         return json(res, 500, { error: e.message })
       }
     }
 
-    if (url.pathname === '/api/stripe/portal') {
+    if (url.pathname === '/api/mercadopago/webhook') {
       if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' })
       try {
-        if (!env.STRIPE_SECRET_KEY) throw new Error('Añade STRIPE_SECRET_KEY en .env.local')
-        const { getUserFromAuthHeader } = await import('./lib/supabase/auth.js')
-        const { getSubscriptionByUserId } = await import('./lib/stripe/subscriptions.js')
-        const { createBillingPortalSession } = await import('./lib/stripe/client.js')
-        const user = await getUserFromAuthHeader(req.headers.authorization)
-        if (!user) return json(res, 401, { error: 'Inicia sesión' })
-        const sub = await getSubscriptionByUserId(user.id)
-        if (!sub?.stripe_customer_id) {
-          return json(res, 404, { error: 'No tienes una suscripción activa en Stripe' })
-        }
-        const portal = await createBillingPortalSession(sub.stripe_customer_id)
-        return json(res, 200, { url: portal.url })
-      } catch (e) {
-        return json(res, 500, { error: e.message })
-      }
-    }
-
-    if (url.pathname === '/api/stripe/webhook') {
-      if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' })
-      try {
-        const signature = req.headers['stripe-signature']
-        if (!signature) return json(res, 400, { error: 'Falta firma de Stripe' })
+        const signature = req.headers['x-signature'] || req.headers['x-request-id']
         const rawBody = await readRawBody(req)
-        const { handleStripeWebhook } = await import('./lib/stripe/webhooks.js')
-        const event = await handleStripeWebhook(rawBody, signature)
+        const { handleMPWebhook } = await import('./lib/mercadopago/webhooks.js')
+        const event = await handleMPWebhook(rawBody, signature)
         return json(res, 200, { received: true, type: event.type })
       } catch (e) {
         return json(res, 400, { error: e.message })
@@ -167,17 +145,20 @@ function stripeDevHandlers(env) {
 }
 
 function aiApiDev(env) {
-  const projectKey = env.GAFCORE_PROXY_PROJECT_KEY
+  const apiKey = env.MEAI_API_KEY
+  const model = env.MEAI_MODEL || 'claude-haiku-4-5'
   return {
     name: 'ai-api-dev',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         if (!req.url?.startsWith('/api/')) return next()
 
-        const stripeHandled = await stripeDevHandlers(env)(req, res)
-        if (stripeHandled !== false) return
+        const apiUrl = new URL(req.url, 'http://localhost')
 
-        if (url.pathname === '/api/auth/login') {
+        const mpHandled = await mercadopagoDevHandlers(env)(req, res)
+        if (mpHandled !== false) return
+
+        if (apiUrl.pathname === '/api/auth/login') {
           if (req.method !== 'POST') {
             res.statusCode = 405
             res.end('Method not allowed')
@@ -265,9 +246,9 @@ function aiApiDev(env) {
           res.statusCode = 200
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify({
-            configured: !!projectKey,
-            provider: 'gafcore-pool-cheap',
-            model: 'llama-3.1-8b-instant',
+            configured: !!apiKey,
+            provider: 'meai',
+            model,
           }))
           return
         }
@@ -279,14 +260,15 @@ function aiApiDev(env) {
         }
 
         try {
-          if (!projectKey) {
+          if (!apiKey) {
             res.statusCode = 503
             res.setHeader('Content-Type', 'application/json')
-            res.end(JSON.stringify({ error: 'Añade GAFCORE_PROXY_PROJECT_KEY en .env.local' }))
+            res.end(JSON.stringify({ error: 'Añade MEAI_API_KEY en .env.local' }))
             return
           }
           const body = await readBody(req)
-          const text = await callClaude({ prompt: body.prompt, systemPrompt: body.systemPrompt, projectKey })
+          const { callClaude } = await import('./lib/ai/claude.cjs')
+          const text = await callClaude({ prompt: body.prompt, systemPrompt: body.systemPrompt, apiKey, model })
           res.statusCode = 200
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify({ text }))
@@ -349,6 +331,41 @@ export default defineConfig(({ mode }) => {
     preview: {
       port: 3000,
       host: true,
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // Separar vendor principal
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+
+            // Librerías pesadas en chunks separados para lazy loading
+            'ffmpeg': ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
+            'mediapipe': ['@mediapipe/tasks-vision'],
+            'mammoth': ['mammoth'],
+
+            // UI libraries
+            'vendor-ui': ['lucide-react', 'framer-motion'],
+          }
+        }
+      },
+      // Tree shaking mejorado
+      minify: 'terser',
+      terserOptions: {
+        compress: {
+          drop_console: mode === 'production',
+          drop_debugger: mode === 'production',
+          pure_funcs: mode === 'production' ? ['console.log', 'console.info', 'console.debug'] : []
+        }
+      },
+      // Chunks más grandes para menos requests
+      chunkSizeWarningLimit: 1000,
+    },
+    // Optimización de dependencias
+    optimizeDeps: {
+      include: ['react', 'react-dom', 'react-router-dom', '@supabase/supabase-js'],
+      exclude: ['@ffmpeg/ffmpeg', '@mediapipe/tasks-vision'] // Lazy load estas pesadas
     },
   }
 })

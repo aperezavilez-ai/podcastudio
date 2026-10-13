@@ -1,0 +1,71 @@
+{
+  "ok": false,
+  "root": "D:\\PROGRAMAS IA\\PODCASTUDIO",
+  "generatedAt": "2026-10-13T15:18:49.119Z",
+  "durationMs": 14501,
+  "filesScanned": 212,
+  "filesTruncated": false,
+  "excluded": [],
+  "autoExcluded": [],
+  "onlyFiles": null,
+  "checks": [
+    {
+      "id": "syntax",
+      "label": "Sintaxis JS/JSON",
+      "status": "fail",
+      "summary": "118 archivos compilados"
+    },
+    {
+      "id": "imports",
+      "label": "Imports / require",
+      "status": "pass",
+      "summary": "152 archivos de código revisados"
+    },
+    {
+      "id": "conflicts",
+      "label": "Conflictos de merge",
+      "status": "pass",
+      "summary": "sin marcadores"
+    },
+    {
+      "id": "env",
+      "label": "Variables de entorno",
+      "status": "pass",
+      "summary": "14 esperadas en .env.example"
+    },
+    {
+      "id": "docs",
+      "label": "Referencias en documentación",
+      "status": "pass",
+      "summary": "todas las rutas citadas existen"
+    },
+    {
+      "id": "git",
+      "label": "Git",
+      "status": "pass",
+      "command": "git status --porcelain",
+      "summary": "56 archivos con cambios sin commit"
+    }
+  ],
+  "testStats": null,
+  "findings": [
+    {
+      "check": "syntax",
+      "severity": "error",
+      "file": "lib/ai/claude.js",
+      "line": 2,
+      "key": "syntax|lib/ai/claude.js",
+      "message": "Error de sintaxis: Identifier 'require' has already been declared",
+      "evidence": "vm.Script (compilación sin ejecutar)"
+    }
+  ],
+  "counts": {
+    "error": 1,
+    "warning": 0
+  },
+  "notRun": [
+    "typecheck",
+    "tests",
+    "build"
+  ]
+}

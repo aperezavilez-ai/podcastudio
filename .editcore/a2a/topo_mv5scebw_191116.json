@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv5scebw_191116",
+  "task": "corrije inmediato las que se requieren inmediatas",
+  "createdAt": 1791841801100,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-12T21:50:01.100Z",
+  "meta": {}
+}

@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv30eqba_b3c430",
+  "task": "esto no deberia estar , # GafCore API Proxy (pool-cheap: Groq -> Cerebras -> GPTPRO4ALL)\nGAFCORE_PROXY_PROJECT_KEY=be3ad88c-a90d-4583-8de1-5870a2b2c96d\ny tampoco stripe debe ser mercado pago el metodo de pago, y la api de meai ya esta corresponde al modelo claude-sonnet-4.6",
+  "createdAt": 1791673948342,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-10T23:12:28.342Z",
+  "meta": {}
+}

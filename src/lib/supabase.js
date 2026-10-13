@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { safeStorage } from './safeStorage.js'
+import { ADMIN_EMAIL, normalizeLoginEmail } from './adminEmail.js'
 
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -51,11 +52,13 @@ export async function getAccessToken() {
 export function mapSupabaseUser(user) {
   if (!user) return null
   const role = user.app_metadata?.role || user.user_metadata?.role || 'user'
+  const email = user.email || ''
+  const isAdmin = role === 'admin' || normalizeLoginEmail(email) === ADMIN_EMAIL
   return {
     id: user.id,
-    email: user.email,
-    name: user.user_metadata?.name || user.email?.split('@')[0] || 'Usuario',
-    role,
-    isAdmin: role === 'admin',
+    email,
+    name: user.user_metadata?.name || email.split('@')[0] || 'Usuario',
+    role: isAdmin ? 'admin' : role,
+    isAdmin,
   }
 }

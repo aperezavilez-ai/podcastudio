@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "threadId": "thread_1791818336076_t7s393",
+  "updatedAt": "2026-10-12T15:19:15.665Z",
+  "turns": [
+    {
+      "role": "user",
+      "content": "hola",
+      "at": 1791818336232
+    },
+    {
+      "role": "user",
+      "content": "hola",
+      "at": 1791818355665
+    },
+    {
+      "role": "assistant",
+      "content": "Hola.\n\nEstoy aquí, atento al proyecto **Podcastudio**.\n\nVeo que tienes 18 cambios pendientes de revisión — entre ellos archivos de API de Mux, scripts de testeo y ajustes de facturación con Mercado Pago.\n\n¿Por dónde querés arrancar?",
+      "at": 1791818355665
+    }
+  ],
+  "workingOn": "hola"
+}

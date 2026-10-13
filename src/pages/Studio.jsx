@@ -682,7 +682,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
             </ul>
             {!aiConfigured && (
               <p className={styles.aiInfoSetup}>
-                Para activarla: añade <code>GAFCORE_PROXY_PROJECT_KEY</code> en Vercel → Settings → Environment Variables y redeploy.
+                Para activarla: añade <code>MEAI_API_KEY</code> en Vercel → Settings → Environment Variables y redeploy.
               </p>
             )}
             <button type="button" className={styles.aiInfoClose} onClick={() => setShowAiInfo(false)}>

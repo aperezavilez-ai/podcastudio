@@ -1,6 +1,6 @@
 # PodcastStudio
 
-Estudio profesional de grabación multicámara para podcasters — React 19, Vite 8, Supabase, Stripe, Claude API. Producción: [podcastudio.mx](https://www.podcastudio.mx).
+Estudio profesional de grabación multicámara para podcasters — React 19, Vite 8, Supabase, Mercado Pago, Claude API. Producción: [podcastudio.mx](https://www.podcastudio.mx).
 
 ## Stack
 
@@ -8,7 +8,7 @@ Estudio profesional de grabación multicámara para podcasters — React 19, Vit
 |------|------------|
 | Frontend | React 19, Vite 8, PWA |
 | Auth / DB | Supabase (`projects`, `subscriptions`, `recordings`) |
-| Pagos | Stripe Checkout + webhooks |
+| Pagos | Mercado Pago Checkout + webhooks |
 | IA | Claude API (`/api/ai`) — cintillos, guiones, posts |
 | Email | Resend (`/api/email/send`) |
 | Cloud (opcional) | Mux upload, YouTube OAuth publish |
@@ -30,7 +30,7 @@ Copia `.env.example` → `.env.local` (local) y configura las mismas en Vercel (
 
 **Cliente (VITE_*):** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SITE_URL`
 
-**Servidor:** `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `STRIPE_*`, `RESEND_*`, `SITE_URL`
+**Servidor:** `SUPABASE_SERVICE_ROLE_KEY`, `MEAI_API_KEY`, `MERCADO_PAGO_*`, `RESEND_*`, `SITE_URL`
 
 **Opcional:** `MUX_*`, `GOOGLE_*` (YouTube), `RESTREAM_*`, `LIVEPEER_*`
 
@@ -43,7 +43,7 @@ Para cuenta **admin** (acceso al estudio sin suscripción): Dashboard → Authen
 ## Flujo de usuario
 
 1. Registro / login (`/auth`) — Supabase Auth
-2. Tour (primera visita) → Planes (`/plans`) — Stripe
+2. Tour (primera visita) → Planes (`/plans`) — Mercado Pago
 3. Setup (`/setup`) — wizard del episodio
 4. Studio (`/studio`) — grabación multicámara
 

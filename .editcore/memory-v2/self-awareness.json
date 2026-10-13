@@ -1,0 +1,53 @@
+{
+  "builtAt": 1791578543234,
+  "root": "D:\\PROGRAMAS IA\\PODCASTUDIO",
+  "structure": {
+    "package.json": {
+      "type": "file",
+      "size": 699
+    },
+    "AGENTS.md": {
+      "type": "file",
+      "size": 2832
+    }
+  },
+  "keyModules": [],
+  "capabilities": [
+    "lectura/escritura atómica de archivos",
+    "checkpoints de corridas de agente",
+    "memoria persistente multicapa (v2)",
+    "token harness + prompt caching",
+    "bus inter-agentes",
+    "análisis estático / AST",
+    "skills modulares (brain-seed)",
+    "deploy Vercel / git / Supabase (según vault)"
+  ],
+  "limitations": [
+    "no inventar APIs inexistentes",
+    "no dejar código truncado ni TODOs pendientes de implementación",
+    "respetar permission-mode y backups antes de mutaciones",
+    "evitar bucles de reexploración (usar ROADMAP / memoria)"
+  ],
+  "agentTopology": [
+    {
+      "role": "Supervisor/Router",
+      "module": "editcore-chat-kernel/classify.js + runtime/intent-orchestrator"
+    },
+    {
+      "role": "Lector/Analista",
+      "module": "runtime/codebase-indexer + project-analysis"
+    },
+    {
+      "role": "Programador/Escritor",
+      "module": "runtime/agent-tools-suite + patch-engine"
+    },
+    {
+      "role": "Revisor/QA",
+      "module": "runtime/anti-hallucination-policy + tests"
+    },
+    {
+      "role": "Gestor de Memoria",
+      "module": "runtime/persistent-memory-v2"
+    }
+  ]
+}

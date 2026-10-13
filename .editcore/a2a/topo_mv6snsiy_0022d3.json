@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv6snsiy_0022d3",
+  "task": "SOLICITUD ORIGINAL:\ncorrijelos\n\nPLAN AUTORIZADO:\n## 🧪 Chequeos reales ejecutados\n\n| Chequeo | Resultado | Detalle |\n|---|---|---|\n| Sintaxis JS/JSON | ✅ pasa | 117 archivos compilados |\n| Imports / require | ❌ falla | 151 archivos de código revisados |\n| Conflictos de merge | ✅ pasa | sin marcadores |\n| Variables de entorno | ✅ pasa | 14 esperadas en .env.example |\n| Referencias en documentación | ✅ pasa | todas las rutas citadas existen |\n| Git | ✅ pasa | 53 archivos con cambios sin commit (`git status --porcelain`) |\n| Typecheck | ⏭️ no aplica | sin TypeScript ni script typecheck |\n| Tests | ⏭️ no aplica | el proyecto no tiene script `test` |\n\n## ❌ Errores verificados (2)\n- `api/ai/status.js:1` — Importa \"../lib/ai/config.js\" y ese archivo no existe en la ruta resuelta (`api/lib/ai/config.js`). Existe un módulo con nombre similar en: `lib/ai/config.js`. Corrige la ruta relativa (cuenta bien los ../).\n- `api/mercadopago/webhook.js:2` — Importa el paquete \"raw-body\", que no está declarado ni instalado.\n\n## ⚠️ Advertencias verificadas (0)\n- Ninguna.\n\n_No ejecutado en esta corrida: build._\n\n---\n\n# Análisis completo del proyecto PodcastStudio\n\n## 📊 Resumen ejecutivo\n\n- **Tipo de proyecto:** SPA React + API serverless (Vite + API routes en `api/`) para grabación multicámara de podcasts con pagos, suscripciones y funcionalidades de IA.\n\n- **Stack principal:** React 19 + Vite 8, Supabase (Auth/DB), Mercado Pago (pagos + webhooks), IA vía `MEAI_API_KEY`/endpoint, PWA con vite-plugin-pwa.\n\n- **Estado de código:** Base funcional pero presenta **2 errores verificados** que afectan al contrato de imports/ESM/CommonJS y a una dependencia faltante para el webhook de Mercado Pago.\n\n- **Configuración:** `.env.example` documenta variables (cliente VITE_* + servidor). No hay script `test` ni `typecheck` en `package.json`.\n\n- **Integración GAFCORE:** `AGENTS.md` y `CLAUDE.md` establecen el ecosistema GAFCORE Self-Hosted (Supabase `supabase.gafcore.com` + schema por proyecto) — esto",
+  "createdAt": 1791902798890,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-13T14:46:38.890Z",
+  "meta": {}
+}

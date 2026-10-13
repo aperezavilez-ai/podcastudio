@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv2vj4vx_ab7583",
+  "task": "Crea el archivo docs/editcore-smoke.txt con el texto OK-EDITCORE y no me pidas permisos.",
+  "createdAt": 1791665755773,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-10T20:55:55.773Z",
+  "meta": {}
+}

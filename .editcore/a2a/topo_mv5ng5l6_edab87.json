@@ -1,0 +1,41 @@
+{
+  "id": "topo_mv5ng5l6_edab87",
+  "task": "listame los 18 cambios pendientes",
+  "createdAt": 1791833578315,
+  "status": "completed",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [
+    {
+      "at": 1791833578485,
+      "event": "session_start",
+      "id": "topo_mv5ng5l6_edab87",
+      "task": "listame los 18 cambios pendientes"
+    },
+    {
+      "at": 1791833579901,
+      "event": "session_complete",
+      "id": "topo_mv5ng5l6_edab87"
+    }
+  ],
+  "startedAt": "2026-10-12T19:32:58.315Z",
+  "meta": {},
+  "completedAt": "2026-10-12T19:32:59.895Z",
+  "closeSummary": "turno con error"
+}

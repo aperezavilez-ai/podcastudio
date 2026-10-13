@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv2w1kq8_2c84d7",
+  "task": "¿Qué falta para conectar y publicar este proyecto? Llama check_connections y muestra checklist.",
+  "createdAt": 1791666616112,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-10T21:10:16.112Z",
+  "meta": {}
+}

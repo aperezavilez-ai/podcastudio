@@ -1,0 +1,471 @@
+{
+  "version": 2,
+  "conversations": [
+    {
+      "id": "conv_mv1gfm0m_f3aeb5ef",
+      "type": "conversation",
+      "summary": "A2A topo_mv1g3t65_8198a0: vamos a eliminar stripe como metodo de pago y agregaremos mercado pago que tenemos la cuenta lista para agregarla → turno pausado por límite de pasos",
+      "timestamp": 1791579930934,
+      "tokensUsed": 0,
+      "stepsExecuted": 0,
+      "completed": true,
+      "tags": [
+        "a2a",
+        "completed"
+      ]
+    },
+    {
+      "id": "conv_mv1gqsgy_03eb0433",
+      "type": "conversation",
+      "summary": "A2A topo_mv1gfw94_335ec2: AUTORIZACION DE EJECUCION (PROCEDE): las reglas de DIAGNOSTICO / NO MODIFICAR del analisis previo quedan ANULADAS para esta corrida.\n\nPuedes usar write_file y replace_in_file sobre codigo real del pro → turno pausado por límite de pasos",
+      "timestamp": 1791580452514,
+      "tokensUsed": 0,
+      "stepsExecuted": 0,
+      "completed": true,
+      "tags": [
+        "a2a",
+        "completed"
+      ]
+    },
+    {
+      "id": "conv_mv2u8kbd_a5aceb35",
+      "type": "conversation",
+      "summary": "A2A topo_mv2tu2ux_b1b8eb: hay que correjir el inicio de sesion → turno pausado por límite de pasos",
+      "timestamp": 1791663582937,
+      "tokensUsed": 0,
+      "stepsExecuted": 0,
+      "completed": true,
+      "tags": [
+        "a2a",
+        "completed"
+      ]
+    },
+    {
+      "id": "conv_mv5eew3d_55e51bb2",
+      "type": "conversation",
+      "summary": "A2A topo_mv5eevz1_0211de: que propones? → turno con error",
+      "timestamp": 1791818402809,
+      "tokensUsed": 0,
+      "stepsExecuted": 0,
+      "completed": true,
+      "tags": [
+        "a2a",
+        "completed"
+      ]
+    },
+    {
+      "id": "conv_mv5eftb6_fe1bd1eb",
+      "type": "conversation",
+      "summary": "A2A topo_mv5efsy8_60704a: hola → turno con error",
+      "timestamp": 1791818445858,
+      "tokensUsed": 0,
+      "stepsExecuted": 0,
+      "completed": true,
+      "tags": [
+        "a2a",
+        "completed"
+      ]
+    },
+    {
+      "id": "conv_mv5eh0ea_d2d8e91f",
+      "type": "conversation",
+      "summary": "A2A topo_mv5eh062_99893f: hola → turno con error",
+      "timestamp": 1791818501698,
+      "tokensUsed": 0,
+      "stepsExecuted": 0,
+      "completed": true,
+      "tags": [
+        "a2a",
+        "completed"
+      ]
+    },
+    {
+      "id": "conv_mv5ng6t4_6d7b1a0e",
+      "type": "conversation",
+      "summary": "A2A topo_mv5ng5l6_edab87: listame los 18 cambios pendientes → turno con error",
+      "timestamp": 1791833579896,
+      "tokensUsed": 0,
+      "stepsExecuted": 0,
+      "completed": true,
+      "tags": [
+        "a2a",
+        "completed"
+      ]
+    },
+    {
+      "id": "conv_mv5ssdd1_09f60caf",
+      "type": "conversation",
+      "summary": "A2A topo_mv5sqqwj_820bdc: analiza el proyecto y revisa quirurjicamente la parte de la ia verfica sus funciones y corrije y añade mejoras dame tu propuesta → turno pausado por límite de pasos",
+      "timestamp": 1791842546341,
+      "tokensUsed": 0,
+      "stepsExecuted": 0,
+      "completed": true,
+      "tags": [
+        "a2a",
+        "completed"
+      ]
+    }
+  ],
+  "files": [],
+  "decisions": [],
+  "patterns": [],
+  "knowledge": [],
+  "selfAwareness": {
+    "builtAt": 1791578543234,
+    "root": "D:\\PROGRAMAS IA\\PODCASTUDIO",
+    "structure": {
+      "package.json": {
+        "type": "file",
+        "size": 699
+      },
+      "AGENTS.md": {
+        "type": "file",
+        "size": 2832
+      }
+    },
+    "keyModules": [],
+    "capabilities": [
+      "lectura/escritura atómica de archivos",
+      "checkpoints de corridas de agente",
+      "memoria persistente multicapa (v2)",
+      "token harness + prompt caching",
+      "bus inter-agentes",
+      "análisis estático / AST",
+      "skills modulares (brain-seed)",
+      "deploy Vercel / git / Supabase (según vault)"
+    ],
+    "limitations": [
+      "no inventar APIs inexistentes",
+      "no dejar código truncado ni TODOs pendientes de implementación",
+      "respetar permission-mode y backups antes de mutaciones",
+      "evitar bucles de reexploración (usar ROADMAP / memoria)"
+    ],
+    "agentTopology": [
+      {
+        "role": "Supervisor/Router",
+        "module": "editcore-chat-kernel/classify.js + runtime/intent-orchestrator"
+      },
+      {
+        "role": "Lector/Analista",
+        "module": "runtime/codebase-indexer + project-analysis"
+      },
+      {
+        "role": "Programador/Escritor",
+        "module": "runtime/agent-tools-suite + patch-engine"
+      },
+      {
+        "role": "Revisor/QA",
+        "module": "runtime/anti-hallucination-policy + tests"
+      },
+      {
+        "role": "Gestor de Memoria",
+        "module": "runtime/persistent-memory-v2"
+      }
+    ]
+  },
+  "invertedIndex": {
+    "18": [
+      "conv_mv5ng6t4_6d7b1a0e"
+    ],
+    "a2a": [
+      "conv_mv1gfm0m_f3aeb5ef",
+      "conv_mv1gqsgy_03eb0433",
+      "conv_mv2u8kbd_a5aceb35",
+      "conv_mv5eew3d_55e51bb2",
+      "conv_mv5eftb6_fe1bd1eb",
+      "conv_mv5eh0ea_d2d8e91f",
+      "conv_mv5ng6t4_6d7b1a0e",
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "topo_mv1g3t65_8198a0": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "vamos": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "eliminar": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "stripe": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "como": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "metodo": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "de": [
+      "conv_mv1gfm0m_f3aeb5ef",
+      "conv_mv1gqsgy_03eb0433",
+      "conv_mv2u8kbd_a5aceb35",
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "pago": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "agregaremos": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "mercado": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "que": [
+      "conv_mv1gfm0m_f3aeb5ef",
+      "conv_mv2u8kbd_a5aceb35",
+      "conv_mv5eew3d_55e51bb2"
+    ],
+    "tenemos": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "la": [
+      "conv_mv1gfm0m_f3aeb5ef",
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "cuenta": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "lista": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "para": [
+      "conv_mv1gfm0m_f3aeb5ef",
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "agregarla": [
+      "conv_mv1gfm0m_f3aeb5ef"
+    ],
+    "turno": [
+      "conv_mv1gfm0m_f3aeb5ef",
+      "conv_mv1gqsgy_03eb0433",
+      "conv_mv2u8kbd_a5aceb35",
+      "conv_mv5eew3d_55e51bb2",
+      "conv_mv5eftb6_fe1bd1eb",
+      "conv_mv5eh0ea_d2d8e91f",
+      "conv_mv5ng6t4_6d7b1a0e",
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "pausado": [
+      "conv_mv1gfm0m_f3aeb5ef",
+      "conv_mv1gqsgy_03eb0433",
+      "conv_mv2u8kbd_a5aceb35",
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "por": [
+      "conv_mv1gfm0m_f3aeb5ef",
+      "conv_mv1gqsgy_03eb0433",
+      "conv_mv2u8kbd_a5aceb35",
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "límite": [
+      "conv_mv1gfm0m_f3aeb5ef",
+      "conv_mv1gqsgy_03eb0433",
+      "conv_mv2u8kbd_a5aceb35",
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "pasos": [
+      "conv_mv1gfm0m_f3aeb5ef",
+      "conv_mv1gqsgy_03eb0433",
+      "conv_mv2u8kbd_a5aceb35",
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "completed": [
+      "conv_mv1gfm0m_f3aeb5ef",
+      "conv_mv1gqsgy_03eb0433",
+      "conv_mv2u8kbd_a5aceb35",
+      "conv_mv5eew3d_55e51bb2",
+      "conv_mv5eftb6_fe1bd1eb",
+      "conv_mv5eh0ea_d2d8e91f",
+      "conv_mv5ng6t4_6d7b1a0e",
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "topo_mv1gfw94_335ec2": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "autorizacion": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "ejecucion": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "procede": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "las": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "reglas": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "diagnostico": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "no": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "modificar": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "del": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "analisis": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "previo": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "quedan": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "anuladas": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "esta": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "corrida.": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "puedes": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "usar": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "write_file": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "replace_in_file": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "sobre": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "codigo": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "real": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "pro": [
+      "conv_mv1gqsgy_03eb0433"
+    ],
+    "topo_mv2tu2ux_b1b8eb": [
+      "conv_mv2u8kbd_a5aceb35"
+    ],
+    "hay": [
+      "conv_mv2u8kbd_a5aceb35"
+    ],
+    "correjir": [
+      "conv_mv2u8kbd_a5aceb35"
+    ],
+    "el": [
+      "conv_mv2u8kbd_a5aceb35",
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "inicio": [
+      "conv_mv2u8kbd_a5aceb35"
+    ],
+    "sesion": [
+      "conv_mv2u8kbd_a5aceb35"
+    ],
+    "topo_mv5eevz1_0211de": [
+      "conv_mv5eew3d_55e51bb2"
+    ],
+    "propones": [
+      "conv_mv5eew3d_55e51bb2"
+    ],
+    "con": [
+      "conv_mv5eew3d_55e51bb2",
+      "conv_mv5eftb6_fe1bd1eb",
+      "conv_mv5eh0ea_d2d8e91f",
+      "conv_mv5ng6t4_6d7b1a0e"
+    ],
+    "error": [
+      "conv_mv5eew3d_55e51bb2",
+      "conv_mv5eftb6_fe1bd1eb",
+      "conv_mv5eh0ea_d2d8e91f",
+      "conv_mv5ng6t4_6d7b1a0e"
+    ],
+    "topo_mv5efsy8_60704a": [
+      "conv_mv5eftb6_fe1bd1eb"
+    ],
+    "hola": [
+      "conv_mv5eftb6_fe1bd1eb",
+      "conv_mv5eh0ea_d2d8e91f"
+    ],
+    "topo_mv5eh062_99893f": [
+      "conv_mv5eh0ea_d2d8e91f"
+    ],
+    "topo_mv5ng5l6_edab87": [
+      "conv_mv5ng6t4_6d7b1a0e"
+    ],
+    "listame": [
+      "conv_mv5ng6t4_6d7b1a0e"
+    ],
+    "los": [
+      "conv_mv5ng6t4_6d7b1a0e"
+    ],
+    "cambios": [
+      "conv_mv5ng6t4_6d7b1a0e"
+    ],
+    "pendientes": [
+      "conv_mv5ng6t4_6d7b1a0e"
+    ],
+    "topo_mv5sqqwj_820bdc": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "analiza": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "proyecto": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "revisa": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "quirurjicamente": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "parte": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "ia": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "verfica": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "sus": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "funciones": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "corrije": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "añade": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "mejoras": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "dame": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "tu": [
+      "conv_mv5ssdd1_09f60caf"
+    ],
+    "propuesta": [
+      "conv_mv5ssdd1_09f60caf"
+    ]
+  },
+  "lastAccess": 1791852694234,
+  "stats": {
+    "loads": 6,
+    "saves": 11,
+    "searches": 0
+  }
+}

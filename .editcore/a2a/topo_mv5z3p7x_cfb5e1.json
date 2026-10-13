@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv5z3p7x_cfb5e1",
+  "task": "otra vez vas a leer todo y decirme lo mismo otra vez me tiene harto hassta la madre con tus fallas",
+  "createdAt": 1791853152621,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-13T00:59:12.621Z",
+  "meta": {}
+}

@@ -152,7 +152,7 @@ export const MANUAL_SECTIONS = [
       { action: 'Dominio no carga', detail: 'ERR_NAME_NOT_RESOLVED = URL incorrecta. Debe ser podcastudio.mx, no podcaststudio.mx.' },
       { action: 'Sin cámara / sin señal', detail: 'Revisa permisos del navegador (cámara/mic). En Chrome: candado junto a la URL → Permisos.' },
       { action: 'No puedo entrar al estudio', detail: 'Necesitas un plan activo (pago con Stripe) o cuenta de administrador. Ve a /plans para contratar.' },
-      { action: 'IA no responde', detail: 'Funciones IA requieren GAFCORE_PROXY_PROJECT_KEY en el servidor. Sin ella, cintillos y posts manuales siguen funcionando.' },
+      { action: 'IA no responde', detail: 'Funciones IA requieren MEAI_API_KEY en el servidor. Sin ella, cintillos y posts manuales siguen funcionando.' },
       { action: 'Login falla', detail: 'Verifica que el correo esté bien escrito. Escribe la contraseña a mano sin autocompletar del navegador.' },
     ],
   },

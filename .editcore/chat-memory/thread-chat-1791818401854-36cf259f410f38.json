@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "threadId": "chat-1791818401854-36cf259f410f38",
+  "updatedAt": "2026-10-12T15:20:02.805Z",
+  "turns": [
+    {
+      "role": "user",
+      "content": "hola",
+      "at": 1791818402568
+    },
+    {
+      "role": "assistant",
+      "content": "Hola.\n\nEstoy aquí, atento al proyecto **Podcastudio**.\n\nVeo que tienes 18 cambios pendientes de revisión — entre ellos archivos de API de Mux, scripts de testeo y ajustes de facturación con Mercado Pago.\n\n¿Por dónde querés arrancar?",
+      "at": 1791818402568
+    },
+    {
+      "role": "user",
+      "content": "que propones?",
+      "at": 1791818402568
+    },
+    {
+      "role": "user",
+      "content": "que propones?",
+      "at": 1791818402805
+    },
+    {
+      "role": "assistant",
+      "content": "## ❌ Error\n\nAlgo falló durante la ejecución: Requested function was not found",
+      "at": 1791818402805
+    }
+  ],
+  "workingOn": "que propones?"
+}

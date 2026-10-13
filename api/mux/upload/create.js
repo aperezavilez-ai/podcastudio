@@ -1,7 +1,7 @@
-import { getUserFromAuthHeader } from '../../lib/supabase/auth.js'
-import { createDirectUpload, isMuxConfigured } from '../../lib/mux/client.js'
-import { getSiteUrl } from '../../lib/integrations/site.js'
-import { createRecordingRow } from '../../lib/integrations/recordings.js'
+import { getUserFromAuthHeader } from '../../../lib/supabase/auth.js'
+import { createDirectUpload, isMuxConfigured } from '../../../lib/mux/client.js'
+import { getSiteUrl } from '../../../lib/integrations/site.js'
+import { createRecordingRow } from '../../../lib/integrations/recordings.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

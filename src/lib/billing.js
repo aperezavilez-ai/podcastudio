@@ -8,7 +8,7 @@ async function authHeaders() {
 }
 
 export async function startCheckout(planId, email, userId) {
-  const res = await fetch('/api/stripe/checkout', {
+  const res = await fetch('/api/mercadopago/checkout', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ planId, email, userId }),
@@ -19,21 +19,21 @@ export async function startCheckout(planId, email, userId) {
   return data
 }
 
-export async function verifyCheckoutSession(sessionId) {
-  const res = await fetch(`/api/stripe/session?session_id=${encodeURIComponent(sessionId)}`)
+export async function verifyCheckoutSession(paymentId) {
+  const res = await fetch(`/api/mercadopago/session?payment_id=${encodeURIComponent(paymentId)}`)
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'No se pudo verificar el pago')
   return data
 }
 
-export async function syncCheckoutSession(sessionId) {
-  const res = await fetch('/api/stripe/sync', {
+export async function syncCheckoutSession(paymentId) {
+  const res = await fetch('/api/mercadopago/sync', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(await authHeaders()),
     },
-    body: JSON.stringify({ sessionId }),
+    body: JSON.stringify({ paymentId }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error || 'No se pudo activar el plan')
@@ -45,7 +45,7 @@ export async function fetchSubscription() {
   if (!headers.Authorization) return null
   try {
     const res = await withTimeout(
-      fetch('/api/stripe/subscription', { headers }),
+      fetch('/api/mercadopago/subscription', { headers }),
       8000,
       null,
     )
@@ -58,20 +58,6 @@ export async function fetchSubscription() {
   }
 }
 
-export async function openBillingPortal() {
-  const res = await fetch('/api/stripe/portal', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(await authHeaders()),
-    },
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || 'No se pudo abrir el portal')
-  if (data.url) window.location.href = data.url
-  return data
-}
-
 export function saveLocalPlan(planId) {
   if (!planId) return
   localStorage.setItem('podcastudio_plan', planId)
@@ -82,9 +68,9 @@ export function getLocalPlan() {
   return localStorage.getItem('podcastudio_plan')
 }
 
-export async function checkStripeStatus() {
+export async function checkMPStatus() {
   try {
-    const res = await fetch('/api/stripe/status')
+    const res = await fetch('/api/mercadopago/status')
     return await res.json()
   } catch {
     return { configured: false }

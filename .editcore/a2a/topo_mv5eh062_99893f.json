@@ -1,0 +1,41 @@
+{
+  "id": "topo_mv5eh062_99893f",
+  "task": "hola",
+  "createdAt": 1791818501402,
+  "status": "completed",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [
+    {
+      "at": 1791818501406,
+      "event": "session_start",
+      "id": "topo_mv5eh062_99893f",
+      "task": "hola"
+    },
+    {
+      "at": 1791818501698,
+      "event": "session_complete",
+      "id": "topo_mv5eh062_99893f"
+    }
+  ],
+  "startedAt": "2026-10-12T15:21:41.402Z",
+  "meta": {},
+  "completedAt": "2026-10-12T15:21:41.698Z",
+  "closeSummary": "turno con error"
+}

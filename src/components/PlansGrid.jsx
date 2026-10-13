@@ -19,7 +19,7 @@ export default function PlansGrid({ user, activePlanId, canEnterStudio, onEnterS
     try {
       await startCheckout(planId, user.email, user.id)
     } catch (e) {
-      setError(e.message || 'Error al conectar con Stripe')
+      setError(e.message || 'Error al conectar con Mercado Pago')
       setLoading(null)
     }
   }

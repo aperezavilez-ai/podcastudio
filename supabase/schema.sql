@@ -17,19 +17,20 @@ create policy "Users manage own projects"
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
--- Suscripciones Stripe (webhook escribe con service role)
+-- Suscripciones Mercado Pago (webhook escribe con service role)
 create table if not exists public.subscriptions (
   user_id uuid primary key references auth.users(id) on delete cascade,
   plan_id text not null,
   status text not null default 'active',
-  stripe_customer_id text,
-  stripe_subscription_id text unique,
+  mp_preference_id text,
+  mp_payment_id text unique,
+  mp_payer_id text,
   current_period_end timestamptz,
   updated_at timestamptz default now()
 );
 
-create index if not exists subscriptions_stripe_customer_idx
-  on public.subscriptions (stripe_customer_id);
+create index if not exists subscriptions_mp_preference_idx
+  on public.subscriptions (mp_preference_id);
 
 alter table public.subscriptions enable row level security;
 

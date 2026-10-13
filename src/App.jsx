@@ -84,9 +84,13 @@ export default function App() {
           { data: { session: null } },
         )
         if (!cancelled) await hydrateUser(session?.user)
-      } catch {
+      } catch (error) {
+        console.error('[Auth] Error hydrating user:', error)
         if (!cancelled) {
-          setBootError('No se pudo conectar con el servidor. Revisa tu conexión.')
+          const message = error?.message?.includes('timeout')
+            ? 'El servidor tardó demasiado en responder. Revisa tu conexión.'
+            : error?.message || 'No se pudo conectar con el servidor. Revisa tu conexión.'
+          setBootError(message)
         }
       } finally {
         if (!cancelled) setAuthReady(true)

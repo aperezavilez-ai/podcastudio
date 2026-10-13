@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv2wj6q1_129090",
+  "task": "Verifica solo los imports de api/mux/ con hechos.",
+  "createdAt": 1791667437769,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-10T21:23:57.769Z",
+  "meta": {}
+}

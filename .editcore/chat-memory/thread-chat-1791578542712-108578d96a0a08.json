@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "threadId": "chat-1791578542712-108578d96a0a08",
+  "updatedAt": "2026-10-09T20:45:59.088Z",
+  "turns": [
+    {
+      "role": "user",
+      "content": "ANALIZA EL PROYECTO Y GUARDALO EN TU MEMORIA PARA QUE NO RELEAS Y ME AYUDES A BAJAR EL CONSUMO DE TOKES AL FINAL DAME REPORTE QUE PODAMOS MEJORA Y CORREGIR",
+      "at": 1791578543215
+    },
+    {
+      "role": "user",
+      "content": "ANALIZA EL PROYECTO Y GUARDALO EN TU MEMORIA PARA QUE NO RELEAS Y ME AYUDES A BAJAR EL CONSUMO DE TOKES AL FINAL DAME REPORTE QUE PODAMOS MEJORA Y CORREGIR",
+      "at": 1791578759088
+    },
+    {
+      "role": "assistant",
+      "content": "## ✅ Hecho: análisis completo + memoria guardada\n\nCreé `.editcore/project-summary.md` con todo el contexto del proyecto (stack, rutas, APIs, env, estructura, flujo de usuario). A partir de ahora el agente lo inyecta automáticamente sin releer `package.json`, `vite.config.js`, `README.md` ni `App.jsx`.\n\n---\n\n## 📊 REPORTE: qué se puede mejorar y corregir en Podcastudio\n\n### 🟢 Lo que está bien\n\n- **Stack moderno y coherente**: React 19 + Vite 8 + Supabase + Stripe + PWA\n\n- **Separación de concernes en `lib/`**: cada integración en su carpeta (`stripe/`, `supabase/`, `mux/`, etc.)\n\n- **Lazy loading de rutas** en `App.jsx` (Plans, Tour, Manual, ProjectSetup, Studio)\n\n- **PWA bien configurada**: autoUpdate, workbox con denylist de `/api/`, icons maskable\n\n- **Auth robusta**: fallback a localStorage, timeout de 4s, `onAuthStateChange`\n\n### 🟡 Mejoras de consumo de tokens (las 5 que más impactan)\n\n| # | Mejora | Por qué ahorra | Archivo(s) | Esfuerzo |\n|---|--------|----------------|------------|----------|\n| **1** | **Mover APIs dev de `vite.config.js` a `api/`** | `vite.config.js` tiene 355 líneas con handlers inline de Stripe, email, IA y auth. Cada vez que se leen, se consumen ~3K tokens. Separar en `api/stripe.js`, `api/ai.js`, etc. reduce el config a ~30 líneas. | `vite.config.js` → `api/*.js` | Medio |\n| **2** | **Dividir `vite.config.js` en plugins separados** | Igual que arriba pero por plugins: `aiApiDev`, `stripeDevHandlers`, PWA. Lees solo lo que toques. | `vite.config.js` → `vite/plugins/*.js` | Bajo |\n| **3** | **`sideEffects: false` en `package.json` + tree-shaking** | `@ffmpeg/ffmpeg`, `@mediapipe/tasks-vision`, `livepeer`, `mammoth` son pesados. Si no se usan en todas las rutas, `lazy()` + dynamic import evita incluirlos en el bundle principal → menos código que analizar. | `package.json` + imports | Medio |\n| **4** | **Documentar decisiones en `ROADMAP/DECISIONS.md`** | Cada vez que cambies auth, billing o IA, anota 3 líneas: qué, por qué, archivo. Evita re-leer historial git o buscar \"por qué se hizo así\". | `ROADMAP/DECISIONS.md` | Bajo |\n| **5** | **Extraer `src/lib/site.js` de `App.jsx`** | `redirectToCanonicalDomain()` está inline en `App.jsx:35`. Separarlo reduce el entry point y facilita testing. | `src/App.jsx` → `src/lib/site.js` | Bajo |\n\n### 🔴 Correcciones urgentes (si las ves en producción)\n\n| # | Problema | Archivo: línea | Riesgo |\n|---|----------|---------------|--------|\n| **1** | **`localStorage` de usuario sin cifrado** | `App.jsx:38, 68, 79` | Almacena `podcastudio_user` en texto plano. Si someone roba el localStorage, ve email, plan y metadata. Usar `sessionStorage` o eliminar el fallback. | Medio |\n| **2** | **Timeout de 4s fijo para `getSession`** | `App.jsx:52` | Si Supabase responde lento (>4s), el usuario ve \"No se pudo conectar\" aunque la DB esté viva. Aumentar a 8s o hacer retry. | Bajo |\n| **3** | **`loadProject` sin manejo de error visible** | `App.jsx:58` | `.catch(() => null)` come el error. Si falla la carga del proyecto, el usuario no sabe por qué el studio no funciona. | Bajo |\n| **4** | **`fetchSubscription` sin timeout** | `App.jsx:90` | Si la query de suscripción cuelga, el spinner de loading nunca termina. Igual timeout que `loadProject`. | Bajo |\n\n---\n\n### 🚀 Siguiente paso (si querés)\n**Arranco por la corrección #1** (seguridad del localStorage) y la #3 (error handling en `loadProject`). Son 20 líneas de cambio y cierran huecos reales.\n\n¿Lo hago?",
+      "at": 1791578759088
+    }
+  ],
+  "workingOn": "ANALIZA EL PROYECTO Y GUARDALO EN TU MEMORIA PARA QUE NO RELEAS Y ME AYUDES A BAJAR EL CONSUMO DE TOKES AL FINAL DAME REPORTE QUE PODAMOS MEJORA Y CORREGIR"
+}

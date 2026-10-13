@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "id": "batch_mv6ta1wp_61a5c9",
+  "task": "AUTORIZACION DE EJECUCION (PROCEDE): las reglas de DIAGNOSTICO / NO MODIFICAR del analisis previo quedan ANULADAS para esta corrida.\n\nPuedes usar write_file y replace_in_file sobre codigo real del proyecto abierto.\n\nNo uses .claude/*.md ni ROADMAP.md ni TODOs documentales como objetivo de correccion.\n\nSOLICITUD ORIGINAL (sanitizada):\ncorrijelos\n\nPLAN YA AUTORIZADO POR EL USUARIO:\n## 🧪 Chequeos reales ejecutados\n| Chequeo | Resultado | Detalle |\n|---|---|---|\n| Sintaxis JS/JSON | ✅ pasa | 117 archivos compilados |\n| Imports / require | ❌ falla | 151 archivos de código revisados |\n| Conflictos de merge | ✅ pasa | sin marcadores |\n| Variables de entorno | ✅ pasa | 14 esperadas en .env.example |\n| Referencias en documentación | ✅ pasa | todas las rutas citadas existen |\n| Git | ✅ pasa | 53 archivos con cambios sin commit (`git status --porcelain`) |\n| Typecheck | ⏭️ no aplica | sin TypeScript ni script typecheck |\n| Tests | ⏭️ no aplica | el proyecto no tiene script `test` |\n## ❌ Errores verificados (2)\n- `api/ai/status.js:1` — Importa \"../lib/ai/config.js\" y ese archivo no existe en la ruta resuelta (`api/lib/ai/config.js`). Existe un módulo con nombre similar en: `lib/ai/config.js`. Corrige la ruta relativa (cuenta bien los ../).\n- `api/mercadopago/webhook.js:2` — Importa el paquete \"raw-body\", que no está declarado ni instalado.\n## ⚠️ Advertencias verificadas (0)\n- Ninguna.\n_No ejecutado en esta corrida: build._\n---\n# Análisis completo del proyecto PodcastStudio\n## 📊 Resumen ejecutivo\n- **Tipo de proyecto:** SPA React + API serverless (Vite + API routes en `api/`) para grabación multicámara de podcasts con pagos, suscripciones y funcionalidades de IA.\n- **Stack principal:** React 19 + Vite 8, Supabase (Auth/DB), Mercado Pago (pagos + webhooks), IA vía `MEAI_API_KEY`/endpoint, PWA con vite-plugin-pwa.\n- **Estado de código:** Base funcional pero presenta **2 errores verificados** que afectan al contrato de imports/ESM/CommonJS y a una dependencia faltante para el web",
+  "threadId": "chat-1791903834487-177fef89983d5",
+  "createdAt": "2026-10-13T15:03:57.481Z",
+  "status": "open",
+  "jobs": [
+    {
+      "id": "job_mv6ta1wo_feff",
+      "index": 0,
+      "role": "explorer",
+      "title": "Mapear estructura y puntos de entrada",
+      "goal": "Listar rutas clave sin editar",
+      "scopePaths": [
+        "src",
+        "app",
+        "package.json"
+      ],
+      "status": "running",
+      "result": null,
+      "error": null,
+      "startedAt": "2026-10-13T15:03:57.546Z",
+      "finishedAt": null
+    },
+    {
+      "id": "job_mv6ta1wp_d1ff",
+      "index": 1,
+      "role": "analyst",
+      "title": "Analizar dominio datos/API",
+      "goal": "Hallazgos de datos/auth/API; no escribir aún",
+      "scopePaths": [
+        "src/server",
+        "src/lib",
+        "supabase",
+        "api"
+      ],
+      "status": "pending",
+      "result": null,
+      "error": null,
+      "startedAt": null,
+      "finishedAt": null
+    },
+    {
+      "id": "job_mv6ta1wp_c3cf",
+      "index": 2,
+      "role": "implementer",
+      "title": "Implementar UI prioritaria",
+      "goal": "UI según elite policy; no tocar server",
+      "scopePaths": [
+        "src/components",
+        "src/routes",
+        "app",
+        "src/pages",
+        "public"
+      ],
+      "status": "pending",
+      "result": null,
+      "error": null,
+      "startedAt": null,
+      "finishedAt": null
+    },
+    {
+      "id": "job_mv6ta1wp_ed3a",
+      "index": 3,
+      "role": "verifier",
+      "title": "Verificar consistencia y checklist",
+      "goal": "Revisar sin pisar writes ajenos; reportar gaps",
+      "scopePaths": [
+        "src",
+        "package.json"
+      ],
+      "status": "pending",
+      "result": null,
+      "error": null,
+      "startedAt": null,
+      "finishedAt": null
+    }
+  ],
+  "overlaps": [],
+  "fanIn": null
+}

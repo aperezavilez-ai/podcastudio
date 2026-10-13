@@ -1,0 +1,41 @@
+{
+  "id": "topo_mv1g3t65_8198a0",
+  "task": "vamos a eliminar stripe como metodo de pago y agregaremos mercado pago que tenemos la cuenta lista para agregarla",
+  "createdAt": 1791579380333,
+  "status": "completed",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [
+    {
+      "at": 1791579380336,
+      "event": "session_start",
+      "id": "topo_mv1g3t65_8198a0",
+      "task": "vamos a eliminar stripe como metodo de pago y agregaremos mercado pago que tenemos la cuenta lista para agregarla"
+    },
+    {
+      "at": 1791579930944,
+      "event": "session_complete",
+      "id": "topo_mv1g3t65_8198a0"
+    }
+  ],
+  "startedAt": "2026-10-09T20:56:20.333Z",
+  "meta": {},
+  "completedAt": "2026-10-09T21:05:30.933Z",
+  "closeSummary": "turno pausado por límite de pasos"
+}

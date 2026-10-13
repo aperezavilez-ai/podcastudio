@@ -1,0 +1,4821 @@
+{
+  "version": 3,
+  "builtAt": "2026-10-13T15:03:54.294Z",
+  "fileCount": 202,
+  "symbolCount": 1935,
+  "schemaCount": 2,
+  "symbols": [
+    {
+      "name": "Plans",
+      "kind": "component",
+      "line": 12,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "Tour",
+      "kind": "component",
+      "line": 13,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "Manual",
+      "kind": "component",
+      "line": 14,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "ProjectSetup",
+      "kind": "component",
+      "line": 15,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "Studio",
+      "kind": "component",
+      "line": 16,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "RouteFallback",
+      "kind": "component",
+      "line": 18,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "App",
+      "kind": "component",
+      "line": 35,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "[user, setUser]",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "[project, setProject]",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "[subscription, setSubscription]",
+      "kind": "variable",
+      "line": 38,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "[subscriptionLoading, setSubscriptionLoading]",
+      "kind": "variable",
+      "line": 39,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "[projectLoading, setProjectLoading]",
+      "kind": "variable",
+      "line": 40,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "[authReady, setAuthReady]",
+      "kind": "variable",
+      "line": 41,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "[bootError, setBootError]",
+      "kind": "variable",
+      "line": 42,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "saved",
+      "kind": "variable",
+      "line": 51,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "cancelled",
+      "kind": "variable",
+      "line": 60,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "hydrateUser",
+      "kind": "function",
+      "line": 62,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "u",
+      "kind": "variable",
+      "line": 63,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "initAuth",
+      "kind": "function",
+      "line": 79,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "{ data: { session } }",
+      "kind": "variable",
+      "line": 81,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "{ data: { subscription: authSub } }",
+      "kind": "variable",
+      "line": 98,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "cancelled",
+      "kind": "variable",
+      "line": 114,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "handleAuth",
+      "kind": "variable",
+      "line": 122,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "handleProject",
+      "kind": "variable",
+      "line": 127,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "handleSignOut",
+      "kind": "variable",
+      "line": 131,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "renderApp",
+      "kind": "function",
+      "line": 15,
+      "path": "src/main.jsx"
+    },
+    {
+      "name": "root",
+      "kind": "variable",
+      "line": 16,
+      "path": "src/main.jsx"
+    },
+    {
+      "name": "setupPwa",
+      "kind": "function",
+      "line": 29,
+      "path": "src/main.jsx"
+    },
+    {
+      "name": "updateSW",
+      "kind": "variable",
+      "line": 35,
+      "path": "src/main.jsx"
+    },
+    {
+      "name": "onNeedRefresh",
+      "kind": "method",
+      "line": 37,
+      "path": "src/main.jsx"
+    },
+    {
+      "name": "onRegisteredSW",
+      "kind": "method",
+      "line": 41,
+      "path": "src/main.jsx"
+    },
+    {
+      "name": "BackgroundPicker",
+      "kind": "component",
+      "line": 6,
+      "path": "src/components/BackgroundPicker.jsx"
+    },
+    {
+      "name": "fileRef",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/components/BackgroundPicker.jsx"
+    },
+    {
+      "name": "current",
+      "kind": "variable",
+      "line": 26,
+      "path": "src/components/BackgroundPicker.jsx"
+    },
+    {
+      "name": "METHODS",
+      "kind": "component",
+      "line": 4,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "TYPE_ICONS",
+      "kind": "component",
+      "line": 10,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "TYPE_LABELS",
+      "kind": "component",
+      "line": 11,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "CameraConnectPanel",
+      "kind": "component",
+      "line": 13,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "[method, setMethod]",
+      "kind": "variable",
+      "line": 31,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "[usbDeviceId, setUsbDeviceId]",
+      "kind": "variable",
+      "line": 32,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "[wifiUrl, setWifiUrl]",
+      "kind": "variable",
+      "line": 33,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "[btWifiUrl, setBtWifiUrl]",
+      "kind": "variable",
+      "line": 34,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "meta",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "hasStream",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "handleUsb",
+      "kind": "variable",
+      "line": 39,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "id",
+      "kind": "variable",
+      "line": 40,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "handleWifi",
+      "kind": "variable",
+      "line": 45,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "handleBluetooth",
+      "kind": "variable",
+      "line": 49,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "line": 50,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "handleBtWifi",
+      "kind": "variable",
+      "line": 54,
+      "path": "src/components/CameraConnectPanel.jsx"
+    },
+    {
+      "name": "CameraThumb",
+      "kind": "component",
+      "line": 6,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "canvasRef",
+      "kind": "variable",
+      "line": 17,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "videoRef",
+      "kind": "variable",
+      "line": 18,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "v",
+      "kind": "variable",
+      "line": 24,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "video",
+      "kind": "variable",
+      "line": 31,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "unbindKeepAlive",
+      "kind": "variable",
+      "line": 34,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "canvas",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "ctx",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "rafId",
+      "kind": "variable",
+      "line": 38,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "lastFrame",
+      "kind": "variable",
+      "line": 39,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "minFrameMs",
+      "kind": "variable",
+      "line": 40,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "draw",
+      "kind": "variable",
+      "line": 42,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "tw",
+      "kind": "variable",
+      "line": 48,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "th",
+      "kind": "variable",
+      "line": 49,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "dpr",
+      "kind": "variable",
+      "line": 50,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "pw",
+      "kind": "variable",
+      "line": 51,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "ph",
+      "kind": "variable",
+      "line": 52,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "scale",
+      "kind": "variable",
+      "line": 65,
+      "path": "src/components/CameraThumb.jsx"
+    },
+    {
+      "name": "CameraView",
+      "kind": "component",
+      "line": 4,
+      "path": "src/components/CameraView.jsx"
+    },
+    {
+      "name": "videoRef",
+      "kind": "variable",
+      "line": 5,
+      "path": "src/components/CameraView.jsx"
+    },
+    {
+      "name": "video",
+      "kind": "variable",
+      "line": 8,
+      "path": "src/components/CameraView.jsx"
+    },
+    {
+      "name": "CintilloOverlay",
+      "kind": "component",
+      "line": 5,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "styleDef",
+      "kind": "variable",
+      "line": 22,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "primary",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "secondary",
+      "kind": "variable",
+      "line": 24,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "posClass",
+      "kind": "variable",
+      "line": 26,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "wrapClass",
+      "kind": "variable",
+      "line": 38,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "extras",
+      "kind": "variable",
+      "line": 49,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "p1",
+      "kind": "variable",
+      "line": 61,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "tagCls",
+      "kind": "variable",
+      "line": 62,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "textCls",
+      "kind": "variable",
+      "line": 63,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "subCls",
+      "kind": "variable",
+      "line": 64,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "avatar",
+      "kind": "variable",
+      "line": 66,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "shell",
+      "kind": "variable",
+      "line": 74,
+      "path": "src/components/CintilloOverlay.jsx"
+    },
+    {
+      "name": "CintilloStylePicker",
+      "kind": "component",
+      "line": 6,
+      "path": "src/components/CintilloStylePicker.jsx"
+    },
+    {
+      "name": "ErrorBoundary",
+      "kind": "class",
+      "line": 5,
+      "path": "src/components/ErrorBoundary.jsx"
+    },
+    {
+      "name": "getDerivedStateFromError",
+      "kind": "method",
+      "line": 11,
+      "path": "src/components/ErrorBoundary.jsx"
+    },
+    {
+      "name": "componentDidCatch",
+      "kind": "method",
+      "line": 15,
+      "path": "src/components/ErrorBoundary.jsx"
+    },
+    {
+      "name": "render",
+      "kind": "method",
+      "line": 19,
+      "path": "src/components/ErrorBoundary.jsx"
+    },
+    {
+      "name": "wrongHost",
+      "kind": "variable",
+      "line": 21,
+      "path": "src/components/ErrorBoundary.jsx"
+    },
+    {
+      "name": "browser",
+      "kind": "variable",
+      "line": 24,
+      "path": "src/components/ErrorBoundary.jsx"
+    },
+    {
+      "name": "reloadHint",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/components/ErrorBoundary.jsx"
+    },
+    {
+      "name": "GuideModal",
+      "kind": "component",
+      "line": 5,
+      "path": "src/components/GuideModal.jsx"
+    },
+    {
+      "name": "[query, setQuery]",
+      "kind": "variable",
+      "line": 6,
+      "path": "src/components/GuideModal.jsx"
+    },
+    {
+      "name": "sections",
+      "kind": "variable",
+      "line": 7,
+      "path": "src/components/GuideModal.jsx"
+    },
+    {
+      "name": "onKey",
+      "kind": "variable",
+      "line": 11,
+      "path": "src/components/GuideModal.jsx"
+    },
+    {
+      "name": "tryLockLandscape",
+      "kind": "function",
+      "line": 5,
+      "path": "src/components/LandscapeGate.jsx"
+    },
+    {
+      "name": "LandscapeGate",
+      "kind": "component",
+      "line": 16,
+      "path": "src/components/LandscapeGate.jsx"
+    },
+    {
+      "name": "[portrait, setPortrait]",
+      "kind": "variable",
+      "line": 17,
+      "path": "src/components/LandscapeGate.jsx"
+    },
+    {
+      "name": "update",
+      "kind": "variable",
+      "line": 22,
+      "path": "src/components/LandscapeGate.jsx"
+    },
+    {
+      "name": "PLATFORMS",
+      "kind": "component",
+      "line": 10,
+      "path": "src/components/LiveStreamPanel.jsx"
+    },
+    {
+      "name": "LiveStreamPanel",
+      "kind": "component",
+      "line": 17,
+      "path": "src/components/LiveStreamPanel.jsx"
+    },
+    {
+      "name": "[integrations, setIntegrations]",
+      "kind": "variable",
+      "line": 26,
+      "path": "src/components/LiveStreamPanel.jsx"
+    },
+    {
+      "name": "[restream, setRestream]",
+      "kind": "variable",
+      "line": 27,
+      "path": "src/components/LiveStreamPanel.jsx"
+    },
+    {
+      "name": "[youtube, setYoutube]",
+      "kind": "variable",
+      "line": 28,
+      "path": "src/components/LiveStreamPanel.jsx"
+    },
+    {
+      "name": "[ytLoading, setYtLoading]",
+      "kind": "variable",
+      "line": 29,
+      "path": "src/components/LiveStreamPanel.jsx"
+    },
+    {
+      "name": "connectYouTube",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/components/LiveStreamPanel.jsx"
+    },
+    {
+      "name": "url",
+      "kind": "variable",
+      "line": 40,
+      "path": "src/components/LiveStreamPanel.jsx"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 42,
+      "path": "src/components/LiveStreamPanel.jsx"
+    },
+    {
+      "name": "canLiveWithoutObs",
+      "kind": "variable",
+      "line": 48,
+      "path": "src/components/LiveStreamPanel.jsx"
+    },
+    {
+      "name": "restreamReady",
+      "kind": "variable",
+      "line": 49,
+      "path": "src/components/LiveStreamPanel.jsx"
+    },
+    {
+      "name": "POS_CLASS",
+      "kind": "component",
+      "line": 4,
+      "path": "src/components/LogoOverlay.jsx"
+    },
+    {
+      "name": "LogoOverlay",
+      "kind": "component",
+      "line": 16,
+      "path": "src/components/LogoOverlay.jsx"
+    },
+    {
+      "name": "pos",
+      "kind": "variable",
+      "line": 19,
+      "path": "src/components/LogoOverlay.jsx"
+    },
+    {
+      "name": "Slider",
+      "kind": "component",
+      "line": 9,
+      "path": "src/components/LookPanel.jsx"
+    },
+    {
+      "name": "LookPanel",
+      "kind": "component",
+      "line": 19,
+      "path": "src/components/LookPanel.jsx"
+    },
+    {
+      "name": "presets",
+      "kind": "variable",
+      "line": 20,
+      "path": "src/components/LookPanel.jsx"
+    },
+    {
+      "name": "luts",
+      "kind": "variable",
+      "line": 24,
+      "path": "src/components/LookPanel.jsx"
+    },
+    {
+      "name": "transitions",
+      "kind": "variable",
+      "line": 28,
+      "path": "src/components/LookPanel.jsx"
+    },
+    {
+      "name": "handlePreset",
+      "kind": "variable",
+      "line": 32,
+      "path": "src/components/LookPanel.jsx"
+    },
+    {
+      "name": "preset",
+      "kind": "variable",
+      "line": 33,
+      "path": "src/components/LookPanel.jsx"
+    },
+    {
+      "name": "handleLut",
+      "kind": "variable",
+      "line": 38,
+      "path": "src/components/LookPanel.jsx"
+    },
+    {
+      "name": "handleTransition",
+      "kind": "variable",
+      "line": 43,
+      "path": "src/components/LookPanel.jsx"
+    },
+    {
+      "name": "MicMuteButton",
+      "kind": "component",
+      "line": 4,
+      "path": "src/components/MicMuteButton.jsx"
+    },
+    {
+      "name": "MicSelector",
+      "kind": "component",
+      "line": 5,
+      "path": "src/components/MicSelector.jsx"
+    },
+    {
+      "name": "active",
+      "kind": "variable",
+      "line": 13,
+      "path": "src/components/MicSelector.jsx"
+    },
+    {
+      "name": "type",
+      "kind": "variable",
+      "line": 14,
+      "path": "src/components/MicSelector.jsx"
+    },
+    {
+      "name": "t",
+      "kind": "variable",
+      "line": 35,
+      "path": "src/components/MicSelector.jsx"
+    },
+    {
+      "name": "MusicBank",
+      "kind": "component",
+      "line": 5,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "[tab, setTab]",
+      "kind": "variable",
+      "line": 21,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "[genreFilter, setGenreFilter]",
+      "kind": "variable",
+      "line": 22,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "[sfxFilter, setSfxFilter]",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "filteredTracks",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "filteredSfx",
+      "kind": "variable",
+      "line": 30,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "genreOptions",
+      "kind": "variable",
+      "line": 35,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "used",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "sfxOptions",
+      "kind": "variable",
+      "line": 40,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "used",
+      "kind": "variable",
+      "line": 41,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "active",
+      "kind": "variable",
+      "line": 94,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "playingThis",
+      "kind": "variable",
+      "line": 145,
+      "path": "src/components/MusicBank.jsx"
+    },
+    {
+      "name": "PlansGrid",
+      "kind": "component",
+      "line": 7,
+      "path": "src/components/PlansGrid.jsx"
+    },
+    {
+      "name": "navigate",
+      "kind": "variable",
+      "line": 8,
+      "path": "src/components/PlansGrid.jsx"
+    },
+    {
+      "name": "[loading, setLoading]",
+      "kind": "variable",
+      "line": 9,
+      "path": "src/components/PlansGrid.jsx"
+    },
+    {
+      "name": "[error, setError]",
+      "kind": "variable",
+      "line": 10,
+      "path": "src/components/PlansGrid.jsx"
+    },
+    {
+      "name": "handleSelect",
+      "kind": "variable",
+      "line": 12,
+      "path": "src/components/PlansGrid.jsx"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 21,
+      "path": "src/components/PlansGrid.jsx"
+    },
+    {
+      "name": "isCurrent",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/components/PlansGrid.jsx"
+    },
+    {
+      "name": "PLATFORMS",
+      "kind": "component",
+      "line": 6,
+      "path": "src/components/PostsPanel.jsx"
+    },
+    {
+      "name": "PostsPanel",
+      "kind": "component",
+      "line": 13,
+      "path": "src/components/PostsPanel.jsx"
+    },
+    {
+      "name": "{ generatePosts, loadingPosts, posts, error }",
+      "kind": "variable",
+      "line": 14,
+      "path": "src/components/PostsPanel.jsx"
+    },
+    {
+      "name": "[form, setForm]",
+      "kind": "variable",
+      "line": 15,
+      "path": "src/components/PostsPanel.jsx"
+    },
+    {
+      "name": "[copied, setCopied]",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/components/PostsPanel.jsx"
+    },
+    {
+      "name": "togglePlatform",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/components/PostsPanel.jsx"
+    },
+    {
+      "name": "handleGenerate",
+      "kind": "variable",
+      "line": 32,
+      "path": "src/components/PostsPanel.jsx"
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "line": 38,
+      "path": "src/components/PostsPanel.jsx"
+    },
+    {
+      "name": "copyPost",
+      "kind": "variable",
+      "line": 45,
+      "path": "src/components/PostsPanel.jsx"
+    },
+    {
+      "name": "p",
+      "kind": "variable",
+      "line": 46,
+      "path": "src/components/PostsPanel.jsx"
+    },
+    {
+      "name": "text",
+      "kind": "variable",
+      "line": 47,
+      "path": "src/components/PostsPanel.jsx"
+    },
+    {
+      "name": "lutClass",
+      "kind": "function",
+      "line": 7,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "vignetteStyle",
+      "kind": "function",
+      "line": 12,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "intensity",
+      "kind": "variable",
+      "line": 13,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "alpha",
+      "kind": "variable",
+      "line": 15,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "LookOverlays",
+      "kind": "component",
+      "line": 21,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "lut",
+      "kind": "variable",
+      "line": 22,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "vignette",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "ProgramPreview",
+      "kind": "component",
+      "line": 33,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "videoRef",
+      "kind": "variable",
+      "line": 40,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "hasSet",
+      "kind": "variable",
+      "line": 41,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "video",
+      "kind": "variable",
+      "line": 44,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "off",
+      "kind": "variable",
+      "line": 53,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "cssFilter",
+      "kind": "variable",
+      "line": 60,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "f",
+      "kind": "variable",
+      "line": 61,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "zoom",
+      "kind": "variable",
+      "line": 65,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "originX",
+      "kind": "variable",
+      "line": 66,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "originY",
+      "kind": "variable",
+      "line": 67,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "{ top, left, width, height }",
+      "kind": "variable",
+      "line": 79,
+      "path": "src/components/ProgramPreview.jsx"
+    },
+    {
+      "name": "RouteFallback",
+      "kind": "component",
+      "line": 5,
+      "path": "src/components/ProtectedRoute.jsx"
+    },
+    {
+      "name": "ProtectedRoute",
+      "kind": "component",
+      "line": 25,
+      "path": "src/components/ProtectedRoute.jsx"
+    },
+    {
+      "name": "location",
+      "kind": "variable",
+      "line": 35,
+      "path": "src/components/ProtectedRoute.jsx"
+    },
+    {
+      "name": "needsSubscriptionCheck",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/components/ProtectedRoute.jsx"
+    },
+    {
+      "name": "redirect",
+      "kind": "variable",
+      "line": 49,
+      "path": "src/components/ProtectedRoute.jsx"
+    },
+    {
+      "name": "NETWORKS",
+      "kind": "component",
+      "line": 5,
+      "path": "src/components/PublishPanel.jsx"
+    },
+    {
+      "name": "PublishPanel",
+      "kind": "component",
+      "line": 12,
+      "path": "src/components/PublishPanel.jsx"
+    },
+    {
+      "name": "connectYouTubeChannel",
+      "kind": "function",
+      "line": 65,
+      "path": "src/components/PublishPanel.jsx"
+    },
+    {
+      "name": "url",
+      "kind": "variable",
+      "line": 66,
+      "path": "src/components/PublishPanel.jsx"
+    },
+    {
+      "name": "PwaContext",
+      "kind": "component",
+      "line": 8,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "PwaInstallProvider",
+      "kind": "component",
+      "line": 10,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "flow",
+      "kind": "variable",
+      "line": 11,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "usePwaInstallContext",
+      "kind": "hook",
+      "line": 20,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "ctx",
+      "kind": "variable",
+      "line": 21,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "usePwa",
+      "kind": "hook",
+      "line": 26,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "PwaInstallProgress",
+      "kind": "component",
+      "line": 30,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "location",
+      "kind": "variable",
+      "line": 31,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "{ installing, progress }",
+      "kind": "variable",
+      "line": 32,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "PwaLandingInstall",
+      "kind": "component",
+      "line": 55,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "{\n    showInstallUi, showUpdateUi, installedOnDevice, isStandalone, browser,\n    installing, progress, installGuide, runInstall, runUpdate, clearGuide,\n  }",
+      "kind": "variable",
+      "line": 56,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "isUpdate",
+      "kind": "variable",
+      "line": 64,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "idleHint",
+      "kind": "variable",
+      "line": 65,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "statusLabel",
+      "kind": "variable",
+      "line": 68,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "statusPct",
+      "kind": "variable",
+      "line": 69,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "PwaInstallBanner",
+      "kind": "component",
+      "line": 165,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "location",
+      "kind": "variable",
+      "line": 166,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "{\n    showInstallUi, showUpdateUi, installedOnDevice, isStandalone,\n    browser, installing, runInstall, runUpdate,\n  }",
+      "kind": "variable",
+      "line": 167,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "[dismissed, setDismissed]",
+      "kind": "variable",
+      "line": 171,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "isUpdate",
+      "kind": "variable",
+      "line": 183,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "dismiss",
+      "kind": "variable",
+      "line": 185,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "PwaInstallNavButton",
+      "kind": "component",
+      "line": 223,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "location",
+      "kind": "variable",
+      "line": 224,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "{ showInstallUi, showUpdateUi, isStandalone, installedOnDevice, installing, runInstall, runUpdate }",
+      "kind": "variable",
+      "line": 225,
+      "path": "src/components/PwaInstall.jsx"
+    },
+    {
+      "name": "SetBackground",
+      "kind": "component",
+      "line": 4,
+      "path": "src/components/SetBackground.jsx"
+    },
+    {
+      "name": "SubtitleOverlay",
+      "kind": "component",
+      "line": 4,
+      "path": "src/components/SubtitleOverlay.jsx"
+    },
+    {
+      "name": "Teleprompter",
+      "kind": "component",
+      "line": 4,
+      "path": "src/components/Teleprompter.jsx"
+    },
+    {
+      "name": "TeleprompterDocUpload",
+      "kind": "component",
+      "line": 5,
+      "path": "src/components/TeleprompterDocUpload.jsx"
+    },
+    {
+      "name": "fileRef",
+      "kind": "variable",
+      "line": 12,
+      "path": "src/components/TeleprompterDocUpload.jsx"
+    },
+    {
+      "name": "[error, setError]",
+      "kind": "variable",
+      "line": 13,
+      "path": "src/components/TeleprompterDocUpload.jsx"
+    },
+    {
+      "name": "[fileName, setFileName]",
+      "kind": "variable",
+      "line": 14,
+      "path": "src/components/TeleprompterDocUpload.jsx"
+    },
+    {
+      "name": "handleFile",
+      "kind": "variable",
+      "line": 16,
+      "path": "src/components/TeleprompterDocUpload.jsx"
+    },
+    {
+      "name": "file",
+      "kind": "variable",
+      "line": 17,
+      "path": "src/components/TeleprompterDocUpload.jsx"
+    },
+    {
+      "name": "raw",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/components/TeleprompterDocUpload.jsx"
+    },
+    {
+      "name": "formatted",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/components/TeleprompterDocUpload.jsx"
+    },
+    {
+      "name": "err",
+      "kind": "variable",
+      "line": 30,
+      "path": "src/components/TeleprompterDocUpload.jsx"
+    },
+    {
+      "name": "READ_LINE",
+      "kind": "component",
+      "line": 4,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "TeleprompterOverlay",
+      "kind": "component",
+      "line": 6,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "textRef",
+      "kind": "variable",
+      "line": 15,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "viewRef",
+      "kind": "variable",
+      "line": 16,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "textEl",
+      "kind": "variable",
+      "line": 19,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "viewEl",
+      "kind": "variable",
+      "line": 20,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "update",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "readPad",
+      "kind": "variable",
+      "line": 24,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "max",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "ro",
+      "kind": "variable",
+      "line": 30,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "readPad",
+      "kind": "variable",
+      "line": 35,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "scrollY",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/components/TeleprompterOverlay.jsx"
+    },
+    {
+      "name": "CAM_SCENES",
+      "kind": "component",
+      "line": 6,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "SIDEBAR",
+      "kind": "component",
+      "line": 27,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "NETWORKS",
+      "kind": "component",
+      "line": 33,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "VideoFeed",
+      "kind": "component",
+      "line": 40,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "scene",
+      "kind": "variable",
+      "line": 41,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "RightPanel",
+      "kind": "component",
+      "line": 61,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "TourPreview",
+      "kind": "component",
+      "line": 137,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "[activeCam, setActiveCam]",
+      "kind": "variable",
+      "line": 138,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "t",
+      "kind": "variable",
+      "line": 142,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "showCamStrip",
+      "kind": "variable",
+      "line": 146,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "showCintillo",
+      "kind": "variable",
+      "line": 147,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "showDirector",
+      "kind": "variable",
+      "line": 148,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "showPosts",
+      "kind": "variable",
+      "line": 149,
+      "path": "src/components/TourPreview.jsx"
+    },
+    {
+      "name": "ViewportComposer",
+      "kind": "component",
+      "line": 7,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "canvasRef",
+      "kind": "variable",
+      "line": 11,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "videoRef",
+      "kind": "variable",
+      "line": 12,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "v",
+      "kind": "variable",
+      "line": 18,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "video",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "unbindKeepAlive",
+      "kind": "variable",
+      "line": 28,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "canvas",
+      "kind": "variable",
+      "line": 30,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "ctx",
+      "kind": "variable",
+      "line": 31,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "rafId",
+      "kind": "variable",
+      "line": 32,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "draw",
+      "kind": "variable",
+      "line": 34,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "tw",
+      "kind": "variable",
+      "line": 35,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "th",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "dpr",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "pw",
+      "kind": "variable",
+      "line": 38,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "ph",
+      "kind": "variable",
+      "line": 39,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "scale",
+      "kind": "variable",
+      "line": 52,
+      "path": "src/components/ViewportComposer.jsx"
+    },
+    {
+      "name": "VUMeter",
+      "kind": "component",
+      "line": 4,
+      "path": "src/components/VUMeter.jsx"
+    },
+    {
+      "name": "[levels, setLevels]",
+      "kind": "variable",
+      "line": 5,
+      "path": "src/components/VUMeter.jsx"
+    },
+    {
+      "name": "base",
+      "kind": "variable",
+      "line": 9,
+      "path": "src/components/VUMeter.jsx"
+    },
+    {
+      "name": "FULL_CAM",
+      "kind": "component",
+      "line": 1,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "INSET_CAM",
+      "kind": "component",
+      "line": 2,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "BACKGROUND_TEMPLATES",
+      "kind": "component",
+      "line": 4,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "getBackgroundTemplate",
+      "kind": "function",
+      "line": 20,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "getBackgroundCameraRect",
+      "kind": "function",
+      "line": 24,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "t",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "cam",
+      "kind": "variable",
+      "line": 26,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "scale",
+      "kind": "variable",
+      "line": 27,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "w",
+      "kind": "variable",
+      "line": 28,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "h",
+      "kind": "variable",
+      "line": 29,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "left",
+      "kind": "variable",
+      "line": 30,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "top",
+      "kind": "variable",
+      "line": 31,
+      "path": "src/config/backgroundTemplates.js"
+    },
+    {
+      "name": "DEFAULT_LOGO_URL",
+      "kind": "component",
+      "line": 2,
+      "path": "src/config/brand.js"
+    },
+    {
+      "name": "resolveLogoUrl",
+      "kind": "function",
+      "line": 4,
+      "path": "src/config/brand.js"
+    },
+    {
+      "name": "PRIMARY_CAMERA_SLOT",
+      "kind": "component",
+      "line": 2,
+      "path": "src/config/cameraSlots.js"
+    },
+    {
+      "name": "CAM_SLOT_LABELS",
+      "kind": "component",
+      "line": 4,
+      "path": "src/config/cameraSlots.js"
+    },
+    {
+      "name": "pickPrimaryActiveSlot",
+      "kind": "function",
+      "line": 10,
+      "path": "src/config/cameraSlots.js"
+    },
+    {
+      "name": "first",
+      "kind": "variable",
+      "line": 12,
+      "path": "src/config/cameraSlots.js"
+    },
+    {
+      "name": "HOST_CAMERA_SLOT",
+      "kind": "component",
+      "line": 4,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "MASTER_CAMERA_SLOT",
+      "kind": "component",
+      "line": 5,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "GUEST_CAMERA_SLOT",
+      "kind": "component",
+      "line": 6,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "CINTILLO_SLOT_BY_PRESET",
+      "kind": "component",
+      "line": 8,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "CINTILLO_ROTATION_ORDER",
+      "kind": "component",
+      "line": 19,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "DEFAULT_CINTILLO_POSITIONS",
+      "kind": "component",
+      "line": 21,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "CINTILLO_POSITION_OPTIONS",
+      "kind": "component",
+      "line": 27,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "CINTILLO_CAMERA_GROUPS",
+      "kind": "component",
+      "line": 39,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "getPresetCameraSlot",
+      "kind": "function",
+      "line": 63,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "getRoleForSlot",
+      "kind": "function",
+      "line": 67,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "getPositionForPreset",
+      "kind": "function",
+      "line": 73,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "role",
+      "kind": "variable",
+      "line": 74,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "loadCintilloPositions",
+      "kind": "function",
+      "line": 78,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "raw",
+      "kind": "variable",
+      "line": 80,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "saveCintilloPositions",
+      "kind": "function",
+      "line": 88,
+      "path": "src/config/cintilloCameraMap.js"
+    },
+    {
+      "name": "CINTILLO_PRESETS",
+      "kind": "component",
+      "line": 3,
+      "path": "src/config/cintilloPresets.js"
+    },
+    {
+      "name": "CINTILLO_ROTATION_ORDER",
+      "kind": "component",
+      "line": 13,
+      "path": "src/config/cintilloPresets.js"
+    },
+    {
+      "name": "CINTILLO_SETUP_TYPES",
+      "kind": "component",
+      "line": 15,
+      "path": "src/config/cintilloPresets.js"
+    },
+    {
+      "name": "resolveCintilloText",
+      "kind": "function",
+      "line": 24,
+      "path": "src/config/cintilloPresets.js"
+    },
+    {
+      "name": "p",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/config/cintilloPresets.js"
+    },
+    {
+      "name": "c",
+      "kind": "variable",
+      "line": 26,
+      "path": "src/config/cintilloPresets.js"
+    },
+    {
+      "name": "slug",
+      "kind": "variable",
+      "line": 27,
+      "path": "src/config/cintilloPresets.js"
+    },
+    {
+      "name": "defaults",
+      "kind": "variable",
+      "line": 29,
+      "path": "src/config/cintilloPresets.js"
+    },
+    {
+      "name": "getRotationPresets",
+      "kind": "function",
+      "line": 41,
+      "path": "src/config/cintilloPresets.js"
+    },
+    {
+      "name": "order",
+      "kind": "variable",
+      "line": 42,
+      "path": "src/config/cintilloPresets.js"
+    },
+    {
+      "name": "text",
+      "kind": "variable",
+      "line": 49,
+      "path": "src/config/cintilloPresets.js"
+    },
+    {
+      "name": "CINTILLO_STYLES",
+      "kind": "component",
+      "line": 1,
+      "path": "src/config/cintilloStyles.js"
+    },
+    {
+      "name": "getCintilloStyle",
+      "kind": "function",
+      "line": 17,
+      "path": "src/config/cintilloStyles.js"
+    },
+    {
+      "name": "LOOK_PRESETS",
+      "kind": "component",
+      "line": 2,
+      "path": "src/config/lookPresets.js"
+    },
+    {
+      "name": "LUT_PRESETS",
+      "kind": "component",
+      "line": 103,
+      "path": "src/config/lookPresets.js"
+    },
+    {
+      "name": "TRANSITION_MODES",
+      "kind": "component",
+      "line": 111,
+      "path": "src/config/lookPresets.js"
+    },
+    {
+      "name": "DEFAULT_LOOK",
+      "kind": "component",
+      "line": 118,
+      "path": "src/config/lookPresets.js"
+    },
+    {
+      "name": "getLookPreset",
+      "kind": "function",
+      "line": 133,
+      "path": "src/config/lookPresets.js"
+    },
+    {
+      "name": "applyLookPreset",
+      "kind": "function",
+      "line": 137,
+      "path": "src/config/lookPresets.js"
+    },
+    {
+      "name": "p",
+      "kind": "variable",
+      "line": 138,
+      "path": "src/config/lookPresets.js"
+    },
+    {
+      "name": "MANUAL_SECTIONS",
+      "kind": "component",
+      "line": 2,
+      "path": "src/config/manualSections.js"
+    },
+    {
+      "name": "filterManualSections",
+      "kind": "function",
+      "line": 161,
+      "path": "src/config/manualSections.js"
+    },
+    {
+      "name": "q",
+      "kind": "variable",
+      "line": 162,
+      "path": "src/config/manualSections.js"
+    },
+    {
+      "name": "hay",
+      "kind": "variable",
+      "line": 165,
+      "path": "src/config/manualSections.js"
+    },
+    {
+      "name": "MUSIC_GENRES",
+      "kind": "component",
+      "line": 2,
+      "path": "src/config/musicTracks.js"
+    },
+    {
+      "name": "MUSIC_TRACKS",
+      "kind": "component",
+      "line": 17,
+      "path": "src/config/musicTracks.js"
+    },
+    {
+      "name": "mixkitSfxUrl",
+      "kind": "function",
+      "line": 37,
+      "path": "src/config/musicTracks.js"
+    },
+    {
+      "name": "SFX_CATEGORIES",
+      "kind": "component",
+      "line": 42,
+      "path": "src/config/musicTracks.js"
+    },
+    {
+      "name": "SFX_RAW",
+      "kind": "component",
+      "line": 55,
+      "path": "src/config/musicTracks.js"
+    },
+    {
+      "name": "MUSIC_SFX",
+      "kind": "component",
+      "line": 97,
+      "path": "src/config/musicTracks.js"
+    },
+    {
+      "name": "getTrackById",
+      "kind": "function",
+      "line": 102,
+      "path": "src/config/musicTracks.js"
+    },
+    {
+      "name": "getTracksByGenre",
+      "kind": "function",
+      "line": 106,
+      "path": "src/config/musicTracks.js"
+    },
+    {
+      "name": "resolveMusicTrack",
+      "kind": "function",
+      "line": 110,
+      "path": "src/config/musicTracks.js"
+    },
+    {
+      "name": "t",
+      "kind": "variable",
+      "line": 112,
+      "path": "src/config/musicTracks.js"
+    },
+    {
+      "name": "byGenre",
+      "kind": "variable",
+      "line": 115,
+      "path": "src/config/musicTracks.js"
+    },
+    {
+      "name": "PLANS",
+      "kind": "component",
+      "line": 1,
+      "path": "src/config/plans.js"
+    },
+    {
+      "name": "getPlan",
+      "kind": "function",
+      "line": 59,
+      "path": "src/config/plans.js"
+    },
+    {
+      "name": "STUDIO_BACKGROUND_URLS",
+      "kind": "component",
+      "line": 2,
+      "path": "src/config/studioImages.js"
+    },
+    {
+      "name": "TOUR_STEPS",
+      "kind": "component",
+      "line": 1,
+      "path": "src/config/tourSteps.js"
+    },
+    {
+      "name": "markTourSeen",
+      "kind": "function",
+      "line": 76,
+      "path": "src/config/tourSteps.js"
+    },
+    {
+      "name": "hasSeenTour",
+      "kind": "function",
+      "line": 80,
+      "path": "src/config/tourSteps.js"
+    },
+    {
+      "name": "AI_TIMEOUT_MS",
+      "kind": "component",
+      "line": 6,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "cacheRef",
+      "kind": "variable",
+      "line": 7,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "cacheKey",
+      "kind": "function",
+      "line": 9,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "hash",
+      "kind": "variable",
+      "line": 10,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "i",
+      "kind": "variable",
+      "line": 11,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "safeParseJSON",
+      "kind": "function",
+      "line": 18,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "clean",
+      "kind": "variable",
+      "line": 20,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "isRetryableError",
+      "kind": "function",
+      "line": 28,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "code",
+      "kind": "variable",
+      "line": 29,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "getRetryDelay",
+      "kind": "function",
+      "line": 33,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "PROMPTS",
+      "kind": "component",
+      "line": 38,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "platList",
+      "kind": "variable",
+      "line": 106,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "callAI",
+      "kind": "function",
+      "line": 130,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "key",
+      "kind": "variable",
+      "line": 131,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "cached",
+      "kind": "variable",
+      "line": 132,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "attempt",
+      "kind": "variable",
+      "line": 135,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "controller",
+      "kind": "variable",
+      "line": 136,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "id",
+      "kind": "variable",
+      "line": 137,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "token",
+      "kind": "variable",
+      "line": 139,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "res",
+      "kind": "variable",
+      "line": 140,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "data",
+      "kind": "variable",
+      "line": 150,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "msg",
+      "kind": "variable",
+      "line": 152,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "err",
+      "kind": "variable",
+      "line": 153,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 160,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "err",
+      "kind": "variable",
+      "line": 163,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "delay",
+      "kind": "variable",
+      "line": 168,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "useAI",
+      "kind": "hook",
+      "line": 178,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "[loadingPosts, setLoadingPosts]",
+      "kind": "variable",
+      "line": 179,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "[loadingCintillo, setLoadingCintillo]",
+      "kind": "variable",
+      "line": 180,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "[loadingScript, setLoadingScript]",
+      "kind": "variable",
+      "line": 181,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "[loadingProducer, setLoadingProducer]",
+      "kind": "variable",
+      "line": 182,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "[posts, setPosts]",
+      "kind": "variable",
+      "line": 183,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "[error, setError]",
+      "kind": "variable",
+      "line": 184,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "[aiConfigured, setAiConfigured]",
+      "kind": "variable",
+      "line": 185,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "checkAIStatus",
+      "kind": "variable",
+      "line": 187,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "res",
+      "kind": "variable",
+      "line": 189,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "data",
+      "kind": "variable",
+      "line": 190,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "generateCintillo",
+      "kind": "variable",
+      "line": 201,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "prompt",
+      "kind": "variable",
+      "line": 205,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "text",
+      "kind": "variable",
+      "line": 206,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 208,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "formatTeleprompterDocument",
+      "kind": "variable",
+      "line": 216,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "prompt",
+      "kind": "variable",
+      "line": 220,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "text",
+      "kind": "variable",
+      "line": 221,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 223,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "generateTeleprompterScript",
+      "kind": "variable",
+      "line": 231,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "prompt",
+      "kind": "variable",
+      "line": 235,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "text",
+      "kind": "variable",
+      "line": 236,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 238,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "analyzeEventWithAI",
+      "kind": "variable",
+      "line": 246,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "trackIds",
+      "kind": "variable",
+      "line": 249,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "genres",
+      "kind": "variable",
+      "line": 250,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "prompt",
+      "kind": "variable",
+      "line": 252,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "raw",
+      "kind": "variable",
+      "line": 253,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "parsed",
+      "kind": "variable",
+      "line": 254,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 257,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "generatePosts",
+      "kind": "variable",
+      "line": 265,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "prompt",
+      "kind": "variable",
+      "line": 270,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "raw",
+      "kind": "variable",
+      "line": 271,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "parsed",
+      "kind": "variable",
+      "line": 272,
+      "path": "src/hooks/useAI.js"
+    },
+    {
+      "name": "WASM",
+      "kind": "component",
+      "line": 4,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "FACE_MODEL",
+      "kind": "component",
+      "line": 5,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "SIDE_SLOTS",
+      "kind": "component",
+      "line": 7,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "WIDE_HOLD_MS",
+      "kind": "component",
+      "line": 8,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "FACE_ZOOM_SEC",
+      "kind": "component",
+      "line": 9,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "DEFAULT_CROP",
+      "kind": "component",
+      "line": 10,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "clamp",
+      "kind": "function",
+      "line": 12,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "cropFromFace",
+      "kind": "function",
+      "line": 17,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "faceWRatio",
+      "kind": "variable",
+      "line": 18,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "fx",
+      "kind": "variable",
+      "line": 19,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "fy",
+      "kind": "variable",
+      "line": 20,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "zoom",
+      "kind": "variable",
+      "line": 22,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "sampleMotion",
+      "kind": "function",
+      "line": 37,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "w",
+      "kind": "variable",
+      "line": 39,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "h",
+      "kind": "variable",
+      "line": 40,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "canvas",
+      "kind": "variable",
+      "line": 41,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "{ x, y, rw, rh }",
+      "kind": "variable",
+      "line": 43,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "sx",
+      "kind": "variable",
+      "line": 44,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "sy",
+      "kind": "variable",
+      "line": 45,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "sw",
+      "kind": "variable",
+      "line": 46,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "sh",
+      "kind": "variable",
+      "line": 47,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "data",
+      "kind": "variable",
+      "line": 49,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "diff",
+      "kind": "variable",
+      "line": 51,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "i",
+      "kind": "variable",
+      "line": 52,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "emptyCrops",
+      "kind": "function",
+      "line": 58,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "slotLabel",
+      "kind": "function",
+      "line": 66,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "useAIDirector",
+      "kind": "hook",
+      "line": 72,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "zoomHoldMs",
+      "kind": "variable",
+      "line": 82,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "[directorCrops, setDirectorCrops]",
+      "kind": "variable",
+      "line": 83,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "[directorStatus, setDirectorStatus]",
+      "kind": "variable",
+      "line": 84,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "detectorRef",
+      "kind": "variable",
+      "line": 85,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "videosRef",
+      "kind": "variable",
+      "line": 86,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "motionCtxRef",
+      "kind": "variable",
+      "line": 87,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "prevMotionRef",
+      "kind": "variable",
+      "line": 88,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "lastSwitchRef",
+      "kind": "variable",
+      "line": 89,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "cycleRef",
+      "kind": "variable",
+      "line": 90,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "appliedCropRef",
+      "kind": "variable",
+      "line": 91,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "cancelled",
+      "kind": "variable",
+      "line": 95,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "init",
+      "kind": "function",
+      "line": 97,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "{ FaceDetector, FilesetResolver }",
+      "kind": "variable",
+      "line": 99,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "vision",
+      "kind": "variable",
+      "line": 100,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "detector",
+      "kind": "variable",
+      "line": 101,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 114,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "i",
+      "kind": "variable",
+      "line": 131,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "v",
+      "kind": "variable",
+      "line": 134,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "track",
+      "kind": "variable",
+      "line": 140,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "feed",
+      "kind": "variable",
+      "line": 141,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "resolveSideTarget",
+      "kind": "variable",
+      "line": 153,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "hasFace",
+      "kind": "variable",
+      "line": 154,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "cycle",
+      "kind": "variable",
+      "line": 163,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "elapsed",
+      "kind": "variable",
+      "line": 164,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "remaining",
+      "kind": "variable",
+      "line": 173,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "crop",
+      "kind": "variable",
+      "line": 174,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "analyze",
+      "kind": "variable",
+      "line": 196,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "detector",
+      "kind": "variable",
+      "line": 197,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "slots",
+      "kind": "variable",
+      "line": 198,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "c",
+      "kind": "variable",
+      "line": 202,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "mctx",
+      "kind": "variable",
+      "line": 205,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "speaking",
+      "kind": "variable",
+      "line": 206,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "scores",
+      "kind": "variable",
+      "line": 207,
+      "path": "src/hooks/useAIDirector.js"
+    },
+    {
+      "name": "applyAIProducerPlan",
+      "kind": "function",
+      "line": 4,
+      "path": "src/hooks/useAIProducer.js"
+    },
+    {
+      "name": "next",
+      "kind": "variable",
+      "line": 6,
+      "path": "src/hooks/useAIProducer.js"
+    },
+    {
+      "name": "useAIProducer",
+      "kind": "hook",
+      "line": 22,
+      "path": "src/hooks/useAIProducer.js"
+    },
+    {
+      "name": "ranRef",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/hooks/useAIProducer.js"
+    },
+    {
+      "name": "runProducer",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/hooks/useAIProducer.js"
+    },
+    {
+      "name": "plan",
+      "kind": "variable",
+      "line": 30,
+      "path": "src/hooks/useAIProducer.js"
+    },
+    {
+      "name": "enriched",
+      "kind": "variable",
+      "line": 32,
+      "path": "src/hooks/useAIProducer.js"
+    },
+    {
+      "name": "music",
+      "kind": "variable",
+      "line": 33,
+      "path": "src/hooks/useAIProducer.js"
+    },
+    {
+      "name": "shouldAutoRun",
+      "kind": "variable",
+      "line": 42,
+      "path": "src/hooks/useAIProducer.js"
+    },
+    {
+      "name": "markRan",
+      "kind": "variable",
+      "line": 48,
+      "path": "src/hooks/useAIProducer.js"
+    },
+    {
+      "name": "useAudioMix",
+      "kind": "hook",
+      "line": 3,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "ctxRef",
+      "kind": "variable",
+      "line": 4,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "destRef",
+      "kind": "variable",
+      "line": 5,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "micSourceRef",
+      "kind": "variable",
+      "line": 6,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "musicSourceRef",
+      "kind": "variable",
+      "line": 7,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "musicGainRef",
+      "kind": "variable",
+      "line": 8,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "micGainRef",
+      "kind": "variable",
+      "line": 9,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "ensureContext",
+      "kind": "variable",
+      "line": 15,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "setMicStream",
+      "kind": "variable",
+      "line": 29,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "{ ctx }",
+      "kind": "variable",
+      "line": 30,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "src",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "setMusicMix",
+      "kind": "variable",
+      "line": 41,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "{ ctx }",
+      "kind": "variable",
+      "line": 42,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "captured",
+      "kind": "variable",
+      "line": 54,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "track",
+      "kind": "variable",
+      "line": 55,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "src",
+      "kind": "variable",
+      "line": 58,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "buildRecordingStream",
+      "kind": "variable",
+      "line": 63,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "{ ctx, dest }",
+      "kind": "variable",
+      "line": 64,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "audioTracks",
+      "kind": "variable",
+      "line": 70,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "tracks",
+      "kind": "variable",
+      "line": 71,
+      "path": "src/hooks/useAudioMix.js"
+    },
+    {
+      "name": "useAutoSwitcher",
+      "kind": "hook",
+      "line": 3,
+      "path": "src/hooks/useAutoSwitcher.js"
+    },
+    {
+      "name": "slots",
+      "kind": "variable",
+      "line": 16,
+      "path": "src/hooks/useAutoSwitcher.js"
+    },
+    {
+      "name": "id",
+      "kind": "variable",
+      "line": 19,
+      "path": "src/hooks/useAutoSwitcher.js"
+    },
+    {
+      "name": "current",
+      "kind": "variable",
+      "line": 21,
+      "path": "src/hooks/useAutoSwitcher.js"
+    },
+    {
+      "name": "idx",
+      "kind": "variable",
+      "line": 22,
+      "path": "src/hooks/useAutoSwitcher.js"
+    },
+    {
+      "name": "nextIdx",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/hooks/useAutoSwitcher.js"
+    },
+    {
+      "name": "useBackgroundMusic",
+      "kind": "hook",
+      "line": 3,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "audioRef",
+      "kind": "variable",
+      "line": 4,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "playingRef",
+      "kind": "variable",
+      "line": 5,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "[trackIndex, setTrackIndex]",
+      "kind": "variable",
+      "line": 6,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "[playing, setPlaying]",
+      "kind": "variable",
+      "line": 7,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "[volume, setVolume]",
+      "kind": "variable",
+      "line": 8,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "[loading, setLoading]",
+      "kind": "variable",
+      "line": 9,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "[error, setError]",
+      "kind": "variable",
+      "line": 10,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "audio",
+      "kind": "variable",
+      "line": 15,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "audio",
+      "kind": "variable",
+      "line": 27,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "track",
+      "kind": "variable",
+      "line": 28,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "onCanPlay",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "onError",
+      "kind": "variable",
+      "line": 47,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "audio",
+      "kind": "variable",
+      "line": 63,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "audio",
+      "kind": "variable",
+      "line": 69,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "toggle",
+      "kind": "variable",
+      "line": 87,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "nextTrack",
+      "kind": "variable",
+      "line": 89,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "selectTrack",
+      "kind": "variable",
+      "line": 94,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "selectTrackById",
+      "kind": "variable",
+      "line": 99,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "idx",
+      "kind": "variable",
+      "line": 100,
+      "path": "src/hooks/useBackgroundMusic.js"
+    },
+    {
+      "name": "hexToRgb",
+      "kind": "function",
+      "line": 3,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "n",
+      "kind": "variable",
+      "line": 4,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "applyChromaKey",
+      "kind": "function",
+      "line": 8,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "{ r: kr, g: kg, b: kb }",
+      "kind": "variable",
+      "line": 9,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "data",
+      "kind": "variable",
+      "line": 10,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "thresh",
+      "kind": "variable",
+      "line": 11,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "smooth",
+      "kind": "variable",
+      "line": 12,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "i",
+      "kind": "variable",
+      "line": 14,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "r",
+      "kind": "variable",
+      "line": 15,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "g",
+      "kind": "variable",
+      "line": 16,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "b",
+      "kind": "variable",
+      "line": 17,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "dr",
+      "kind": "variable",
+      "line": 18,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "dg",
+      "kind": "variable",
+      "line": 19,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "db",
+      "kind": "variable",
+      "line": 20,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "dist",
+      "kind": "variable",
+      "line": 21,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "greenDominant",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "edge",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "useChromaKeyCanvas",
+      "kind": "hook",
+      "line": 31,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "canvasRef",
+      "kind": "variable",
+      "line": 32,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "rafRef",
+      "kind": "variable",
+      "line": 33,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "video",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "canvas",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "ctx",
+      "kind": "variable",
+      "line": 40,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "tick",
+      "kind": "variable",
+      "line": 42,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "frame",
+      "kind": "variable",
+      "line": 49,
+      "path": "src/hooks/useChromaKey.js"
+    },
+    {
+      "name": "ENTER_MS",
+      "kind": "component",
+      "line": 12,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "EXIT_MS",
+      "kind": "component",
+      "line": 13,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "DEFAULT_DISPLAY_SEC",
+      "kind": "component",
+      "line": 14,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "buildCintilloState",
+      "kind": "function",
+      "line": 16,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "presetId",
+      "kind": "variable",
+      "line": 17,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "text",
+      "kind": "variable",
+      "line": 18,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "useCintilloRotation",
+      "kind": "hook",
+      "line": 30,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "[cintillo, setCintillo]",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "[animPhase, setAnimPhase]",
+      "kind": "variable",
+      "line": 39,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "[animKey, setAnimKey]",
+      "kind": "variable",
+      "line": 40,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "indexRef",
+      "kind": "variable",
+      "line": 41,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "timersRef",
+      "kind": "variable",
+      "line": 42,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "positionsRef",
+      "kind": "variable",
+      "line": 43,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "projectRef",
+      "kind": "variable",
+      "line": 47,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "cintillosKey",
+      "kind": "variable",
+      "line": 50,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "clearTimers",
+      "kind": "variable",
+      "line": 52,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "schedule",
+      "kind": "variable",
+      "line": 57,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "id",
+      "kind": "variable",
+      "line": 58,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "showPreset",
+      "kind": "variable",
+      "line": 63,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "runCycle",
+      "kind": "variable",
+      "line": 69,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "items",
+      "kind": "variable",
+      "line": 71,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "preset",
+      "kind": "variable",
+      "line": 77,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "showManual",
+      "kind": "variable",
+      "line": 97,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "showCustom",
+      "kind": "variable",
+      "line": 105,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "hide",
+      "kind": "variable",
+      "line": 115,
+      "path": "src/hooks/useCintilloRotation.js"
+    },
+    {
+      "name": "useLiveBroadcast",
+      "kind": "hook",
+      "line": 4,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "[liveOn, setLiveOn]",
+      "kind": "variable",
+      "line": 5,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "[status, setStatus]",
+      "kind": "variable",
+      "line": 6,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "[error, setError]",
+      "kind": "variable",
+      "line": 7,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "pcRef",
+      "kind": "variable",
+      "line": 8,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "sessionRef",
+      "kind": "variable",
+      "line": 9,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "startDemo",
+      "kind": "variable",
+      "line": 11,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "stop",
+      "kind": "variable",
+      "line": 17,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "session",
+      "kind": "variable",
+      "line": 18,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "start",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "session",
+      "kind": "variable",
+      "line": 42,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "pc",
+      "kind": "variable",
+      "line": 45,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "offer",
+      "kind": "variable",
+      "line": 54,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "answerSdp",
+      "kind": "variable",
+      "line": 58,
+      "path": "src/hooks/useLiveBroadcast.js"
+    },
+    {
+      "name": "STORAGE_KEY",
+      "kind": "component",
+      "line": 4,
+      "path": "src/hooks/useLookSettings.js"
+    },
+    {
+      "name": "loadStored",
+      "kind": "function",
+      "line": 6,
+      "path": "src/hooks/useLookSettings.js"
+    },
+    {
+      "name": "raw",
+      "kind": "variable",
+      "line": 8,
+      "path": "src/hooks/useLookSettings.js"
+    },
+    {
+      "name": "useLookSettings",
+      "kind": "hook",
+      "line": 16,
+      "path": "src/hooks/useLookSettings.js"
+    },
+    {
+      "name": "[look, setLook]",
+      "kind": "variable",
+      "line": 17,
+      "path": "src/hooks/useLookSettings.js"
+    },
+    {
+      "name": "setField",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/hooks/useLookSettings.js"
+    },
+    {
+      "name": "next",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/hooks/useLookSettings.js"
+    },
+    {
+      "name": "metaKeys",
+      "kind": "variable",
+      "line": 26,
+      "path": "src/hooks/useLookSettings.js"
+    },
+    {
+      "name": "applyPreset",
+      "kind": "variable",
+      "line": 33,
+      "path": "src/hooks/useLookSettings.js"
+    },
+    {
+      "name": "resetLook",
+      "kind": "variable",
+      "line": 44,
+      "path": "src/hooks/useLookSettings.js"
+    },
+    {
+      "name": "useMicMonitor",
+      "kind": "hook",
+      "line": 4,
+      "path": "src/hooks/useMicMonitor.js"
+    },
+    {
+      "name": "audioRef",
+      "kind": "variable",
+      "line": 5,
+      "path": "src/hooks/useMicMonitor.js"
+    },
+    {
+      "name": "el",
+      "kind": "variable",
+      "line": 16,
+      "path": "src/hooks/useMicMonitor.js"
+    },
+    {
+      "name": "start",
+      "kind": "variable",
+      "line": 22,
+      "path": "src/hooks/useMicMonitor.js"
+    },
+    {
+      "name": "useMuxUpload",
+      "kind": "hook",
+      "line": 4,
+      "path": "src/hooks/useMuxUpload.js"
+    },
+    {
+      "name": "uploadRecording",
+      "kind": "variable",
+      "line": 5,
+      "path": "src/hooks/useMuxUpload.js"
+    },
+    {
+      "name": "{ uploadUrl, recordingId }",
+      "kind": "variable",
+      "line": 7,
+      "path": "src/hooks/useMuxUpload.js"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 14,
+      "path": "src/hooks/useMuxUpload.js"
+    },
+    {
+      "name": "WASM",
+      "kind": "component",
+      "line": 3,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "MODEL",
+      "kind": "component",
+      "line": 4,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "usePersonSegmentation",
+      "kind": "hook",
+      "line": 6,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "segmenterRef",
+      "kind": "variable",
+      "line": 7,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "readyRef",
+      "kind": "variable",
+      "line": 8,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "loadingRef",
+      "kind": "variable",
+      "line": 9,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "maskCanvasRef",
+      "kind": "variable",
+      "line": 10,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "maskCtxRef",
+      "kind": "variable",
+      "line": 11,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "cancelled",
+      "kind": "variable",
+      "line": 16,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "init",
+      "kind": "function",
+      "line": 19,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "{ ImageSegmenter, FilesetResolver }",
+      "kind": "variable",
+      "line": 21,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "vision",
+      "kind": "variable",
+      "line": 22,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "segmenter",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 33,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "processFrame",
+      "kind": "variable",
+      "line": 49,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "seg",
+      "kind": "variable",
+      "line": 50,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "result",
+      "kind": "variable",
+      "line": 54,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "mask",
+      "kind": "variable",
+      "line": 55,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "w",
+      "kind": "variable",
+      "line": 58,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "h",
+      "kind": "variable",
+      "line": 59,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "floats",
+      "kind": "variable",
+      "line": 60,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "mc",
+      "kind": "variable",
+      "line": 66,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "mctx",
+      "kind": "variable",
+      "line": 67,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "imgData",
+      "kind": "variable",
+      "line": 73,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "i",
+      "kind": "variable",
+      "line": 74,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "v",
+      "kind": "variable",
+      "line": 75,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "j",
+      "kind": "variable",
+      "line": 76,
+      "path": "src/hooks/usePersonSegmentation.js"
+    },
+    {
+      "name": "waitForInstallPrompt",
+      "kind": "function",
+      "line": 10,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "timer",
+      "kind": "variable",
+      "line": 13,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "onPrompt",
+      "kind": "function",
+      "line": 18,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "usePwaInstall",
+      "kind": "hook",
+      "line": 29,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "[deferred, setDeferred]",
+      "kind": "variable",
+      "line": 30,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "[isStandalone, setIsStandalone]",
+      "kind": "variable",
+      "line": 31,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "[installedOnDevice, setInstalledOnDevice]",
+      "kind": "variable",
+      "line": 32,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "[updateAvailable, setUpdateAvailable]",
+      "kind": "variable",
+      "line": 33,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "[browser]",
+      "kind": "variable",
+      "line": 34,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "[ready, setReady]",
+      "kind": "variable",
+      "line": 35,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "detect",
+      "kind": "function",
+      "line": 40,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "related",
+      "kind": "variable",
+      "line": 46,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "onPrompt",
+      "kind": "variable",
+      "line": 56,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "onInstalled",
+      "kind": "variable",
+      "line": 60,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "onUpdate",
+      "kind": "variable",
+      "line": 66,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "install",
+      "kind": "variable",
+      "line": 78,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "prompt",
+      "kind": "variable",
+      "line": 79,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "{ outcome }",
+      "kind": "variable",
+      "line": 84,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "canInstall",
+      "kind": "variable",
+      "line": 93,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "showInstallUi",
+      "kind": "variable",
+      "line": 94,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "showUpdateUi",
+      "kind": "variable",
+      "line": 95,
+      "path": "src/hooks/usePwaInstall.js"
+    },
+    {
+      "name": "PREP_STEPS",
+      "kind": "component",
+      "line": 6,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "UPDATE_STEPS",
+      "kind": "component",
+      "line": 16,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "wait",
+      "kind": "function",
+      "line": 23,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "usePwaInstallFlow",
+      "kind": "hook",
+      "line": 27,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "pwa",
+      "kind": "variable",
+      "line": 28,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "[installing, setInstalling]",
+      "kind": "variable",
+      "line": 29,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "[progress, setProgress]",
+      "kind": "variable",
+      "line": 30,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "[installGuide, setInstallGuide]",
+      "kind": "variable",
+      "line": 31,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "runUpdate",
+      "kind": "variable",
+      "line": 33,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "step",
+      "kind": "variable",
+      "line": 38,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "runInstall",
+      "kind": "variable",
+      "line": 53,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "step",
+      "kind": "variable",
+      "line": 60,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "ok",
+      "kind": "variable",
+      "line": 66,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "[pct, label]",
+      "kind": "variable",
+      "line": 69,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "clearGuide",
+      "kind": "variable",
+      "line": 91,
+      "path": "src/hooks/usePwaInstallFlow.js"
+    },
+    {
+      "name": "isMp4Recording",
+      "kind": "function",
+      "line": 3,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "useRecorder",
+      "kind": "hook",
+      "line": 7,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "[recording, setRecording]",
+      "kind": "variable",
+      "line": 8,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "[duration, setDuration]",
+      "kind": "variable",
+      "line": 9,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "[recordings, setRecordings]",
+      "kind": "variable",
+      "line": 10,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "[converting, setConverting]",
+      "kind": "variable",
+      "line": 11,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "[convertProgress, setConvertProgress]",
+      "kind": "variable",
+      "line": 12,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "mediaRecorderRef",
+      "kind": "variable",
+      "line": 13,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "chunksRef",
+      "kind": "variable",
+      "line": 14,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "timerRef",
+      "kind": "variable",
+      "line": 15,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "mimeTypeRef",
+      "kind": "variable",
+      "line": 16,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "durationRef",
+      "kind": "variable",
+      "line": 17,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "onCompleteRef",
+      "kind": "variable",
+      "line": 18,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "pickMimeType",
+      "kind": "variable",
+      "line": 20,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "types",
+      "kind": "variable",
+      "line": 21,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "startRecording",
+      "kind": "variable",
+      "line": 32,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "mimeType",
+      "kind": "variable",
+      "line": 35,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "ext",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "mr",
+      "kind": "variable",
+      "line": 39,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "blob",
+      "kind": "variable",
+      "line": 42,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "url",
+      "kind": "variable",
+      "line": 43,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "ts",
+      "kind": "variable",
+      "line": 44,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "rec",
+      "kind": "variable",
+      "line": 45,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 62,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "stopRecording",
+      "kind": "variable",
+      "line": 67,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "downloadRecording",
+      "kind": "variable",
+      "line": 76,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "a",
+      "kind": "variable",
+      "line": 77,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "downloadRecordingMp4",
+      "kind": "variable",
+      "line": 83,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "{ convertWebmToMp4 }",
+      "kind": "variable",
+      "line": 91,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "mp4Blob",
+      "kind": "variable",
+      "line": 92,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "url",
+      "kind": "variable",
+      "line": 93,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "a",
+      "kind": "variable",
+      "line": 94,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "e",
+      "kind": "variable",
+      "line": 99,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "formatDuration",
+      "kind": "variable",
+      "line": 108,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "h",
+      "kind": "variable",
+      "line": 109,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "m",
+      "kind": "variable",
+      "line": 110,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "s",
+      "kind": "variable",
+      "line": 111,
+      "path": "src/hooks/useRecorder.js"
+    },
+    {
+      "name": "useSoundEffect",
+      "kind": "hook",
+      "line": 3,
+      "path": "src/hooks/useSoundEffect.js"
+    },
+    {
+      "name": "stopRef",
+      "kind": "variable",
+      "line": 4,
+      "path": "src/hooks/useSoundEffect.js"
+    },
+    {
+      "name": "[playingId, setPlayingId]",
+      "kind": "variable",
+      "line": 5,
+      "path": "src/hooks/useSoundEffect.js"
+    },
+    {
+      "name": "[error, setError]",
+      "kind": "variable",
+      "line": 6,
+      "path": "src/hooks/useSoundEffect.js"
+    },
+    {
+      "name": "stopSfx",
+      "kind": "variable",
+      "line": 13,
+      "path": "src/hooks/useSoundEffect.js"
+    },
+    {
+      "name": "playSfx",
+      "kind": "variable",
+      "line": 19,
+      "path": "src/hooks/useSoundEffect.js"
+    },
+    {
+      "name": "audio",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/hooks/useSoundEffect.js"
+    },
+    {
+      "name": "disposed",
+      "kind": "variable",
+      "line": 30,
+      "path": "src/hooks/useSoundEffect.js"
+    },
+    {
+      "name": "dispose",
+      "kind": "variable",
+      "line": 31,
+      "path": "src/hooks/useSoundEffect.js"
+    },
+    {
+      "name": "tryPlay",
+      "kind": "variable",
+      "line": 55,
+      "path": "src/hooks/useSoundEffect.js"
+    },
+    {
+      "name": "useSpeechSubtitles",
+      "kind": "hook",
+      "line": 3,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "[lines, setLines]",
+      "kind": "variable",
+      "line": 4,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "[interim, setInterim]",
+      "kind": "variable",
+      "line": 5,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "[supported, setSupported]",
+      "kind": "variable",
+      "line": 6,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "[listening, setListening]",
+      "kind": "variable",
+      "line": 7,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "recRef",
+      "kind": "variable",
+      "line": 8,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "SR",
+      "kind": "component",
+      "line": 11,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "stop",
+      "kind": "variable",
+      "line": 15,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "SR",
+      "kind": "component",
+      "line": 22,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "rec",
+      "kind": "variable",
+      "line": 31,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "interimText",
+      "kind": "variable",
+      "line": 38,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "finals",
+      "kind": "variable",
+      "line": 39,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "i",
+      "kind": "variable",
+      "line": 40,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "t",
+      "kind": "variable",
+      "line": 41,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "clear",
+      "kind": "variable",
+      "line": 82,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "displayText",
+      "kind": "variable",
+      "line": 87,
+      "path": "src/hooks/useSpeechSubtitles.js"
+    },
+    {
+      "name": "KEYS",
+      "kind": "component",
+      "line": 4,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "loadTemplate",
+      "kind": "function",
+      "line": 10,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "loadScale",
+      "kind": "function",
+      "line": 18,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "loadCustom",
+      "kind": "function",
+      "line": 26,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "useStudioBackground",
+      "kind": "hook",
+      "line": 34,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "[templateId, setTemplateIdState]",
+      "kind": "variable",
+      "line": 35,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "[customUrl, setCustomUrlState]",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "[cameraScale, setCameraScaleState]",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "setTemplateId",
+      "kind": "variable",
+      "line": 39,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "setCameraScale",
+      "kind": "variable",
+      "line": 44,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "setCustomUrl",
+      "kind": "variable",
+      "line": 49,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "onCustomUpload",
+      "kind": "variable",
+      "line": 55,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "file",
+      "kind": "variable",
+      "line": 56,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "reader",
+      "kind": "variable",
+      "line": 58,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "clearCustom",
+      "kind": "variable",
+      "line": 65,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "hasVirtualSet",
+      "kind": "variable",
+      "line": 67,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "cameraRect",
+      "kind": "variable",
+      "line": 68,
+      "path": "src/hooks/useStudioBackground.js"
+    },
+    {
+      "name": "useStudioCompositor",
+      "kind": "hook",
+      "line": 6,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "canvasRef",
+      "kind": "variable",
+      "line": 24,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "outputStreamRef",
+      "kind": "variable",
+      "line": 25,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "videosRef",
+      "kind": "variable",
+      "line": 26,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "keepAliveRef",
+      "kind": "variable",
+      "line": 27,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "rafRef",
+      "kind": "variable",
+      "line": 28,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "logoImageRef",
+      "kind": "variable",
+      "line": 29,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "customBgImageRef",
+      "kind": "variable",
+      "line": 30,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "settingsRef",
+      "kind": "variable",
+      "line": 31,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "prevCameraRef",
+      "kind": "variable",
+      "line": 33,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "transitionFromRef",
+      "kind": "variable",
+      "line": 34,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "transitionStartRef",
+      "kind": "variable",
+      "line": 35,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "recordStartRef",
+      "kind": "variable",
+      "line": 36,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "animKeyRef",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "animPhaseStartRef",
+      "kind": "variable",
+      "line": 38,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "canvas",
+      "kind": "variable",
+      "line": 41,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "prevCam",
+      "kind": "variable",
+      "line": 64,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "currentCam",
+      "kind": "variable",
+      "line": 65,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "mode",
+      "kind": "variable",
+      "line": 67,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "videos",
+      "kind": "variable",
+      "line": 102,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "slot",
+      "kind": "variable",
+      "line": 104,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "i",
+      "kind": "variable",
+      "line": 112,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "v",
+      "kind": "variable",
+      "line": 115,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "resumeAll",
+      "kind": "variable",
+      "line": 130,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "img",
+      "kind": "variable",
+      "line": 151,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "img",
+      "kind": "variable",
+      "line": 162,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "canvas",
+      "kind": "variable",
+      "line": 173,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "ctx",
+      "kind": "variable",
+      "line": 180,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "lastFrame",
+      "kind": "variable",
+      "line": 181,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "draw",
+      "kind": "variable",
+      "line": 183,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "s",
+      "kind": "variable",
+      "line": 190,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "slot",
+      "kind": "variable",
+      "line": 195,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "fromSlot",
+      "kind": "variable",
+      "line": 196,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "video",
+      "kind": "variable",
+      "line": 197,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "videoFrom",
+      "kind": "variable",
+      "line": 198,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "c",
+      "kind": "variable",
+      "line": 199,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "animElapsed",
+      "kind": "variable",
+      "line": 201,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "cintilloMotion",
+      "kind": "variable",
+      "line": 202,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "getProgramStream",
+      "kind": "variable",
+      "line": 255,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "getDisplayCanvas",
+      "kind": "variable",
+      "line": 256,
+      "path": "src/hooks/useStudioCompositor.js"
+    },
+    {
+      "name": "useTeleprompter",
+      "kind": "hook",
+      "line": 3,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "[script, setScript]",
+      "kind": "variable",
+      "line": 4,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "[playing, setPlaying]",
+      "kind": "variable",
+      "line": 5,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "[speed, setSpeed]",
+      "kind": "variable",
+      "line": 6,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "[fontSize, setFontSize]",
+      "kind": "variable",
+      "line": 7,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "[mirror, setMirror]",
+      "kind": "variable",
+      "line": 8,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "[direction, setDirection]",
+      "kind": "variable",
+      "line": 9,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "[offset, setOffset]",
+      "kind": "variable",
+      "line": 10,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "[visible, setVisible]",
+      "kind": "variable",
+      "line": 11,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "[maxScroll, setMaxScroll]",
+      "kind": "variable",
+      "line": 12,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "rafRef",
+      "kind": "variable",
+      "line": 13,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "lastRef",
+      "kind": "variable",
+      "line": 14,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "playingRef",
+      "kind": "variable",
+      "line": 15,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "tick",
+      "kind": "variable",
+      "line": 31,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "dt",
+      "kind": "variable",
+      "line": 34,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "next",
+      "kind": "variable",
+      "line": 37,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "toggle",
+      "kind": "variable",
+      "line": 60,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "reset",
+      "kind": "variable",
+      "line": 61,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "setRecordingActive",
+      "kind": "variable",
+      "line": 63,
+      "path": "src/hooks/useTeleprompter.js"
+    },
+    {
+      "name": "WIFI_PRESETS",
+      "kind": "component",
+      "line": 8,
+      "path": "src/hooks/useWebcam.js"
+    }
+  ],
+  "schemas": [
+    {
+      "path": "supabase/schema.sql",
+      "bytes": 3688,
+      "mtimeMs": 1791580422225.113
+    },
+    {
+      "path": "supabase/migrations/20261005000000_init.sql",
+      "bytes": 3600,
+      "mtimeMs": 1791841938962.587
+    }
+  ]
+}

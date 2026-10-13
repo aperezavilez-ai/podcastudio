@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "threadId": "chat-1791666839303-cef2531f3af4d",
+  "updatedAt": "2026-10-10T21:13:59.696Z",
+  "goal": "",
+  "phase": "routing",
+  "findings": [],
+  "files": [],
+  "skillsUsed": [],
+  "toolsUsed": [],
+  "subagents": [
+    {
+      "t": 1791666839696,
+      "agent": "explorer",
+      "ok": true,
+      "summary": "routed (score 0.46)"
+    }
+  ],
+  "lastResult": ""
+}

@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv5qb8x2_80983b",
+  "task": "ahi son 15 no 18",
+  "createdAt": 1791838388198,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-12T20:53:08.198Z",
+  "meta": {}
+}

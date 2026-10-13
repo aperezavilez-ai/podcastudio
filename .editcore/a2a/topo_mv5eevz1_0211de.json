@@ -1,0 +1,41 @@
+{
+  "id": "topo_mv5eevz1_0211de",
+  "task": "que propones?",
+  "createdAt": 1791818402653,
+  "status": "completed",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [
+    {
+      "at": 1791818402657,
+      "event": "session_start",
+      "id": "topo_mv5eevz1_0211de",
+      "task": "que propones?"
+    },
+    {
+      "at": 1791818402812,
+      "event": "session_complete",
+      "id": "topo_mv5eevz1_0211de"
+    }
+  ],
+  "startedAt": "2026-10-12T15:20:02.653Z",
+  "meta": {},
+  "completedAt": "2026-10-12T15:20:02.809Z",
+  "closeSummary": "turno con error"
+}

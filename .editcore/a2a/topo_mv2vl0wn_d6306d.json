@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv2vl0wn_d6306d",
+  "task": "Analiza quirúrgicamente este proyecto y dame reporte. Solo hechos verificados.",
+  "createdAt": 1791665843927,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-10T20:57:23.927Z",
+  "meta": {}
+}

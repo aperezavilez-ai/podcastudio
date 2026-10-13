@@ -4,7 +4,6 @@ import PlansGrid from '../components/PlansGrid.jsx'
 import { getPlan } from '../config/plans.js'
 import {
   fetchSubscription,
-  openBillingPortal,
   saveLocalPlan,
   syncCheckoutSession,
   verifyCheckoutSession,
@@ -17,7 +16,6 @@ export default function Plans({ user }) {
   const [params] = useSearchParams()
   const [message, setMessage] = useState('')
   const [subscription, setSubscription] = useState(null)
-  const [portalLoading, setPortalLoading] = useState(false)
 
   useEffect(() => {
     if (!user?.id) {
@@ -63,16 +61,6 @@ export default function Plans({ user }) {
   const activePlan = activePlanId ? getPlan(activePlanId) : null
   const studioAccess = canAccessStudio(user, subscription)
 
-  const handlePortal = async () => {
-    setPortalLoading(true)
-    try {
-      await openBillingPortal()
-    } catch (e) {
-      setMessage(e.message || 'No se pudo abrir el portal de facturación')
-      setPortalLoading(false)
-    }
-  }
-
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -96,7 +84,7 @@ export default function Plans({ user }) {
         <div className={styles.intro}>
           <span className={styles.label}>Planes</span>
           <h1>Elige tu plan</h1>
-          <p>Sin contratos. Cancela cuando quieras. Pago seguro con Stripe.</p>
+          <p>Sin contratos. Cancela cuando quieras. Pago seguro con Mercado Pago.</p>
           <button type="button" className={styles.tourLink} onClick={() => navigate('/guia')}>
             <i className="ti ti-book" /> Manual de operación paso a paso
           </button>
@@ -126,16 +114,6 @@ export default function Plans({ user }) {
                   </span>
                 )}
               </div>
-              {subscription?.hasStripeCustomer && (
-                <button
-                  type="button"
-                  className={styles.portalBtn}
-                  disabled={portalLoading}
-                  onClick={handlePortal}
-                >
-                  {portalLoading ? 'Abriendo...' : 'Gestionar suscripción'}
-                </button>
-              )}
             </div>
           )}
 

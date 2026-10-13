@@ -1,0 +1,14 @@
+{
+  "id": "20261013-075119-243",
+  "reason": "replace_in_file",
+  "createdAt": "2026-10-13T14:51:19.245Z",
+  "projectRoot": "D:\\PROGRAMAS IA\\PODCASTUDIO",
+  "files": [
+    {
+      "path": "package.json",
+      "existed": true,
+      "backup": "package.json.bak",
+      "bytes": 703
+    }
+  ]
+}

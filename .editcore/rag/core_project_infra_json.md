@@ -1,0 +1,21 @@
+# core:project-infra.json
+
+Fecha de ingesta: 2026-10-13T15:03:58.030Z
+Fuente: D:\PROGRAMAS IA\PODCASTUDIO\project-infra.json
+Tags: core, auto-ingest
+
+{
+    "version":  1,
+    "projectName":  "Podcastudio",
+    "projectSlug":  "podcastudio",
+    "isolationMode":  "dedicated_supabase",
+    "supabase":  {
+                     "url":  "https://api-podcastudio.gafcore.com",
+                     "instanceId":  "podcastudio",
+                     "database":  "postgres",
+                     "schema":  "public",
+                     "localApiPort":  58821,
+                     "localDbPort":  58822
+                 }
+}
+

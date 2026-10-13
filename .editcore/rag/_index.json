@@ -1,0 +1,61 @@
+{
+  "updatedAt": "2026-10-13T15:03:58.110Z",
+  "documents": [
+    {
+      "title": "core:ROADMAP/ROADMAP.md",
+      "path": ".editcore/rag/core_roadmap_roadmap_md.md",
+      "source": "D:\\PROGRAMAS IA\\PODCASTUDIO\\ROADMAP\\ROADMAP.md",
+      "ingestedAt": "2026-10-13T15:03:58.110Z",
+      "bytes": 4277
+    },
+    {
+      "title": "core:vite.config.js",
+      "path": ".editcore/rag/core_vite_config_js.md",
+      "source": "D:\\PROGRAMAS IA\\PODCASTUDIO\\vite.config.js",
+      "ingestedAt": "2026-10-13T15:03:58.091Z",
+      "bytes": 12319
+    },
+    {
+      "title": "core:.env.example",
+      "path": ".editcore/rag/core_env_example.md",
+      "source": "D:\\PROGRAMAS IA\\PODCASTUDIO\\.env.example",
+      "ingestedAt": "2026-10-13T15:03:58.071Z",
+      "bytes": 1098
+    },
+    {
+      "title": "core:project-infra.json",
+      "path": ".editcore/rag/core_project_infra_json.md",
+      "source": "D:\\PROGRAMAS IA\\PODCASTUDIO\\project-infra.json",
+      "ingestedAt": "2026-10-13T15:03:58.053Z",
+      "bytes": 635
+    },
+    {
+      "title": "core:CLAUDE.md",
+      "path": ".editcore/rag/core_claude_md.md",
+      "source": "D:\\PROGRAMAS IA\\PODCASTUDIO\\CLAUDE.md",
+      "ingestedAt": "2026-10-13T15:03:58.028Z",
+      "bytes": 1128
+    },
+    {
+      "title": "core:AGENTS.md",
+      "path": ".editcore/rag/core_agents_md.md",
+      "source": "D:\\PROGRAMAS IA\\PODCASTUDIO\\AGENTS.md",
+      "ingestedAt": "2026-10-13T15:03:58.005Z",
+      "bytes": 2961
+    },
+    {
+      "title": "core:README.md",
+      "path": ".editcore/rag/core_readme_md.md",
+      "source": "D:\\PROGRAMAS IA\\PODCASTUDIO\\README.md",
+      "ingestedAt": "2026-10-13T15:03:57.982Z",
+      "bytes": 2213
+    },
+    {
+      "title": "core:package.json",
+      "path": ".editcore/rag/core_package_json.md",
+      "source": "D:\\PROGRAMAS IA\\PODCASTUDIO\\package.json",
+      "ingestedAt": "2026-10-13T15:03:57.962Z",
+      "bytes": 868
+    }
+  ]
+}

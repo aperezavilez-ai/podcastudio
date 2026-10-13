@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv5edgyu_da0fa7",
+  "task": "hola",
+  "createdAt": 1791818336550,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-12T15:18:56.550Z",
+  "meta": {}
+}

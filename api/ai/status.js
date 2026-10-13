@@ -1,13 +1,13 @@
-export default function handler(req, res) {
+const { validateConfig } = require('../../lib/ai/config.js')
+
+module.exports = async function handler(req, res) {
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'Method not allowed' })
     return
   }
-
-  const configured = !!process.env.GAFCORE_PROXY_PROJECT_KEY
+  const configCheck = validateConfig()
   res.status(200).json({
-    configured,
-    provider: 'gafcore-pool-cheap',
-    model: 'llama-3.1-8b-instant',
+    configured: configCheck.valid,
+    missing: configCheck.missing,
   })
 }

@@ -1,0 +1,14 @@
+{
+  "id": "20261013-080113-300",
+  "reason": "replace_in_file",
+  "createdAt": "2026-10-13T15:01:13.301Z",
+  "projectRoot": "D:\\PROGRAMAS IA\\PODCASTUDIO",
+  "files": [
+    {
+      "path": "vite.config.js",
+      "existed": true,
+      "backup": "vite.config.js.bak",
+      "bytes": 12184
+    }
+  ]
+}

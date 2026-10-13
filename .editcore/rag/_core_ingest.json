@@ -1,0 +1,14 @@
+{
+  "updatedAt": "2026-10-13T15:03:58.111Z",
+  "pkgMtime": 1791903079298.1147,
+  "files": [
+    ".editcore/rag/core_package_json.md",
+    ".editcore/rag/core_readme_md.md",
+    ".editcore/rag/core_agents_md.md",
+    ".editcore/rag/core_claude_md.md",
+    ".editcore/rag/core_project_infra_json.md",
+    ".editcore/rag/core_env_example.md",
+    ".editcore/rag/core_vite_config_js.md",
+    ".editcore/rag/core_roadmap_roadmap_md.md"
+  ]
+}

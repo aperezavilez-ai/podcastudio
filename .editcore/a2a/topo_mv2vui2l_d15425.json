@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv2vui2l_d15425",
+  "task": "Busca en el código dónde está el login o auth (supabase/signIn) y dime archivo y líneas.",
+  "createdAt": 1791666286077,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-10T21:04:46.077Z",
+  "meta": {}
+}

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "threadId": "thread_1791818501273_6t3yr6",
+  "updatedAt": "2026-10-12T15:21:41.428Z",
+  "goal": "",
+  "phase": "routing",
+  "findings": [],
+  "files": [],
+  "skillsUsed": [],
+  "toolsUsed": [],
+  "subagents": [
+    {
+      "t": 1791818501428,
+      "agent": "explorer",
+      "ok": true,
+      "summary": "routed (score 0.00)"
+    }
+  ],
+  "lastResult": ""
+}

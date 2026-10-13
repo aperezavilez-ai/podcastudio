@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "threadId": "thread_1791830219747_jahyx4",
+  "updatedAt": "2026-10-12T18:37:00.396Z",
+  "goal": "",
+  "phase": "routing",
+  "findings": [],
+  "files": [],
+  "skillsUsed": [],
+  "toolsUsed": [],
+  "subagents": [
+    {
+      "t": 1791830220395,
+      "agent": "explorer",
+      "ok": true,
+      "summary": "routed (score 0.00)"
+    }
+  ],
+  "lastResult": ""
+}

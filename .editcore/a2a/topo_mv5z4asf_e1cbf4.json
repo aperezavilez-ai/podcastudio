@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv5z4asf_e1cbf4",
+  "task": "gastaste miles de token en mas de 12 min pensando sin hacer nada como me los vas a regresar?",
+  "createdAt": 1791853180575,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-13T00:59:40.575Z",
+  "meta": {}
+}

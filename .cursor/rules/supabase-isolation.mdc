@@ -1,0 +1,10 @@
+---
+description: Mandatory Supabase isolation
+alwaysApply: true
+---
+
+Read project-infra.json before database work. Run the project isolation
+validator. Never share Supabase instances or credentials with another project,
+never hardcode secrets, and stop when the configured destination does not match
+the manifest.
+

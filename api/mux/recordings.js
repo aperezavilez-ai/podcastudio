@@ -1,5 +1,5 @@
-import { getUserFromAuthHeader } from '../../../lib/supabase/auth.js'
-import { listUserRecordings } from '../../../lib/integrations/recordings.js'
+import { getUserFromAuthHeader } from '../../lib/supabase/auth.js'
+import { listUserRecordings } from '../../lib/integrations/recordings.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {

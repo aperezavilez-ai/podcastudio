@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv2vkfip_46d3a1",
+  "task": "¿Qué stack usa este proyecto según el cerebro y package.json?",
+  "createdAt": 1791665816209,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-10T20:56:56.209Z",
+  "meta": {}
+}
