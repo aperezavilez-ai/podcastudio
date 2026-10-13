@@ -335,18 +335,28 @@ export default defineConfig(({ mode }) => {
     build: {
       rollupOptions: {
         output: {
-          manualChunks: {
-            // Separar vendor principal
-            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-            'vendor-supabase': ['@supabase/supabase-js'],
-
-            // Librerías pesadas en chunks separados para lazy loading
-            'ffmpeg': ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
-            'mediapipe': ['@mediapipe/tasks-vision'],
-            'mammoth': ['mammoth'],
-
-            // UI libraries
-            'vendor-ui': ['lucide-react', 'framer-motion'],
+          manualChunks(id) {
+            // Vite 8 + Rolldown requiere función en lugar de objeto
+            if (id.includes('node_modules')) {
+              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+                return 'vendor-react'
+              }
+              if (id.includes('@supabase/supabase-js')) {
+                return 'vendor-supabase'
+              }
+              if (id.includes('@ffmpeg/ffmpeg') || id.includes('@ffmpeg/util')) {
+                return 'ffmpeg'
+              }
+              if (id.includes('@mediapipe/tasks-vision')) {
+                return 'mediapipe'
+              }
+              if (id.includes('mammoth')) {
+                return 'mammoth'
+              }
+              if (id.includes('lucide-react') || id.includes('framer-motion')) {
+                return 'vendor-ui'
+              }
+            }
           }
         }
       },
