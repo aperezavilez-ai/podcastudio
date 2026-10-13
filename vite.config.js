@@ -332,13 +332,22 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       host: true,
     },
+    resolve: {
+      dedupe: ['react', 'react-dom'],
+    },
     build: {
       rollupOptions: {
         output: {
           manualChunks(id) {
             // Vite 8 + Rolldown requiere función en lugar de objeto
             if (id.includes('node_modules')) {
-              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              if (
+                id.includes('/react/') ||
+                id.includes('/react-dom/') ||
+                id.includes('/react-router/') ||
+                id.includes('/react-router-dom/') ||
+                id.includes('/scheduler/')
+              ) {
                 return 'vendor-react'
               }
               if (id.includes('@supabase/supabase-js')) {

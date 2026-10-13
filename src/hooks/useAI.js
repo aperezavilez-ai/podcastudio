@@ -1,10 +1,10 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 import { MUSIC_TRACKS, MUSIC_GENRES } from '../config/musicTracks.js'
 import { getAccessToken } from '../lib/supabase.js'
 
 const AI_TIMEOUT_MS = 45_000
-const cacheRef = useRef(new Map())
+const aiCache = new Map()
 
 function cacheKey(task, prompt) {
   let hash = 0
@@ -129,7 +129,7 @@ Incluye SOLO las plataformas: ${platList}`
 
 async function callAI(prompt, systemPrompt, task, retries = 2) {
   const key = cacheKey(task, prompt)
-  const cached = cacheRef.current.get(key)
+  const cached = aiCache.get(key)
   if (cached) return cached
 
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -155,7 +155,7 @@ async function callAI(prompt, systemPrompt, task, retries = 2) {
         err.details = data
         throw err
       }
-      cacheRef.current.set(key, data.text)
+      aiCache.set(key, data.text)
       return data.text
     } catch (e) {
       clearTimeout(id)
