@@ -596,6 +596,140 @@
   background: rgba(232, 97, 42, 0.12) !important;
 }
 
+/* Edición interactiva de cintillos */
+.cintCard {
+  background: var(--surface-2);
+  border: 1px solid var(--border-1);
+  border-radius: 7px;
+  margin-bottom: 5px;
+  transition: all .15s ease;
+  overflow: hidden;
+}
+.cintCard:hover {
+  background: var(--surface-3);
+  border-color: var(--border-2);
+}
+.cintCardActive {
+  border-color: var(--accent) !important;
+  background: rgba(232, 97, 42, 0.08) !important;
+  box-shadow: 0 0 10px rgba(232, 97, 42, 0.2);
+}
+.cintCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+}
+.cintCardMeta {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.cintCurrentText {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.cintActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cintActionBtn {
+  background: var(--surface-1);
+  border: 1px solid var(--border-2);
+  color: var(--text-secondary);
+  border-radius: 5px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.cintActionBtn:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+  border-color: var(--border-3);
+}
+.cintActionBtnActive {
+  background: var(--accent-dim) !important;
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+.cintPlayBtn:hover {
+  background: rgba(29, 158, 117, 0.15);
+  color: #1D9E75;
+  border-color: #1D9E75;
+}
+.cintLiveBadge {
+  font-size: 8px;
+  font-weight: 700;
+  color: #1D9E75;
+  background: rgba(29, 158, 117, 0.15);
+  border: 1px solid rgba(29, 158, 117, 0.3);
+  border-radius: 4px;
+  padding: 1px 4px;
+  letter-spacing: 0.04em;
+  margin-left: 4px;
+}
+.cintEditBox {
+  padding: 6px 8px 8px;
+  background: var(--surface-1);
+  border-top: 1px solid var(--border-1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cintEditBtns {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cintSaveBtn {
+  flex: 1;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.cintLiveBtn {
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: rgba(29, 158, 117, 0.2);
+  color: #1D9E75;
+  border: 1px solid rgba(29, 158, 117, 0.4);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cintCancelBtn {
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  border: 1px solid var(--border-2);
+  font-size: 10px;
+  cursor: pointer;
+}
+
 .cintCameraBlock {
   margin-bottom: 10px;
   padding-bottom: 8px;
