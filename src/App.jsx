@@ -126,6 +126,14 @@ export default function App() {
   const handleAuth = (u) => {
     setUser(u)
     localStorage.setItem('podcastudio_user', JSON.stringify(u))
+    if (u?.id) {
+      setProjectLoading(true)
+      loadProject(u.id).catch(() => null).then((p) => {
+        if (p) setProject(p)
+      }).finally(() => {
+        setProjectLoading(false)
+      })
+    }
   }
 
   const handleProject = (p) => {
@@ -180,6 +188,7 @@ export default function App() {
               </ProtectedRoute>
             )}
           />
+          <Route path="/project-setup" element={<Navigate to="/setup" replace />} />
           <Route
             path="/studio"
             element={(

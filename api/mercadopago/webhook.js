@@ -1,11 +1,11 @@
-const { handleMPWebhook } = require('../../lib/mercadopago/webhooks.js')
-const getRawBody = require('raw-body')
+import { handleMPWebhook } from '../../lib/mercadopago/webhooks.js'
+import { getRawBody } from 'raw-body'
 
-module.exports.config = {
+export const config = {
   api: { bodyParser: false },
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' })
     return

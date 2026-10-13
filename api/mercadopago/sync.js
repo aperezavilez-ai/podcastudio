@@ -1,7 +1,7 @@
-const { syncPaymentForUser } = require('../../lib/mercadopago/sync.js')
-const { getUserFromAuthHeader } = require('../../lib/supabase/auth.js')
+import { syncPaymentForUser } from '../../lib/mercadopago/sync.js'
+import { getUserFromAuthHeader } from '../../lib/supabase/auth.js'
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' })
     return

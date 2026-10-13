@@ -1,24 +1,18 @@
-const { createClient } = require('@supabase/supabase-js')
+const http = require('http')
 
-const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
-const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY
+const data = JSON.stringify({ email: 'test@test.com', password: 'test123' })
 
-if (!url || !key) {
-  console.error('Falta SUPABASE_URL / VITE_SUPABASE_URL o SUPABASE_ANON_KEY en el entorno')
-  process.exit(1)
-}
-
-const supabase = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
-
-const email = process.env.ADMIN_EMAIL || 'alfonsoavilez@icloud.com'
-const password = process.env.ADMIN_PASSWORD || 'Calurore1028@'
-
-supabase.auth.signInWithPassword({ email, password }).then(r => {
-  if (r.error) {
-    console.error('LOGIN ERROR:', r.error.message)
-    process.exit(1)
-  }
-  console.log('LOGIN OK')
-  console.log('User:', r.data.user.email)
-  console.log('Role:', r.data.user.app_metadata?.role || r.data.user.user_metadata?.role)
+const req = http.request('http://127.0.0.1:3002/api/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', 'Content-Length': data.length },
+}, (res) => {
+  let s = ''
+  res.on('data', c => s += c)
+  res.on('end', () => {
+    console.log('STATUS', res.statusCode)
+    console.log('BODY', s)
+  })
 })
+req.on('error', e => console.error('ERR', e.message))
+req.write(data)
+req.end()

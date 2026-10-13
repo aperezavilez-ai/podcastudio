@@ -1,9 +1,9 @@
-const { callClaude, validateConfig } = require('../lib/ai/claude.js')
-const { getUserFromAuthHeader } = require('../lib/supabase/auth.js')
-const { getSupabaseAdmin } = require('../lib/supabase/admin.js')
-const { AIError, AIConfigError, AIRateLimitError, AITimeoutError, getErrorCode, getErrorStatus } = require('../lib/ai/errors.js')
+import { callClaude, validateConfig } from '../lib/ai/claude.js'
+import { getUserFromAuthHeader } from '../lib/supabase/auth.js'
+import { getSupabaseAdmin } from '../lib/supabase/admin.js'
+import { AIError, AIConfigError, AIRateLimitError, AITimeoutError, getErrorCode, getErrorStatus } from '../lib/ai/errors.js'
 
-const { rateLimitCount: RATE_LIMIT_COUNT, rateLimitWindowMs: RATE_LIMIT_WINDOW_MS } = require('../lib/ai/config.js')
+const { rateLimitCount: RATE_LIMIT_COUNT, rateLimitWindowMs: RATE_LIMIT_WINDOW_MS } = await import('../lib/ai/config.js')
 
 async function checkRateLimit(userId) {
   const admin = getSupabaseAdmin()
@@ -28,7 +28,7 @@ async function checkRateLimit(userId) {
   return { allowed: true }
 }
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' })
     return

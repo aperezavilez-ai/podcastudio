@@ -22,10 +22,10 @@ export function isLocalDevHost(hostname = window.location.hostname) {
 
 export function isWrongAppHost(hostname = window.location.hostname) {
   const h = (hostname || '').toLowerCase()
-  return h.includes('podcaststudio') || h === 'podcastudio.mx'
+  return h === 'podcaststudio.mx'
 }
 
-/** Redirige dominios incorrectos o vercel.app al sitio canónico. */
+/** Redirige dominios con error tipográfico (podcaststudio.mx) al sitio canónico. */
 export function redirectToCanonicalDomain() {
   if (!import.meta.env.PROD || typeof window === 'undefined') return false
 
@@ -35,7 +35,7 @@ export function redirectToCanonicalDomain() {
   const canonicalHost = getCanonicalHost()
   if (hostname === canonicalHost) return false
 
-  if (isWrongAppHost(hostname) || hostname.endsWith('.vercel.app')) {
+  if (isWrongAppHost(hostname)) {
     window.location.replace(`${CANONICAL_SITE_URL}${pathname}${search}${hash}`)
     return true
   }

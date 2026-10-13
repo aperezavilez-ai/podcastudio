@@ -18,9 +18,10 @@ export default class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.error) {
-      const wrongHost = typeof window !== 'undefined' && (
-        isWrongAppHost() || /podcaststudio/i.test(window.location.hostname)
-      )
+      const err = this.state.error
+      const errMsg = err?.message || String(err)
+      const errStack = err?.stack || ''
+      const wrongHost = typeof window !== 'undefined' && window.location.hostname === 'podcaststudio.mx'
       const browser = getBrowserLabel(detectBrowser())
       const reloadHint = /mac/i.test(navigator.platform)
         ? 'Cmd+Shift+R'
@@ -56,11 +57,41 @@ export default class ErrorBoundary extends React.Component {
             </p>
           ) : (
             <p style={{ fontSize: 14, color: '#8888a0', maxWidth: 360, lineHeight: 1.55 }}>
-              Recarga con <strong>{reloadHint}</strong> en {browser} o en cualquier navegador
-              (Chrome, Firefox, Safari, Edge, Opera, etc.).
-              Si la tienes instalada como app, ciérrala por completo y ábrela de nuevo desde el navegador.
+              Recarga con <strong>{reloadHint}</strong> en {browser} o en cualquier navegador.
             </p>
           )}
+
+          {errMsg && (
+            <div style={{
+              maxWidth: 600,
+              width: '100%',
+              margin: '8px 0',
+              padding: 12,
+              background: '#141419',
+              border: '1px solid #2a2a35',
+              borderRadius: 8,
+              textAlign: 'left',
+              overflow: 'hidden',
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#ff6b6b', marginBottom: 6 }}>
+                Detalle del error:
+              </div>
+              <pre style={{
+                margin: 0,
+                fontSize: 12,
+                color: '#e8e8f0',
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                maxHeight: 180,
+                overflowY: 'auto',
+              }}>
+                {errMsg}
+                {errStack ? `\n\n${errStack}` : ''}
+              </pre>
+            </div>
+          )}
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
             <button
               type="button"
@@ -72,6 +103,18 @@ export default class ErrorBoundary extends React.Component {
               }}
             >
               Recargar
+            </button>
+            <button
+              type="button"
+              onClick={() => { window.location.href = '/' }}
+              style={{
+                padding: '10px 20px', borderRadius: 8,
+                border: '1px solid rgba(255,255,255,0.15)',
+                background: 'transparent', color: '#e8e8f0', fontSize: 14, fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Ir al inicio
             </button>
             {wrongHost && (
               <button
@@ -92,12 +135,12 @@ export default class ErrorBoundary extends React.Component {
             <button
               type="button"
               onClick={() => {
-                window.location.href = `${CANONICAL_SITE_URL}/studio`
+                window.location.href = '/studio'
               }}
               style={{
                 padding: '10px 20px', borderRadius: 8,
-                border: '1px solid rgba(255,255,255,0.15)',
-                background: 'transparent', color: '#e8e8f0', fontSize: 14, fontWeight: 600,
+                border: '1px solid rgba(232,97,42,0.5)',
+                background: 'transparent', color: '#e8612a', fontSize: 14, fontWeight: 600,
                 cursor: 'pointer',
               }}
             >

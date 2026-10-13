@@ -1,7 +1,7 @@
-const { getSubscriptionByUserId } = require('../../lib/mercadopago/subscriptions.js')
-const { getUserFromAuthHeader } = require('../../lib/supabase/auth.js')
+import { getSubscriptionByUserId } from '../../lib/mercadopago/subscriptions.js'
+import { getUserFromAuthHeader } from '../../lib/supabase/auth.js'
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'Method not allowed' })
     return
