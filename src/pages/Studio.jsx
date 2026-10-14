@@ -1409,7 +1409,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     </>
                   )}
                 </div>
-                {(streams[programCamera] || Object.values(streams).some(Boolean)) ? (
+                {(streams[programCamera] || Object.values(streams).some(Boolean) || screenLayout !== 'full') ? (
                   <ProgramPreview
                     stream={streams[programCamera] || null}
                     cameraKey={programCamera}
@@ -1427,11 +1427,15 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     onPromoteTertiaryToMaster={() => handlePromoteToMaster(tripleTertiarySlot)}
                     onPromotePipToMaster={() => handlePromoteToMaster(pipCameraSlot)}
                     onClosePip={() => handleSelectLayout('full')}
+                    onOpenConnectModal={() => handleOpenConnectModal(programCamera)}
                   />
                 ) : (
-                  <div className={styles.noSignalViewport}>
+                  <div className={styles.noSignalViewport} onClick={() => handleOpenConnectModal(programCamera)} style={{ cursor: 'pointer' }}>
                     <i className="ti ti-video-off" />
                     <span>Sin señal — conecta una cámara</span>
+                    <span style={{ fontSize: 11, color: 'var(--accent, #e8612a)', marginTop: 4 }}>
+                      Haz clic aquí para activar tu cámara web o conectar una cámara WiFi
+                    </span>
                   </div>
                 )}
                 {streams[programCamera] && (
@@ -1564,17 +1568,40 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     >
                       {isMaster ? '★ MASTER' : 'HACER MASTER'}
                     </button>
-                    <button
-                      type="button"
-                      className={styles.camConfigBtn}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleOpenConnectModal(i)
-                      }}
-                      title="Configurar entrada de video"
-                    >
-                      <i className="ti ti-settings" />
-                    </button>
+                    <div className={styles.camTopControls}>
+                      <button
+                        type="button"
+                        className={`${styles.camPowerBtn} ${streams[i] ? styles.camPowerBtnActive : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (streams[i]) {
+                            stopCamera(i)
+                          } else {
+                            handleOpenConnectModal(i)
+                          }
+                        }}
+                        title={streams[i] ? 'Desactivar / Apagar señal de esta cámara' : 'Activar / Conectar esta cámara'}
+                      >
+                        <i className={`ti ${streams[i] ? 'ti-power' : 'ti-video-plus'}`} />
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.camConfigBtn}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleOpenConnectModal(i)
+                        }}
+                        title="Configurar entrada de video"
+                      >
+                        <i className="ti ti-settings" />
+                      </button>
+                      {isLivePgm && (
+                        <div className={styles.camTallyBadge}>PGM</div>
+                      )}
+                      {isPvw && (
+                        <div className={styles.camTallyBadgePvw}>PVW</div>
+                      )}
+                    </div>
                     <div className={styles.camActionPills}>
                       <button
                         type="button"
@@ -1610,12 +1637,6 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                         {screenLayout === 'triple' && (splitSecondarySlot === i || tripleTertiarySlot === i) ? '✓ Triple' : 'Triple'}
                       </button>
                     </div>
-                    {isLivePgm && (
-                      <div className={styles.camTallyBadge}>PGM</div>
-                    )}
-                    {isPvw && (
-                      <div className={styles.camTallyBadgePvw}>PVW</div>
-                    )}
                     <CameraThumb
                       stream={streams[i]}
                       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 7, pointerEvents: 'none' }}

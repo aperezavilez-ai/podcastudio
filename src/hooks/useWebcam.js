@@ -171,6 +171,7 @@ export function useWebcam() {
   const cleanupRef = useRef({})
   const streamsRef = useRef({})
   const cameraMetaRef = useRef({})
+  const userDisabledSlotsRef = useRef(new Set())
 
   useEffect(() => { streamsRef.current = streams }, [streams])
   useEffect(() => { cameraMetaRef.current = cameraMeta }, [cameraMeta])
@@ -229,6 +230,7 @@ export function useWebcam() {
   }, [])
 
   const stopCamera = useCallback((slotIndex) => {
+    userDisabledSlotsRef.current.add(slotIndex)
     setSlotCleanup(slotIndex, null)
     delete cleanupRef.current[slotIndex]
 
@@ -251,6 +253,7 @@ export function useWebcam() {
 
   const startCamera = useCallback(async (deviceId, slotIndex, labelOverride) => {
     try {
+      userDisabledSlotsRef.current.delete(slotIndex)
       stopCamera(slotIndex)
       const stream = await openCameraStream(deviceId)
       applyStreamQualityHints(stream)
@@ -354,11 +357,11 @@ export function useWebcam() {
       const usedDeviceIds = getAssignedDeviceIds(cameraMetaRef.current, streamsRef.current)
 
       if (list.length === 1) {
-        if (!streamsRef.current[PRIMARY_CAMERA_SLOT]) {
+        if (!streamsRef.current[PRIMARY_CAMERA_SLOT] && !userDisabledSlotsRef.current.has(PRIMARY_CAMERA_SLOT)) {
           const cam = list[0]
           const stream = await startCamera(cam.deviceId, PRIMARY_CAMERA_SLOT, cam.label || 'CAM 2 · Centro')
           if (stream) connected = 1
-        } else {
+        } else if (streamsRef.current[PRIMARY_CAMERA_SLOT]) {
           connected = 1
         }
       } else {
@@ -367,6 +370,9 @@ export function useWebcam() {
         for (let slot = 0; slot < targetSlots && connected < maxCameras; slot++) {
           if (streamsRef.current[slot]) {
             connected++
+            continue
+          }
+          if (userDisabledSlotsRef.current.has(slot)) {
             continue
           }
 
@@ -437,6 +443,7 @@ export function useWebcam() {
     setError(null)
 
     try {
+      userDisabledSlotsRef.current.delete(slotIndex)
       stopCamera(slotIndex)
       const { stream, cleanup } = await createWifiStream(trimmed)
       setSlotCleanup(slotIndex, cleanup)

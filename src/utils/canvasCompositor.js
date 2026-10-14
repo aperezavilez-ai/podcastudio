@@ -172,7 +172,7 @@ export function drawCompositorFrame(ctx, w, h, {
       mode: transitionMode,
       progress,
     })
-  } else if (layout === 'split' && secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
+  } else if (layout === 'split') {
     const isVertical = h > w
     if (isVertical) {
       // Split vertical para 9:16 (uno arriba, otro abajo)
@@ -181,14 +181,24 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.beginPath()
       ctx.rect(0, 0, w, halfH)
       ctx.clip()
-      drawVideoCover(ctx, video, 0, 0, w, halfH, directorCrop)
+      if (video && video.readyState >= 2 && video.videoWidth) {
+        drawVideoCover(ctx, video, 0, 0, w, halfH, directorCrop)
+      } else {
+        ctx.fillStyle = '#0d0d12'
+        ctx.fillRect(0, 0, w, halfH)
+      }
       ctx.restore()
 
       ctx.save()
       ctx.beginPath()
       ctx.rect(0, halfH + 12, w, halfH)
       ctx.clip()
-      drawVideoCover(ctx, secondaryVideo, 0, halfH + 12, w, halfH, null)
+      if (secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
+        drawVideoCover(ctx, secondaryVideo, 0, halfH + 12, w, halfH, null)
+      } else {
+        ctx.fillStyle = '#0d0d12'
+        ctx.fillRect(0, halfH + 12, w, halfH)
+      }
       ctx.restore()
     } else {
       // Modo Split 50/50 horizontal (para 16:9 y 1:1)
@@ -197,14 +207,24 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.beginPath()
       ctx.rect(0, 0, halfW, h)
       ctx.clip()
-      drawVideoCover(ctx, video, 0, 0, halfW, h, directorCrop)
+      if (video && video.readyState >= 2 && video.videoWidth) {
+        drawVideoCover(ctx, video, 0, 0, halfW, h, directorCrop)
+      } else {
+        ctx.fillStyle = '#0d0d12'
+        ctx.fillRect(0, 0, halfW, h)
+      }
       ctx.restore()
 
       ctx.save()
       ctx.beginPath()
       ctx.rect(halfW + 12, 0, halfW, h)
       ctx.clip()
-      drawVideoCover(ctx, secondaryVideo, halfW + 12, 0, halfW, h, null)
+      if (secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
+        drawVideoCover(ctx, secondaryVideo, halfW + 12, 0, halfW, h, null)
+      } else {
+        ctx.fillStyle = '#0d0d12'
+        ctx.fillRect(halfW + 12, 0, halfW, h)
+      }
       ctx.restore()
     }
   } else if (layout === 'triple') {
@@ -220,26 +240,37 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.beginPath()
       ctx.rect(0, 0, w, mainH)
       ctx.clip()
-      drawVideoCover(ctx, video, 0, 0, w, mainH, directorCrop)
+      if (video && video.readyState >= 2 && video.videoWidth) {
+        drawVideoCover(ctx, video, 0, 0, w, mainH, directorCrop)
+      } else {
+        ctx.fillStyle = '#0d0d12'
+        ctx.fillRect(0, 0, w, mainH)
+      }
       ctx.restore()
 
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, subY, subW, subH)
+      ctx.clip()
       if (secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(0, subY, subW, subH)
-        ctx.clip()
         drawVideoCover(ctx, secondaryVideo, 0, subY, subW, subH, null)
-        ctx.restore()
+      } else {
+        ctx.fillStyle = '#0d0d12'
+        ctx.fillRect(0, subY, subW, subH)
       }
+      ctx.restore()
 
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(subW + 12, subY, subW, subH)
+      ctx.clip()
       if (tertiaryVideo && tertiaryVideo.readyState >= 2 && tertiaryVideo.videoWidth) {
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(subW + 12, subY, subW, subH)
-        ctx.clip()
         drawVideoCover(ctx, tertiaryVideo, subW + 12, subY, subW, subH, null)
-        ctx.restore()
+      } else {
+        ctx.fillStyle = '#0d0d12'
+        ctx.fillRect(subW + 12, subY, subW, subH)
       }
+      ctx.restore()
     } else {
       // Horizontal (16:9 y 1:1): Master a la izquierda (64%), dos secundarias apiladas a la derecha (36%)
       const mainW = Math.round(w * 0.64)
@@ -251,29 +282,45 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.beginPath()
       ctx.rect(0, 0, mainW, h)
       ctx.clip()
-      drawVideoCover(ctx, video, 0, 0, mainW, h, directorCrop)
+      if (video && video.readyState >= 2 && video.videoWidth) {
+        drawVideoCover(ctx, video, 0, 0, mainW, h, directorCrop)
+      } else {
+        ctx.fillStyle = '#0d0d12'
+        ctx.fillRect(0, 0, mainW, h)
+      }
       ctx.restore()
 
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(sideX, 0, sideW, sideH)
+      ctx.clip()
       if (secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(sideX, 0, sideW, sideH)
-        ctx.clip()
         drawVideoCover(ctx, secondaryVideo, sideX, 0, sideW, sideH, null)
-        ctx.restore()
+      } else {
+        ctx.fillStyle = '#0d0d12'
+        ctx.fillRect(sideX, 0, sideW, sideH)
       }
+      ctx.restore()
 
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(sideX, sideH + 12, sideW, sideH)
+      ctx.clip()
       if (tertiaryVideo && tertiaryVideo.readyState >= 2 && tertiaryVideo.videoWidth) {
-        ctx.save()
-        ctx.beginPath()
-        ctx.rect(sideX, sideH + 12, sideW, sideH)
-        ctx.clip()
         drawVideoCover(ctx, tertiaryVideo, sideX, sideH + 12, sideW, sideH, null)
-        ctx.restore()
+      } else {
+        ctx.fillStyle = '#0d0d12'
+        ctx.fillRect(sideX, sideH + 12, sideW, sideH)
       }
+      ctx.restore()
     }
-  } else if (video && video.readyState >= 2 && video.videoWidth) {
-    drawMainVideo(video, directorCrop)
+  } else {
+    if (video && video.readyState >= 2 && video.videoWidth) {
+      drawMainVideo(video, directorCrop)
+    } else {
+      ctx.fillStyle = '#07070a'
+      ctx.fillRect(0, 0, w, h)
+    }
 
     // Si está en modo PiP y hay pipVideo
     if (layout === 'pip' && pipVideo && pipVideo.readyState >= 2 && pipVideo.videoWidth) {

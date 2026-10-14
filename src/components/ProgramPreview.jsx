@@ -137,9 +137,10 @@ export default function ProgramPreview({
   const originX = `${(directorCrop?.focusX ?? 0.5) * 100}%`
   const originY = `${(directorCrop?.focusY ?? 0.42) * 100}%`
 
-  if (!stream) {
+  const hasAnyStream = Boolean(stream || pipStream || secondaryStream || tertiaryStream)
+  if (!hasAnyStream && layout === 'full') {
     return (
-      <div className={styles.empty}>
+      <div className={styles.empty} onClick={onOpenConnectModal} style={{ cursor: onOpenConnectModal ? 'pointer' : 'default' }}>
         <i className="ti ti-video-off" />
         <span>Sin señal — conecta una cámara</span>
       </div>
@@ -319,19 +320,31 @@ export default function ProgramPreview({
   // MODO NORMAL (FULL) con o sin PiP
   return (
     <div className={styles.preview}>
-      <video
-        ref={videoRef}
-        className={styles.video}
-        autoPlay
-        muted
-        playsInline
-        style={{
-          filter: cssFilter,
-          transform: zoom > 1 ? `scale(${zoom})` : undefined,
-          transformOrigin: `${originX} ${originY}`,
-          transition: directorCrop?.pushIn ? 'none' : 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1), transform-origin 0.35s cubic-bezier(0.25, 1, 0.5, 1)',
-        }}
-      />
+      {stream ? (
+        <video
+          ref={videoRef}
+          className={styles.video}
+          autoPlay
+          muted
+          playsInline
+          style={{
+            filter: cssFilter,
+            transform: zoom > 1 ? `scale(${zoom})` : undefined,
+            transformOrigin: `${originX} ${originY}`,
+            transition: directorCrop?.pushIn ? 'none' : 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1), transform-origin 0.35s cubic-bezier(0.25, 1, 0.5, 1)',
+          }}
+        />
+      ) : (
+        <div className={styles.empty} onClick={onOpenConnectModal} style={{ cursor: onOpenConnectModal ? 'pointer' : 'default' }}>
+          <i className="ti ti-video-off" />
+          <span>{primaryLabel ? `${primaryLabel} (Sin señal)` : 'Sin señal — conecta una cámara'}</span>
+          {onOpenConnectModal && (
+            <span style={{ fontSize: 10, color: 'var(--accent, #e8612a)', marginTop: 4 }}>
+              Clic para conectar entrada de video
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Recuadro PiP (Picture in Picture) */}
       {layout === 'pip' && (

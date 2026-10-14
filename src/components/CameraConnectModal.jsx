@@ -163,6 +163,52 @@ export default function CameraConnectModal({
           </div>
         </div>
 
+        {/* BARRA DE ESTADO DEL CANAL SELECCIONADO */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '8px 16px',
+          background: isConnected ? 'rgba(34, 197, 94, 0.08)' : 'rgba(255, 255, 255, 0.03)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          fontSize: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: isConnected ? '#22c55e' : '#666',
+              boxShadow: isConnected ? '0 0 8px #22c55e' : 'none',
+            }} />
+            <span style={{ color: isConnected ? '#fff' : '#aaa' }}>
+              CAM {targetSlot + 1}: <strong>{isConnected ? `Activa (${currentMeta?.label || 'Transmitiendo'})` : 'Desactivada (Sin señal)'}</strong>
+            </span>
+          </div>
+          {isConnected && onDisconnect && (
+            <button
+              type="button"
+              onClick={() => onDisconnect(targetSlot)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                background: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid rgba(239, 68, 68, 0.4)',
+                color: '#f87171',
+                borderRadius: 4,
+                padding: '3px 8px',
+                fontSize: 11,
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+              title="Apagar y liberar esta cámara"
+            >
+              <i className="ti ti-power" /> Apagar Cámara
+            </button>
+          )}
+        </div>
+
         {/* TABS */}
         <div className={styles.tabs}>
           <button
@@ -223,11 +269,17 @@ export default function CameraConnectModal({
                       <button
                         type="button"
                         className={`${styles.connectBtn} ${isCurrent ? styles.connectBtnConnected : ''}`}
-                        onClick={() => handleConnectUsb(cam.deviceId, cam.label)}
-                        disabled={isCurrent}
+                        onClick={() => {
+                          if (isCurrent) {
+                            if (onDisconnect) onDisconnect(targetSlot)
+                          } else {
+                            handleConnectUsb(cam.deviceId, cam.label)
+                          }
+                        }}
+                        title={isCurrent ? 'Desactivar / Apagar esta cámara en este canal' : `Asignar a CAM ${targetSlot + 1}`}
                       >
                         {isCurrent ? (
-                          <><i className="ti ti-check" /> Conectada</>
+                          <><i className="ti ti-power" style={{ color: '#f87171' }} /> Desactivar</>
                         ) : (
                           <><i className="ti ti-plug" /> Asignar a CAM {targetSlot + 1}</>
                         )}
