@@ -157,6 +157,8 @@ export function useWebcam() {
   const [autoConnecting, setAutoConnecting] = useState(false)
   const [connectedCount, setConnectedCount] = useState(0)
   const [mobilePrimaryFacing, setMobilePrimaryFacing] = useState('environment')
+  const [slotsCount, setSlotsCount] = useState(3)
+  const [masterCameraSlot, setMasterCameraSlot] = useState(PRIMARY_CAMERA_SLOT)
 
   const micRef = useRef(null)
   const audioCtxRef = useRef(null)
@@ -361,7 +363,8 @@ export function useWebcam() {
         }
       } else {
         let camIdx = 0
-        for (let slot = 0; slot < 3 && connected < maxCameras; slot++) {
+        const targetSlots = Math.min(15, Math.max(slotsCount, Math.min(list.length, maxCameras)))
+        for (let slot = 0; slot < targetSlots && connected < maxCameras; slot++) {
           if (streamsRef.current[slot]) {
             connected++
             continue
@@ -378,9 +381,10 @@ export function useWebcam() {
             await delay(300)
           }
         }
+        setSlotsCount(prev => Math.max(prev, connected, 3))
       }
 
-      setActiveCamera(pickPrimaryActiveSlot(streamsRef.current))
+      setActiveCamera(pickPrimaryActiveSlot(streamsRef.current, masterCameraSlot))
       setConnectedCount(connected)
       connectedCountRef.current = connected
       return connected
@@ -389,6 +393,26 @@ export function useWebcam() {
       setAutoConnecting(false)
     }
   }, [devices.cameras, initMobileCameras, startCamera])
+
+  const addCameraSlot = useCallback(() => {
+    setSlotsCount(prev => Math.min(15, prev + 1))
+  }, [])
+
+  const removeCameraSlot = useCallback((slotIndex) => {
+    stopCamera(slotIndex)
+    setSlotsCount(prev => Math.max(1, prev - 1))
+  }, [stopCamera])
+
+  const renameCameraSlot = useCallback((slotIndex, label) => {
+    setCameraMeta(prev => ({
+      ...prev,
+      [slotIndex]: {
+        ...(prev[slotIndex] || {}),
+        label: label?.trim() || prev[slotIndex]?.label || `CAM ${slotIndex + 1}`,
+        customLabel: label?.trim() || '',
+      },
+    }))
+  }, [])
 
   const connectNextCameraToSlot = useCallback(async (slotIndex) => {
     const { cameras } = await enumerateDevices(false)
@@ -668,6 +692,13 @@ export function useWebcam() {
     autoConnecting,
     connectedCount,
     mobilePrimaryFacing,
+    slotsCount,
+    setSlotsCount,
+    masterCameraSlot,
+    setMasterCameraSlot,
+    addCameraSlot,
+    removeCameraSlot,
+    renameCameraSlot,
     wifiPresets: WIFI_PRESETS,
     enumerateDevices,
     startCamera,

@@ -51,7 +51,9 @@ import LandscapeGate from '../components/LandscapeGate.jsx'
 import { getPlanLimits } from '../lib/planLimits.js'
 import { aiPostsRemaining } from '../lib/aiUsage.js'
 import { isTouchDevice } from '../lib/device.js'
-import { PRIMARY_CAMERA_SLOT, CAM_SLOT_LABELS, pickPrimaryActiveSlot } from '../config/cameraSlots.js'
+import { PRIMARY_CAMERA_SLOT, CAM_SLOT_LABELS, pickPrimaryActiveSlot, getSlotLabel } from '../config/cameraSlots.js'
+import { useDynamicZoom } from '../hooks/useDynamicZoom.js'
+import DynamicZoomControl from '../components/DynamicZoomControl.jsx'
 import { useMicMonitor } from '../hooks/useMicMonitor.js'
 import styles from './Studio.module.css'
 
@@ -89,6 +91,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     devices, streams, cameraMeta, activeCamera, setActiveCamera, error: camError, setError: setCamError,
     micLevel, bluetoothSupported, wifiConnecting, btScanning, wifiPresets,
     autoConnecting, connectedCount, mobilePrimaryFacing,
+    slotsCount, setSlotsCount, masterCameraSlot, setMasterCameraSlot,
+    addCameraSlot, removeCameraSlot, renameCameraSlot,
     enumerateDevices, startCamera, initMobileCameras, switchMobilePrimaryFacing,
     autoConnectAll, connectNextCameraToSlot, stopCamera, connectWifiCamera,
     scanBluetoothCamera, connectBluetoothWifiStream, startPreferredMic, switchMic, selectedMicId, micLabel, getMicStream,
@@ -276,14 +280,14 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
   const programCamera = useMemo(() => {
     if (userPickedCameraRef.current && streams[activeCamera]) return activeCamera
-    return pickPrimaryActiveSlot(streams)
-  }, [activeCamera, streams])
+    return pickPrimaryActiveSlot(streams, masterCameraSlot)
+  }, [activeCamera, streams, masterCameraSlot])
 
   useEffect(() => {
     if (!initialized || userPickedCameraRef.current) return
-    const slot = pickPrimaryActiveSlot(streams)
+    const slot = pickPrimaryActiveSlot(streams, masterCameraSlot)
     if (streams[slot] && activeCamera !== slot) setActiveCamera(slot)
-  }, [initialized, streams, activeCamera, setActiveCamera])
+  }, [initialized, streams, activeCamera, setActiveCamera, masterCameraSlot])
 
   const subtitleLang = proj.subtitleLanguage || 'es-MX'
   const { displayText: subtitleText, interim: subtitleInterim, supported: subtitlesSupported } = useSpeechSubtitles({
@@ -340,6 +344,27 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     faceZoomSec: 10,
   })
 
+  const {
+    zoomState,
+    activeZoom,
+    setPreset: setZoomPreset,
+    setZoom: setManualZoom,
+    setPan: setZoomPan,
+    resetZoom,
+    togglePushIn,
+    getEffectiveCrop: getDynamicCrop,
+  } = useDynamicZoom({ activeCamera: programCamera, recording })
+
+  const effectiveCrop = useMemo(() => {
+    if (switchMode === 'ai' && planLimits.aiDirector) {
+      const aiCrop = getDirectorCrop(programCamera)
+      if (aiCrop && aiCrop.zoom > 1.02) return aiCrop
+    }
+    const dyn = getDynamicCrop(programCamera)
+    if (dyn && dyn.zoom > 1.01) return dyn
+    return null
+  }, [switchMode, planLimits.aiDirector, getDirectorCrop, getDynamicCrop, programCamera])
+
   const { getProgramStream } = useStudioCompositor({
     streams,
     activeCamera: programCamera,
@@ -351,7 +376,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     cintilloStyle,
     animPhase,
     animKey,
-    directorCrop: switchMode === 'ai' ? getDirectorCrop(programCamera) : null,
+    directorCrop: effectiveCrop,
     look,
     recording,
     recordDurationSec: duration,
@@ -409,6 +434,31 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [tab, teleprompter.visible, teleprompter.toggle, teleprompter.reset, recording, countdown])
+
+  // Atajos de teclado para switcher multicámara (1-9 = CAM 1 a 9, 0 = CAM 10)
+  useEffect(() => {
+    if (tab !== 'studio') return
+    const handleKeySwitch = (e) => {
+      const tag = e.target?.tagName?.toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return
+      if (e.metaKey || e.ctrlKey || e.altKey) return
+
+      let targetSlot = null
+      if (e.key >= '1' && e.key <= '9') {
+        targetSlot = parseInt(e.key, 10) - 1
+      } else if (e.key === '0') {
+        targetSlot = 9
+      }
+      if (targetSlot !== null && targetSlot < slotsCount) {
+        e.preventDefault()
+        userPickedCameraRef.current = true
+        setActiveCamera(targetSlot)
+        setCamSlot(targetSlot)
+      }
+    }
+    window.addEventListener('keydown', handleKeySwitch)
+    return () => window.removeEventListener('keydown', handleKeySwitch)
+  }, [tab, slotsCount, setActiveCamera, setCamSlot])
 
   // Initialize cameras and mic once on mount (evita bucle de reconexión)
   useEffect(() => {
@@ -800,13 +850,29 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     stream={streams[programCamera]}
                     cameraKey={programCamera}
                     look={look}
-                    directorCrop={switchMode === 'ai' && planLimits.aiDirector ? getDirectorCrop(programCamera) : null}
+                    directorCrop={effectiveCrop}
                   />
                 ) : (
                   <div className={styles.noSignalViewport}>
                     <i className="ti ti-video-off" />
                     <span>Sin señal — conecta una cámara</span>
                   </div>
+                )}
+                {streams[programCamera] && (
+                  <DynamicZoomControl
+                    activeCamera={programCamera}
+                    cameraLabel={getSlotLabel(programCamera, cameraMeta[programCamera]?.customLabel, programCamera === masterCameraSlot)}
+                    activePreset={zoomState.preset}
+                    zoom={activeZoom}
+                    pushIn={zoomState.pushIn}
+                    focusX={zoomState.focusX}
+                    focusY={zoomState.focusY}
+                    onPresetChange={setZoomPreset}
+                    onZoomChange={setManualZoom}
+                    onPanChange={setZoomPan}
+                    onPushInToggle={togglePushIn}
+                    onReset={resetZoom}
+                  />
                 )}
                 {(() => {
                   const mainCint = cintilloForMainView(programCamera)
@@ -819,7 +885,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       text={mainCint.text}
                       accentColor={mainCint.color}
                       position={mainCint.position}
-                      size={programCamera === PRIMARY_CAMERA_SLOT ? 'large' : 'normal'}
+                      size={programCamera === masterCameraSlot ? 'large' : 'normal'}
                       animPhase={isLive ? animPhase : 'hold'}
                       animKey={isLive ? animKey : 0}
                       onClose={hideCintillo}
@@ -856,17 +922,19 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               </div>
             </div>
 
-            {/* 3 CÁMARAS — justo debajo del visor; CAM 2 centro = MASTER */}
+            {/* MULTICÁMARA (hasta 15 cámaras) con Swisher Master */}
             <div className={styles.camStrip}>
               <div className={styles.camStripCams}>
-              {[0, 1, 2].map(i => {
+              {Array.from({ length: slotsCount }).map((_, i) => {
                 const meta = cameraMeta[i]
-                const isMaster = i === PRIMARY_CAMERA_SLOT
+                const isMaster = i === masterCameraSlot
+                const isLivePgm = programCamera === i
                 const typeIcon = meta?.type === 'wifi' ? 'ti-wifi' : meta?.type === 'bluetooth' ? 'ti-bluetooth' : meta?.type === 'usb' ? 'ti-plug' : null
+                const slotTitle = getSlotLabel(i, meta?.customLabel, isMaster)
                 return (
                   <div
                     key={i}
-                    className={`${styles.camThumb} ${isMaster ? styles.camThumbMaster : ''} ${programCamera === i ? styles.camActive : ''}`}
+                    className={`${styles.camThumb} ${isMaster ? styles.camThumbMaster : ''} ${isLivePgm ? styles.camActive : ''}`}
                     onClick={() => {
                       userPickedCameraRef.current = true
                       setActiveCamera(i)
@@ -874,15 +942,26 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       if (!streams[i]) {
                         const activeStreams = Object.values(streams).filter(Boolean).length
                         if (activeStreams >= planLimits.maxCameras) {
-                          setPlanMsg(`Tu plan permite ${planLimits.maxCameras} cámaras simultáneas. Mejora a Pro para 3.`)
+                          setPlanMsg(`Tu plan permite ${planLimits.maxCameras} cámaras simultáneas.`)
                           return
                         }
                         connectNextCameraToSlot(i)
                       }
                     }}
                   >
-                    {isMaster && (
-                      <div className={styles.camMasterBadge}>MASTER</div>
+                    <button
+                      type="button"
+                      className={`${styles.camMasterBadgeBtn} ${isMaster ? styles.camMasterBadgeActive : ''}`}
+                      title={isMaster ? 'Cámara Master Principal (clic para reasignar)' : 'Hacer Master'}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setMasterCameraSlot(i)
+                      }}
+                    >
+                      {isMaster ? '★ MASTER' : 'SET MST'}
+                    </button>
+                    {isLivePgm && (
+                      <div className={styles.camTallyBadge}>PGM</div>
                     )}
                     <CameraThumb
                       stream={streams[i]}
@@ -902,12 +981,23 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     )}
                     <div className={styles.camLabel}>
                       {streams[i]
-                        ? <><div className={styles.camLiveDot} />{meta?.label?.slice(0, 14) || CAM_SLOT_LABELS[i]}</>
-                        : CAM_SLOT_LABELS[i]}
+                        ? <><div className={styles.camLiveDot} />{meta?.label?.slice(0, 14) || slotTitle}</>
+                        : slotTitle}
                     </div>
                   </div>
                 )
               })}
+              {slotsCount < 15 && (
+                <button
+                  type="button"
+                  className={styles.addCamStripBtn}
+                  onClick={() => addCameraSlot()}
+                  title="Agregar otra cámara (hasta 15 cámaras)"
+                >
+                  <i className="ti ti-plus" />
+                  <span>+ CAM</span>
+                </button>
+              )}
               </div>
               <div className={styles.camStripTools}>
               {isTouchDevice() && (
@@ -1093,15 +1183,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               cameraMeta={cameraMeta}
               autoConnecting={autoConnecting}
               connectedCount={connectedCount}
+              slotsCount={slotsCount}
+              onAddSlot={addCameraSlot}
               onReconnectAll={async () => {
                 setCamError(null)
                 const devs = await enumerateDevices(true)
                 if (isTouchDevice()) {
                   await initMobileCameras()
                 } else {
-                  let n = await autoConnectAll(devs.cameras)
+                  let n = await autoConnectAll(devs.cameras, planLimits.maxCameras, slotsCount)
                   if (n === 0 && devs.cameras[0]) {
-                    await startCamera(devs.cameras[0].deviceId, PRIMARY_CAMERA_SLOT, devs.cameras[0].label)
+                    await startCamera(devs.cameras[0].deviceId, masterCameraSlot, devs.cameras[0].label)
                   }
                 }
               }}

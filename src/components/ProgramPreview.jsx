@@ -94,7 +94,7 @@ export default function ProgramPreview({
             filter: cssFilter,
             transform: zoom > 1 ? `scale(${zoom})` : undefined,
             transformOrigin: `${originX} ${originY}`,
-            transition: 'none',
+            transition: directorCrop?.pushIn ? 'none' : 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1), transform-origin 0.35s cubic-bezier(0.25, 1, 0.5, 1)',
           }}
         />
         <LookOverlays look={look} />
@@ -114,7 +114,7 @@ export default function ProgramPreview({
             filter: cssFilter,
             transform: zoom > 1 ? `scale(${zoom})` : undefined,
             transformOrigin: `${originX} ${originY}`,
-            transition: 'none',
+            transition: directorCrop?.pushIn ? 'none' : 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1), transform-origin 0.35s cubic-bezier(0.25, 1, 0.5, 1)',
           }}
       />
       <LookOverlays look={look} />

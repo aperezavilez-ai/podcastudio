@@ -28,6 +28,28 @@
 .slotRow {
   display: flex;
   gap: 4px;
+  flex-wrap: wrap;
+}
+
+.addSlotBtn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px dashed var(--border-2);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  transition: all .15s;
+}
+
+.addSlotBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
 }
 
 .slotBtn {

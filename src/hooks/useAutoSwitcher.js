@@ -13,7 +13,10 @@ export function useAutoSwitcher({
     if (!enabled) return
     if (onlyWhileRecording && !recording) return
 
-    const slots = [0, 1, 2].filter(i => streams[i])
+    const slots = Object.keys(streams || {})
+      .map(Number)
+      .filter(i => streams[i])
+      .sort((a, b) => a - b)
     if (slots.length < 2) return
 
     const id = setInterval(() => {

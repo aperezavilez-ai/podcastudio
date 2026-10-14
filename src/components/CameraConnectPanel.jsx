@@ -21,6 +21,8 @@ export default function CameraConnectPanel({
   wifiConnecting,
   btScanning,
   wifiPresets,
+  slotsCount = 3,
+  onAddSlot,
   onSelectSlot,
   onUsbConnect,
   onWifiConnect,
@@ -81,17 +83,28 @@ export default function CameraConnectPanel({
       </div>
 
       <div className={styles.slotRow}>
-        {[0, 1, 2].map(i => (
+        {Array.from({ length: Math.min(15, Math.max(slotsCount || 3, Object.keys(cameraMeta || {}).length)) }, (_, i) => (
           <button
             key={i}
             type="button"
             className={`${styles.slotBtn} ${slotIndex === i ? styles.slotActive : ''}`}
             onClick={() => onSelectSlot(i)}
+            title={cameraMeta[i]?.label || `CAM ${i + 1}`}
           >
             Cam {i + 1}
             {cameraMeta[i] && <span className={styles.slotDot} />}
           </button>
         ))}
+        {(!slotsCount || slotsCount < 15) && onAddSlot && (
+          <button
+            type="button"
+            className={styles.addSlotBtn}
+            onClick={onAddSlot}
+            title="Añadir cámara (hasta 15)"
+          >
+            <i className="ti ti-plus" />
+          </button>
+        )}
       </div>
 
       {hasStream && (

@@ -1,7 +1,7 @@
 import { isAdminUser } from './access.js'
 
 const PRO_LIMITS = {
-  maxCameras: 3,
+  maxCameras: 15,
   starterLookOnly: false,
   maxAiPostsPerMonth: null,
   aiDirector: true,
