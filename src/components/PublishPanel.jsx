@@ -16,6 +16,8 @@ export default function PublishPanel({
   hasRecordings,
   youtubeConnected,
   onYouTubeConnect,
+  selectedNetworks = ['facebook', 'youtube', 'tiktok', 'instagram'],
+  onToggleNetwork,
 }) {
   return (
     <div className={styles.panel}>
@@ -42,29 +44,46 @@ export default function PublishPanel({
             className={styles.packBtnDirect}
             onClick={onOpenPackRedes}
             disabled={!hasRecordings}
-            title={hasRecordings ? 'Generar y descargar en 16:9, 9:16 y 1:1' : 'Graba un video primero'}
+            title={hasRecordings ? 'Generar y descargar en los formatos de tus redes seleccionadas' : 'Graba un video primero'}
           >
             <i className="ti ti-package" style={{ fontSize: 13 }} />
-            <span>Descargar Pack Redes (16:9, 9:16, 1:1)</span>
+            <span>Descargar Pack Redes ({selectedNetworks.length} seleccionadas)</span>
           </button>
         )}
       </div>
 
-      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginTop: 4 }}>
-        Formatos optimizados por plataforma:
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+          Redes seleccionadas ({selectedNetworks.length}/4):
+        </span>
       </div>
 
       <div className={styles.networksList}>
-        {NETWORKS.map(n => (
-          <div key={n.id} className={styles.netCard} style={{ borderColor: `${n.color}35` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <i className={`ti ${n.icon}`} style={{ color: n.color, fontSize: 15 }} />
-              <strong style={{ fontSize: 11, color: '#fff' }}>{n.label}</strong>
-              <span className={styles.netFormatBadge}>{n.format}</span>
+        {NETWORKS.map(n => {
+          const isSelected = selectedNetworks.includes(n.id)
+          return (
+            <div
+              key={n.id}
+              className={`${styles.netCard} ${isSelected ? styles.netCardActive : ''}`}
+              style={{ borderColor: isSelected ? n.color : `${n.color}25` }}
+              onClick={() => onToggleNetwork?.(n.id)}
+              title={`Haz clic para ${isSelected ? 'deseleccionar' : 'seleccionar'} ${n.label}`}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <i
+                  className={isSelected ? 'ti ti-square-check-filled' : 'ti ti-square'}
+                  style={{ color: isSelected ? n.color : 'var(--text-muted)', fontSize: 14 }}
+                />
+                <i className={`ti ${n.icon}`} style={{ color: n.color, fontSize: 15 }} />
+                <strong style={{ fontSize: 11, color: '#fff' }}>{n.label}</strong>
+                <span className={styles.netFormatBadge}>{n.format}</span>
+              </div>
+              <span style={{ fontSize: 9.5, color: isSelected ? '#34d399' : 'var(--text-muted)', fontWeight: isSelected ? 600 : 400 }}>
+                {isSelected ? 'Activa' : 'Inactiva'}
+              </span>
             </div>
-            <span style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>{n.desc}</span>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {onOpenPosts && (

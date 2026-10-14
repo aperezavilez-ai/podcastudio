@@ -75,6 +75,8 @@ function isWrongStudioHost() {
 
 const CINTILLO_PRESET_MAP = Object.fromEntries(CINTILLO_PRESETS.map(p => [p.id, p]))
 
+export const ALL_SOCIAL_NETWORKS = ['facebook', 'youtube', 'tiktok', 'instagram']
+
 export const SOCIAL_FORMAT_PRESETS = [
   {
     id: 'facebook',
@@ -271,6 +273,44 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     return 'facebook'
   })
   const [micMuted, setMicMuted] = useState(false)
+  const [selectedNetworks, setSelectedNetworks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_selected_networks')
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch {}
+    return ALL_SOCIAL_NETWORKS
+  })
+
+  const toggleNetwork = useCallback((networkId) => {
+    setSelectedNetworks(prev => {
+      let next
+      if (prev.includes(networkId)) {
+        if (prev.length === 1) return prev
+        next = prev.filter(id => id !== networkId)
+      } else {
+        next = [...prev, networkId]
+      }
+      try {
+        localStorage.setItem('podcastudio_selected_networks', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }, [])
+
+  const toggleAllNetworks = useCallback(() => {
+    setSelectedNetworks(prev => {
+      const next = prev.length === ALL_SOCIAL_NETWORKS.length
+        ? ['facebook']
+        : [...ALL_SOCIAL_NETWORKS]
+      try {
+        localStorage.setItem('podcastudio_selected_networks', JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }, [])
   const [showSocialModal, setShowSocialModal] = useState(false)
   const [showCintEditorModal, setShowCintEditorModal] = useState(false)
   const [cintEditorData, setCintEditorData] = useState(null)
@@ -1721,25 +1761,49 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               {/* FORMAT SELECTOR + MIC MUTE + SOCIAL PRESETS */}
               <div className={styles.fmtSelector}>
                 <MicMuteButton muted={micMuted} onToggle={toggleMicMute} />
-                <div className={styles.socialPresets} role="group" aria-label="Formato de video y Redes Sociales">
+                <div className={styles.socialPresets} role="group" aria-label="Selección de Redes Sociales simultáneas">
+                  <button
+                    type="button"
+                    className={`${styles.socialAllBtn} ${selectedNetworks.length === ALL_SOCIAL_NETWORKS.length ? styles.socialAllBtnActive : ''}`}
+                    onClick={toggleAllNetworks}
+                    title={selectedNetworks.length === ALL_SOCIAL_NETWORKS.length ? 'Deseleccionar todas (dejar 1)' : 'Seleccionar las 4 redes simultáneamente'}
+                  >
+                    <i className={selectedNetworks.length === ALL_SOCIAL_NETWORKS.length ? 'ti ti-checkbox' : 'ti ti-square'} />
+                    <span>Todas ({selectedNetworks.length}/4)</span>
+                  </button>
                   {SOCIAL_FORMAT_PRESETS.map((p) => {
-                    const isActive = proj.format === p.format && (p.format !== '16:9' || activeSocialPreset === p.id)
+                    const isSelected = selectedNetworks.includes(p.id)
                     return (
                       <button
                         key={p.id}
                         type="button"
-                        className={`${styles.socialBtn} ${isActive ? styles.socialBtnActive : ''}`}
+                        className={`${styles.socialBtn} ${isSelected ? styles.socialBtnActive : ''}`}
                         data-format={p.format}
                         data-preset={p.id}
-                        title={`${p.label} (${p.ratio}): ${p.network}`}
-                        onClick={() => handleFormatChange(p.format, p.id)}
+                        title={`${p.label} (${p.ratio}): Haz clic para ${isSelected ? 'desactivar de la exportación' : 'activar'}`}
+                        onClick={() => {
+                          toggleNetwork(p.id)
+                          handleFormatChange(p.format, p.id)
+                        }}
                       >
-                        <i className={`${p.icon} ${styles.socialBtnIcon}`} style={{ color: isActive ? undefined : p.color }} />
+                        <i
+                          className={isSelected ? 'ti ti-square-check-filled' : 'ti ti-square'}
+                          style={{ fontSize: 13, color: isSelected ? p.color : 'var(--text-muted)' }}
+                        />
+                        <i className={`${p.icon} ${styles.socialBtnIcon}`} style={{ color: isSelected ? p.color : 'var(--text-muted)' }} />
                         <span className={styles.socialBtnLabel}>{p.label}</span>
                         <span className={styles.socialBtnRatio}>{p.ratio}</span>
                       </button>
                     )
                   })}
+                  <button
+                    type="button"
+                    className={styles.socialModalOpenBtn}
+                    onClick={() => setShowSocialModal(true)}
+                    title="Abrir panel avanzado de redes sociales y formatos"
+                  >
+                    <i className="ti ti-adjustments" />
+                  </button>
                 </div>
                 {/* BOTÓN DIRECTO TRANSMISIÓN EN VIVO */}
                 <button
@@ -2098,6 +2162,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   hasRecordings={recordings.length > 0 || cloudRecordings.length > 0}
                   youtubeConnected={youtubeConnected}
                   onYouTubeConnect={integrations?.youtube ? connectYouTubeChannel : null}
+                  selectedNetworks={selectedNetworks}
+                  onToggleNetwork={toggleNetwork}
                 />
               </div>
             )}
@@ -2720,31 +2786,41 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
             <div className={styles.socialModalHeader}>
               <div className={styles.socialModalTitle}>
                 <i className="ti ti-world" style={{ color: 'var(--accent)' }} />
-                <span>Adaptar para Redes Sociales</span>
+                <span>Adaptar para Redes Sociales (Multi-Selección)</span>
               </div>
-              <button
-                type="button"
-                className={styles.socialModalClose}
-                onClick={() => setShowSocialModal(false)}
-                title="Cerrar"
-              >
-                <i className="ti ti-x" />
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  type="button"
+                  className={styles.socialModalSelectAllBtn}
+                  onClick={toggleAllNetworks}
+                >
+                  <i className={selectedNetworks.length === ALL_SOCIAL_NETWORKS.length ? 'ti ti-checkbox' : 'ti ti-square'} />
+                  <span>{selectedNetworks.length === ALL_SOCIAL_NETWORKS.length ? 'Deseleccionar' : 'Seleccionar Todas (4)'}</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.socialModalClose}
+                  onClick={() => setShowSocialModal(false)}
+                  title="Cerrar"
+                >
+                  <i className="ti ti-x" />
+                </button>
+              </div>
             </div>
             <div className={styles.socialModalBody}>
               <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
-                Selecciona la red social de destino. El encuadre de las cámaras, el visor y la grabación se adaptarán automáticamente:
+                Selecciona las redes en las que vas a publicar o transmitir. PodcaStudio adaptará el encuadre y generará en simultáneo todos los formatos necesarios (16:9, 9:16 y 1:1) sin pérdida ni distorsión:
               </p>
               <div className={styles.socialGrid}>
                 {SOCIAL_FORMAT_PRESETS.map((p) => {
-                  const isActive = proj.format === p.format
+                  const isSelected = selectedNetworks.includes(p.id)
                   return (
                     <div
                       key={p.id}
-                      className={`${styles.socialCard} ${isActive ? styles.socialCardActive : ''}`}
+                      className={`${styles.socialCard} ${isSelected ? styles.socialCardActive : ''}`}
                       onClick={() => {
-                        handleFormatChange(p.format)
-                        setShowSocialModal(false)
+                        toggleNetwork(p.id)
+                        handleFormatChange(p.format, p.id)
                       }}
                     >
                       <div className={styles.socialCardIcon} style={{ background: `${p.color}22`, color: p.color }}>
@@ -2754,17 +2830,65 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                         <div className={styles.socialCardHeader}>
                           <span className={styles.socialCardName}>{p.network}</span>
                           <span className={styles.socialCardRatio}>{p.ratio}</span>
-                          {isActive && (
-                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', marginLeft: 'auto' }}>
-                              ACTIVO
-                            </span>
-                          )}
+                          <span
+                            className={styles.socialStatusPill}
+                            style={{
+                              background: isSelected ? `${p.color}26` : 'rgba(255,255,255,0.06)',
+                              color: isSelected ? p.color : 'var(--text-muted)',
+                              borderColor: isSelected ? `${p.color}60` : 'transparent',
+                            }}
+                          >
+                            <i className={isSelected ? 'ti ti-check' : 'ti ti-plus'} style={{ fontSize: 10 }} />
+                            {isSelected ? 'ACTIVA PARA EXPORTACIÓN' : 'DESACTIVADA'}
+                          </span>
                         </div>
                         <span className={styles.socialCardDesc}>{p.desc}</span>
+                      </div>
+                      <div className={styles.socialCardCheckbox}>
+                        <i
+                          className={isSelected ? 'ti ti-circle-check-filled' : 'ti ti-circle'}
+                          style={{
+                            fontSize: 22,
+                            color: isSelected ? p.color : 'var(--border-2)',
+                            transition: 'all 0.15s ease',
+                          }}
+                        />
                       </div>
                     </div>
                   )
                 })}
+              </div>
+
+              {/* BARRA INFORMATIVA DE REDES SELECCIONADAS */}
+              <div className={styles.socialSummaryBanner}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="ti ti-package" style={{ color: 'var(--accent)', fontSize: 16 }} />
+                  <span style={{ fontSize: 11.5, color: '#fff', fontWeight: 600 }}>
+                    {selectedNetworks.length} redes activas para producción y descarga:
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 4 }}>
+                  {SOCIAL_FORMAT_PRESETS.filter(p => selectedNetworks.includes(p.id)).map(p => (
+                    <span
+                      key={p.id}
+                      className={styles.socialActiveChip}
+                      style={{ background: `${p.color}18`, borderColor: `${p.color}45`, color: p.color }}
+                    >
+                      <i className={p.icon} /> {p.label} ({p.ratio})
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                <button
+                  type="button"
+                  className={styles.socialApplyBtn}
+                  onClick={() => setShowSocialModal(false)}
+                >
+                  <i className="ti ti-check" />
+                  <span>Guardar Selección ({selectedNetworks.length} redes)</span>
+                </button>
               </div>
             </div>
           </div>
@@ -2776,6 +2900,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         open={showMultiFormatModal}
         onClose={() => setShowMultiFormatModal(false)}
         recording={multiFormatRecording}
+        selectedNetworks={selectedNetworks}
         onDownloadOriginal={downloadRecording}
         onDownloadMp4={downloadRecordingMp4}
       />

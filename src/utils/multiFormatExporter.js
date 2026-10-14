@@ -8,10 +8,11 @@
 
 export const SOCIAL_PRESETS_EXPORT = [
   {
+    id: 'facebook',
     key: '16:9',
     width: 1920,
     height: 1080,
-    label: 'Facebook Video (16:9)',
+    label: 'Facebook (16:9)',
     network: 'Facebook Watch · Páginas Facebook · FB Live',
     filenameSuffix: 'Facebook_16x9',
     badge: 'Horizontal Full HD',
@@ -19,6 +20,7 @@ export const SOCIAL_PRESETS_EXPORT = [
     color: '#1877f2',
   },
   {
+    id: 'youtube',
     key: '16:9_yt',
     baseFormat: '16:9',
     width: 1920,
@@ -31,6 +33,7 @@ export const SOCIAL_PRESETS_EXPORT = [
     color: '#ef4444',
   },
   {
+    id: 'tiktok',
     key: '9:16',
     width: 1080,
     height: 1920,
@@ -42,15 +45,16 @@ export const SOCIAL_PRESETS_EXPORT = [
     color: '#00f2fe',
   },
   {
+    id: 'instagram',
     key: '1:1',
     width: 1080,
     height: 1080,
-    label: 'Facebook / IG Feed (1:1)',
-    network: 'Facebook Feed · Instagram Post · LinkedIn',
-    filenameSuffix: 'Feed_1x1',
+    label: 'Instagram Feed (1:1)',
+    network: 'Instagram Feed · Facebook Feed · LinkedIn',
+    filenameSuffix: 'Instagram_Feed_1x1',
     badge: 'Cuadrado Balanceado',
-    icon: 'ti ti-brand-facebook',
-    color: '#1877f2',
+    icon: 'ti ti-brand-instagram',
+    color: '#e1306c',
   },
 ]
 

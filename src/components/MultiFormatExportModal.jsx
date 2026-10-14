@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   SOCIAL_PRESETS_EXPORT,
   convertVideoToFormat,
@@ -10,6 +10,7 @@ export default function MultiFormatExportModal({
   open,
   onClose,
   recording,
+  selectedNetworks = ['facebook', 'youtube', 'tiktok', 'instagram'],
   onDownloadOriginal,
   onDownloadMp4,
 }) {
@@ -18,12 +19,61 @@ export default function MultiFormatExportModal({
   const [progress, setProgress] = useState(0)
   const [packProgress, setPackProgress] = useState(null) // { current: 1, total: 3, label: '' }
 
+  // Conjunto de presets seleccionados para exportar en el pack
+  const [selectedKeys, setSelectedKeys] = useState(() => {
+    return SOCIAL_PRESETS_EXPORT
+      .filter(p => !p.id || selectedNetworks.includes(p.id))
+      .map(p => p.key)
+  })
+
+  // Sincronizar cuando cambian las redes seleccionadas en el Studio
+  useEffect(() => {
+    if (selectedNetworks && selectedNetworks.length > 0) {
+      const matchingKeys = SOCIAL_PRESETS_EXPORT
+        .filter(p => !p.id || selectedNetworks.includes(p.id))
+        .map(p => p.key)
+      if (matchingKeys.length > 0) {
+        setSelectedKeys(matchingKeys)
+      }
+    }
+  }, [selectedNetworks])
+
   if (!open || !recording) return null
 
+  const toggleKey = (key) => {
+    setSelectedKeys(prev => {
+      if (prev.includes(key)) {
+        if (prev.length === 1) return prev // Mantener al menos 1 formato
+        return prev.filter(k => k !== key)
+      } else {
+        return [...prev, key]
+      }
+    })
+  }
+
+  const toggleAllKeys = () => {
+    setSelectedKeys(prev => {
+      if (prev.length === SOCIAL_PRESETS_EXPORT.length) {
+        return [SOCIAL_PRESETS_EXPORT[0].key]
+      }
+      return SOCIAL_PRESETS_EXPORT.map(p => p.key)
+    })
+  }
+
   const handleDownloadSingle = async (preset) => {
-    if (preset.key === '16:9') {
-      // El 16:9 es el master nativo
-      onDownloadOriginal(recording)
+    if (preset.baseFormat === '16:9' || preset.key === '16:9') {
+      // Descarga master con nombre correspondiente
+      if (preset.filenameSuffix && recording.name) {
+        const fn = `${recording.name}_${preset.filenameSuffix}.${recording.ext || 'webm'}`
+        const url = URL.createObjectURL(recording.blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = fn
+        a.click()
+        URL.revokeObjectURL(url)
+      } else {
+        onDownloadOriginal(recording)
+      }
       return
     }
 
@@ -53,54 +103,53 @@ export default function MultiFormatExportModal({
   }
 
   const handleDownloadFullPack = async () => {
-    setPackProgress({ current: 1, total: 3, label: 'Facebook / YouTube (16:9 Master)...' })
-    try {
-      // 1. Facebook / YouTube 16:9
-      onDownloadOriginal(recording)
-      await new Promise(r => setTimeout(r, 600))
+    const presetsToExport = SOCIAL_PRESETS_EXPORT.filter(p => selectedKeys.includes(p.key))
+    if (presetsToExport.length === 0) return
 
-      // 2. TikTok / Reels 9:16
-      setPackProgress({ current: 2, total: 3, label: 'TikTok / Reels (9:16 Auto-reencuadre)...' })
-      const blob916 = await convertVideoToFormat(recording.blob, '9:16', {
-        mode: cropMode,
-        onProgress: (pct) => setProgress(pct),
-      })
-      if (blob916) {
-        const fn = buildFormatFilename(recording.name, '9:16', recording.ext || 'webm')
-        const u = URL.createObjectURL(blob916)
-        const a = document.createElement('a')
-        a.href = u
-        a.download = fn
-        a.click()
-        URL.revokeObjectURL(u)
-      }
-      await new Promise(r => setTimeout(r, 600))
-
-      // 3. Instagram Feed 1:1
-      setPackProgress({ current: 3, total: 3, label: 'Instagram Feed (1:1 Cuadrado)...' })
-      const blob11 = await convertVideoToFormat(recording.blob, '1:1', {
-        mode: cropMode,
-        onProgress: (pct) => setProgress(pct),
-      })
-      if (blob11) {
-        const fn = buildFormatFilename(recording.name, '1:1', recording.ext || 'webm')
-        const u = URL.createObjectURL(blob11)
-        const a = document.createElement('a')
-        a.href = u
-        a.download = fn
-        a.click()
-        URL.revokeObjectURL(u)
-      }
-    } catch (err) {
-      console.error('Error en pack multi-redes:', err)
-      alert('Ocurrió un error generando el pack completo')
-    } finally {
-      setPackProgress(null)
+    const total = presetsToExport.length
+    for (let i = 0; i < total; i++) {
+      const preset = presetsToExport[i]
+      setPackProgress({ current: i + 1, total, label: `${preset.label} (${preset.key})...` })
       setProgress(0)
+
+      try {
+        if (preset.baseFormat === '16:9' || preset.key === '16:9') {
+          // Master nativo
+          const fn = `${recording.name || 'podcastudio'}_${preset.filenameSuffix || '16x9'}.${recording.ext || 'webm'}`
+          const u = URL.createObjectURL(recording.blob)
+          const a = document.createElement('a')
+          a.href = u
+          a.download = fn
+          a.click()
+          URL.revokeObjectURL(u)
+        } else {
+          // Reencuadre vertical o cuadrado
+          const convertedBlob = await convertVideoToFormat(recording.blob, preset.key, {
+            mode: cropMode,
+            onProgress: (pct) => setProgress(pct),
+          })
+          if (convertedBlob) {
+            const fn = buildFormatFilename(recording.name, preset.key, recording.ext || 'webm')
+            const u = URL.createObjectURL(convertedBlob)
+            const a = document.createElement('a')
+            a.href = u
+            a.download = fn
+            a.click()
+            URL.revokeObjectURL(u)
+          }
+        }
+        await new Promise(r => setTimeout(r, 600))
+      } catch (err) {
+        console.error(`Error procesando ${preset.label}:`, err)
+      }
     }
+
+    setPackProgress(null)
+    setProgress(0)
   }
 
   const isBusy = convertingKey !== null || packProgress !== null
+  const selectedCount = selectedKeys.length
 
   return (
     <div className={styles.overlay} onClick={isBusy ? undefined : onClose}>
@@ -120,6 +169,39 @@ export default function MultiFormatExportModal({
           </button>
         </div>
 
+        {/* BARRA DE REDES ACTIVAS & SELECCIÓN */}
+        <div className={styles.targetNetworksBar}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>Redes destino:</span>
+            {SOCIAL_PRESETS_EXPORT.map(p => {
+              const isTarget = selectedKeys.includes(p.key)
+              return (
+                <span
+                  key={p.key}
+                  className={styles.networkBadgeChip}
+                  style={{
+                    background: isTarget ? `${p.color}22` : 'rgba(255,255,255,0.05)',
+                    color: isTarget ? p.color : 'var(--text-muted)',
+                    borderColor: isTarget ? `${p.color}55` : 'transparent',
+                  }}
+                >
+                  <i className={p.icon} /> {p.label}
+                </span>
+              )
+            })}
+          </div>
+
+          <button
+            type="button"
+            className={styles.selectAllFormatsBtn}
+            onClick={toggleAllKeys}
+            disabled={isBusy}
+          >
+            <i className={selectedCount === SOCIAL_PRESETS_EXPORT.length ? 'ti ti-checkbox' : 'ti ti-square'} />
+            <span>{selectedCount === SOCIAL_PRESETS_EXPORT.length ? 'Deseleccionar' : 'Seleccionar Todos (4)'}</span>
+          </button>
+        </div>
+
         {/* Modo de Reencuadre */}
         <div className={styles.modeSection}>
           <span className={styles.modeLabel}>Modo de Adaptación Vertical (9:16 / 1:1):</span>
@@ -128,6 +210,7 @@ export default function MultiFormatExportModal({
               type="button"
               className={`${styles.modePill} ${cropMode === 'smart-crop' ? styles.modePillActive : ''}`}
               onClick={() => setCropMode('smart-crop')}
+              disabled={isBusy}
             >
               <i className="ti ti-crop" />
               <strong>Smart Auto-Framing</strong>
@@ -137,6 +220,7 @@ export default function MultiFormatExportModal({
               type="button"
               className={`${styles.modePill} ${cropMode === 'blur-fill' ? styles.modePillActive : ''}`}
               onClick={() => setCropMode('blur-fill')}
+              disabled={isBusy}
             >
               <i className="ti ti-layers-intersect" />
               <strong>Fondo Desenfoque Broadcast</strong>
@@ -149,8 +233,14 @@ export default function MultiFormatExportModal({
         <div className={styles.cardsGrid}>
           {SOCIAL_PRESETS_EXPORT.map((preset) => {
             const isThisConverting = convertingKey === preset.key
+            const isSelected = selectedKeys.includes(preset.key)
             return (
-              <div key={preset.key} className={styles.card}>
+              <div
+                key={preset.key}
+                className={`${styles.card} ${isSelected ? styles.cardSelected : ''}`}
+                style={{ cursor: 'pointer' }}
+                onClick={() => !isBusy && toggleKey(preset.key)}
+              >
                 <div className={styles.cardHead}>
                   <div className={styles.iconCircle} style={{ background: `${preset.color}20`, color: preset.color }}>
                     <i className={preset.icon} style={{ fontSize: 18 }} />
@@ -158,6 +248,12 @@ export default function MultiFormatExportModal({
                   <div>
                     <strong className={styles.cardTitle}>{preset.label}</strong>
                     <span className={styles.cardBadge}>{preset.badge}</span>
+                  </div>
+                  <div className={styles.cardCheckboxWrap} title={isSelected ? 'Incluido en el pack' : 'No incluido'}>
+                    <i
+                      className={isSelected ? 'ti ti-square-check-filled' : 'ti ti-square'}
+                      style={{ color: isSelected ? preset.color : 'rgba(255,255,255,0.2)' }}
+                    />
                   </div>
                 </div>
 
@@ -169,11 +265,11 @@ export default function MultiFormatExportModal({
                   <div
                     className={styles.ratioBox}
                     style={{
-                      aspectRatio: preset.key.replace(':', ' / '),
+                      aspectRatio: (preset.baseFormat || preset.key).replace(':', ' / '),
                       maxHeight: 70,
                     }}
                   >
-                    <span>{preset.key}</span>
+                    <span>{preset.baseFormat || preset.key}</span>
                   </div>
                   <span className={styles.resLabel}>{preset.width}x{preset.height}</span>
                 </div>
@@ -181,7 +277,10 @@ export default function MultiFormatExportModal({
                 <button
                   type="button"
                   className={styles.cardDownloadBtn}
-                  onClick={() => handleDownloadSingle(preset)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDownloadSingle(preset)
+                  }}
                   disabled={isBusy}
                 >
                   {isThisConverting ? (
@@ -192,7 +291,7 @@ export default function MultiFormatExportModal({
                   ) : (
                     <>
                       <i className="ti ti-download" />
-                      Descargar {preset.key}
+                      Descargar {preset.key.replace('_yt', '')}
                     </>
                   )}
                 </button>
@@ -206,14 +305,16 @@ export default function MultiFormatExportModal({
           <div className={styles.packProgressWrap}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
               <span>
-                <strong>Generando Pack ({packProgress.current}/3):</strong> {packProgress.label}
+                <strong>Generando Pack ({packProgress.current}/{packProgress.total}):</strong> {packProgress.label}
               </span>
               <span>{progress}%</span>
             </div>
             <div className={styles.progressBar}>
               <div
                 className={styles.progressFill}
-                style={{ width: `${Math.max(5, ((packProgress.current - 1) / 3) * 100 + (progress / 3))}%` }}
+                style={{
+                  width: `${Math.max(5, ((packProgress.current - 1) / packProgress.total) * 100 + (progress / packProgress.total))}%`,
+                }}
               />
             </div>
           </div>
@@ -223,7 +324,7 @@ export default function MultiFormatExportModal({
         <div className={styles.footer}>
           <div className={styles.infoMeta}>
             <i className="ti ti-shield-check" style={{ color: '#10b981' }} />
-            <span>Grabación blindada y completa lista para subir</span>
+            <span>Grabación blindada: {selectedCount} formato(s) seleccionados para exportar</span>
           </div>
 
           <div style={{ display: 'flex', gap: 10 }}>
@@ -244,10 +345,14 @@ export default function MultiFormatExportModal({
               type="button"
               className={styles.packBtn}
               onClick={handleDownloadFullPack}
-              disabled={isBusy}
+              disabled={isBusy || selectedCount === 0}
             >
               <i className="ti ti-package" />
-              <strong>Descargar Pack Redes (3 Formatos)</strong>
+              <strong>
+                {selectedCount === SOCIAL_PRESETS_EXPORT.length
+                  ? 'Descargar Pack Completo (4 Redes)'
+                  : `Descargar Pack (${selectedCount} Formatos Seleccionados)`}
+              </strong>
             </button>
           </div>
         </div>
