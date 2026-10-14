@@ -4,20 +4,48 @@ import { ZOOM_PRESETS } from '../hooks/useDynamicZoom.js'
 
 export default function DynamicZoomControl({
   activeCamera = 0,
-  crop = { zoom: 1.0, presetId: 'wide', pushIn: false },
+  crop = null,
+  zoom = null,
+  activePreset: activePresetProp = null,
+  pushIn: pushInProp = null,
   onSetZoom,
+  onZoomChange,
   onApplyPreset,
+  onPresetChange,
   onTogglePushIn,
+  onPushInToggle,
   onResetZoom,
+  onReset,
   className = '',
   style = {},
 }) {
-  const currentZoom = crop?.zoom || 1.0
-  const isPushIn = Boolean(crop?.pushIn)
-  const activePreset = crop?.presetId || (currentZoom <= 1.02 ? 'wide' : 'custom')
+  const currentZoom = crop?.zoom ?? (typeof zoom === 'number' ? zoom : 1.0)
+  const isPushIn = Boolean(crop?.pushIn ?? pushInProp)
+  const activePreset = crop?.presetId ?? activePresetProp ?? (currentZoom <= 1.02 ? 'wide' : 'custom')
+
+  const applyPresetFn = onApplyPreset || onPresetChange
+  const setZoomFn = onSetZoom || onZoomChange
+  const togglePushInFn = onTogglePushIn || onPushInToggle
+  const resetZoomFn = onResetZoom || onReset
+
+  const handleApplyPreset = (presetId) => {
+    if (applyPresetFn) applyPresetFn(activeCamera, presetId)
+  }
+
+  const handleSetZoom = (val) => {
+    if (setZoomFn) setZoomFn(activeCamera, val)
+  }
+
+  const handleTogglePushIn = () => {
+    if (togglePushInFn) togglePushInFn(activeCamera)
+  }
+
+  const handleReset = () => {
+    if (resetZoomFn) resetZoomFn(activeCamera)
+  }
 
   return (
-    <div className={`${styles.zoomBar} ${className}`} style={style}>
+    <div className={`${styles.zoomBar} ${className}`} style={style} onClick={(e) => e.stopPropagation()}>
       <div className={styles.zoomLabel}>
         <i className="ti ti-zoom-in" />
         <span>Zoom Dinámico</span>
@@ -29,7 +57,10 @@ export default function DynamicZoomControl({
             key={p.id}
             type="button"
             className={`${styles.presetBtn} ${activePreset === p.id ? styles.presetActive : ''}`}
-            onClick={() => onApplyPreset(activeCamera, p.id)}
+            onClick={(e) => {
+              e.stopPropagation()
+              handleApplyPreset(p.id)
+            }}
             title={p.label}
           >
             {p.id === 'wide' ? '1.0x' : p.id === 'medium' ? '1.35x' : p.id === 'closeup' ? '1.75x' : '2.2x'}
@@ -44,7 +75,10 @@ export default function DynamicZoomControl({
           max="3"
           step="0.05"
           value={currentZoom}
-          onChange={(e) => onSetZoom(activeCamera, parseFloat(e.target.value))}
+          onChange={(e) => {
+            e.stopPropagation()
+            handleSetZoom(parseFloat(e.target.value))
+          }}
           className={styles.zoomSlider}
           title={`Zoom: ${currentZoom.toFixed(2)}x`}
         />
@@ -54,7 +88,10 @@ export default function DynamicZoomControl({
       <button
         type="button"
         className={`${styles.pushInBtn} ${isPushIn ? styles.pushInActive : ''}`}
-        onClick={() => onTogglePushIn(activeCamera)}
+        onClick={(e) => {
+          e.stopPropagation()
+          handleTogglePushIn()
+        }}
         title={isPushIn ? 'Detener Dolly / Push-In' : 'Activar Push-In Cinemático (acercamiento continuo)'}
       >
         <i className="ti ti-movie" />
@@ -65,7 +102,10 @@ export default function DynamicZoomControl({
         <button
           type="button"
           className={styles.resetBtn}
-          onClick={() => onResetZoom(activeCamera)}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleReset()
+          }}
           title="Restablecer plano normal"
         >
           <i className="ti ti-rotate" />

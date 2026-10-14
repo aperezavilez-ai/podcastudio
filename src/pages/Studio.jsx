@@ -453,7 +453,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     const dyn = typeof getDynamicCrop === 'function' ? getDynamicCrop(programCamera) : null
     if (dyn && dyn.zoom > 1.01) return dyn
     return null
-  }, [switchMode, planLimits.aiDirector, getDirectorCrop, getDynamicCrop, programCamera])
+  }, [switchMode, planLimits.aiDirector, getDirectorCrop, getDynamicCrop, programCamera, zoomState, activeZoom])
 
   const { getProgramStream } = useStudioCompositor({
     streams,
@@ -989,15 +989,20 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   <DynamicZoomControl
                     activeCamera={programCamera}
                     cameraLabel={getSlotLabel(programCamera, cameraMeta[programCamera]?.customLabel, programCamera === masterCameraSlot)}
-                    activePreset={zoomState?.presetId || zoomState?.preset || 'wide'}
+                    crop={zoomState}
                     zoom={activeZoom ?? 1.0}
+                    activePreset={zoomState?.presetId || zoomState?.preset || (activeZoom <= 1.02 ? 'wide' : 'custom')}
                     pushIn={!!zoomState?.pushIn}
                     focusX={zoomState?.focusX ?? 0.5}
                     focusY={zoomState?.focusY ?? 0.42}
+                    onApplyPreset={setZoomPreset}
                     onPresetChange={setZoomPreset}
+                    onSetZoom={setManualZoom}
                     onZoomChange={setManualZoom}
                     onPanChange={setZoomPan}
+                    onTogglePushIn={togglePushIn}
                     onPushInToggle={togglePushIn}
+                    onResetZoom={resetZoom}
                     onReset={resetZoom}
                   />
                 )}

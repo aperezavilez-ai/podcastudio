@@ -486,14 +486,14 @@
 }
 .camPipBtn {
   position: absolute;
-  top: 4px;
-  right: 52px;
+  bottom: 4px;
+  right: 4px;
   z-index: 6;
   padding: 1px 5px;
-  height: 16px;
+  height: 15px;
   border-radius: 3px;
-  background: rgba(0, 0, 0, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   color: #ddd;
   display: flex;
   align-items: center;
@@ -501,7 +501,7 @@
   font-size: 8px;
   font-weight: 700;
   cursor: pointer;
-  opacity: 0.85;
+  opacity: 0.9;
   transition: all .15s ease;
 }
 .camPipBtn:hover {

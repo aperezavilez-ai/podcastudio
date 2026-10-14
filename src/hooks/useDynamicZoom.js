@@ -34,13 +34,21 @@ export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
     return crops[slot] || DEFAULT_CROP
   }, [crops])
 
-  const setSlotZoom = useCallback((slot, zoomVal) => {
+  const setSlotZoom = useCallback((slotOrZoom, maybeZoom) => {
+    let targetSlot = activeCamera
+    let zoomVal = slotOrZoom
+    if (typeof maybeZoom === 'number') {
+      targetSlot = slotOrZoom
+      zoomVal = maybeZoom
+    } else if (typeof slotOrZoom !== 'number') {
+      zoomVal = Number(slotOrZoom) || 1.0
+    }
     const cleanZoom = clamp(Number(zoomVal) || 1.0, 1.0, 3.0)
     setCrops(prev => {
-      const current = prev[slot] || DEFAULT_CROP
+      const current = prev[targetSlot] || DEFAULT_CROP
       return {
         ...prev,
-        [slot]: {
+        [targetSlot]: {
           ...current,
           zoom: cleanZoom,
           targetZoom: cleanZoom,
@@ -48,16 +56,24 @@ export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
         },
       }
     })
-  }, [])
+  }, [activeCamera])
 
-  const setSlotPan = useCallback((slot, focusX, focusY) => {
-    const cleanX = clamp(Number(focusX) ?? 0.5, 0.1, 0.9)
-    const cleanY = clamp(Number(focusY) ?? 0.42, 0.1, 0.9)
+  const setSlotPan = useCallback((slotOrX, xOrY, maybeY) => {
+    let targetSlot = activeCamera
+    let fX = slotOrX
+    let fY = xOrY
+    if (typeof maybeY === 'number') {
+      targetSlot = slotOrX
+      fX = xOrY
+      fY = maybeY
+    }
+    const cleanX = clamp(Number(fX) ?? 0.5, 0.1, 0.9)
+    const cleanY = clamp(Number(fY) ?? 0.42, 0.1, 0.9)
     setCrops(prev => {
-      const current = prev[slot] || DEFAULT_CROP
+      const current = prev[targetSlot] || DEFAULT_CROP
       return {
         ...prev,
-        [slot]: {
+        [targetSlot]: {
           ...current,
           focusX: cleanX,
           focusY: cleanY,
@@ -65,15 +81,23 @@ export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
         },
       }
     })
-  }, [])
+  }, [activeCamera])
 
-  const applyPreset = useCallback((slot, presetId) => {
+  const applyPreset = useCallback((slotOrPresetId, maybePresetId) => {
+    let targetSlot = activeCamera
+    let presetId = slotOrPresetId
+    if (typeof maybePresetId === 'string') {
+      targetSlot = slotOrPresetId
+      presetId = maybePresetId
+    } else if (typeof slotOrPresetId === 'string') {
+      presetId = slotOrPresetId
+    }
     const preset = ZOOM_PRESETS.find(p => p.id === presetId) || ZOOM_PRESETS[0]
     setCrops(prev => {
-      const current = prev[slot] || DEFAULT_CROP
+      const current = prev[targetSlot] || DEFAULT_CROP
       return {
         ...prev,
-        [slot]: {
+        [targetSlot]: {
           ...current,
           zoom: preset.zoom,
           targetZoom: preset.zoom,
@@ -84,29 +108,31 @@ export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
         },
       }
     })
-  }, [])
+  }, [activeCamera])
 
-  const togglePushIn = useCallback((slot) => {
+  const togglePushIn = useCallback((maybeSlot) => {
+    const targetSlot = typeof maybeSlot === 'number' ? maybeSlot : activeCamera
     setCrops(prev => {
-      const current = prev[slot] || DEFAULT_CROP
+      const current = prev[targetSlot] || DEFAULT_CROP
       const nextPushIn = !current.pushIn
       return {
         ...prev,
-        [slot]: {
+        [targetSlot]: {
           ...current,
           pushIn: nextPushIn,
           targetZoom: nextPushIn ? Math.min(3.0, current.zoom + 0.35) : current.zoom,
         },
       }
     })
-  }, [])
+  }, [activeCamera])
 
-  const resetZoom = useCallback((slot) => {
+  const resetZoom = useCallback((maybeSlot) => {
+    const targetSlot = typeof maybeSlot === 'number' ? maybeSlot : activeCamera
     setCrops(prev => ({
       ...prev,
-      [slot]: { ...DEFAULT_CROP },
+      [targetSlot]: { ...DEFAULT_CROP },
     }))
-  }, [])
+  }, [activeCamera])
 
   // Animación continua y suave para Push-In (Dolly cinemático) y Lerp
   useEffect(() => {
