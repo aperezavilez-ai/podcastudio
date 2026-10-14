@@ -417,11 +417,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   } = useDynamicZoom({ activeCamera: programCamera, recording })
 
   const effectiveCrop = useMemo(() => {
-    if (switchMode === 'ai' && planLimits.aiDirector) {
+    if (switchMode === 'ai' && planLimits.aiDirector && typeof getDirectorCrop === 'function') {
       const aiCrop = getDirectorCrop(programCamera)
       if (aiCrop && aiCrop.zoom > 1.02) return aiCrop
     }
-    const dyn = getDynamicCrop(programCamera)
+    const dyn = typeof getDynamicCrop === 'function' ? getDynamicCrop(programCamera) : null
     if (dyn && dyn.zoom > 1.01) return dyn
     return null
   }, [switchMode, planLimits.aiDirector, getDirectorCrop, getDynamicCrop, programCamera])
@@ -938,11 +938,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   <DynamicZoomControl
                     activeCamera={programCamera}
                     cameraLabel={getSlotLabel(programCamera, cameraMeta[programCamera]?.customLabel, programCamera === masterCameraSlot)}
-                    activePreset={zoomState.preset}
-                    zoom={activeZoom}
-                    pushIn={zoomState.pushIn}
-                    focusX={zoomState.focusX}
-                    focusY={zoomState.focusY}
+                    activePreset={zoomState?.presetId || zoomState?.preset || 'wide'}
+                    zoom={activeZoom ?? 1.0}
+                    pushIn={!!zoomState?.pushIn}
+                    focusX={zoomState?.focusX ?? 0.5}
+                    focusY={zoomState?.focusY ?? 0.42}
                     onPresetChange={setZoomPreset}
                     onZoomChange={setManualZoom}
                     onPanChange={setZoomPan}
