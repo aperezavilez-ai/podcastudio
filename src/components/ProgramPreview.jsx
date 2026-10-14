@@ -59,72 +59,80 @@ export default function ProgramPreview({
   // Video principal
   useEffect(() => {
     const video = videoRef.current
-    if (!video || !stream) return undefined
+    if (!video) return undefined
 
     video.setAttribute('playsinline', '')
     video.setAttribute('webkit-playsinline', '')
     video.muted = true
-    if (video.srcObject !== stream) video.srcObject = stream
-    video.play().catch(() => {})
+
+    if (stream && video.srcObject !== stream) {
+      video.srcObject = stream
+      video.play().catch(() => {})
+    }
 
     const off = bindVideoKeepAlive(video)
     return () => {
       off()
-      if (video.srcObject === stream) video.srcObject = null
     }
   }, [stream, cameraKey])
 
   // Video PiP (Picture in Picture)
   useEffect(() => {
     const video = pipVideoRef.current
-    if (!video || !pipStream) return undefined
+    if (!video) return undefined
 
     video.setAttribute('playsinline', '')
     video.setAttribute('webkit-playsinline', '')
     video.muted = true
-    if (video.srcObject !== pipStream) video.srcObject = pipStream
-    video.play().catch(() => {})
+
+    if (pipStream && video.srcObject !== pipStream) {
+      video.srcObject = pipStream
+      video.play().catch(() => {})
+    }
 
     const off = bindVideoKeepAlive(video)
     return () => {
       off()
-      if (video.srcObject === pipStream) video.srcObject = null
     }
   }, [pipStream, layout])
 
   // Video secundario (Split / Triple)
   useEffect(() => {
     const video = secondaryVideoRef.current
-    if (!video || !secondaryStream) return undefined
+    if (!video) return undefined
 
     video.setAttribute('playsinline', '')
     video.setAttribute('webkit-playsinline', '')
     video.muted = true
-    if (video.srcObject !== secondaryStream) video.srcObject = secondaryStream
-    video.play().catch(() => {})
+
+    if (secondaryStream && video.srcObject !== secondaryStream) {
+      video.srcObject = secondaryStream
+      video.play().catch(() => {})
+    }
 
     const off = bindVideoKeepAlive(video)
     return () => {
       off()
-      if (video.srcObject === secondaryStream) video.srcObject = null
     }
   }, [secondaryStream, layout])
 
   // Video terciario (Triple)
   useEffect(() => {
     const video = tertiaryVideoRef.current
-    if (!video || !tertiaryStream) return undefined
+    if (!video) return undefined
 
     video.setAttribute('playsinline', '')
     video.setAttribute('webkit-playsinline', '')
     video.muted = true
-    if (video.srcObject !== tertiaryStream) video.srcObject = tertiaryStream
-    video.play().catch(() => {})
+
+    if (tertiaryStream && video.srcObject !== tertiaryStream) {
+      video.srcObject = tertiaryStream
+      video.play().catch(() => {})
+    }
 
     const off = bindVideoKeepAlive(video)
     return () => {
       off()
-      if (video.srcObject === tertiaryStream) video.srcObject = null
     }
   }, [tertiaryStream, layout])
 

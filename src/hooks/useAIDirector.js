@@ -21,38 +21,14 @@ function cropFromFace(bb, vw, vh) {
 
   let zoom
   if (faceWRatio < 0.09) {
-    // Plano lejano → hombros y cabeza
     zoom = clamp(0.28 / faceWRatio, 1.22, 1.42)
   } else if (faceWRatio < 0.18) {
-    // Plano medio → cabeza completa
     zoom = clamp(0.34 / faceWRatio, 1.42, 1.68)
   } else {
-    // Plano cercano → rostro
     zoom = clamp(0.52 / faceWRatio, 1.65, 2.05)
   }
 
   return { focusX: fx, focusY: fy, zoom }
-}
-
-function sampleMotion(ctx, video, prevData, region) {
-  if (!video?.videoWidth) return 0
-  const w = 80
-  const h = 60
-  const canvas = ctx.canvas
-  if (canvas.width !== w) { canvas.width = w; canvas.height = h }
-  const { x, y, rw, rh } = region
-  const sx = clamp(x * video.videoWidth, 0, video.videoWidth - 1)
-  const sy = clamp(y * video.videoHeight, 0, video.videoHeight - 1)
-  const sw = Math.max(8, rw * video.videoWidth)
-  const sh = Math.max(8, rh * video.videoHeight)
-  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h)
-  const data = ctx.getImageData(0, 0, w, h).data
-  if (!prevData) return 0
-  let diff = 0
-  for (let i = 0; i < data.length; i += 4) {
-    diff += Math.abs(data[i] - prevData[i]) + Math.abs(data[i + 1] - prevData[i + 1])
-  }
-  return diff / (w * h * 3)
 }
 
 function emptyCrops() {
@@ -84,11 +60,21 @@ export function useAIDirector({
   const [directorStatus, setDirectorStatus] = useState('')
   const detectorRef = useRef(null)
   const videosRef = useRef({})
-  const motionCtxRef = useRef(null)
-  const prevMotionRef = useRef({})
   const lastSwitchRef = useRef(0)
   const cycleRef = useRef({ 0: null, 2: null })
   const appliedCropRef = useRef(emptyCrops())
+  const isAnalyzingRef = useRef(false)
+  const statusRef = useRef('')
+
+  const micLevelRef = useRef(micLevel)
+  const streamsRef = useRef(streams)
+  const activeCameraRef = useRef(activeCamera)
+  const setActiveCameraRef = useRef(setActiveCamera)
+
+  micLevelRef.current = micLevel
+  streamsRef.current = streams
+  activeCameraRef.current = activeCamera
+  setActiveCameraRef.current = setActiveCamera
 
   useEffect(() => {
     if (!enabled) return
@@ -98,6 +84,7 @@ export function useAIDirector({
       try {
         const { FaceDetector, FilesetResolver } = await import('@mediapipe/tasks-vision')
         const vision = await FilesetResolver.forVisionTasks(WASM)
+        if (cancelled) return
         let detector
         try {
           detector = await FaceDetector.createFromOptions(vision, {
@@ -112,20 +99,27 @@ export function useAIDirector({
         }
         if (!cancelled) detectorRef.current = detector
       } catch (e) {
-        console.error('Director IA init:', e)
+        console.warn('Director IA FaceDetector init omitido (modo audio activo):', e.message)
       }
     }
 
     init()
     return () => {
       cancelled = true
-      detectorRef.current?.close?.()
+      try { detectorRef.current?.close?.() } catch {}
       detectorRef.current = null
     }
   }, [enabled])
 
+  // Vinculación directa y limpia de streams de video (sin clonar tracks)
   useEffect(() => {
-    if (!enabled) return
+    if (!enabled) {
+      Object.values(videosRef.current).forEach(v => {
+        try { v.srcObject = null } catch {}
+      })
+      videosRef.current = {}
+      return
+    }
 
     Object.entries(streams).forEach(([slot, stream]) => {
       const i = Number(slot)
@@ -135,18 +129,21 @@ export function useAIDirector({
         v.muted = true
         v.playsInline = true
         v.autoplay = true
+        v.setAttribute('playsinline', '')
+        v.setAttribute('webkit-playsinline', '')
         videosRef.current[i] = v
       }
-      const track = stream.getVideoTracks()[0]
-      const feed = track ? new MediaStream([track.clone?.() ?? track]) : stream
-      if (videosRef.current[i].srcObject !== feed) {
-        videosRef.current[i].srcObject = feed
+      if (videosRef.current[i].srcObject !== stream) {
+        videosRef.current[i].srcObject = stream
       }
       videosRef.current[i].play().catch(() => {})
     })
 
     Object.keys(videosRef.current).forEach((key) => {
-      if (!streams[key]) delete videosRef.current[key]
+      if (!streams[key]) {
+        try { videosRef.current[key].srcObject = null } catch {}
+        delete videosRef.current[key]
+      }
     })
   }, [enabled, streams])
 
@@ -175,7 +172,7 @@ export function useAIDirector({
       return { crop, status: `Plano cerrado · ${remaining}s` }
     }
 
-    // Plano general — sin zoom, sin deslizamiento
+    // Plano general — sin zoom
     if (elapsed >= WIDE_HOLD_MS && hasFace && face.boundingBox) {
       cycle.phase = 'zoom'
       cycle.phaseStart = now
@@ -193,106 +190,99 @@ export function useAIDirector({
     return { crop: { ...DEFAULT_CROP }, status: 'Plano general' }
   }, [zoomHoldMs, faceZoomSec])
 
+  // Análisis liviano, sin bloqueos de GPU y sin re-ejecución descontrolada
   const analyze = useCallback(() => {
-    const detector = detectorRef.current
-    const slots = [0, 1, 2].filter((i) => streams[i] && videosRef.current[i]?.videoWidth)
-    if (slots.length === 0) return
+    if (isAnalyzingRef.current) return
+    isAnalyzingRef.current = true
 
-    if (!motionCtxRef.current) {
-      const c = document.createElement('canvas')
-      motionCtxRef.current = c.getContext('2d', { willReadFrequently: true })
-    }
-    const mctx = motionCtxRef.current
-    const speaking = micLevel >= micThreshold
-    const scores = {}
-    const faces = {}
-    const now = Date.now()
+    try {
+      const activeStreams = streamsRef.current
+      const curMic = micLevelRef.current
+      const currentActive = activeCameraRef.current ?? PRIMARY_CAMERA_SLOT
+      const detector = detectorRef.current
 
-    for (const slot of slots) {
-      const video = videosRef.current[slot]
-      let faceScore = 0
-      let fx = 0.5
-      let fy = 0.42
-      let motion = 0
-      let boundingBox = null
-      const vw = video.videoWidth
-      const vh = video.videoHeight
+      const slots = [0, 1, 2].filter((i) => activeStreams[i] && videosRef.current[i]?.videoWidth)
+      if (slots.length === 0) return
 
-      if (detector && video.readyState >= 2) {
-        try {
-          const result = detector.detectForVideo(video, performance.now())
-          const det = result.detections?.[0]
-          if (det?.boundingBox) {
-            boundingBox = det.boundingBox
-            fx = (boundingBox.originX + boundingBox.width / 2) / vw
-            fy = (boundingBox.originY + boundingBox.height * 0.55) / vh
-            faceScore = (boundingBox.width * boundingBox.height) / (vw * vh) * 8
-            const mouthY = (boundingBox.originY + boundingBox.height * 0.72) / vh
-            motion = sampleMotion(mctx, video, prevMotionRef.current[slot], {
-              x: fx - boundingBox.width / vw / 2,
-              y: mouthY - 0.04,
-              rw: boundingBox.width / vw,
-              rh: 0.12,
-            })
-            prevMotionRef.current[slot] = new Uint8ClampedArray(mctx.getImageData(0, 0, 80, 60).data)
-          }
-        } catch { /* skip frame */ }
+      const speaking = curMic >= micThreshold
+      const scores = {}
+      const faces = {}
+      const now = Date.now()
+
+      for (const slot of slots) {
+        const video = videosRef.current[slot]
+        let faceScore = 0
+        let fx = 0.5
+        let fy = 0.42
+        let boundingBox = null
+        const vw = video.videoWidth || 640
+        const vh = video.videoHeight || 480
+
+        if (detector && video.readyState >= 2) {
+          try {
+            const result = detector.detectForVideo(video, performance.now())
+            const det = result.detections?.[0]
+            if (det?.boundingBox) {
+              boundingBox = det.boundingBox
+              fx = (boundingBox.originX + boundingBox.width / 2) / vw
+              fy = (boundingBox.originY + boundingBox.height * 0.55) / vh
+              faceScore = (boundingBox.width * boundingBox.height) / (vw * vh) * 8
+            }
+          } catch { /* skip frame */ }
+        }
+
+        scores[slot] = faceScore + (slot === currentActive ? 0.2 : 0)
+        faces[slot] = { fx, fy, faceScore, boundingBox, videoWidth: vw, videoHeight: vh }
       }
 
-      const motionBoost = speaking ? motion * 2.2 : motion * 0.3
-      scores[slot] = faceScore + motionBoost + (slot === activeCamera ? 0.15 : 0)
-      faces[slot] = { fx, fy, faceScore, motion, boundingBox, videoWidth: vw, videoHeight: vh }
-    }
+      // Switcheo por actividad vocal y presencia de rostro
+      if (speaking && slots.length > 1) {
+        const sideActive = SIDE_SLOTS.filter((s) => activeStreams[s])
+        const pool = sideActive.length > 0 ? sideActive : slots.filter((s) => s !== PRIMARY_CAMERA_SLOT)
+        const best = pool.reduce((a, b) => (scores[a] >= scores[b] ? a : b))
 
-    if (speaking && slots.length > 1) {
-      const sideActive = SIDE_SLOTS.filter((s) => streams[s])
-      const pool = sideActive.length > 0 ? sideActive : slots.filter((s) => s !== PRIMARY_CAMERA_SLOT)
-      const best = pool.reduce((a, b) => (scores[a] >= scores[b] ? a : b))
-      const current = activeCamera ?? PRIMARY_CAMERA_SLOT
-
-      if (
-        best !== current
-        && scores[best] > (scores[current] ?? 0) * 1.15
-        && now - lastSwitchRef.current > minCutSec * 1000
-      ) {
-        setActiveCamera(best)
-        lastSwitchRef.current = now
-      }
-    }
-
-    const nextCrops = emptyCrops()
-    let statusDetail = ''
-
-    for (const slot of [0, 1, 2]) {
-      // MASTER: siempre plano general, sin zoom
-      if (slot === PRIMARY_CAMERA_SLOT || !streams[slot]) {
-        nextCrops[slot] = { ...DEFAULT_CROP }
-        appliedCropRef.current[slot] = { ...DEFAULT_CROP }
-        continue
+        if (
+          best !== currentActive &&
+          scores[best] > (scores[currentActive] ?? 0) * 1.15 &&
+          now - lastSwitchRef.current > minCutSec * 1000
+        ) {
+          setActiveCameraRef.current?.(best)
+          lastSwitchRef.current = now
+        }
       }
 
-      const { crop, status } = resolveSideTarget(slot, faces[slot], now)
-      if (slot === (activeCamera ?? PRIMARY_CAMERA_SLOT)) statusDetail = status
+      const nextCrops = emptyCrops()
+      let statusDetail = ''
 
-      // Corte directo: sin interpolación tipo slider
-      nextCrops[slot] = { ...crop }
-      appliedCropRef.current[slot] = { ...crop }
+      for (const slot of [0, 1, 2]) {
+        if (slot === PRIMARY_CAMERA_SLOT || !activeStreams[slot]) {
+          nextCrops[slot] = { ...DEFAULT_CROP }
+          appliedCropRef.current[slot] = { ...DEFAULT_CROP }
+          continue
+        }
+
+        const { crop, status } = resolveSideTarget(slot, faces[slot], now)
+        if (slot === currentActive) statusDetail = status
+        nextCrops[slot] = { ...crop }
+        appliedCropRef.current[slot] = { ...crop }
+      }
+
+      setDirectorCrops(nextCrops)
+
+      const cam = activeCameraRef.current ?? PRIMARY_CAMERA_SLOT
+      const camLabel = slotLabel(cam)
+      const nextStatus = cam === PRIMARY_CAMERA_SLOT
+        ? (speaking ? `${camLabel} · toma fija` : 'En espera de voz…')
+        : (speaking ? `${camLabel} · ${statusDetail || 'siguiendo voz'}` : `${camLabel} · en espera de rostro`)
+
+      if (nextStatus !== statusRef.current) {
+        statusRef.current = nextStatus
+        setDirectorStatus(nextStatus)
+      }
+    } finally {
+      isAnalyzingRef.current = false
     }
-
-    setDirectorCrops(nextCrops)
-
-    const cam = activeCamera ?? PRIMARY_CAMERA_SLOT
-    const camLabel = slotLabel(cam)
-    if (cam === PRIMARY_CAMERA_SLOT) {
-      setDirectorStatus(speaking ? `${camLabel} · toma fija` : 'En espera de voz…')
-    } else {
-      setDirectorStatus(
-        speaking
-          ? `${camLabel} · ${statusDetail || 'siguiendo voz'}`
-          : `${camLabel} · en espera de rostro`,
-      )
-    }
-  }, [streams, micLevel, activeCamera, setActiveCamera, minCutSec, micThreshold, resolveSideTarget])
+  }, [minCutSec, micThreshold, resolveSideTarget])
 
   useEffect(() => {
     if (!enabled) {
@@ -300,9 +290,12 @@ export function useAIDirector({
       appliedCropRef.current = emptyCrops()
       setDirectorCrops(emptyCrops())
       setDirectorStatus('')
-      return
+      statusRef.current = ''
+      return undefined
     }
-    const id = setInterval(analyze, 650)
+
+    // Intervalo relajado a 1.2s para fluidez total del video a 60fps sin saturar la CPU
+    const id = setInterval(analyze, 1200)
     return () => clearInterval(id)
   }, [enabled, analyze])
 

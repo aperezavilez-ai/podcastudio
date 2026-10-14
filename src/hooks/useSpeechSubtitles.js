@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-export function useSpeechSubtitles({ enabled, language = 'es-MX', onVoiceIntent = null }) {
+export function useSpeechSubtitles({ enabled, language = 'es-MX', onVoiceIntent = null, renderSubtitles = false }) {
   const [lines, setLines] = useState([])
   const [interim, setInterim] = useState('')
   const [supported, setSupported] = useState(false)
@@ -8,8 +8,10 @@ export function useSpeechSubtitles({ enabled, language = 'es-MX', onVoiceIntent 
   const recRef = useRef(null)
   const lastIntentTimeRef = useRef(0)
   const intentCallbackRef = useRef(onVoiceIntent)
+  const renderSubtitlesRef = useRef(renderSubtitles)
 
   intentCallbackRef.current = onVoiceIntent
+  renderSubtitlesRef.current = renderSubtitles
 
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -96,11 +98,13 @@ export function useSpeechSubtitles({ enabled, language = 'es-MX', onVoiceIntent 
         }
       }
 
-      if (finals.length) {
-        setLines(prev => [...prev, ...finals].slice(-6))
-        setInterim('')
-      } else {
-        setInterim(interimText.trim())
+      if (renderSubtitlesRef.current) {
+        if (finals.length) {
+          setLines(prev => [...prev, ...finals].slice(-6))
+          setInterim('')
+        } else {
+          setInterim(interimText.trim())
+        }
       }
     }
 

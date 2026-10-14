@@ -642,14 +642,24 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     }
   }, [])
 
-  // Bloquear scroll de página: solo el panel derecho se mueve
+  // Bloquear scroll de página global, permitiendo scroll en el panel derecho y cualquier modal
   useEffect(() => {
     const onWheel = (e) => {
-      if (panelRightRef.current?.contains(e.target)) return
+      if (
+        panelRightRef.current?.contains(e.target) ||
+        e.target.closest?.('[class*="Modal"], [class*="modal"], [class*="dialog"], [class*="overlay"], [class*="drawer"]')
+      ) {
+        return
+      }
       e.preventDefault()
     }
     const onTouchMove = (e) => {
-      if (panelScrollRef.current?.contains(e.target)) return
+      if (
+        panelScrollRef.current?.contains(e.target) ||
+        e.target.closest?.('[class*="Modal"], [class*="modal"], [class*="dialog"], [class*="overlay"], [class*="drawer"]')
+      ) {
+        return
+      }
       e.preventDefault()
     }
     document.addEventListener('wheel', onWheel, { passive: false })
@@ -660,7 +670,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     }
   }, [])
 
-  // Rueda del mouse en panel derecho
+  // Rueda del mouse en panel derecho y contenedores internos con scroll (Música, Efectos, etc.)
   useEffect(() => {
     const panel = panelRightRef.current
     const scroll = panelScrollRef.current
@@ -668,6 +678,22 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
     const onWheel = (e) => {
       if (e.target.closest('input[type="range"]')) return
+
+      // Verificar si el cursor está sobre un contenedor con scroll interno propio (Música, Efectos, etc.)
+      let el = e.target
+      while (el && el !== scroll && el !== panel) {
+        if (el.scrollHeight > el.clientHeight + 2) {
+          const style = window.getComputedStyle(el)
+          const ov = style.overflowY
+          if (ov === 'auto' || ov === 'scroll') {
+            // Permitir el scroll nativo de ese contenedor interno con el mouse wheel
+            return
+          }
+        }
+        el = el.parentElement
+      }
+
+      // Si no es un contenedor interno, desplazar suavemente el panel principal
       if (scroll.scrollHeight <= scroll.clientHeight) return
 
       const atTop = scroll.scrollTop <= 0
@@ -754,6 +780,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     enabled: subtitlesOn || switchMode === 'ai',
     language: subtitleLang,
     onVoiceIntent: handleVoiceIntent,
+    renderSubtitles: subtitlesOn,
   })
 
   const cintilloForSlot = useCallback((slot) => {
