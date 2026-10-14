@@ -66,17 +66,73 @@
 }
 
 .wrapLarge.posBc {
-  bottom: 20px;
+  bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
 }
 
-.wrapLarge.posBl { bottom: 20px; }
-.wrapLarge.posBr { bottom: 20px; }
+.wrapLarge.posBl { bottom: 24px; left: 24px; }
+.wrapLarge.posBr { bottom: 24px; right: 24px; left: auto; }
+.wrapLarge.posTl { top: 24px; left: 24px; bottom: auto; }
+.wrapLarge.posTc { top: 24px; left: 50%; bottom: auto; transform: translateX(-50%); }
+.wrapLarge.posTr { top: 24px; right: 24px; left: auto; bottom: auto; }
+.wrapLarge.posMl { top: 50%; left: 24px; bottom: auto; transform: translateY(-50%); }
+.wrapLarge.posMc { top: 50%; left: 50%; bottom: auto; transform: translate(-50%, -50%); }
+.wrapLarge.posMr { top: 50%; right: 24px; left: auto; bottom: auto; transform: translateY(-50%); }
 
 .wrapLarge.posBc.phaseEnter,
-.wrapLarge.posBc.phaseExit {
+.wrapLarge.posBc.phaseExit,
+.wrapLarge.posTc.phaseEnter,
+.wrapLarge.posTc.phaseExit {
   transform: translateX(-50%);
+}
+
+.cintInner3D {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  perspective: 1200px;
+  filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.65));
+}
+
+.cintLogoBox {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  background: rgba(14, 15, 23, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+  padding: 6px;
+  transition: transform 0.3s ease;
+}
+
+.wrapLarge .cintLogoBox {
+  width: 68px;
+  height: 68px;
+  border-radius: 14px;
+  padding: 8px;
+}
+
+.cintLogoBox:hover {
+  transform: rotateY(18deg) scale(1.05);
+}
+
+.cintLogoImg {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+}
+
+.cintMainBlock {
+  display: flex;
+  align-items: flex-end;
 }
 
 .tag {

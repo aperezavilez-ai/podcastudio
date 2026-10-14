@@ -203,6 +203,32 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     project?.cintilloStyle || localStorage.getItem('podcastudio_cintillo_style') || 'angled'
   )
   const [cintilloPositions, setCintilloPositions] = useState(loadCintilloPositions)
+  const [cintilloLogoUrl, setCintilloLogoUrl] = useState(() => {
+    try {
+      return localStorage.getItem('podcastudio_cintillo_logo') || project?.cintilloLogoUrl || null
+    } catch {
+      return null
+    }
+  })
+
+  const handleCintilloLogoUpload = useCallback((e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const url = event.target?.result
+      if (url) {
+        setCintilloLogoUrl(url)
+        try { localStorage.setItem('podcastudio_cintillo_logo', url) } catch {}
+      }
+    }
+    reader.readAsDataURL(file)
+  }, [])
+
+  const handleRemoveCintilloLogo = useCallback(() => {
+    setCintilloLogoUrl(null)
+    try { localStorage.removeItem('podcastudio_cintillo_logo') } catch {}
+  }, [])
   const [outputFormat, setOutputFormat] = useState(() => project?.format || '16:9')
   const [micMuted, setMicMuted] = useState(false)
   const [showSocialModal, setShowSocialModal] = useState(false)
@@ -262,10 +288,6 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
   /** Promueve de inmediato cualquier cámara a MASTER (toma central grande) */
   const handlePromoteToMaster = useCallback((slot) => {
-    if (!streams[slot]) {
-      handleOpenConnectModal(slot)
-      return
-    }
     userPickedCameraRef.current = true
     const prevMaster = masterCameraSlot
 
@@ -283,7 +305,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     if (tripleTertiarySlot === slot) {
       setTripleTertiarySlot(prevMaster)
     }
-  }, [masterCameraSlot, pipCameraSlot, splitSecondarySlot, tripleTertiarySlot, streams, handleOpenConnectModal, setActiveCamera, setCamSlot, setMasterCameraSlot])
+  }, [masterCameraSlot, pipCameraSlot, splitSecondarySlot, tripleTertiarySlot, setActiveCamera, setCamSlot, setMasterCameraSlot])
 
   const handleTogglePipOnCamera = useCallback((slot) => {
     if (screenLayout === 'pip' && pipCameraSlot === slot) {
@@ -364,10 +386,6 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     if (typeof window === 'undefined') return 'bl'
     return localStorage.getItem('podcastudio_master_cintillo_pos') || 'bl'
   })
-  const handleSetMasterCintilloPosition = useCallback((pos) => {
-    setMasterCintilloPosition(pos)
-    try { localStorage.setItem('podcastudio_master_cintillo_pos', pos) } catch {}
-  }, [])
 
   // Secciones colapsables del panel derecho (estilo Teleprompter)
   const [openSections, setOpenSections] = useState(() => {
@@ -647,8 +665,24 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     return {
       ...cintillo,
       position: masterCintilloPosition || cintillo.position || 'bl',
+      logoUrl: cintillo.logoUrl || cintilloLogoUrl || null,
     }
-  }, [cintillo, masterCintilloPosition])
+  }, [cintillo, masterCintilloPosition, cintilloLogoUrl])
+
+  const handleSetMasterCintilloPosition = useCallback((pos) => {
+    setMasterCintilloPosition(pos)
+    try { localStorage.setItem('podcastudio_master_cintillo_pos', pos) } catch {}
+    if (cintillo?.active) {
+      showCustom({
+        tag: cintillo.tag,
+        text: cintillo.text,
+        color: cintillo.color,
+        targetSlot: programCamera,
+        position: pos,
+        presetId: cintillo.presetId,
+      })
+    }
+  }, [cintillo, showCustom, programCamera])
 
   useEffect(() => {
     getMicStream()?.getAudioTracks?.()?.forEach(track => {
@@ -1309,6 +1343,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       text={mainCint.text}
                       accentColor={mainCint.color}
                       position={mainCint.position}
+                      logoUrl={mainCint.logoUrl || cintilloLogoUrl || null}
                       size="large"
                       animPhase={animPhase}
                       animKey={animKey}
@@ -1459,7 +1494,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     )}
                     <CameraThumb
                       stream={streams[i]}
-                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 7 }}
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 7, pointerEvents: 'none' }}
                       cintillo={cintilloForSlot(i)}
                       cintilloPosition={cintilloForSlot(i)?.position || cintilloPositions[getRoleForSlot(i)]}
                       logoOverlay={{
@@ -1956,6 +1991,68 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                         <i className={`ti ${p.icon}`} />
                       </button>
                     ))}
+                  </div>
+
+                  <div className={styles.posQuickPills}>
+                    {[
+                      { id: 'tl', label: 'Arriba Izq' },
+                      { id: 'tr', label: 'Arriba Der' },
+                      { id: 'bl', label: 'Abajo Izq' },
+                      { id: 'br', label: 'Abajo Der' },
+                      { id: 'bc', label: 'Abajo Centro' },
+                      { id: 'tc', label: 'Arriba Centro' },
+                    ].map((qp) => (
+                      <button
+                        key={qp.id}
+                        type="button"
+                        className={`${styles.posQuickPill} ${masterCintilloPosition === qp.id ? styles.posQuickPillActive : ''}`}
+                        onClick={() => handleSetMasterCintilloPosition(qp.id)}
+                      >
+                        {qp.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Logo Opcional en Cintillo */}
+                  <div className={styles.cintLogoSection}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>
+                        <i className="ti ti-badge-ad" style={{ marginRight: 5, color: 'var(--accent)' }} />
+                        Logo Opcional (Efecto 3D TV)
+                      </span>
+                      <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+                        {cintilloLogoUrl ? 'Logo activo' : 'Solo texto'}
+                      </span>
+                    </div>
+                    {cintilloLogoUrl ? (
+                      <div className={styles.cintLogoPreviewRow}>
+                        <div className={styles.cintLogoThumb}>
+                          <img src={cintilloLogoUrl} alt="Logo Cintillo" />
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flex: 1 }}>
+                          <label className={styles.cintLogoUploadBtn} style={{ cursor: 'pointer' }}>
+                            <i className="ti ti-refresh" />
+                            Cambiar
+                            <input type="file" accept="image/*" onChange={handleCintilloLogoUpload} style={{ display: 'none' }} />
+                          </label>
+                          <button
+                            type="button"
+                            className={styles.cintLogoRemoveBtn}
+                            onClick={handleRemoveCintilloLogo}
+                          >
+                            <i className="ti ti-trash" />
+                            Quitar logo
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <label className={styles.cintLogoUploadBox}>
+                        <i className="ti ti-cloud-upload" style={{ fontSize: 16 }} />
+                        <span>Subir Logo para Cintillos (PNG transparente)</span>
+                        <span className={styles.cintLogoUploadSub}>Opcional: Si no subes logo, se mostrará únicamente el texto</span>
+                        <input type="file" accept="image/*" onChange={handleCintilloLogoUpload} style={{ display: 'none' }} />
+                      </label>
+                    )}
                   </div>
 
                   <div style={{ marginTop: 12, marginBottom: 6, fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>

@@ -9,6 +9,7 @@ export default function CintilloOverlay({
   subtitle = '',
   accentColor,
   imageUrl,
+  logoUrl,
   position = 'bl',
   preview = false,
   size = 'normal',
@@ -63,17 +64,21 @@ export default function CintilloOverlay({
   const textCls = `${styles.mainText} ${styles.animPart3}`
   const subCls = `${styles.subText} ${styles.animPart4}`
 
-  const avatar = imageUrl ? (
-    <img src={imageUrl} alt="" className={`${styles.avatar} ${p1}`} />
-  ) : (
-    <div className={`${styles.avatarPlaceholder} ${p1}`} style={{ background: primary }}>
-      <i className="ti ti-user" />
+  const effectiveLogo = logoUrl || imageUrl || null
+  const logoElement = effectiveLogo ? (
+    <div className={`${styles.cintLogoBox} ${p1}`}>
+      <img src={effectiveLogo} alt="Logo" className={styles.cintLogoImg} />
     </div>
-  )
+  ) : null
 
   const shell = (body) => (
     <div key={preview ? styleId : animKey} className={wrapClass} style={{ '--cint-primary': primary, '--cint-secondary': secondary }}>
-      {body}
+      <div className={styles.cintInner3D}>
+        {logoElement}
+        <div className={styles.cintMainBlock}>
+          {body}
+        </div>
+      </div>
       {extras}
     </div>
   )
@@ -103,13 +108,10 @@ export default function CintilloOverlay({
 
     case 'profile':
       return shell(
-        <>
-          {avatar}
-          <div className={styles.profileBody}>
-            <span className={tagCls} style={{ color: primary }}>{tag}</span>
-            <span className={textCls}>{text}</span>
-          </div>
-        </>
+        <div className={styles.profileBody}>
+          <span className={tagCls} style={{ color: primary }}>{tag}</span>
+          <span className={textCls}>{text}</span>
+        </div>
       )
 
     case 'tab':
