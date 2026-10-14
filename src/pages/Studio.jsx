@@ -26,7 +26,8 @@ import MusicBank from '../components/MusicBank.jsx'
 import { useAutoSwitcher } from '../hooks/useAutoSwitcher.js'
 import { useAIDirector } from '../hooks/useAIDirector.js'
 import { useStudioCompositor } from '../hooks/useStudioCompositor.js'
-import { useAudioMix } from '../hooks/useAudioMix.js'
+import { useAudioMix, DEFAULT_DSP_SETTINGS } from '../hooks/useAudioMix.js'
+import AudioDspPanel from '../components/AudioDspPanel.jsx'
 import VUMeter from '../components/VUMeter.jsx'
 import MicSelector from '../components/MicSelector.jsx'
 import MicMuteButton from '../components/MicMuteButton.jsx'
@@ -167,6 +168,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const [initError, setInitError] = useState('')
   const [camSlot, setCamSlot] = useState(PRIMARY_CAMERA_SLOT)
   const userPickedCameraRef = useRef(false)
+  const programCamera = useMemo(() => {
+    if (userPickedCameraRef.current && streams[activeCamera]) return activeCamera
+    return pickPrimaryActiveSlot(streams, masterCameraSlot)
+  }, [activeCamera, streams, masterCameraSlot])
   const [switchMode, setSwitchMode] = useState('ai')
   const [switchInterval, setSwitchInterval] = useState(8)
   const [showCintForm, setShowCintForm] = useState(false)
@@ -433,11 +438,6 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     })
   }, [])
 
-  const programCamera = useMemo(() => {
-    if (userPickedCameraRef.current && streams[activeCamera]) return activeCamera
-    return pickPrimaryActiveSlot(streams, masterCameraSlot)
-  }, [activeCamera, streams, masterCameraSlot])
-
   useEffect(() => {
     if (!initialized || userPickedCameraRef.current) return
     const slot = pickPrimaryActiveSlot(streams, masterCameraSlot)
@@ -554,7 +554,26 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     recordDurationSec: duration,
     compositorActive: recording || countdown !== null || preparingRecord,
   })
-  const { buildRecordingStream } = useAudioMix()
+
+  const [dspSettings, setDspSettings] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_DSP_SETTINGS
+    try {
+      const saved = localStorage.getItem('podcastudio_dsp_settings')
+      return saved ? { ...DEFAULT_DSP_SETTINGS, ...JSON.parse(saved) } : DEFAULT_DSP_SETTINGS
+    } catch {
+      return DEFAULT_DSP_SETTINGS
+    }
+  })
+
+  const { buildRecordingStream, applyDspSettings } = useAudioMix()
+
+  const handleDspChange = useCallback((newSettings) => {
+    setDspSettings(newSettings)
+    applyDspSettings(newSettings)
+    try {
+      localStorage.setItem('podcastudio_dsp_settings', JSON.stringify(newSettings))
+    } catch {}
+  }, [applyDspSettings])
 
   useAutoSwitcher({
     enabled: switchMode === 'timer',
@@ -754,11 +773,16 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       return
     }
     try {
+      const masterCamStream = streams[masterCameraSlot]
+      const cameraAudioTrack = masterCamStream?.getAudioTracks?.()?.[0]
+      const inputMicStream = getMicStream() || (cameraAudioTrack ? masterCamStream : null)
+
       const combined = await buildRecordingStream(videoStream, {
-        micStream: getMicStream(),
+        micStream: inputMicStream,
         musicEl: getAudioElement(),
         musicVolume: musicVol,
         musicPlaying,
+        dspSettings,
       })
       teleprompter.setRecordingActive(true)
       startRecording(combined)
@@ -1642,6 +1666,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     {micLevel > 0 ? `-${Math.round(40 - micLevel * 0.32)} dB` : '–∞'}
                   </span>
                 </div>
+                <AudioDspPanel
+                  settings={dspSettings}
+                  onChange={handleDspChange}
+                />
               </div>
             )}
           </div>

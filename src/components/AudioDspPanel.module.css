@@ -1,0 +1,190 @@
+.container {
+  margin-top: 14px;
+  padding: 12px;
+  background: rgba(14, 15, 23, 0.85);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+
+.title i {
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.badgeMaster {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(232, 97, 42, 0.15);
+  border: 1px solid rgba(232, 97, 42, 0.35);
+  padding: 1px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.35;
+  margin: 0;
+}
+
+/* Presets */
+.presetsRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.presetBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 3px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.presetBtn:hover {
+  background: var(--surface-2);
+  border-color: var(--border-3);
+  color: #fff;
+}
+
+.presetBtn i {
+  font-size: 11px;
+  color: var(--accent);
+}
+
+/* Toggles */
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.toggleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.toggleRow input[type="checkbox"] {
+  margin-top: 2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.toggleInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.toggleLabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toggleSub {
+  font-size: 9px;
+  color: var(--text-muted);
+  line-height: 1.25;
+}
+
+/* EQ Box */
+.eqBox {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.eqHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.eqSliders {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.eqCol {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.eqVal {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: var(--font-mono, monospace);
+}
+
+.eqSlider {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.eqBandLabel {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.eqFreq {
+  font-size: 8px;
+  color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+}
