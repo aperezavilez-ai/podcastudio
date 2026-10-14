@@ -13,6 +13,7 @@ export default function MultiFormatExportModal({
   selectedNetworks = ['facebook', 'youtube', 'tiktok', 'instagram'],
   onDownloadOriginal,
   onDownloadMp4,
+  onOpenPublish,
 }) {
   const [cropMode, setCropMode] = useState('smart-crop') // 'smart-crop' | 'blur-fill'
   const [convertingKey, setConvertingKey] = useState(null)
@@ -169,6 +170,9 @@ export default function MultiFormatExportModal({
           </button>
         </div>
 
+        {/* CONTENEDOR CON SCROLL SUAVE */}
+        <div className={styles.scrollBody}>
+
         {/* BARRA DE REDES ACTIVAS & SELECCIÓN */}
         <div className={styles.targetNetworksBar}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -320,14 +324,16 @@ export default function MultiFormatExportModal({
           </div>
         )}
 
-        {/* Footer con Pack Completo */}
+        </div>{/* Fin scrollBody */}
+
+        {/* Footer con Pack Completo y Publicar */}
         <div className={styles.footer}>
           <div className={styles.infoMeta}>
             <i className="ti ti-shield-check" style={{ color: '#10b981' }} />
-            <span>Grabación blindada: {selectedCount} formato(s) seleccionados para exportar</span>
+            <span>Grabación blindada: {selectedCount} formato(s) seleccionados</span>
           </div>
 
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             {onDownloadMp4 && (
               <button
                 type="button"
@@ -346,14 +352,31 @@ export default function MultiFormatExportModal({
               className={styles.packBtn}
               onClick={handleDownloadFullPack}
               disabled={isBusy || selectedCount === 0}
+              title="Descargar todos los formatos seleccionados a la vez"
             >
               <i className="ti ti-package" />
               <strong>
                 {selectedCount === SOCIAL_PRESETS_EXPORT.length
                   ? 'Descargar Pack Completo (4 Redes)'
-                  : `Descargar Pack (${selectedCount} Formatos Seleccionados)`}
+                  : `Descargar Pack (${selectedCount} Formatos)`}
               </strong>
             </button>
+
+            {onOpenPublish && (
+              <button
+                type="button"
+                className={styles.publishBtn}
+                onClick={() => {
+                  onClose()
+                  onOpenPublish()
+                }}
+                disabled={isBusy}
+                title="Publicar directamente en redes sociales y generar copys con IA"
+              >
+                <i className="ti ti-share" />
+                <strong>Publicar en Redes</strong>
+              </button>
+            )}
           </div>
         </div>
       </div>

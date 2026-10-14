@@ -19,6 +19,7 @@ export function useStudioCompositor({
   cintillo = null,
   cintilloPosition = 'bl',
   cintilloStyle = 'classic',
+  cintilloLogoUrl = null,
   animPhase = 'hold',
   animKey = 0,
   directorCrop = null,
@@ -38,6 +39,7 @@ export function useStudioCompositor({
   const keepAliveRef = useRef([])
   const rafRef = useRef(null)
   const logoImageRef = useRef(null)
+  const cintilloLogoImageRef = useRef(null)
   const customBgImageRef = useRef(null)
   const settingsRef = useRef({})
 
@@ -95,6 +97,7 @@ export function useStudioCompositor({
     cintillo,
     cintilloPosition,
     cintilloStyle,
+    cintilloLogoUrl,
     animPhase,
     directorCrop,
     look,
@@ -170,6 +173,17 @@ export function useStudioCompositor({
     img.onload = () => { logoImageRef.current = img }
     img.src = logoUrl
   }, [logoUrl])
+
+  useEffect(() => {
+    if (!cintilloLogoUrl) {
+      cintilloLogoImageRef.current = null
+      return
+    }
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => { cintilloLogoImageRef.current = img }
+    img.src = cintilloLogoUrl
+  }, [cintilloLogoUrl])
 
   useEffect(() => {
     if (!background?.customUrl) {
@@ -257,9 +271,12 @@ export function useStudioCompositor({
             active: true,
             tag: c.tag,
             text: c.text,
+            subtitle: c.subtitle || c.sub || '',
             color: c.color,
-            position: s.cintilloPosition,
-            styleId: s.cintilloStyle,
+            position: s.cintilloPosition || 'bl',
+            styleId: s.cintilloStyle || 'broadcast',
+            logoImage: cintilloLogoImageRef.current || null,
+            socials: c.socials || null,
           } : null,
           cintilloMotion,
           directorCrop: s.directorCrop,

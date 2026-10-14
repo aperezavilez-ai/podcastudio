@@ -2,28 +2,36 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   getRotationPresets,
   resolveCintilloText,
+  resolveCintilloSubtitle,
+  CINTILLO_PRESETS,
 } from '../config/cintilloPresets.js'
 import {
   getPresetCameraSlot,
-  getPositionForPreset,
   DEFAULT_CINTILLO_POSITIONS,
 } from '../config/cintilloCameraMap.js'
 
-const ENTER_MS = 900
-const EXIT_MS = 450
+const ENTER_MS = 600
+const EXIT_MS = 400
 const DEFAULT_DISPLAY_SEC = 10
 
-function buildCintilloState(preset, project, positions, overrides = {}) {
+function buildCintilloState(preset, project, positions, masterPosition, overrides = {}) {
   const presetId = preset?.id || overrides.presetId || 'custom'
   const text = overrides.text ?? (preset ? resolveCintilloText(preset.id, project) : '')
+  const subtitle = overrides.subtitle ?? (preset ? resolveCintilloSubtitle(preset.id, project) : '')
+  // Mantener estrictamente la posición fijada por el usuario (sin brincar entre bl/bc/br)
+  const fixedPos = overrides.position || masterPosition || positions?.master || 'bl'
+
   return {
     active: true,
     tag: overrides.tag ?? preset?.tag ?? 'INFO',
     text,
+    subtitle,
     color: overrides.color ?? preset?.color ?? '#e8612a',
     presetId,
     targetSlot: overrides.targetSlot ?? getPresetCameraSlot(presetId),
-    position: overrides.position ?? getPositionForPreset(presetId, positions),
+    position: fixedPos,
+    logoUrl: overrides.logoUrl ?? project?.cintilloLogoUrl ?? null,
+    socials: overrides.socials ?? project?.socialHandles ?? null,
   }
 }
 
@@ -32,20 +40,33 @@ export function useCintilloRotation({
   enabled,
   displaySec = DEFAULT_DISPLAY_SEC,
   positions = DEFAULT_CINTILLO_POSITIONS,
+  masterPosition = 'bl',
 }) {
   const [cintillo, setCintillo] = useState({
-    active: false, tag: '', text: '', color: '#4a90d9', presetId: null, targetSlot: 1, position: 'bc',
+    active: false,
+    tag: '',
+    text: '',
+    subtitle: '',
+    color: '#4a90d9',
+    presetId: null,
+    targetSlot: 1,
+    position: masterPosition || 'bl',
+    logoUrl: null,
+    socials: null,
   })
   const [animPhase, setAnimPhase] = useState('hold')
   const [animKey, setAnimKey] = useState(0)
   const indexRef = useRef(0)
   const timersRef = useRef([])
   const positionsRef = useRef(positions)
+  const masterPosRef = useRef(masterPosition)
+  const projectRef = useRef(project)
+  const enabledRef = useRef(enabled)
 
   positionsRef.current = positions
-
-  const projectRef = useRef(project)
+  masterPosRef.current = masterPosition
   projectRef.current = project
+  enabledRef.current = enabled
 
   const cintillosKey = JSON.stringify(project?.cintillos || {})
 
@@ -63,7 +84,7 @@ export function useCintilloRotation({
   const showPreset = useCallback((preset) => {
     setAnimKey(k => k + 1)
     setAnimPhase('enter')
-    setCintillo(buildCintilloState(preset, projectRef.current, positionsRef.current))
+    setCintillo(buildCintilloState(preset, projectRef.current, positionsRef.current, masterPosRef.current))
   }, [])
 
   const runCycle = useCallback(() => {
@@ -92,22 +113,40 @@ export function useCintilloRotation({
     indexRef.current = 0
     runCycle()
     return clearTimers
-  }, [enabled, displaySec, cintillosKey, positions, runCycle, clearTimers])
+  }, [enabled, displaySec, cintillosKey, runCycle, clearTimers])
 
-  const showManual = useCallback((preset) => {
+  // Selección manual o por voz: entra de inmediato en Master y si la rotación está activa, continúa después
+  const showManual = useCallback((presetOrId) => {
     clearTimers()
+    const preset = typeof presetOrId === 'string'
+      ? (CINTILLO_PRESETS.find(p => p.id === presetOrId) || { id: presetOrId, tag: presetOrId.toUpperCase() })
+      : presetOrId
+
+    const items = getRotationPresets(projectRef.current)
+    const foundIdx = items.findIndex(p => p.id === preset.id)
+    if (foundIdx >= 0) {
+      indexRef.current = (foundIdx + 1) % items.length
+    }
+
     setAnimKey(k => k + 1)
     setAnimPhase('enter')
-    setCintillo(buildCintilloState(preset, projectRef.current, positionsRef.current))
+    setCintillo(buildCintilloState(preset, projectRef.current, positionsRef.current, masterPosRef.current))
     schedule(() => setAnimPhase('hold'), ENTER_MS)
-  }, [clearTimers, schedule])
 
-  const showCustom = useCallback(({ tag, text, color = '#e8612a', targetSlot, position, presetId = 'custom' }) => {
+    // Si la rotación automática está activada por el usuario, reanudar tras la duración
+    if (enabledRef.current && items.length > 1) {
+      schedule(() => {
+        runCycle()
+      }, ENTER_MS + displaySec * 1000)
+    }
+  }, [clearTimers, schedule, displaySec, runCycle])
+
+  const showCustom = useCallback(({ tag, text, subtitle, color = '#e8612a', targetSlot, position, presetId = 'custom', logoUrl, socials }) => {
     clearTimers()
     setAnimKey(k => k + 1)
     setAnimPhase('enter')
-    setCintillo(buildCintilloState(null, projectRef.current, positionsRef.current, {
-      tag, text, color, targetSlot, position, presetId,
+    setCintillo(buildCintilloState(null, projectRef.current, positionsRef.current, masterPosRef.current, {
+      tag, text, subtitle, color, targetSlot, position, presetId, logoUrl, socials,
     }))
     schedule(() => setAnimPhase('hold'), ENTER_MS)
   }, [clearTimers, schedule])

@@ -9,7 +9,7 @@ import CameraConnectPanel from '../components/CameraConnectPanel.jsx'
 import CintilloStylePicker from '../components/CintilloStylePicker.jsx'
 import CintilloOverlay from '../components/CintilloOverlay.jsx'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
-import { CINTILLO_PRESETS, resolveCintilloText } from '../config/cintilloPresets.js'
+import { CINTILLO_PRESETS, resolveCintilloText, resolveCintilloSubtitle } from '../config/cintilloPresets.js'
 import {
   CINTILLO_CAMERA_GROUPS,
   CINTILLO_POSITION_OPTIONS,
@@ -517,6 +517,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     const override = cintilloOverrides[preset.id] || {}
     const defaultText = resolveCintilloText(preset.id, proj)
     const effectiveText = customCintillos[preset.id] ?? override.text ?? defaultText ?? ''
+    const effectiveSubtitle = override.subtitle ?? preset.subtitle ?? resolveCintilloSubtitle(preset.id, proj) ?? ''
     const effectiveTag = override.tag ?? preset.tag ?? 'INFO'
     const effectiveLabel = override.label ?? preset.label ?? 'Cintillo'
     const effectiveColor = override.color ?? preset.color ?? '#e8612a'
@@ -525,9 +526,12 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       label: effectiveLabel,
       tag: effectiveTag,
       text: effectiveText,
+      subtitle: effectiveSubtitle,
       color: effectiveColor,
+      logoUrl: override.logoUrl ?? preset.logoUrl ?? cintilloLogoUrl ?? null,
+      socials: override.socials ?? preset.socials ?? proj.socialHandles ?? null,
     }
-  }, [cintilloOverrides, customCintillos, proj])
+  }, [cintilloOverrides, customCintillos, proj, cintilloLogoUrl])
 
   const startEditingCintillo = useCallback((item) => {
     const resolved = getResolvedCintillo(item)
@@ -731,15 +735,26 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     handleCut()
   }, [handleCut])
 
-  const subtitleLang = proj.subtitleLanguage || 'es-MX'
-  const { displayText: subtitleText, interim: subtitleInterim, supported: subtitlesSupported } = useSpeechSubtitles({
-    enabled: subtitlesOn && recording,
-    language: subtitleLang,
-  })
-
   const {
     cintillo, animPhase, animKey, showManual, showCustom, hide: hideCintillo,
-  } = useCintilloRotation({ project: proj, enabled: autoCintillos, displaySec: cintDisplaySec, positions: cintilloPositions })
+  } = useCintilloRotation({
+    project: proj,
+    enabled: autoCintillos,
+    displaySec: cintDisplaySec,
+    positions: cintilloPositions,
+    masterPosition: masterCintilloPosition || 'bl',
+  })
+
+  const handleVoiceIntent = useCallback((presetId) => {
+    showManual(presetId)
+  }, [showManual])
+
+  const subtitleLang = proj.subtitleLanguage || 'es-MX'
+  const { displayText: subtitleText, interim: subtitleInterim, supported: subtitlesSupported } = useSpeechSubtitles({
+    enabled: subtitlesOn || switchMode === 'ai',
+    language: subtitleLang,
+    onVoiceIntent: handleVoiceIntent,
+  })
 
   const cintilloForSlot = useCallback((slot) => {
     if (!cintillo?.active || cintillo.targetSlot !== slot) return null
@@ -763,13 +778,16 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       showCustom({
         tag: cintillo.tag,
         text: cintillo.text,
+        subtitle: cintillo.subtitle,
         color: cintillo.color,
         targetSlot: programCamera,
         position: pos,
         presetId: cintillo.presetId,
+        logoUrl: cintillo.logoUrl || cintilloLogoUrl || null,
+        socials: cintillo.socials || null,
       })
     }
-  }, [cintillo, showCustom, programCamera])
+  }, [cintillo, showCustom, programCamera, cintilloLogoUrl])
 
   useEffect(() => {
     getMicStream()?.getAudioTracks?.()?.forEach(track => {
@@ -791,12 +809,19 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
   const { look, setField: setLookField, applyPreset: applyLookPreset, resetLook } = useLookSettings()
 
+  const handleAiCameraSwitch = useCallback((slot) => {
+    userPickedCameraRef.current = true
+    setActiveCamera(slot)
+    setMasterCameraSlot(slot)
+    setCamSlot(slot)
+  }, [setActiveCamera, setMasterCameraSlot, setCamSlot])
+
   const { getDirectorCrop, directorStatus } = useAIDirector({
     enabled: switchMode === 'ai' && planLimits.aiDirector,
     streams,
     micLevel,
-    activeCamera,
-    setActiveCamera,
+    activeCamera: programCamera,
+    setActiveCamera: handleAiCameraSwitch,
     minCutSec: switchInterval,
     faceZoomSec: 10,
   })
@@ -834,8 +859,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     logoPosition: proj.logoPosition || 'tr',
     podcastName: proj.name || 'Mi Podcast',
     cintillo,
-    cintilloPosition: cintillo?.position || masterCintilloPosition || 'bl',
+    cintilloPosition: masterCintilloPosition || 'bl',
     cintilloStyle,
+    cintilloLogoUrl: cintilloLogoUrl || proj.cintilloLogoUrl || null,
     animPhase,
     animKey,
     directorCrop: effectiveCrop,
@@ -1147,7 +1173,6 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   }, [getProgramStream, streams, masterCameraSlot, getMicStream, buildRecordingStream, getAudioElement, musicVol, musicPlaying, dspSettings, startLiveStream, setLiveError])
 
   const showCintillo = (preset) => {
-    setAutoCintillos(false)
     if (cintillo.active && cintillo.presetId === preset.id) {
       hideCintillo()
       return
@@ -1156,10 +1181,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     showCustom({
       tag: resolved.tag,
       text: resolved.text,
+      subtitle: resolved.subtitle || '',
       color: resolved.color,
       targetSlot: programCamera,
-      position: masterCintilloPosition,
+      position: masterCintilloPosition || 'bl',
       presetId: preset.id,
+      logoUrl: resolved.logoUrl || cintilloLogoUrl || null,
+      socials: resolved.socials || null,
     })
   }
 
@@ -1829,15 +1857,6 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                 >
                   <i className="ti ti-share" style={{ fontSize: 12, color: 'var(--accent)' }} />
                   <span>Pack Redes</span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.socialMoreBtn}
-                  onClick={() => setShowSocialModal(true)}
-                  title="Adaptar para cualquier red social (Facebook, Instagram, TikTok, YouTube)"
-                >
-                  <i className="ti ti-world" />
-                  <span>Todos</span>
                 </button>
               </div>
               </div>
@@ -2680,53 +2699,76 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
           )}
 
           {/* RECORD CONTROLS */}
-          <div className={styles.recControls}>
-            <button type="button" className={`${styles.rcBtn} ${styles.rcRec} ${recording ? styles.rcRecOn : ''}`} onClick={handleRecord}>
-              <i className={`ti ${recording ? 'ti-player-stop' : 'ti-circle'}`} style={{ fontSize: 13 }} />
-              {recording ? 'Detener' : 'Grabar'}
-            </button>
+          <div className={styles.recControlsContainer}>
+            {recordings.length > 0 && !recording && (
+              <div className={styles.recSuccessBanner}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="ti ti-circle-check-filled" style={{ color: '#10b981', fontSize: 16 }} />
+                  <strong style={{ fontSize: 11, color: '#fff' }}>¡Grabación lista para descargar o publicar!</strong>
+                </div>
+                <span style={{ fontSize: 9.5, color: 'var(--text-secondary)' }}>
+                  Duración: {formatDuration(recordings[recordings.length - 1].duration)} · Master HD
+                </span>
+              </div>
+            )}
+
+            {/* BOTÓN PRINCIPAL: GRABAR / DETENER */}
             <button
               type="button"
-              className={styles.rcBtn}
-              onClick={() => { if (recordings.length > 0) downloadRecording(recordings[recordings.length - 1]) }}
-              disabled={recordings.length === 0}
-              title="Descargar última grabación master"
+              className={`${styles.mainRecBtn} ${recording ? styles.mainRecBtnActive : ''}`}
+              onClick={handleRecord}
             >
-              <i className="ti ti-download" style={{ fontSize: 13 }} />
-              Descargar
+              <i className={`ti ${recording ? 'ti-player-stop' : 'ti-circle-filled'}`} style={{ fontSize: 15 }} />
+              <span>{recording ? 'DETENER GRABACIÓN' : 'INICIAR GRABACIÓN'}</span>
+              {recording && (
+                <span className={styles.recTimerBadge}>
+                  REC {formatDuration(duration)}
+                </span>
+              )}
             </button>
+
+            {/* BOTONES DE ACCIÓN (DESCARGAR & PACK REDES) */}
+            <div className={styles.recActionsRow}>
+              <button
+                type="button"
+                className={styles.recActionBtn}
+                onClick={() => { if (recordings.length > 0) downloadRecording(recordings[recordings.length - 1]) }}
+                disabled={recordings.length === 0}
+                title="Descargar última grabación master"
+              >
+                <i className="ti ti-download" style={{ fontSize: 13, color: 'var(--text-secondary)' }} />
+                <span>Descargar Master</span>
+              </button>
+
+              <button
+                type="button"
+                className={`${styles.recActionBtn} ${styles.recPackBtn}`}
+                onClick={() => {
+                  if (recordings.length > 0) {
+                    setMultiFormatRecording(recordings[recordings.length - 1])
+                    setShowMultiFormatModal(true)
+                  }
+                }}
+                disabled={recordings.length === 0}
+                title="Descargar pack multi-redes (Facebook 16:9, YouTube 16:9, TikTok 9:16, Instagram 1:1)"
+              >
+                <i className="ti ti-package" style={{ fontSize: 13, color: 'var(--accent)' }} />
+                <span>Pack Redes ({selectedNetworks.length})</span>
+              </button>
+            </div>
+
+            {/* BOTÓN DESTACADO: PUBLICAR EN REDES SOCIALES */}
             <button
               type="button"
-              className={styles.rcBtn}
-              onClick={() => {
-                if (recordings.length > 0) {
-                  setMultiFormatRecording(recordings[recordings.length - 1])
-                  setShowMultiFormatModal(true)
-                }
-              }}
-              disabled={recordings.length === 0}
-              title="Generar pack multi-formato (YouTube 16:9, TikTok 9:16, Instagram 1:1)"
-              style={{
-                background: 'linear-gradient(135deg, rgba(232, 97, 42, 0.22), rgba(0, 242, 254, 0.16))',
-                borderColor: 'rgba(232, 97, 42, 0.45)',
-                color: '#fff',
-                fontWeight: 600,
-              }}
-            >
-              <i className="ti ti-share" style={{ fontSize: 13, color: 'var(--accent)' }} />
-              Pack Redes
-            </button>
-            <button
-              type="button"
-              className={styles.rcBtn}
+              className={styles.recPublishBtn}
               onClick={() => {
                 setTab('posts')
                 closeControlsPanel()
               }}
-              title="Generar posts para redes"
+              title="Generar copys con IA y publicar directamente en Facebook, YouTube, TikTok e Instagram"
             >
-              <i className="ti ti-sparkles" style={{ fontSize: 13 }} />
-              Posts
+              <i className="ti ti-share" style={{ fontSize: 14 }} />
+              <span>Publicar en Redes Sociales (Copys IA)</span>
             </button>
           </div>
           </div>{/* panelScrollInner */}
@@ -2903,6 +2945,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         selectedNetworks={selectedNetworks}
         onDownloadOriginal={downloadRecording}
         onDownloadMp4={downloadRecordingMp4}
+        onOpenPublish={() => {
+          setTab('posts')
+          closeControlsPanel()
+        }}
       />
 
       {/* MODAL TRANSMISIÓN EN VIVO MULTI-STREAMING */}
