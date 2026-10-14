@@ -45,6 +45,7 @@ export default function ProgramPreview({
   tertiaryStream = null,
   tertiaryLabel = '',
   primaryLabel = '',
+  onOpenConnectModal = null,
 }) {
   const videoRef = useRef(null)
   const pipVideoRef = useRef(null)
@@ -170,33 +171,48 @@ export default function ProgramPreview({
   }
 
   // MODO SPLIT (50/50 Lado a lado)
-  if (layout === 'split' && secondaryStream) {
+  if (layout === 'split') {
     return (
       <div className={styles.preview}>
         <div className={styles.splitContainer}>
           <div className={styles.splitPane}>
-            <video
-              ref={videoRef}
-              className={styles.video}
-              autoPlay
-              muted
-              playsInline
-              style={{
-                filter: cssFilter,
-                transform: zoom > 1 ? `scale(${zoom})` : undefined,
-                transformOrigin: `${originX} ${originY}`,
-              }}
-            />
+            {stream ? (
+              <video
+                ref={videoRef}
+                className={styles.video}
+                autoPlay
+                muted
+                playsInline
+                style={{
+                  filter: cssFilter,
+                  transform: zoom > 1 ? `scale(${zoom})` : undefined,
+                  transformOrigin: `${originX} ${originY}`,
+                }}
+              />
+            ) : (
+              <div className={styles.emptyPane} onClick={onOpenConnectModal}>
+                <i className="ti ti-video-off" style={{ fontSize: 24 }} />
+                <span>{primaryLabel || 'Cámara 1 (Sin señal)'}</span>
+              </div>
+            )}
             {primaryLabel && <div className={styles.splitBadge}>{primaryLabel}</div>}
           </div>
           <div className={styles.splitPane}>
-            <video
-              ref={secondaryVideoRef}
-              className={styles.video}
-              autoPlay
-              muted
-              playsInline
-            />
+            {secondaryStream ? (
+              <video
+                ref={secondaryVideoRef}
+                className={styles.video}
+                autoPlay
+                muted
+                playsInline
+              />
+            ) : (
+              <div className={styles.emptyPane} onClick={onOpenConnectModal} title="Clic para conectar o cambiar cámara">
+                <i className="ti ti-video-plus" style={{ fontSize: 28, color: 'var(--accent, #e8612a)' }} />
+                <span>{secondaryLabel || '2ª Cámara (Sin señal)'}</span>
+                <span className={styles.emptyPaneSub}>Haz clic para conectar o seleccionar cámara</span>
+              </div>
+            )}
             {secondaryLabel && <div className={styles.splitBadge}>{secondaryLabel}</div>}
           </div>
         </div>
@@ -206,44 +222,65 @@ export default function ProgramPreview({
   }
 
   // MODO TRIPLE (1 Master + 2 Secundarias)
-  if (layout === 'triple' && (secondaryStream || tertiaryStream)) {
+  if (layout === 'triple') {
     return (
       <div className={styles.preview}>
         <div className={styles.tripleContainer}>
           <div className={styles.tripleMainPane}>
-            <video
-              ref={videoRef}
-              className={styles.video}
-              autoPlay
-              muted
-              playsInline
-              style={{
-                filter: cssFilter,
-                transform: zoom > 1 ? `scale(${zoom})` : undefined,
-                transformOrigin: `${originX} ${originY}`,
-              }}
-            />
+            {stream ? (
+              <video
+                ref={videoRef}
+                className={styles.video}
+                autoPlay
+                muted
+                playsInline
+                style={{
+                  filter: cssFilter,
+                  transform: zoom > 1 ? `scale(${zoom})` : undefined,
+                  transformOrigin: `${originX} ${originY}`,
+                }}
+              />
+            ) : (
+              <div className={styles.emptyPane} onClick={onOpenConnectModal}>
+                <i className="ti ti-video-off" style={{ fontSize: 24 }} />
+                <span>{primaryLabel || 'Master (Sin señal)'}</span>
+              </div>
+            )}
             {primaryLabel && <div className={styles.splitBadge}>{primaryLabel}</div>}
           </div>
           <div className={styles.tripleSidePane}>
             <div className={styles.tripleSubPane}>
-              <video
-                ref={secondaryVideoRef}
-                className={styles.video}
-                autoPlay
-                muted
-                playsInline
-              />
+              {secondaryStream ? (
+                <video
+                  ref={secondaryVideoRef}
+                  className={styles.video}
+                  autoPlay
+                  muted
+                  playsInline
+                />
+              ) : (
+                <div className={styles.emptyPane} onClick={onOpenConnectModal}>
+                  <i className="ti ti-video-plus" style={{ fontSize: 20 }} />
+                  <span style={{ fontSize: 10 }}>{secondaryLabel || '2ª Cámara'}</span>
+                </div>
+              )}
               {secondaryLabel && <div className={styles.splitBadge}>{secondaryLabel}</div>}
             </div>
             <div className={styles.tripleSubPane}>
-              <video
-                ref={tertiaryVideoRef}
-                className={styles.video}
-                autoPlay
-                muted
-                playsInline
-              />
+              {tertiaryStream ? (
+                <video
+                  ref={tertiaryVideoRef}
+                  className={styles.video}
+                  autoPlay
+                  muted
+                  playsInline
+                />
+              ) : (
+                <div className={styles.emptyPane} onClick={onOpenConnectModal}>
+                  <i className="ti ti-video-plus" style={{ fontSize: 20 }} />
+                  <span style={{ fontSize: 10 }}>{tertiaryLabel || '3ª Cámara'}</span>
+                </div>
+              )}
               {tertiaryLabel && <div className={styles.splitBadge}>{tertiaryLabel}</div>}
             </div>
           </div>
@@ -271,15 +308,23 @@ export default function ProgramPreview({
       />
 
       {/* Recuadro PiP (Picture in Picture) */}
-      {layout === 'pip' && pipStream && (
+      {layout === 'pip' && (
         <div className={styles.pipContainer}>
-          <video
-            ref={pipVideoRef}
-            className={styles.pipVideo}
-            autoPlay
-            muted
-            playsInline
-          />
+          {pipStream ? (
+            <video
+              ref={pipVideoRef}
+              className={styles.pipVideo}
+              autoPlay
+              muted
+              playsInline
+            />
+          ) : (
+            <div className={styles.pipPlaceholder} onClick={onOpenConnectModal} title="Clic para asignar o conectar cámara PiP">
+              <i className="ti ti-video-plus" style={{ fontSize: 22, color: 'var(--accent, #e8612a)' }} />
+              <span>{pipLabel || 'PiP'} (Sin señal)</span>
+              <span className={styles.emptyPaneSub}>Clic para asignar cámara</span>
+            </div>
+          )}
           {pipLabel && <div className={styles.pipBadge}>{pipLabel}</div>}
           {onClosePip && (
             <button

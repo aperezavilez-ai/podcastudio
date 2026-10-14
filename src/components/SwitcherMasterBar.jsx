@@ -6,10 +6,21 @@ export default function SwitcherMasterBar({
   programCamera = 0,
   previewCamera = null,
   cameraMeta = {},
+  streams = {},
+  slotsCount = 3,
   masterCameraSlot = 1,
   proSwitcherMode = false, // false = 1-click Direct Cut, true = PGM/PVW Broadcast
   screenLayout = 'full', // 'full' | 'pip' | 'split' | 'triple'
   onSelectLayout = () => {},
+  pipCameraSlot = 0,
+  onSelectPipSlot = () => {},
+  splitSecondarySlot = 2,
+  onSelectSplitSecondarySlot = () => {},
+  tripleTertiarySlot = 0,
+  onSelectTripleTertiarySlot = () => {},
+  onSwapPipMaster = () => {},
+  onSwapSplitSlots = () => {},
+  onSelectProgramCamera = () => {},
   onToggleProSwitcherMode,
   onCut,
   onAutoTransition,
@@ -79,6 +90,138 @@ export default function SwitcherMasterBar({
             <span>Triple</span>
           </button>
         </div>
+
+        {/* Asignación de canales según el layout activo */}
+        {screenLayout === 'pip' && (
+          <div className={styles.layoutConfigBar}>
+            <div className={styles.layoutSelectorItem}>
+              <span className={styles.layoutSelectorTag}>Master:</span>
+              <select
+                value={programCamera}
+                onChange={(e) => onSelectProgramCamera(Number(e.target.value))}
+                className={styles.slotSelect}
+                title="Cámara principal de fondo"
+              >
+                {Array.from({ length: slotsCount }).map((_, i) => (
+                  <option key={i} value={i} disabled={i === pipCameraSlot}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, i === masterCameraSlot)} {streams[i] ? '●' : '(sin señal)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              className={styles.swapBtn}
+              onClick={onSwapPipMaster}
+              title="Intercambiar Master ⇄ PiP"
+            >
+              <i className="ti ti-arrows-left-right" />
+            </button>
+            <div className={styles.layoutSelectorItem}>
+              <span className={styles.layoutSelectorTag} style={{ color: '#60a5fa' }}>PiP:</span>
+              <select
+                value={pipCameraSlot}
+                onChange={(e) => onSelectPipSlot(Number(e.target.value))}
+                className={styles.slotSelect}
+                title="Cámara en recuadro miniatura flotante"
+              >
+                {Array.from({ length: slotsCount }).map((_, i) => (
+                  <option key={i} value={i} disabled={i === programCamera}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, i === masterCameraSlot)} {streams[i] ? '●' : '(sin señal)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {screenLayout === 'split' && (
+          <div className={styles.layoutConfigBar}>
+            <div className={styles.layoutSelectorItem}>
+              <span className={styles.layoutSelectorTag}>Izq:</span>
+              <select
+                value={programCamera}
+                onChange={(e) => onSelectProgramCamera(Number(e.target.value))}
+                className={styles.slotSelect}
+              >
+                {Array.from({ length: slotsCount }).map((_, i) => (
+                  <option key={i} value={i} disabled={i === splitSecondarySlot}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, i === masterCameraSlot)} {streams[i] ? '●' : '(sin señal)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              className={styles.swapBtn}
+              onClick={onSwapSplitSlots}
+              title="Intercambiar Izquierda ⇄ Derecha"
+            >
+              <i className="ti ti-arrows-left-right" />
+            </button>
+            <div className={styles.layoutSelectorItem}>
+              <span className={styles.layoutSelectorTag} style={{ color: '#f59e0b' }}>Der:</span>
+              <select
+                value={splitSecondarySlot}
+                onChange={(e) => onSelectSplitSecondarySlot(Number(e.target.value))}
+                className={styles.slotSelect}
+              >
+                {Array.from({ length: slotsCount }).map((_, i) => (
+                  <option key={i} value={i} disabled={i === programCamera}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, i === masterCameraSlot)} {streams[i] ? '●' : '(sin señal)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {screenLayout === 'triple' && (
+          <div className={styles.layoutConfigBar}>
+            <div className={styles.layoutSelectorItem}>
+              <span className={styles.layoutSelectorTag}>Master:</span>
+              <select
+                value={programCamera}
+                onChange={(e) => onSelectProgramCamera(Number(e.target.value))}
+                className={styles.slotSelect}
+              >
+                {Array.from({ length: slotsCount }).map((_, i) => (
+                  <option key={i} value={i}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, i === masterCameraSlot)} {streams[i] ? '●' : '(sin señal)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.layoutSelectorItem}>
+              <span className={styles.layoutSelectorTag}>Arriba:</span>
+              <select
+                value={splitSecondarySlot}
+                onChange={(e) => onSelectSplitSecondarySlot(Number(e.target.value))}
+                className={styles.slotSelect}
+              >
+                {Array.from({ length: slotsCount }).map((_, i) => (
+                  <option key={i} value={i}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, i === masterCameraSlot)} {streams[i] ? '●' : '(sin señal)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.layoutSelectorItem}>
+              <span className={styles.layoutSelectorTag}>Abajo:</span>
+              <select
+                value={tripleTertiarySlot}
+                onChange={(e) => onSelectTripleTertiarySlot(Number(e.target.value))}
+                className={styles.slotSelect}
+              >
+                {Array.from({ length: slotsCount }).map((_, i) => (
+                  <option key={i} value={i}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, i === masterCameraSlot)} {streams[i] ? '●' : '(sin señal)'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className={styles.actionsSection}>

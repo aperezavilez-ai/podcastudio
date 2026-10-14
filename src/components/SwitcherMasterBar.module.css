@@ -214,3 +214,63 @@
   color: var(--accent, #e8612a) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
+
+.layoutConfigBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  font-size: 10px;
+}
+
+.layoutSelectorItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.layoutSelectorTag {
+  color: var(--text-muted, #8888a0);
+  font-weight: 700;
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.slotSelect {
+  background: #12131d;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+}
+
+.slotSelect:focus {
+  border-color: var(--accent, #e8612a);
+}
+
+.swapBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #bbb;
+  border-radius: 4px;
+  padding: 3px 6px;
+  cursor: pointer;
+  font-size: 10px;
+  transition: all 0.15s;
+}
+
+.swapBtn:hover {
+  background: var(--accent, #e8612a);
+  color: #fff;
+  border-color: var(--accent, #e8612a);
+}

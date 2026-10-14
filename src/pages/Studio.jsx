@@ -193,6 +193,36 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     try { localStorage.setItem('podcastudio_screen_layout', 'pip') } catch {}
   }, [])
 
+  const handleSetSplitSlot = useCallback((slot) => {
+    setSplitSecondarySlot(slot)
+    setScreenLayout('split')
+    try { localStorage.setItem('podcastudio_screen_layout', 'split') } catch {}
+  }, [])
+
+  const handleSetTripleSlot = useCallback((slot) => {
+    setTripleTertiarySlot(slot)
+    setScreenLayout('triple')
+    try { localStorage.setItem('podcastudio_screen_layout', 'triple') } catch {}
+  }, [])
+
+  const handleSwapPipMaster = useCallback(() => {
+    userPickedCameraRef.current = true
+    const prevPgm = programCamera
+    const prevPip = pipCameraSlot
+    setActiveCamera(prevPip)
+    setCamSlot(prevPip)
+    setPipCameraSlot(prevPgm)
+  }, [programCamera, pipCameraSlot, setActiveCamera, setCamSlot])
+
+  const handleSwapSplit = useCallback(() => {
+    userPickedCameraRef.current = true
+    const prevPgm = programCamera
+    const prevSec = splitSecondarySlot
+    setActiveCamera(prevSec)
+    setCamSlot(prevSec)
+    setSplitSecondarySlot(prevPgm)
+  }, [programCamera, splitSecondarySlot, setActiveCamera, setCamSlot])
+
   // Posición unificada de cintillos para la toma Master
   const [masterCintilloPosition, setMasterCintilloPosition] = useState(() => {
     if (typeof window === 'undefined') return 'bl'
@@ -978,6 +1008,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     secondaryStream={screenLayout === 'split' ? streams[splitSecondarySlot] : null}
                     secondaryLabel={getSlotLabel(splitSecondarySlot, cameraMeta[splitSecondarySlot]?.customLabel, splitSecondarySlot === masterCameraSlot)}
                     primaryLabel={getSlotLabel(programCamera, cameraMeta[programCamera]?.customLabel, programCamera === masterCameraSlot)}
+                    onOpenConnectModal={() => handleOpenConnectModal(screenLayout === 'pip' ? pipCameraSlot : splitSecondarySlot)}
                   />
                 ) : (
                   <div className={styles.noSignalViewport}>
@@ -1058,10 +1089,25 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               programCamera={programCamera}
               previewCamera={previewCamera}
               cameraMeta={cameraMeta}
+              streams={streams}
+              slotsCount={slotsCount}
               masterCameraSlot={masterCameraSlot}
               proSwitcherMode={proSwitcherMode}
               screenLayout={screenLayout}
               onSelectLayout={handleSelectLayout}
+              pipCameraSlot={pipCameraSlot}
+              onSelectPipSlot={setPipCameraSlot}
+              splitSecondarySlot={splitSecondarySlot}
+              onSelectSplitSecondarySlot={setSplitSecondarySlot}
+              tripleTertiarySlot={tripleTertiarySlot}
+              onSelectTripleTertiarySlot={setTripleTertiarySlot}
+              onSwapPipMaster={handleSwapPipMaster}
+              onSwapSplitSlots={handleSwapSplit}
+              onSelectProgramCamera={(slot) => {
+                userPickedCameraRef.current = true
+                setActiveCamera(slot)
+                setCamSlot(slot)
+              }}
               onToggleProSwitcherMode={toggleProSwitcherMode}
               onCut={handleCut}
               onAutoTransition={handleAutoTransition}
@@ -1118,10 +1164,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     >
                       <i className="ti ti-settings" />
                     </button>
-                    {streams[i] && (
+                    <div className={styles.camActionPills}>
                       <button
                         type="button"
-                        className={`${styles.camPipBtn} ${screenLayout === 'pip' && pipCameraSlot === i ? styles.camPipBtnActive : ''}`}
+                        className={`${styles.camRolePill} ${screenLayout === 'pip' && pipCameraSlot === i ? styles.camRolePillPipActive : ''}`}
                         onClick={(e) => {
                           e.stopPropagation()
                           if (screenLayout === 'pip' && pipCameraSlot === i) {
@@ -1130,11 +1176,26 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                             handleSetPipSlot(i)
                           }
                         }}
-                        title={screenLayout === 'pip' && pipCameraSlot === i ? 'Quitar recuadro PiP' : 'Mandar como recuadro PiP al Master'}
+                        title={screenLayout === 'pip' && pipCameraSlot === i ? 'Quitar de PiP' : 'Enviar como recuadro PiP'}
                       >
-                        {screenLayout === 'pip' && pipCameraSlot === i ? '✓ PiP' : '+ PiP'}
+                        {screenLayout === 'pip' && pipCameraSlot === i ? '✓ PiP' : 'PiP'}
                       </button>
-                    )}
+                      <button
+                        type="button"
+                        className={`${styles.camRolePill} ${screenLayout === 'split' && splitSecondarySlot === i ? styles.camRolePillSplitActive : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (screenLayout === 'split' && splitSecondarySlot === i) {
+                            handleSelectLayout('full')
+                          } else {
+                            handleSetSplitSlot(i)
+                          }
+                        }}
+                        title={screenLayout === 'split' && splitSecondarySlot === i ? 'Quitar de pantalla Doble' : 'Enviar como 2ª cámara (Doble)'}
+                      >
+                        {screenLayout === 'split' && splitSecondarySlot === i ? '✓ 2ª' : '2ª'}
+                      </button>
+                    </div>
                     {isLivePgm && (
                       <div className={styles.camTallyBadge}>PGM</div>
                     )}
