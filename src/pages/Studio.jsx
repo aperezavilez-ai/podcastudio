@@ -180,6 +180,22 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const [cintFormSlot, setCintFormSlot] = useState(1)
   const [editingCintId, setEditingCintId] = useState(null)
   const [editingCintText, setEditingCintText] = useState('')
+  const [editingCintTag, setEditingCintTag] = useState('')
+  const [editingCintLabel, setEditingCintLabel] = useState('')
+  const [cintilloOverrides, setCintilloOverrides] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_cintillo_overrides')
+      if (saved) return JSON.parse(saved)
+    } catch {}
+    return project?.cintilloOverrides || {}
+  })
+  const [customCintilloList, setCustomCintilloList] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_custom_cintillos_list')
+      if (saved) return JSON.parse(saved)
+    } catch {}
+    return project?.customCintillosList || []
+  })
   const [customCintillos, setCustomCintillos] = useState(() => ({
     ...(project?.cintillos || {})
   }))
@@ -244,23 +260,104 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     try { localStorage.setItem('podcastudio_screen_layout', 'triple') } catch {}
   }, [])
 
-  const handleSwapPipMaster = useCallback(() => {
+  /** Promueve de inmediato cualquier cámara a MASTER (toma central grande) */
+  const handlePromoteToMaster = useCallback((slot) => {
+    if (!streams[slot]) {
+      handleOpenConnectModal(slot)
+      return
+    }
     userPickedCameraRef.current = true
-    const prevPgm = programCamera
-    const prevPip = pipCameraSlot
-    setActiveCamera(prevPip)
-    setCamSlot(prevPip)
-    setPipCameraSlot(prevPgm)
-  }, [programCamera, pipCameraSlot, setActiveCamera, setCamSlot])
+    const prevMaster = masterCameraSlot
+
+    setMasterCameraSlot(slot)
+    setActiveCamera(slot)
+    setCamSlot(slot)
+
+    // Si la cámara seleccionada estaba asignada a una secundaria, el master previo toma ese lugar
+    if (pipCameraSlot === slot) {
+      setPipCameraSlot(prevMaster)
+    }
+    if (splitSecondarySlot === slot) {
+      setSplitSecondarySlot(prevMaster)
+    }
+    if (tripleTertiarySlot === slot) {
+      setTripleTertiarySlot(prevMaster)
+    }
+  }, [masterCameraSlot, pipCameraSlot, splitSecondarySlot, tripleTertiarySlot, streams, handleOpenConnectModal, setActiveCamera, setCamSlot, setMasterCameraSlot])
+
+  const handleTogglePipOnCamera = useCallback((slot) => {
+    if (screenLayout === 'pip' && pipCameraSlot === slot) {
+      handleSelectLayout('full')
+      return
+    }
+
+    if (slot === masterCameraSlot) {
+      const nextMaster = Array.from({ length: slotsCount })
+        .map((_, idx) => idx)
+        .find(idx => idx !== slot && streams[idx]) ?? (slot === 0 ? 1 : 0)
+      setMasterCameraSlot(nextMaster)
+      setActiveCamera(nextMaster)
+      setCamSlot(nextMaster)
+    }
+
+    setPipCameraSlot(slot)
+    handleSelectLayout('pip')
+  }, [screenLayout, pipCameraSlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot])
+
+  const handleToggleSplitOnCamera = useCallback((slot) => {
+    if (screenLayout === 'split' && splitSecondarySlot === slot) {
+      handleSelectLayout('full')
+      return
+    }
+
+    if (slot === masterCameraSlot) {
+      const nextMaster = Array.from({ length: slotsCount })
+        .map((_, idx) => idx)
+        .find(idx => idx !== slot && streams[idx]) ?? (slot === 0 ? 1 : 0)
+      setMasterCameraSlot(nextMaster)
+      setActiveCamera(nextMaster)
+      setCamSlot(nextMaster)
+    }
+
+    setSplitSecondarySlot(slot)
+    handleSelectLayout('split')
+  }, [screenLayout, splitSecondarySlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot])
+
+  const handleToggleTripleOnCamera = useCallback((slot) => {
+    const isInTriple = screenLayout === 'triple' && (splitSecondarySlot === slot || tripleTertiarySlot === slot)
+    if (isInTriple) {
+      handleSelectLayout('full')
+      return
+    }
+
+    let effectiveMaster = masterCameraSlot
+    if (slot === masterCameraSlot) {
+      const nextMaster = Array.from({ length: slotsCount })
+        .map((_, idx) => idx)
+        .find(idx => idx !== slot && streams[idx]) ?? (slot === 0 ? 1 : 0)
+      setMasterCameraSlot(nextMaster)
+      setActiveCamera(nextMaster)
+      setCamSlot(nextMaster)
+      effectiveMaster = nextMaster
+    }
+
+    const availableSlots = Array.from({ length: slotsCount })
+      .map((_, idx) => idx)
+      .filter(idx => idx !== effectiveMaster && idx !== slot)
+    const otherSlot = availableSlots[0] ?? (slot === 0 ? 2 : 0)
+
+    setSplitSecondarySlot(slot)
+    setTripleTertiarySlot(otherSlot)
+    handleSelectLayout('triple')
+  }, [screenLayout, splitSecondarySlot, tripleTertiarySlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot])
+
+  const handleSwapPipMaster = useCallback(() => {
+    handlePromoteToMaster(pipCameraSlot)
+  }, [handlePromoteToMaster, pipCameraSlot])
 
   const handleSwapSplit = useCallback(() => {
-    userPickedCameraRef.current = true
-    const prevPgm = programCamera
-    const prevSec = splitSecondarySlot
-    setActiveCamera(prevSec)
-    setCamSlot(prevSec)
-    setSplitSecondarySlot(prevPgm)
-  }, [programCamera, splitSecondarySlot, setActiveCamera, setCamSlot])
+    handlePromoteToMaster(splitSecondarySlot)
+  }, [handlePromoteToMaster, splitSecondarySlot])
 
   // Posición unificada de cintillos para la toma Master
   const [masterCintilloPosition, setMasterCintilloPosition] = useState(() => {
@@ -316,27 +413,98 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     format: outputFormat,
   }
 
-  const handleSaveCintilloText = useCallback((id, text) => {
-    const trimmed = text.trim()
+  const getResolvedCintillo = useCallback((preset) => {
+    const override = cintilloOverrides[preset.id] || {}
+    const defaultText = resolveCintilloText(preset.id, proj)
+    const effectiveText = customCintillos[preset.id] ?? override.text ?? defaultText ?? ''
+    const effectiveTag = override.tag ?? preset.tag ?? 'INFO'
+    const effectiveLabel = override.label ?? preset.label ?? 'Cintillo'
+    const effectiveColor = override.color ?? preset.color ?? '#e8612a'
+    return {
+      ...preset,
+      label: effectiveLabel,
+      tag: effectiveTag,
+      text: effectiveText,
+      color: effectiveColor,
+    }
+  }, [cintilloOverrides, customCintillos, proj])
+
+  const startEditingCintillo = useCallback((item) => {
+    const resolved = getResolvedCintillo(item)
+    setEditingCintId(item.id)
+    setEditingCintText(resolved.text)
+    setEditingCintTag(resolved.tag)
+    setEditingCintLabel(resolved.label)
+  }, [getResolvedCintillo])
+
+  const handleSaveCintilloFull = useCallback((id, { text, tag, label }) => {
+    const trimmedText = (text ?? '').trim()
+    const trimmedTag = (tag ?? '').trim().toUpperCase() || 'INFO'
+    const trimmedLabel = (label ?? '').trim() || 'Cintillo'
+
+    setCintilloOverrides(prev => {
+      const next = {
+        ...prev,
+        [id]: {
+          ...(prev[id] || {}),
+          text: trimmedText,
+          tag: trimmedTag,
+          label: trimmedLabel,
+        }
+      }
+      try { localStorage.setItem('podcastudio_cintillo_overrides', JSON.stringify(next)) } catch {}
+      return next
+    })
+
     setCustomCintillos(prev => {
-      const updated = { ...prev, [id]: trimmed }
+      const updated = { ...prev, [id]: trimmedText }
       const updatedProj = {
         ...proj,
         cintillos: updated,
+        cintilloOverrides: {
+          ...(proj.cintilloOverrides || {}),
+          [id]: { text: trimmedText, tag: trimmedTag, label: trimmedLabel }
+        }
       }
       try {
         localStorage.setItem('podcastudio_project', JSON.stringify(updatedProj))
-        if (user?.id) {
-          saveProject(user.id, updatedProj).catch(() => {})
-        }
+        if (user?.id) saveProject(user.id, updatedProj).catch(() => {})
         onProjectSave?.(updatedProj)
       } catch (e) {
         console.warn('Error guardando cintillo:', e)
       }
       return updated
     })
+
     setEditingCintId(null)
   }, [proj, user?.id, onProjectSave])
+
+  const handleAddCustomCintillo = useCallback(() => {
+    const newId = `cint_${Date.now()}`
+    const newItem = {
+      id: newId,
+      label: 'Entrevista / Dato',
+      tag: 'ENTREVISTA',
+      text: '',
+      color: '#e8612a',
+      isCustom: true,
+    }
+    setCustomCintilloList(prev => {
+      const next = [...prev, newItem]
+      try { localStorage.setItem('podcastudio_custom_cintillos_list', JSON.stringify(next)) } catch {}
+      return next
+    })
+    startEditingCintillo(newItem)
+  }, [startEditingCintillo])
+
+  const handleDeleteCustomCintillo = useCallback((id) => {
+    setCustomCintilloList(prev => {
+      const next = prev.filter(c => c.id !== id)
+      try { localStorage.setItem('podcastudio_custom_cintillos_list', JSON.stringify(next)) } catch {}
+      return next
+    })
+    if (editingCintId === id) setEditingCintId(null)
+  }, [editingCintId])
 
   const handleFormatChange = useCallback((f) => {
     setOutputFormat(f)
@@ -539,7 +707,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     format: proj.format,
     layout: screenLayout,
     pipCamera: screenLayout === 'pip' ? pipCameraSlot : null,
-    secondaryCamera: screenLayout === 'split' ? splitSecondarySlot : null,
+    secondaryCamera: (screenLayout === 'split' || screenLayout === 'triple') ? splitSecondarySlot : null,
+    tertiaryCamera: screenLayout === 'triple' ? tripleTertiarySlot : null,
     logoUrl: proj.logoUrl,
     logoPosition: proj.logoPosition || 'tr',
     podcastName: proj.name || 'Mi Podcast',
@@ -829,11 +998,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       hideCintillo()
       return
     }
-    const txt = resolveCintilloText(preset.id, proj)
+    const resolved = getResolvedCintillo(preset)
     showCustom({
-      tag: preset.tag,
-      text: txt,
-      color: preset.color,
+      tag: resolved.tag,
+      text: resolved.text,
+      color: resolved.color,
       targetSlot: programCamera,
       position: masterCintilloPosition,
       presetId: preset.id,
@@ -1096,10 +1265,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     layout={screenLayout}
                     pipStream={screenLayout === 'pip' ? streams[pipCameraSlot] : null}
                     pipLabel={getSlotLabel(pipCameraSlot, cameraMeta[pipCameraSlot]?.customLabel, pipCameraSlot === masterCameraSlot)}
-                    onClosePip={() => handleSelectLayout('full')}
-                    secondaryStream={screenLayout === 'split' ? streams[splitSecondarySlot] : null}
-                    secondaryLabel={getSlotLabel(splitSecondarySlot, cameraMeta[splitSecondarySlot]?.customLabel, splitSecondarySlot === masterCameraSlot)}
-                    primaryLabel={getSlotLabel(programCamera, cameraMeta[programCamera]?.customLabel, programCamera === masterCameraSlot)}
+                    secondaryStream={(screenLayout === 'split' || screenLayout === 'triple') ? streams[splitSecondarySlot] : null}
+                    secondaryLabel={getSlotLabel(splitSecondarySlot, cameraMeta[splitSecondarySlot]?.customLabel, false)}
+                    tertiaryStream={screenLayout === 'triple' ? streams[tripleTertiarySlot] : null}
+                    tertiaryLabel={getSlotLabel(tripleTertiarySlot, cameraMeta[tripleTertiarySlot]?.customLabel, false)}
+                    primaryLabel={getSlotLabel(programCamera, cameraMeta[programCamera]?.customLabel, true)}
                     onOpenConnectModal={() => handleOpenConnectModal(screenLayout === 'pip' ? pipCameraSlot : splitSecondarySlot)}
                   />
                 ) : (
@@ -1221,29 +1391,19 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     key={i}
                     className={`${styles.camThumb} ${isMaster ? styles.camThumbMaster : ''} ${isLivePgm ? styles.camActive : ''} ${isPvw ? styles.camThumbPvw : ''}`}
                     onClick={() => {
-                      if (!streams[i]) {
-                        handleOpenConnectModal(i)
-                        return
-                      }
-                      if (proSwitcherMode) {
-                        setPreviewCamera(i)
-                      } else {
-                        userPickedCameraRef.current = true
-                        setActiveCamera(i)
-                        setCamSlot(i)
-                      }
+                      handlePromoteToMaster(i)
                     }}
                   >
                     <button
                       type="button"
                       className={`${styles.camMasterBadgeBtn} ${isMaster ? styles.camMasterBadgeActive : ''}`}
-                      title={isMaster ? 'Cámara Master Principal (clic para reasignar)' : 'Hacer Master'}
+                      title={isMaster ? 'Cámara Master Principal' : 'Hacer Master (Toma Principal)'}
                       onClick={(e) => {
                         e.stopPropagation()
-                        setMasterCameraSlot(i)
+                        handlePromoteToMaster(i)
                       }}
                     >
-                      {isMaster ? '★ MASTER' : 'SET MST'}
+                      {isMaster ? '★ MASTER' : 'HACER MASTER'}
                     </button>
                     <button
                       type="button"
@@ -1262,11 +1422,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                         className={`${styles.camRolePill} ${screenLayout === 'pip' && pipCameraSlot === i ? styles.camRolePillPipActive : ''}`}
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (screenLayout === 'pip' && pipCameraSlot === i) {
-                            handleSelectLayout('full')
-                          } else {
-                            handleSetPipSlot(i)
-                          }
+                          handleTogglePipOnCamera(i)
                         }}
                         title={screenLayout === 'pip' && pipCameraSlot === i ? 'Quitar de PiP' : 'Enviar como recuadro PiP'}
                       >
@@ -1277,15 +1433,22 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                         className={`${styles.camRolePill} ${screenLayout === 'split' && splitSecondarySlot === i ? styles.camRolePillSplitActive : ''}`}
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (screenLayout === 'split' && splitSecondarySlot === i) {
-                            handleSelectLayout('full')
-                          } else {
-                            handleSetSplitSlot(i)
-                          }
+                          handleToggleSplitOnCamera(i)
                         }}
                         title={screenLayout === 'split' && splitSecondarySlot === i ? 'Quitar de pantalla Doble' : 'Enviar como 2ª cámara (Doble)'}
                       >
-                        {screenLayout === 'split' && splitSecondarySlot === i ? '✓ 2ª' : '2ª'}
+                        {screenLayout === 'split' && splitSecondarySlot === i ? '✓ Doble' : 'Doble'}
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.camRolePill} ${screenLayout === 'triple' && (splitSecondarySlot === i || tripleTertiarySlot === i) ? styles.camRolePillTripleActive : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleToggleTripleOnCamera(i)
+                        }}
+                        title={screenLayout === 'triple' && (splitSecondarySlot === i || tripleTertiarySlot === i) ? 'Quitar de pantalla Triple' : 'Enviar a pantalla Triple'}
+                      >
+                        {screenLayout === 'triple' && (splitSecondarySlot === i || tripleTertiarySlot === i) ? '✓ Triple' : 'Triple'}
                       </button>
                     </div>
                     {isLivePgm && (
@@ -1799,25 +1962,40 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     Cintillos disponibles para Master:
                   </div>
 
-                  {CINTILLO_PRESETS.map((preset) => {
+                  {[...CINTILLO_PRESETS, ...customCintilloList].map((preset) => {
                     const id = preset.id
-                    const currentText = resolveCintilloText(id, proj)
+                    const resolved = getResolvedCintillo(preset)
                     const isEditing = editingCintId === id
                     const isCurrentActive = cintillo.active && cintillo.presetId === id
+                    const quickTags = ['ENTREVISTA', 'INVITADO', 'TEMA', 'ESPECIALISTA', 'PREGUNTA', 'NOTICIA', 'HOST', 'REDES']
                     return (
                       <div key={id} className={`${styles.cintCard} ${isCurrentActive ? styles.cintCardActive : ''}`}>
                         <div className={styles.cintCardHeader}>
-                          <div className={styles.cintDot} style={{ background: preset.color }} />
+                          <div className={styles.cintDot} style={{ background: resolved.color }} />
                           <div className={styles.cintCardMeta}>
-                            <div style={{ display: 'flex', alignItems: 'center' }}>
-                              <span className={styles.cintItemLabel}>{preset.label}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                              <span className={styles.cintItemLabel}>{resolved.label}</span>
+                              <span className={styles.cintTagBadge}>{resolved.tag}</span>
                               {isCurrentActive && <span className={styles.cintLiveBadge}>AL AIRE</span>}
                             </div>
-                            <span className={styles.cintCurrentText} title={currentText || 'Sin texto asignado'}>
-                              {currentText || <em style={{ opacity: 0.5 }}>Sin texto asignado</em>}
+                            <span className={styles.cintCurrentText} title={resolved.text || 'Sin texto asignado'}>
+                              {resolved.text || <em style={{ opacity: 0.5 }}>Sin texto asignado</em>}
                             </span>
                           </div>
                           <div className={styles.cintActions}>
+                            {preset.isCustom && (
+                              <button
+                                type="button"
+                                className={styles.cintActionBtn}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDeleteCustomCintillo(id)
+                                }}
+                                title="Eliminar cintillo personalizado"
+                              >
+                                <i className="ti ti-trash" style={{ color: '#ef4444' }} />
+                              </button>
+                            )}
                             <button
                               type="button"
                               className={`${styles.cintActionBtn} ${isEditing ? styles.cintActionBtnActive : ''}`}
@@ -1826,11 +2004,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                                 if (isEditing) {
                                   setEditingCintId(null)
                                 } else {
-                                  setEditingCintId(id)
-                                  setEditingCintText(currentText)
+                                  startEditingCintillo(preset)
                                 }
                               }}
-                              title="Editar texto del cintillo"
+                              title="Editar nombre, tag y texto del cintillo"
                             >
                               <i className="ti ti-edit" />
                             </button>
@@ -1847,23 +2024,73 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
                         {isEditing && (
                           <div className={styles.cintEditBox}>
-                            <input
-                              type="text"
-                              className={styles.cintInput}
-                              value={editingCintText}
-                              onChange={(e) => setEditingCintText(e.target.value)}
-                              placeholder={`Texto para ${preset.label}...`}
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSaveCintilloText(id, editingCintText)
-                                if (e.key === 'Escape') setEditingCintId(null)
-                              }}
-                            />
+                            <div className={styles.cintEditRow}>
+                              <div className={styles.cintEditField} style={{ flex: 1.2 }}>
+                                <label className={styles.cintFieldLabel}>Nombre / Sección:</label>
+                                <input
+                                  type="text"
+                                  className={styles.cintInputSm}
+                                  value={editingCintLabel}
+                                  onChange={(e) => setEditingCintLabel(e.target.value)}
+                                  placeholder="Ej. Entrevistado, Tema..."
+                                />
+                              </div>
+                              <div className={styles.cintEditField} style={{ flex: 1 }}>
+                                <label className={styles.cintFieldLabel}>TAG en Pantalla:</label>
+                                <input
+                                  type="text"
+                                  className={styles.cintInputSm}
+                                  value={editingCintTag}
+                                  onChange={(e) => setEditingCintTag(e.target.value.toUpperCase())}
+                                  placeholder="Ej. ENTREVISTA..."
+                                />
+                              </div>
+                            </div>
+
+                            <div className={styles.cintTagChips}>
+                              {quickTags.map((qt) => (
+                                <button
+                                  key={qt}
+                                  type="button"
+                                  className={`${styles.cintTagChip} ${editingCintTag === qt ? styles.cintTagChipActive : ''}`}
+                                  onClick={() => setEditingCintTag(qt)}
+                                >
+                                  {qt}
+                                </button>
+                              ))}
+                            </div>
+
+                            <div className={styles.cintEditField}>
+                              <label className={styles.cintFieldLabel}>Texto Principal en Pantalla:</label>
+                              <input
+                                type="text"
+                                className={styles.cintInput}
+                                value={editingCintText}
+                                onChange={(e) => setEditingCintText(e.target.value)}
+                                placeholder="Texto principal del cintillo..."
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleSaveCintilloFull(id, {
+                                      text: editingCintText,
+                                      tag: editingCintTag,
+                                      label: editingCintLabel,
+                                    })
+                                  }
+                                  if (e.key === 'Escape') setEditingCintId(null)
+                                }}
+                              />
+                            </div>
+
                             <div className={styles.cintEditBtns}>
                               <button
                                 type="button"
                                 className={styles.cintSaveBtn}
-                                onClick={() => handleSaveCintilloText(id, editingCintText)}
+                                onClick={() => handleSaveCintilloFull(id, {
+                                  text: editingCintText,
+                                  tag: editingCintTag,
+                                  label: editingCintLabel,
+                                })}
                               >
                                 <i className="ti ti-check" /> Guardar
                               </button>
@@ -1871,8 +2098,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                                 type="button"
                                 className={styles.cintLiveBtn}
                                 onClick={() => {
-                                  handleSaveCintilloText(id, editingCintText)
-                                  showCintillo(preset)
+                                  handleSaveCintilloFull(id, {
+                                    text: editingCintText,
+                                    tag: editingCintTag,
+                                    label: editingCintLabel,
+                                  })
+                                  showCintillo({
+                                    ...preset,
+                                    tag: editingCintTag,
+                                    text: editingCintText,
+                                    label: editingCintLabel,
+                                  })
                                 }}
                                 title="Guardar y mostrar de inmediato en Master"
                               >
@@ -1892,6 +2128,16 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       </div>
                     )
                   })}
+
+                  <button
+                    type="button"
+                    className={styles.cintAddBtn}
+                    onClick={handleAddCustomCintillo}
+                    title="Agregar un nuevo cintillo (Entrevistado, Debate, Noticia, Tema)"
+                  >
+                    <i className="ti ti-plus" />
+                    <span>+ Agregar cintillo personalizado (Entrevista, Noticia, Tema)</span>
+                  </button>
                 </div>
 
                 <div className={styles.cintDivider} />

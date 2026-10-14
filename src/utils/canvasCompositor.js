@@ -131,6 +131,7 @@ export function drawCompositorFrame(ctx, w, h, {
   layout = 'full',
   pipVideo = null,
   secondaryVideo = null,
+  tertiaryVideo = null,
 }) {
   const useVirtualSet = background?.hasVirtualSet && background?.cameraRect
 
@@ -205,6 +206,71 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.clip()
       drawVideoCover(ctx, secondaryVideo, halfW + 12, 0, halfW, h, null)
       ctx.restore()
+    }
+  } else if (layout === 'triple') {
+    const isVertical = h > w
+    if (isVertical) {
+      // 9:16 Vertical para móvil: Master arriba (58%), dos secundarias abajo lado a lado (42%)
+      const mainH = Math.round(h * 0.58)
+      const subY = mainH + 12
+      const subH = h - subY
+      const subW = Math.round((w - 12) / 2)
+
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, w, mainH)
+      ctx.clip()
+      drawVideoCover(ctx, video, 0, 0, w, mainH, directorCrop)
+      ctx.restore()
+
+      if (secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(0, subY, subW, subH)
+        ctx.clip()
+        drawVideoCover(ctx, secondaryVideo, 0, subY, subW, subH, null)
+        ctx.restore()
+      }
+
+      if (tertiaryVideo && tertiaryVideo.readyState >= 2 && tertiaryVideo.videoWidth) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(subW + 12, subY, subW, subH)
+        ctx.clip()
+        drawVideoCover(ctx, tertiaryVideo, subW + 12, subY, subW, subH, null)
+        ctx.restore()
+      }
+    } else {
+      // Horizontal (16:9 y 1:1): Master a la izquierda (64%), dos secundarias apiladas a la derecha (36%)
+      const mainW = Math.round(w * 0.64)
+      const sideX = mainW + 12
+      const sideW = w - sideX
+      const sideH = Math.round((h - 12) / 2)
+
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, mainW, h)
+      ctx.clip()
+      drawVideoCover(ctx, video, 0, 0, mainW, h, directorCrop)
+      ctx.restore()
+
+      if (secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(sideX, 0, sideW, sideH)
+        ctx.clip()
+        drawVideoCover(ctx, secondaryVideo, sideX, 0, sideW, sideH, null)
+        ctx.restore()
+      }
+
+      if (tertiaryVideo && tertiaryVideo.readyState >= 2 && tertiaryVideo.videoWidth) {
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(sideX, sideH + 12, sideW, sideH)
+        ctx.clip()
+        drawVideoCover(ctx, tertiaryVideo, sideX, sideH + 12, sideW, sideH, null)
+        ctx.restore()
+      }
     }
   } else if (video && video.readyState >= 2 && video.videoWidth) {
     drawMainVideo(video, directorCrop)

@@ -30,6 +30,7 @@ export function useStudioCompositor({
   layout = 'full',
   pipCamera = null,
   secondaryCamera = null,
+  tertiaryCamera = null,
 }) {
   const canvasRef = useRef(null)
   const outputStreamRef = useRef(null)
@@ -108,6 +109,7 @@ export function useStudioCompositor({
     layout,
     pipCamera,
     secondaryCamera,
+    tertiaryCamera,
   }
 
   useEffect(() => {
@@ -273,6 +275,7 @@ export function useStudioCompositor({
           layout: s.layout || 'full',
           pipVideo: s.pipCamera !== null ? videosRef.current[s.pipCamera] : null,
           secondaryVideo: s.secondaryCamera !== null ? videosRef.current[s.secondaryCamera] : null,
+          tertiaryVideo: s.tertiaryCamera !== null ? videosRef.current[s.tertiaryCamera] : null,
         })
       } catch {
         ctx.fillStyle = '#07070a'
