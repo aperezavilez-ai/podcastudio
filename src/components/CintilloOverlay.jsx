@@ -3,7 +3,7 @@ import { getCintilloStyle } from '../config/cintilloStyles.js'
 import styles from './CintilloOverlay.module.css'
 
 export default function CintilloOverlay({
-  styleId = 'classic',
+  styleId = 'glass',
   tag = 'TEMA',
   text = '',
   subtitle = '',
@@ -13,6 +13,7 @@ export default function CintilloOverlay({
   position = 'bl',
   preview = false,
   size = 'normal',
+  format = '16:9',
   liveOn = false,
   totalViewers = 0,
   onClose,
@@ -36,9 +37,16 @@ export default function CintilloOverlay({
     br: styles.posBr,
   }[position] || styles.posBl
 
+  const formatClass = format === '9:16'
+    ? styles.format_9_16
+    : format === '1:1'
+      ? styles.format_1_1
+      : styles.format_16_9
+
   const wrapClass = [
     styles.wrap,
     posClass,
+    formatClass,
     preview ? styles.preview : '',
     size === 'large' ? styles.wrapLarge : '',
     styles[`style_${styleId}`],
@@ -66,13 +74,18 @@ export default function CintilloOverlay({
 
   const effectiveLogo = logoUrl || imageUrl || null
   const logoElement = effectiveLogo ? (
-    <div className={`${styles.cintLogoBox} ${p1}`}>
+    <div className={`${styles.cintLogoBox} ${styles.logo3dFloat} ${p1}`}>
       <img src={effectiveLogo} alt="Logo" className={styles.cintLogoImg} />
+      <span className={styles.logoReflection} />
     </div>
   ) : null
 
   const shell = (body) => (
-    <div key={preview ? styleId : animKey} className={wrapClass} style={{ '--cint-primary': primary, '--cint-secondary': secondary }}>
+    <div
+      key={preview ? styleId : animKey}
+      className={wrapClass}
+      style={{ '--cint-primary': primary, '--cint-secondary': secondary }}
+    >
       <div className={styles.cintInner3D}>
         {logoElement}
         <div className={styles.cintMainBlock}>
@@ -84,10 +97,74 @@ export default function CintilloOverlay({
   )
 
   switch (styleId) {
+    case 'glass':
+      return shell(
+        <div className={styles.glassBody}>
+          <div className={styles.glassTopBar}>
+            <span className={tagCls} style={{ color: primary, background: `${primary}22`, borderColor: `${primary}55` }}>
+              <span className={styles.livePulseDot} style={{ background: primary }} />
+              {tag}
+            </span>
+          </div>
+          <span className={textCls}>{text}</span>
+          {subtitle && <span className={subCls}>{subtitle}</span>}
+        </div>
+      )
+
+    case 'cyber':
+      return shell(
+        <div className={styles.cyberBody} style={{ '--cyber-glow': primary }}>
+          <div className={styles.cyberTopLine} style={{ background: primary }} />
+          <div className={styles.cyberContent}>
+            <span className={tagCls} style={{ color: primary }}>{tag}</span>
+            <span className={textCls}>{text}</span>
+            {subtitle && <span className={subCls}>{subtitle}</span>}
+          </div>
+        </div>
+      )
+
+    case 'news':
+      return shell(
+        <div className={styles.newsContainer}>
+          <div className={styles.newsHeaderBar} style={{ background: primary }}>
+            <span className={styles.newsTagText}>{tag}</span>
+            <span className={styles.newsLiveTicker}>● EN VIVO</span>
+          </div>
+          <div className={styles.newsBody}>
+            <span className={textCls}>{text}</span>
+            {subtitle && <span className={subCls}>{subtitle}</span>}
+          </div>
+        </div>
+      )
+
+    case 'metallic':
+      return shell(
+        <div className={styles.metallicBody}>
+          <div className={styles.metallicAccentBar} style={{ background: primary }} />
+          <div className={styles.metallicContent}>
+            <span className={tagCls} style={{ color: primary }}>{tag}</span>
+            <span className={textCls}>{text}</span>
+            {subtitle && <span className={subCls}>{subtitle}</span>}
+          </div>
+        </div>
+      )
+
+    case 'minimal':
+      return shell(
+        <div className={styles.minimalBody}>
+          <div className={styles.minimalLine} style={{ background: primary }} />
+          <div className={styles.minimalContent}>
+            <span className={tagCls} style={{ color: primary }}>{tag}</span>
+            <span className={textCls}>{text}</span>
+            {subtitle && <span className={subCls}>{subtitle}</span>}
+          </div>
+        </div>
+      )
+
     case 'angled':
       return shell(
         <>
-          <div className={`${styles.angledShape} ${p1}`} />
+          <div className={`${styles.angledShape} ${p1}`} style={{ background: primary }} />
           <div className={styles.angledBody}>
             <span className={tagCls} style={{ color: primary }}>{tag}</span>
             <span className={textCls}>{text}</span>
@@ -99,9 +176,11 @@ export default function CintilloOverlay({
     case 'broadcast':
       return shell(
         <>
-          <div className={`${styles.broadcastFlag} ${p1}`} />
+          <div className={`${styles.broadcastFlag} ${p1}`} style={{ background: primary }} />
           <div className={styles.broadcastBar}>
+            <span className={tagCls} style={{ color: primary }}>{tag}</span>
             <span className={textCls}>{text}</span>
+            {subtitle && <span className={subCls}>{subtitle}</span>}
           </div>
         </>
       )
@@ -111,56 +190,27 @@ export default function CintilloOverlay({
         <div className={styles.profileBody}>
           <span className={tagCls} style={{ color: primary }}>{tag}</span>
           <span className={textCls}>{text}</span>
+          {subtitle && <span className={subCls}>{subtitle}</span>}
         </div>
       )
 
     case 'tab':
       return shell(
         <>
-          <div className={`${styles.topTab} ${p1}`} style={{ background: secondary, color: '#111' }}>{tag}</div>
-          <div className={`${styles.tabBody} ${styles.animPart2}`} style={{ background: primary }}>
-            <span className={textCls}>{text}</span>
-          </div>
-        </>
-      )
-
-    case 'news':
-      return shell(
-        <>
-          <div className={`${styles.newsIcon} ${p1}`}><i className="ti ti-news" /></div>
-          <div className={styles.newsBody}>
-            <span className={`${styles.newsTab} ${styles.animPart2}`} style={{ background: primary }}>{tag}</span>
+          <div className={`${styles.topTab} ${p1}`} style={{ background: primary, color: '#fff' }}>{tag}</div>
+          <div className={`${styles.tabBody} ${styles.animPart2}`}>
             <span className={textCls}>{text}</span>
             {subtitle && <span className={subCls}>{subtitle}</span>}
           </div>
         </>
       )
 
-    case 'elegant':
-      return shell(
-        <div className={styles.elegantBody}>
-          <span className={`${styles.topTabSm} ${p1}`} style={{ background: primary, color: '#fff' }}>{tag}</span>
-          <span className={textCls}>{text}</span>
-          <div className={`${styles.accentLine} ${styles.animPart4}`} style={{ background: primary }} />
-        </div>
-      )
-
-    case 'wave':
-      return shell(
-        <>
-          <div className={`${styles.waveBg} ${p1}`} />
-          <div className={styles.waveContent}>
-            <span className={tagCls}>{tag}</span>
-            <span className={textCls}>{text}</span>
-          </div>
-        </>
-      )
-
     case 'neon':
       return shell(
-        <div className={styles.neonBody}>
+        <div className={styles.neonBody} style={{ borderColor: primary, boxShadow: `0 0 16px ${primary}40` }}>
+          <span className={tagCls} style={{ color: primary }}>{tag}</span>
           <span className={textCls}>{text}</span>
-          {subtitle && <span className={`${styles.neonSub} ${subCls}`} style={{ background: primary }}>{subtitle}</span>}
+          {subtitle && <span className={subCls}>{subtitle}</span>}
         </div>
       )
 
@@ -168,9 +218,9 @@ export default function CintilloOverlay({
       return shell(
         <>
           <div className={`${styles.sportVertical} ${p1}`} style={{ background: primary }}>{tag}</div>
-          <div className={`${styles.sportArc} ${styles.animPart2}`} style={{ background: secondary }} />
           <div className={styles.sportBar}>
             <span className={textCls}>{text}</span>
+            {subtitle && <span className={subCls}>{subtitle}</span>}
           </div>
         </>
       )
@@ -178,32 +228,34 @@ export default function CintilloOverlay({
     case 'corporate':
       return shell(
         <>
-          <div className={`${styles.corpStripes} ${p1}`} />
+          <div className={`${styles.corpStripes} ${p1}`} style={{ background: primary }} />
           <div className={styles.corpBody}>
+            <span className={tagCls} style={{ color: primary }}>{tag}</span>
             <span className={textCls}>{text}</span>
-            {subtitle && <span className={`${styles.corpSub} ${subCls}`} style={{ borderColor: primary }}>{subtitle}</span>}
+            {subtitle && <span className={subCls}>{subtitle}</span>}
           </div>
         </>
       )
 
     case 'premium':
       return shell(
-        <>
-          <div className={`${styles.premiumMain} ${styles.animPart2}`} style={{ background: primary }}>
-            <span className={tagCls}>{tag}</span>
-            <span className={textCls}>{text}</span>
+        <div className={styles.premiumMain}>
+          <div className={styles.premiumTopRow}>
+            <span className={tagCls} style={{ background: primary, color: '#fff' }}>{tag}</span>
           </div>
-          {subtitle && <div className={`${styles.premiumSub} ${subCls}`}>{subtitle}</div>}
-        </>
+          <span className={textCls}>{text}</span>
+          {subtitle && <span className={subCls}>{subtitle}</span>}
+        </div>
       )
 
-    default:
+    default: // classic pro
       return shell(
         <>
           <div className={`${styles.classicAccent} ${p1}`} style={{ background: primary }} />
           <div className={styles.classicBody}>
             <span className={tagCls} style={{ color: primary }}>{tag}</span>
             <span className={textCls}>{text}</span>
+            {subtitle && <span className={subCls}>{subtitle}</span>}
           </div>
         </>
       )

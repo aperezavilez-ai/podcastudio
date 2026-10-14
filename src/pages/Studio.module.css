@@ -860,6 +860,63 @@
   animation: liveHeaderPulse 1.2s infinite;
 }
 
+.newCintilloBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: rgba(232, 97, 42, 0.16);
+  border: 1px solid rgba(232, 97, 42, 0.4);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.newCintilloBtn:hover {
+  background: var(--accent, #e8612a);
+}
+
+.aiGenerateCintilloBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: rgba(168, 85, 247, 0.18);
+  border: 1px solid rgba(168, 85, 247, 0.45);
+  color: #c084fc;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.aiGenerateCintilloBtn:hover {
+  background: rgba(168, 85, 247, 0.35);
+  color: #fff;
+}
+
+.newCintilloSmallBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-primary, #fff);
+  font-size: 9.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.newCintilloSmallBtn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
 .socialMoreBtn {
   display: flex;
   align-items: center;

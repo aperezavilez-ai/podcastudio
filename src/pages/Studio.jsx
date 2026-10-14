@@ -61,6 +61,7 @@ import { useMicMonitor } from '../hooks/useMicMonitor.js'
 import MultiFormatExportModal from '../components/MultiFormatExportModal.jsx'
 import { useLiveStreaming } from '../hooks/useLiveStreaming.js'
 import LiveStreamModal from '../components/LiveStreamModal.jsx'
+import CintilloEditorModal from '../components/CintilloEditorModal.jsx'
 import styles from './Studio.module.css'
 
 const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
@@ -271,6 +272,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   })
   const [micMuted, setMicMuted] = useState(false)
   const [showSocialModal, setShowSocialModal] = useState(false)
+  const [showCintEditorModal, setShowCintEditorModal] = useState(false)
+  const [cintEditorData, setCintEditorData] = useState(null)
   const [showStylePicker, setShowStylePicker] = useState(true)
   const [connectModalOpen, setConnectModalOpen] = useState(false)
   const [connectModalSlot, setConnectModalSlot] = useState(0)
@@ -1457,13 +1460,15 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   if (!mainCint) return null
                   return (
                     <CintilloOverlay
-                      styleId={cintilloStyle}
+                      styleId={mainCint.styleId || cintilloStyle}
                       tag={mainCint.tag}
                       text={mainCint.text}
+                      subtitle={mainCint.subtitle || ''}
                       accentColor={mainCint.color}
                       position={mainCint.position}
                       logoUrl={mainCint.logoUrl || cintilloLogoUrl || null}
                       size="large"
+                      format={proj.format}
                       animPhase={animPhase}
                       animKey={animKey}
                       onClose={hideCintillo}
@@ -2093,9 +2098,32 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
             </button>
             {openSections.cintillos && (
               <div className={styles.sectionBody}>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-                  <div className={styles.prTitle} style={{ margin: 0 }}>Estilo y posición</div>
-                  <div className={styles.aiChipSm} style={{ marginLeft: 'auto' }}><i className="ti ti-sparkles" style={{ fontSize: 8 }} /> IA</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 6 }}>
+                  <div className={styles.prTitle} style={{ margin: 0 }}>Cintillos Broadcast</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      type="button"
+                      className={styles.newCintilloBtn}
+                      onClick={() => {
+                        setCintEditorData(null)
+                        setShowCintEditorModal(true)
+                      }}
+                      title="Crear cintillo 100% personalizado para invitado"
+                    >
+                      <i className="ti ti-plus" /> Crear
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.aiGenerateCintilloBtn}
+                      onClick={() => {
+                        setCintEditorData(null)
+                        setShowCintEditorModal(true)
+                      }}
+                      title="Asistente de redacción IA para cintillos"
+                    >
+                      <i className="ti ti-sparkles" /> IA
+                    </button>
+                  </div>
                 </div>
 
                 <button
@@ -2207,8 +2235,21 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     )}
                   </div>
 
-                  <div style={{ marginTop: 12, marginBottom: 6, fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
-                    Cintillos disponibles para Master:
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 14, marginBottom: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                      Cintillos disponibles para Master:
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.newCintilloSmallBtn}
+                      onClick={() => {
+                        setCintEditorData(null)
+                        setShowCintEditorModal(true)
+                      }}
+                      title="Crear nuevo cintillo de invitado"
+                    >
+                      <i className="ti ti-plus" /> + Nuevo Invitado
+                    </button>
                   </div>
 
                   {[...CINTILLO_PRESETS, ...customCintilloList].map((preset) => {
@@ -2250,13 +2291,24 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                               className={`${styles.cintActionBtn} ${isEditing ? styles.cintActionBtnActive : ''}`}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                if (isEditing) {
+                                if (preset.isCustom) {
+                                  setCintEditorData({
+                                    ...preset,
+                                    tag: resolved.tag,
+                                    text: resolved.text,
+                                    subtitle: preset.subtitle || '',
+                                    color: preset.color || resolved.color,
+                                    styleId: preset.styleId || cintilloStyle,
+                                    logoUrl: preset.logoUrl || null,
+                                  })
+                                  setShowCintEditorModal(true)
+                                } else if (isEditing) {
                                   setEditingCintId(null)
                                 } else {
                                   startEditingCintillo(preset)
                                 }
                               }}
-                              title="Editar nombre, tag y texto del cintillo"
+                              title="Editar diseño, texto, logo 3D y color"
                             >
                               <i className="ti ti-edit" />
                             </button>
@@ -2720,6 +2772,46 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         liveError={liveError}
         onStartLive={handleStartLiveStream}
         onStopLive={stopLiveStream}
+      />
+
+      {/* MODAL EDITOR DE CINTILLOS PERSONALIZADOS Y GENERADOR IA */}
+      <CintilloEditorModal
+        open={showCintEditorModal}
+        onClose={() => {
+          setShowCintEditorModal(false)
+          setCintEditorData(null)
+        }}
+        initialData={cintEditorData}
+        project={proj}
+        aiGenerator={generateCintillo}
+        onApplyLive={(data) => {
+          setAutoCintillos(false)
+          showCustom({
+            tag: data.tag,
+            text: data.text,
+            subtitle: data.subtitle,
+            color: data.color,
+            logoUrl: data.logoUrl,
+            targetSlot: masterCameraSlot,
+          })
+          if (data.styleId) setCintilloStyle(data.styleId)
+        }}
+        onSaveCustom={(data) => {
+          setCustomCintilloList((prev) => {
+            const idx = prev.findIndex((c) => c.id === data.id)
+            let updated
+            if (idx >= 0) {
+              updated = [...prev]
+              updated[idx] = data
+            } else {
+              updated = [...prev, data]
+            }
+            try {
+              localStorage.setItem('podcastudio_custom_cintillos_list', JSON.stringify(updated))
+            } catch {}
+            return updated
+          })
+        }}
       />
     </div>
     </LandscapeGate>

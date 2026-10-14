@@ -4,11 +4,9 @@
     "projectSlug":  "podcastudio",
     "isolationMode":  "dedicated_supabase",
     "supabase":  {
-                     "url":  "https://api-podcastudio.gafcore.com",
-                     "instanceId":  "podcastudio",
+                     "url":  "https://fzoiuyyvzhgqcjceagkd.supabase.co",
+                     "instanceId":  "fzoiuyyvzhgqcjceagkd",
                      "database":  "postgres",
-                     "schema":  "public",
-                     "localApiPort":  58821,
-                     "localDbPort":  58822
+                     "schema":  "public"
                  }
 }
