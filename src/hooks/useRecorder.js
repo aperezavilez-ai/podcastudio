@@ -1,4 +1,12 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
+import {
+  startVaultSession,
+  appendVaultChunk,
+  finalizeVaultSession,
+  assembleVaultRecording,
+  checkUnfinishedRecovery,
+  purgeVaultSession,
+} from '../utils/recordingStorage.js'
 
 function isMp4Recording(mimeType) {
   return mimeType?.includes('mp4')
@@ -10,12 +18,48 @@ export function useRecorder() {
   const [recordings, setRecordings] = useState([])
   const [converting, setConverting] = useState(false)
   const [convertProgress, setConvertProgress] = useState(0)
+  const [recoveredSession, setRecoveredSession] = useState(null)
+
   const mediaRecorderRef = useRef(null)
   const chunksRef = useRef([])
   const timerRef = useRef(null)
   const mimeTypeRef = useRef('video/webm')
   const durationRef = useRef(0)
   const onCompleteRef = useRef(null)
+  const sessionIdRef = useRef(null)
+  const chunkIndexRef = useRef(0)
+
+  // Verificación de sesiones no finalizadas para auto-recuperación
+  useEffect(() => {
+    let mounted = true
+    checkUnfinishedRecovery().then((pending) => {
+      if (mounted && pending) {
+        setRecoveredSession(pending)
+      }
+    })
+    return () => { mounted = false }
+  }, [])
+
+  const restoreRecoveredSession = useCallback(async () => {
+    if (!recoveredSession) return
+    try {
+      const restored = await assembleVaultRecording(recoveredSession.sessionId)
+      if (restored) {
+        setRecordings(prev => [restored, ...prev])
+      }
+      setRecoveredSession(null)
+    } catch (err) {
+      console.error('Error al restaurar sesión previa:', err)
+    }
+  }, [recoveredSession])
+
+  const dismissRecoveredSession = useCallback(async () => {
+    if (!recoveredSession) return
+    try {
+      await purgeVaultSession(recoveredSession.sessionId)
+    } catch {}
+    setRecoveredSession(null)
+  }, [recoveredSession])
 
   const pickMimeType = () => {
     const types = [
@@ -32,24 +76,49 @@ export function useRecorder() {
   const startRecording = useCallback((stream) => {
     if (!stream) return
     chunksRef.current = []
+    chunkIndexRef.current = 0
+    const sessionId = 'rec_' + Date.now()
+    sessionIdRef.current = sessionId
+
     const mimeType = pickMimeType()
     mimeTypeRef.current = mimeType
     const ext = isMp4Recording(mimeType) ? 'mp4' : 'webm'
+    const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')
+    const recName = `episodio-${ts}.${ext}`
+
+    // Inicializar sesión protegida en base de datos local
+    startVaultSession(sessionId, { mimeType, ext, name: recName })
+
     try {
       const mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000, audioBitsPerSecond: 192000 })
-      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      
+      mr.ondataavailable = e => {
+        if (e.data && e.data.size > 0) {
+          chunksRef.current.push(e.data)
+          // Blindaje incremental: guarda en IndexedDB
+          appendVaultChunk(sessionId, chunkIndexRef.current++, e.data)
+        }
+      }
+
       mr.onstop = () => {
+        finalizeVaultSession(sessionId, durationRef.current)
         const blob = new Blob(chunksRef.current, { type: mimeType })
         const url = URL.createObjectURL(blob)
-        const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')
         const rec = {
-          url, name: `episodio-${ts}.${ext}`, size: blob.size, blob, mimeType, ext,
+          sessionId,
+          url,
+          name: recName,
+          size: blob.size,
+          blob,
+          mimeType,
+          ext,
           duration: durationRef.current,
         }
         setRecordings(prev => [...prev, rec])
         onCompleteRef.current?.(rec)
         onCompleteRef.current = null
       }
+
       mr.start(1000)
       mediaRecorderRef.current = mr
       setRecording(true)
@@ -113,7 +182,18 @@ export function useRecorder() {
   }
 
   return {
-    recording, duration, recordings, converting, convertProgress,
-    startRecording, stopRecording, downloadRecording, downloadRecordingMp4, formatDuration,
+    recording,
+    duration,
+    recordings,
+    converting,
+    convertProgress,
+    recoveredSession,
+    restoreRecoveredSession,
+    dismissRecoveredSession,
+    startRecording,
+    stopRecording,
+    downloadRecording,
+    downloadRecordingMp4,
+    formatDuration,
   }
 }

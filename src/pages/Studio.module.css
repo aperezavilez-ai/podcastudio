@@ -1951,3 +1951,52 @@
   .recControls { flex-wrap: wrap; }
   .rcBtn { min-width: calc(50% - 4px); }
 }
+
+.recoveryBanner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: 9px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.recoveryBtn {
+  background: #10b981;
+  color: #fff;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.recoveryBtn:hover {
+  background: #059669;
+}
+
+.dismissRecoveryBtn {
+  background: transparent;
+  border: none;
+  color: #9499ad;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dismissRecoveryBtn:hover {
+  color: #fff;
+}
+

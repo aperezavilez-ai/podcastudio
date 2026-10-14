@@ -58,6 +58,7 @@ import DynamicZoomControl from '../components/DynamicZoomControl.jsx'
 import CameraConnectModal from '../components/CameraConnectModal.jsx'
 import SwitcherMasterBar from '../components/SwitcherMasterBar.jsx'
 import { useMicMonitor } from '../hooks/useMicMonitor.js'
+import MultiFormatExportModal from '../components/MultiFormatExportModal.jsx'
 import styles from './Studio.module.css'
 
 const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
@@ -133,7 +134,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     autoConnectAll, connectNextCameraToSlot, stopCamera, connectWifiCamera,
     scanBluetoothCamera, connectBluetoothWifiStream, startPreferredMic, switchMic, selectedMicId, micLabel, getMicStream,
   } = useWebcam()
-  const { recording, duration, recordings, converting, convertProgress, startRecording, stopRecording, downloadRecording, downloadRecordingMp4, formatDuration } = useRecorder()
+  const {
+    recording, duration, recordings, converting, convertProgress,
+    recoveredSession, restoreRecoveredSession, dismissRecoveredSession,
+    startRecording, stopRecording, downloadRecording, downloadRecordingMp4, formatDuration,
+  } = useRecorder()
+  const [showMultiFormatModal, setShowMultiFormatModal] = useState(false)
+  const [multiFormatRecording, setMultiFormatRecording] = useState(null)
   const { generateCintillo, generateTeleprompterScript, formatTeleprompterDocument, analyzeEventWithAI, loadingCintillo, loadingScript, loadingProducer, aiConfigured, checkAIStatus } = useAI()
   const { runProducer, shouldAutoRun, markRan } = useAIProducer({ analyzeEventWithAI, aiConfigured })
   const [showAiInfo, setShowAiInfo] = useState(false)
@@ -1000,6 +1007,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
   const handleStopRecord = () => {
     stopRecording(async (rec) => {
+      if (rec) {
+        setMultiFormatRecording(rec)
+        setShowMultiFormatModal(true)
+      }
       if (user?.email) {
         notifyRecordingReady(user, {
           podcastName: proj.name,
@@ -2370,6 +2381,24 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
             )}
           </div>
 
+          {recoveredSession && (
+            <div className={styles.recoveryBanner}>
+              <i className="ti ti-shield-check" style={{ fontSize: 20, color: '#10b981', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <strong style={{ display: 'block', fontSize: 11, color: '#fff' }}>¡Grabación previa recuperada!</strong>
+                <span style={{ fontSize: 9.5, color: 'var(--text-secondary)' }}>
+                  Sesión protegida contra cortes ({recoveredSession.chunkCount} bloques guardados).
+                </span>
+              </div>
+              <button type="button" className={styles.recoveryBtn} onClick={restoreRecoveredSession}>
+                <i className="ti ti-download" /> Restaurar
+              </button>
+              <button type="button" className={styles.dismissRecoveryBtn} onClick={dismissRecoveredSession} title="Descartar">
+                <i className="ti ti-x" />
+              </button>
+            </div>
+          )}
+
           {/* RECORD CONTROLS */}
           <div className={styles.recControls}>
             <button type="button" className={`${styles.rcBtn} ${styles.rcRec} ${recording ? styles.rcRecOn : ''}`} onClick={handleRecord}>
@@ -2381,10 +2410,31 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               className={styles.rcBtn}
               onClick={() => { if (recordings.length > 0) downloadRecording(recordings[recordings.length - 1]) }}
               disabled={recordings.length === 0}
-              title="Descargar última grabación"
+              title="Descargar última grabación master"
             >
               <i className="ti ti-download" style={{ fontSize: 13 }} />
               Descargar
+            </button>
+            <button
+              type="button"
+              className={styles.rcBtn}
+              onClick={() => {
+                if (recordings.length > 0) {
+                  setMultiFormatRecording(recordings[recordings.length - 1])
+                  setShowMultiFormatModal(true)
+                }
+              }}
+              disabled={recordings.length === 0}
+              title="Generar pack multi-formato (YouTube 16:9, TikTok 9:16, Instagram 1:1)"
+              style={{
+                background: 'linear-gradient(135deg, rgba(232, 97, 42, 0.22), rgba(0, 242, 254, 0.16))',
+                borderColor: 'rgba(232, 97, 42, 0.45)',
+                color: '#fff',
+                fontWeight: 600,
+              }}
+            >
+              <i className="ti ti-share" style={{ fontSize: 13, color: 'var(--accent)' }} />
+              Pack Redes
             </button>
             <button
               type="button"
@@ -2506,6 +2556,15 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
           </div>
         </div>
       )}
+
+      {/* MODAL EXPORTACIÓN MULTI-REDES CON AUTO-REENCUADRE */}
+      <MultiFormatExportModal
+        open={showMultiFormatModal}
+        onClose={() => setShowMultiFormatModal(false)}
+        recording={multiFormatRecording}
+        onDownloadOriginal={downloadRecording}
+        onDownloadMp4={downloadRecordingMp4}
+      />
     </div>
     </LandscapeGate>
   )
