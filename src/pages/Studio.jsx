@@ -172,6 +172,31 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     setConnectModalSlot(slot)
     setConnectModalOpen(true)
   }, [])
+
+  // Secciones colapsables del panel derecho (estilo Teleprompter)
+  const [openSections, setOpenSections] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_panel_sections')
+      if (saved) return JSON.parse(saved)
+    } catch {}
+    return {
+      cameras: true,
+      audio: false,
+      look: false,
+      publish: false,
+      cintillos: false,
+      aiProducer: false,
+      music: false,
+    }
+  })
+
+  const toggleSection = useCallback((key) => {
+    setOpenSections(prev => {
+      const next = { ...prev, [key]: !prev[key] }
+      try { localStorage.setItem('podcastudio_panel_sections', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }, [])
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
   const initRanRef = useRef(false)
@@ -1258,43 +1283,58 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
           )}
           {/* CAMERAS */}
           <div className={styles.prSection}>
-            <div className={styles.prTitle}>Cámaras</div>
-            <CameraConnectPanel
-              slotIndex={camSlot}
-              devices={devices}
-              cameraMeta={cameraMeta}
-              autoConnecting={autoConnecting}
-              connectedCount={connectedCount}
-              slotsCount={slotsCount}
-              onAddSlot={addCameraSlot}
-              onReconnectAll={async () => {
-                setCamError(null)
-                const devs = await enumerateDevices(true)
-                if (isTouchDevice()) {
-                  await initMobileCameras()
-                } else {
-                  let n = await autoConnectAll(devs.cameras, planLimits.maxCameras, slotsCount)
-                  if (n === 0 && devs.cameras[0]) {
-                    await startCamera(devs.cameras[0].deviceId, masterCameraSlot, devs.cameras[0].label)
-                  }
-                }
-              }}
-              bluetoothSupported={bluetoothSupported}
-              wifiConnecting={wifiConnecting}
-              btScanning={btScanning}
-              wifiPresets={wifiPresets}
-              onSelectSlot={setCamSlot}
-              onUsbConnect={startCamera}
-              onWifiConnect={connectWifiCamera}
-              onBluetoothScan={scanBluetoothCamera}
-              onBluetoothWifiConnect={connectBluetoothWifiStream}
-              onDisconnect={stopCamera}
-            />
-            {camError && (
-              <div className={styles.camError}>
-                <i className="ti ti-alert-circle" />
-                <span>{camError}</span>
-                <button type="button" onClick={() => setCamError(null)}><i className="ti ti-x" /></button>
+            <button
+              type="button"
+              className={`${styles.sectionToggle} ${openSections.cameras ? styles.sectionToggleActive : ''}`}
+              onClick={() => toggleSection('cameras')}
+            >
+              <i className={`ti ti-video ${styles.sectionIcon}`} />
+              <span className={styles.sectionToggleTitle}>Cámaras</span>
+              <span className={styles.sectionToggleBadge}>
+                {connectedCount > 0 ? `${connectedCount} activa${connectedCount > 1 ? 's' : ''}` : 'Sin señal'}
+              </span>
+              <i className={`ti ti-chevron-${openSections.cameras ? 'up' : 'down'} ${styles.sectionChevron}`} />
+            </button>
+            {openSections.cameras && (
+              <div className={styles.sectionBody}>
+                <CameraConnectPanel
+                  slotIndex={camSlot}
+                  devices={devices}
+                  cameraMeta={cameraMeta}
+                  autoConnecting={autoConnecting}
+                  connectedCount={connectedCount}
+                  slotsCount={slotsCount}
+                  onAddSlot={addCameraSlot}
+                  onReconnectAll={async () => {
+                    setCamError(null)
+                    const devs = await enumerateDevices(true)
+                    if (isTouchDevice()) {
+                      await initMobileCameras()
+                    } else {
+                      let n = await autoConnectAll(devs.cameras, planLimits.maxCameras, slotsCount)
+                      if (n === 0 && devs.cameras[0]) {
+                        await startCamera(devs.cameras[0].deviceId, masterCameraSlot, devs.cameras[0].label)
+                      }
+                    }
+                  }}
+                  bluetoothSupported={bluetoothSupported}
+                  wifiConnecting={wifiConnecting}
+                  btScanning={btScanning}
+                  wifiPresets={wifiPresets}
+                  onSelectSlot={setCamSlot}
+                  onUsbConnect={startCamera}
+                  onWifiConnect={connectWifiCamera}
+                  onBluetoothScan={scanBluetoothCamera}
+                  onBluetoothWifiConnect={connectBluetoothWifiStream}
+                  onDisconnect={stopCamera}
+                />
+                {camError && (
+                  <div className={styles.camError}>
+                    <i className="ti ti-alert-circle" />
+                    <span>{camError}</span>
+                    <button type="button" onClick={() => setCamError(null)}><i className="ti ti-x" /></button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1303,344 +1343,434 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
           <div className={styles.prSection}>
             <button
               type="button"
-              className={styles.styleToggle}
+              className={`${styles.sectionToggle} ${teleprompter.visible ? styles.sectionToggleActive : ''}`}
               onClick={() => teleprompter.setVisible(v => !v)}
             >
-              <i className="ti ti-script" />
-              <span>Teleprompter {teleprompter.visible ? '(activo)' : ''}</span>
-              <i className={`ti ti-chevron-${teleprompter.visible ? 'up' : 'down'}`} style={{ marginLeft: 'auto', fontSize: 11 }} />
+              <i className={`ti ti-script ${styles.sectionIcon}`} />
+              <span className={styles.sectionToggleTitle}>Teleprompter</span>
+              <span className={styles.sectionToggleBadge}>
+                {teleprompter.visible ? 'Activo' : 'Cerrado'}
+              </span>
+              <i className={`ti ti-chevron-${teleprompter.visible ? 'up' : 'down'} ${styles.sectionChevron}`} />
             </button>
             {teleprompter.visible && (
-              <Teleprompter
-                script={teleprompter.script}
-                onScriptChange={teleprompter.setScript}
-                playing={teleprompter.playing}
-                onToggle={teleprompter.toggle}
-                onReset={teleprompter.reset}
-                speed={teleprompter.speed}
-                onSpeedChange={teleprompter.setSpeed}
-                fontSize={teleprompter.fontSize}
-                onFontSizeChange={teleprompter.setFontSize}
-                mirror={teleprompter.mirror}
-                onMirrorChange={teleprompter.setMirror}
-                direction={teleprompter.direction}
-                onDirectionChange={(d) => { teleprompter.setDirection(d); teleprompter.reset() }}
-                onGenerateScript={handleGenerateScript}
-                generatingScript={loadingScript}
-                aiConfigured={aiConfigured}
-                docUpload={(
-                  <TeleprompterDocUpload
-                    compact
-                    aiConfigured={aiConfigured}
-                    processing={loadingScript}
-                    onScriptReady={(text) => { teleprompter.setScript(text); teleprompter.reset(); teleprompter.setVisible(true) }}
-                    onFormatWithAI={(raw) => formatTeleprompterDocument(raw, {
-                      podcast: proj.name,
-                      topic: proj.episodeTitle,
-                      guest: proj.guestName,
-                    })}
-                  />
-                )}
-              />
+              <div className={styles.sectionBody}>
+                <Teleprompter
+                  script={teleprompter.script}
+                  onScriptChange={teleprompter.setScript}
+                  playing={teleprompter.playing}
+                  onToggle={teleprompter.toggle}
+                  onReset={teleprompter.reset}
+                  speed={teleprompter.speed}
+                  onSpeedChange={teleprompter.setSpeed}
+                  fontSize={teleprompter.fontSize}
+                  onFontSizeChange={teleprompter.setFontSize}
+                  mirror={teleprompter.mirror}
+                  onMirrorChange={teleprompter.setMirror}
+                  direction={teleprompter.direction}
+                  onDirectionChange={(d) => { teleprompter.setDirection(d); teleprompter.reset() }}
+                  onGenerateScript={handleGenerateScript}
+                  generatingScript={loadingScript}
+                  aiConfigured={aiConfigured}
+                  docUpload={(
+                    <TeleprompterDocUpload
+                      compact
+                      aiConfigured={aiConfigured}
+                      processing={loadingScript}
+                      onScriptReady={(text) => { teleprompter.setScript(text); teleprompter.reset(); teleprompter.setVisible(true) }}
+                      onFormatWithAI={(raw) => formatTeleprompterDocument(raw, {
+                        podcast: proj.name,
+                        topic: proj.episodeTitle,
+                        guest: proj.guestName,
+                      })}
+                    />
+                  )}
+                />
+              </div>
             )}
           </div>
 
           {/* AUDIO / MIC */}
           <div className={styles.prSection}>
-            <div className={styles.prTitle}>Audio</div>
-            <MicSelector
-              microphones={devices.microphones}
-              selectedMicId={selectedMicId}
-              micLabel={micLabel}
-              micLevel={micLevel}
-              onSelectMic={switchMic}
-              onRefresh={async () => {
-                const devs = await enumerateDevices(false)
-                await startPreferredMic(devs.microphones)
-              }}
-            />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-              <VUMeter level={micLevel} bars={14} />
-              <span style={{ fontSize: 10, color: 'var(--text-muted)', minWidth: 32 }}>
-                {micLevel > 0 ? `-${Math.round(40 - micLevel * 0.32)} dB` : '–∞'}
+            <button
+              type="button"
+              className={`${styles.sectionToggle} ${openSections.audio ? styles.sectionToggleActive : ''}`}
+              onClick={() => toggleSection('audio')}
+            >
+              <i className={`ti ${micMuted ? 'ti-microphone-off' : 'ti-microphone'} ${styles.sectionIcon}`} />
+              <span className={styles.sectionToggleTitle}>Audio & Mic</span>
+              <span className={styles.sectionToggleBadge}>
+                {micMuted ? 'Mute' : (micLevel > 5 ? 'Activo' : 'Conectado')}
               </span>
-            </div>
+              <i className={`ti ti-chevron-${openSections.audio ? 'up' : 'down'} ${styles.sectionChevron}`} />
+            </button>
+            {openSections.audio && (
+              <div className={styles.sectionBody}>
+                <MicSelector
+                  microphones={devices.microphones}
+                  selectedMicId={selectedMicId}
+                  micLabel={micLabel}
+                  micLevel={micLevel}
+                  onSelectMic={switchMic}
+                  onRefresh={async () => {
+                    const devs = await enumerateDevices(false)
+                    await startPreferredMic(devs.microphones)
+                  }}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                  <VUMeter level={micLevel} bars={14} />
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)', minWidth: 32 }}>
+                    {micLevel > 0 ? `-${Math.round(40 - micLevel * 0.32)} dB` : '–∞'}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* LOOK PRO */}
           <div className={styles.prSection}>
-            <div className={styles.prTitle}>
-              Look Pro
-              <span className={styles.aiChipSm} style={{ marginLeft: 6 }}><i className="ti ti-palette" /> Color</span>
-            </div>
-            <LookPanel
-              look={look}
-              onPreset={applyLookPreset}
-              onField={setLookField}
-              onReset={resetLook}
-              limits={planLimits}
-            />
+            <button
+              type="button"
+              className={`${styles.sectionToggle} ${openSections.look ? styles.sectionToggleActive : ''}`}
+              onClick={() => toggleSection('look')}
+            >
+              <i className={`ti ti-palette ${styles.sectionIcon}`} />
+              <span className={styles.sectionToggleTitle}>Look Pro (Color)</span>
+              <span className={styles.sectionToggleBadge}>
+                {look?.preset || 'Original'}
+              </span>
+              <i className={`ti ti-chevron-${openSections.look ? 'up' : 'down'} ${styles.sectionChevron}`} />
+            </button>
+            {openSections.look && (
+              <div className={styles.sectionBody}>
+                <LookPanel
+                  look={look}
+                  onPreset={applyLookPreset}
+                  onField={setLookField}
+                  onReset={resetLook}
+                  limits={planLimits}
+                />
+              </div>
+            )}
           </div>
 
           {/* PUBLICAR */}
           <div className={styles.prSection}>
-            <div className={styles.prTitle}>Publicar episodio</div>
-            <PublishPanel
-              onOpenPosts={() => setTab('posts')}
-              hasRecordings={recordings.length > 0 || cloudRecordings.length > 0}
-              youtubeConnected={youtubeConnected}
-              onYouTubeConnect={integrations?.youtube ? connectYouTubeChannel : null}
-            />
+            <button
+              type="button"
+              className={`${styles.sectionToggle} ${openSections.publish ? styles.sectionToggleActive : ''}`}
+              onClick={() => toggleSection('publish')}
+            >
+              <i className={`ti ti-brand-youtube ${styles.sectionIcon}`} />
+              <span className={styles.sectionToggleTitle}>Publicar episodio</span>
+              <span className={styles.sectionToggleBadge}>
+                {youtubeConnected ? 'YouTube listo' : 'Exportar'}
+              </span>
+              <i className={`ti ti-chevron-${openSections.publish ? 'up' : 'down'} ${styles.sectionChevron}`} />
+            </button>
+            {openSections.publish && (
+              <div className={styles.sectionBody}>
+                <PublishPanel
+                  onOpenPosts={() => setTab('posts')}
+                  hasRecordings={recordings.length > 0 || cloudRecordings.length > 0}
+                  youtubeConnected={youtubeConnected}
+                  onYouTubeConnect={integrations?.youtube ? connectYouTubeChannel : null}
+                />
+              </div>
+            )}
           </div>
 
           {/* CINTILLOS */}
           <div className={styles.prSection}>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-              <div className={styles.prTitle} style={{ margin: 0 }}>Cintillos</div>
-              <div className={styles.aiChipSm} style={{ marginLeft: 'auto' }}><i className="ti ti-sparkles" style={{ fontSize: 8 }} /> IA</div>
-            </div>
-
             <button
               type="button"
-              className={styles.styleToggle}
-              onClick={() => setShowStylePicker(s => !s)}
+              className={`${styles.sectionToggle} ${openSections.cintillos ? styles.sectionToggleActive : ''}`}
+              onClick={() => toggleSection('cintillos')}
             >
-              <i className="ti ti-palette" />
-              <span>Diseño: <strong>{getCintilloStyle(cintilloStyle).name}</strong></span>
-              <i className={`ti ti-chevron-${showStylePicker ? 'up' : 'down'}`} style={{ marginLeft: 'auto', fontSize: 11 }} />
-            </button>
-
-            {showStylePicker && (
-              <div className={styles.stylePickerWrap}>
-                <CintilloStylePicker
-                  compact
-                  value={cintilloStyle}
-                  onChange={setCintilloStyle}
-                  previewTag="TEMA"
-                  previewText={proj.episodeTitle || 'Tu texto'}
-                />
-              </div>
-            )}
-
-            <p className={styles.autoCintHint} style={{ marginTop: 8 }}>
-              Cada cintillo se muestra solo en su cámara: conductor izquierda, invitado derecha, centrales en MASTER.
-            </p>
-
-            {CINTILLO_CAMERA_GROUPS.map((group) => (
-              <div key={group.role} className={styles.cintCameraBlock}>
-                <div className={styles.cintCameraHead}>{group.label}</div>
-                <div className={styles.posGrid}>
-                  {CINTILLO_POSITION_OPTIONS.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      className={`${styles.posBtn} ${cintilloPositions[group.role] === p.id ? styles.posBtnActive : ''}`}
-                      onClick={() => setCintilloPositions((prev) => ({ ...prev, [group.role]: p.id }))}
-                      title={p.label}
-                    >
-                      <i className={`ti ${p.icon}`} />
-                    </button>
-                  ))}
-                </div>
-                {group.presetIds.map((id) => {
-                  const preset = CINTILLO_PRESET_MAP[id]
-                  if (!preset) return null
-                  const currentText = resolveCintilloText(id, proj)
-                  const isEditing = editingCintId === id
-                  const isCurrentActive = cintillo.active && cintillo.presetId === id
-                  return (
-                    <div key={id} className={`${styles.cintCard} ${isCurrentActive ? styles.cintCardActive : ''}`}>
-                      <div className={styles.cintCardHeader}>
-                        <div className={styles.cintDot} style={{ background: preset.color }} />
-                        <div className={styles.cintCardMeta}>
-                          <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <span className={styles.cintItemLabel}>{preset.label}</span>
-                            {isCurrentActive && <span className={styles.cintLiveBadge}>AL AIRE</span>}
-                          </div>
-                          <span className={styles.cintCurrentText} title={currentText || 'Sin texto asignado'}>
-                            {currentText || <em style={{ opacity: 0.5 }}>Sin texto asignado</em>}
-                          </span>
-                        </div>
-                        <div className={styles.cintActions}>
-                          <button
-                            type="button"
-                            className={`${styles.cintActionBtn} ${isEditing ? styles.cintActionBtnActive : ''}`}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              if (isEditing) {
-                                setEditingCintId(null)
-                              } else {
-                                setEditingCintId(id)
-                                setEditingCintText(currentText)
-                              }
-                            }}
-                            title="Editar texto del cintillo"
-                          >
-                            <i className="ti ti-edit" />
-                          </button>
-                          <button
-                            type="button"
-                            className={`${styles.cintActionBtn} ${styles.cintPlayBtn}`}
-                            onClick={() => showCintillo(preset)}
-                            title="Lanzar este cintillo a pantalla"
-                          >
-                            <i className="ti ti-player-play" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {isEditing && (
-                        <div className={styles.cintEditBox}>
-                          <input
-                            type="text"
-                            className={styles.cintInput}
-                            value={editingCintText}
-                            onChange={(e) => setEditingCintText(e.target.value)}
-                            placeholder={`Texto para ${preset.label}...`}
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleSaveCintilloText(id, editingCintText)
-                              if (e.key === 'Escape') setEditingCintId(null)
-                            }}
-                          />
-                          <div className={styles.cintEditBtns}>
-                            <button
-                              type="button"
-                              className={styles.cintSaveBtn}
-                              onClick={() => handleSaveCintilloText(id, editingCintText)}
-                            >
-                              <i className="ti ti-check" /> Guardar
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.cintLiveBtn}
-                              onClick={() => {
-                                handleSaveCintilloText(id, editingCintText)
-                                showCintillo(preset)
-                              }}
-                              title="Guardar y mostrar de inmediato"
-                            >
-                              <i className="ti ti-broadcast" /> Al aire
-                            </button>
-                            <button
-                              type="button"
-                              className={styles.cintCancelBtn}
-                              onClick={() => setEditingCintId(null)}
-                              title="Cancelar"
-                            >
-                              <i className="ti ti-x" />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            ))}
-
-            <div className={styles.cintDivider} />
-
-            <label className={styles.autoCintToggle}>
-              <input type="checkbox" checked={autoCintillos} onChange={e => setAutoCintillos(e.target.checked)} />
-              <span><i className="ti ti-rotate-clockwise" /> Rotación automática</span>
-            </label>
-            {autoCintillos && (
-              <p className={styles.autoCintHint}>
-                Tema (MASTER) → Invitado (CAM 3) → Conductor (CAM 1) → Redes → Contacto → Promo · cada {cintDisplaySec}s
-              </p>
-            )}
-            {autoCintillos && (
-              <div className={styles.sliderRow} style={{ marginBottom: 8 }}>
-                <span>Duración</span>
-                <input type="range" min={8} max={15} value={cintDisplaySec} onChange={e => setCintDisplaySec(+e.target.value)} style={{ flex: 1 }} />
-                <span className={styles.val}>{cintDisplaySec}s</span>
-              </div>
-            )}
-
-            <button className={styles.cintItem} onClick={handleAICintillo} disabled={loadingCintillo}>
-              <div className={styles.cintDot} style={{ background: 'var(--purple)' }} />
-              <span className={styles.cintItemLabel} style={{ color: 'var(--purple)' }}>
-                {loadingCintillo ? 'Generando...' : 'Generar cintillo IA (invitado)'}
+              <i className={`ti ti-typography ${styles.sectionIcon}`} />
+              <span className={styles.sectionToggleTitle}>Cintillos & Gráficos</span>
+              <span className={styles.sectionToggleBadge}>
+                {cintillo.active ? 'AL AIRE' : (autoCintillos ? 'Auto rot.' : 'Manual')}
               </span>
-              <i className="ti ti-sparkles" style={{ fontSize: 10, color: 'var(--purple)', marginLeft: 'auto' }} />
+              <i className={`ti ti-chevron-${openSections.cintillos ? 'up' : 'down'} ${styles.sectionChevron}`} />
             </button>
-            <button className={styles.cintItem} style={{ borderStyle: 'dashed' }} onClick={() => setShowCintForm(true)}>
-              <div className={styles.cintDot} style={{ background: 'var(--border-3)' }} />
-              <span className={styles.cintItemLabel} style={{ color: 'var(--text-muted)' }}>Agregar cintillo...</span>
-              <i className="ti ti-plus" style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }} />
-            </button>
-            {showCintForm && (
-              <div className={styles.cintForm}>
-                <select value={cintFormSlot} onChange={e => setCintFormSlot(+e.target.value)} className={styles.cintSelect}>
-                  <option value={0}>CAM 1 · Conductor</option>
-                  <option value={1}>CAM 2 · MASTER</option>
-                  <option value={2}>CAM 3 · Invitado</option>
-                </select>
-                <select value={cintFormTag} onChange={e => setCintFormTag(e.target.value)} className={styles.cintSelect}>
-                  {['HOST', 'INVITADO', 'TEMA', 'PROMO', 'REDES', 'CONTACTO', 'CUSTOM'].map(t => <option key={t}>{t}</option>)}
-                </select>
-                <input className={styles.cintInput} value={cintFormText} onChange={e => setCintFormText(e.target.value)} placeholder="Texto del cintillo..." onKeyDown={e => e.key === 'Enter' && submitCustomCint()} />
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button className={styles.cintFormBtn} onClick={submitCustomCint}><i className="ti ti-check" /></button>
-                  <button className={styles.cintFormBtn} onClick={() => setShowCintForm(false)}><i className="ti ti-x" /></button>
+            {openSections.cintillos && (
+              <div className={styles.sectionBody}>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                  <div className={styles.prTitle} style={{ margin: 0 }}>Estilo y posición</div>
+                  <div className={styles.aiChipSm} style={{ marginLeft: 'auto' }}><i className="ti ti-sparkles" style={{ fontSize: 8 }} /> IA</div>
                 </div>
+
+                <button
+                  type="button"
+                  className={styles.styleToggle}
+                  onClick={() => setShowStylePicker(s => !s)}
+                >
+                  <i className="ti ti-palette" />
+                  <span>Diseño: <strong>{getCintilloStyle(cintilloStyle).name}</strong></span>
+                  <i className={`ti ti-chevron-${showStylePicker ? 'up' : 'down'}`} style={{ marginLeft: 'auto', fontSize: 11 }} />
+                </button>
+
+                {showStylePicker && (
+                  <div className={styles.stylePickerWrap}>
+                    <CintilloStylePicker
+                      compact
+                      value={cintilloStyle}
+                      onChange={setCintilloStyle}
+                      previewTag="TEMA"
+                      previewText={proj.episodeTitle || 'Tu texto'}
+                    />
+                  </div>
+                )}
+
+                <p className={styles.autoCintHint} style={{ marginTop: 8 }}>
+                  Cada cintillo se muestra solo en su cámara: conductor izquierda, invitado derecha, centrales en MASTER.
+                </p>
+
+                {CINTILLO_CAMERA_GROUPS.map((group) => (
+                  <div key={group.role} className={styles.cintCameraBlock}>
+                    <div className={styles.cintCameraHead}>{group.label}</div>
+                    <div className={styles.posGrid}>
+                      {CINTILLO_POSITION_OPTIONS.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className={`${styles.posBtn} ${cintilloPositions[group.role] === p.id ? styles.posBtnActive : ''}`}
+                          onClick={() => setCintilloPositions((prev) => ({ ...prev, [group.role]: p.id }))}
+                          title={p.label}
+                        >
+                          <i className={`ti ${p.icon}`} />
+                        </button>
+                      ))}
+                    </div>
+                    {group.presetIds.map((id) => {
+                      const preset = CINTILLO_PRESET_MAP[id]
+                      if (!preset) return null
+                      const currentText = resolveCintilloText(id, proj)
+                      const isEditing = editingCintId === id
+                      const isCurrentActive = cintillo.active && cintillo.presetId === id
+                      return (
+                        <div key={id} className={`${styles.cintCard} ${isCurrentActive ? styles.cintCardActive : ''}`}>
+                          <div className={styles.cintCardHeader}>
+                            <div className={styles.cintDot} style={{ background: preset.color }} />
+                            <div className={styles.cintCardMeta}>
+                              <div style={{ display: 'flex', alignItems: 'center' }}>
+                                <span className={styles.cintItemLabel}>{preset.label}</span>
+                                {isCurrentActive && <span className={styles.cintLiveBadge}>AL AIRE</span>}
+                              </div>
+                              <span className={styles.cintCurrentText} title={currentText || 'Sin texto asignado'}>
+                                {currentText || <em style={{ opacity: 0.5 }}>Sin texto asignado</em>}
+                              </span>
+                            </div>
+                            <div className={styles.cintActions}>
+                              <button
+                                type="button"
+                                className={`${styles.cintActionBtn} ${isEditing ? styles.cintActionBtnActive : ''}`}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (isEditing) {
+                                    setEditingCintId(null)
+                                  } else {
+                                    setEditingCintId(id)
+                                    setEditingCintText(currentText)
+                                  }
+                                }}
+                                title="Editar texto del cintillo"
+                              >
+                                <i className="ti ti-edit" />
+                              </button>
+                              <button
+                                type="button"
+                                className={`${styles.cintActionBtn} ${styles.cintPlayBtn}`}
+                                onClick={() => showCintillo(preset)}
+                                title="Lanzar este cintillo a pantalla"
+                              >
+                                <i className="ti ti-player-play" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {isEditing && (
+                            <div className={styles.cintEditBox}>
+                              <input
+                                type="text"
+                                className={styles.cintInput}
+                                value={editingCintText}
+                                onChange={(e) => setEditingCintText(e.target.value)}
+                                placeholder={`Texto para ${preset.label}...`}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveCintilloText(id, editingCintText)
+                                  if (e.key === 'Escape') setEditingCintId(null)
+                                }}
+                              />
+                              <div className={styles.cintEditBtns}>
+                                <button
+                                  type="button"
+                                  className={styles.cintSaveBtn}
+                                  onClick={() => handleSaveCintilloText(id, editingCintText)}
+                                >
+                                  <i className="ti ti-check" /> Guardar
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.cintLiveBtn}
+                                  onClick={() => {
+                                    handleSaveCintilloText(id, editingCintText)
+                                    showCintillo(preset)
+                                  }}
+                                  title="Guardar y mostrar de inmediato"
+                                >
+                                  <i className="ti ti-broadcast" /> Al aire
+                                </button>
+                                <button
+                                  type="button"
+                                  className={styles.cintCancelBtn}
+                                  onClick={() => setEditingCintId(null)}
+                                  title="Cancelar"
+                                >
+                                  <i className="ti ti-x" />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+
+                <div className={styles.cintDivider} />
+
+                <label className={styles.autoCintToggle}>
+                  <input type="checkbox" checked={autoCintillos} onChange={e => setAutoCintillos(e.target.checked)} />
+                  <span><i className="ti ti-rotate-clockwise" /> Rotación automática</span>
+                </label>
+                {autoCintillos && (
+                  <p className={styles.autoCintHint}>
+                    Tema (MASTER) → Invitado (CAM 3) → Conductor (CAM 1) → Redes → Contacto → Promo · cada {cintDisplaySec}s
+                  </p>
+                )}
+                {autoCintillos && (
+                  <div className={styles.sliderRow} style={{ marginBottom: 8 }}>
+                    <span>Duración</span>
+                    <input type="range" min={8} max={15} value={cintDisplaySec} onChange={e => setCintDisplaySec(+e.target.value)} style={{ flex: 1 }} />
+                    <span className={styles.val}>{cintDisplaySec}s</span>
+                  </div>
+                )}
+
+                <button className={styles.cintItem} onClick={handleAICintillo} disabled={loadingCintillo}>
+                  <div className={styles.cintDot} style={{ background: 'var(--purple)' }} />
+                  <span className={styles.cintItemLabel} style={{ color: 'var(--purple)' }}>
+                    {loadingCintillo ? 'Generando...' : 'Generar cintillo IA (invitado)'}
+                  </span>
+                  <i className="ti ti-sparkles" style={{ fontSize: 10, color: 'var(--purple)', marginLeft: 'auto' }} />
+                </button>
+                <button className={styles.cintItem} style={{ borderStyle: 'dashed' }} onClick={() => setShowCintForm(true)}>
+                  <div className={styles.cintDot} style={{ background: 'var(--border-3)' }} />
+                  <span className={styles.cintItemLabel} style={{ color: 'var(--text-muted)' }}>Agregar cintillo...</span>
+                  <i className="ti ti-plus" style={{ fontSize: 10, color: 'var(--text-muted)', marginLeft: 'auto' }} />
+                </button>
+                {showCintForm && (
+                  <div className={styles.cintForm}>
+                    <select value={cintFormSlot} onChange={e => setCintFormSlot(+e.target.value)} className={styles.cintSelect}>
+                      <option value={0}>CAM 1 · Conductor</option>
+                      <option value={1}>CAM 2 · MASTER</option>
+                      <option value={2}>CAM 3 · Invitado</option>
+                    </select>
+                    <select value={cintFormTag} onChange={e => setCintFormTag(e.target.value)} className={styles.cintSelect}>
+                      {['HOST', 'INVITADO', 'TEMA', 'PROMO', 'REDES', 'CONTACTO', 'CUSTOM'].map(t => <option key={t}>{t}</option>)}
+                    </select>
+                    <input className={styles.cintInput} value={cintFormText} onChange={e => setCintFormText(e.target.value)} placeholder="Texto del cintillo..." onKeyDown={e => e.key === 'Enter' && submitCustomCint()} />
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button className={styles.cintFormBtn} onClick={submitCustomCint}><i className="ti ti-check" /></button>
+                      <button className={styles.cintFormBtn} onClick={() => setShowCintForm(false)}><i className="ti ti-x" /></button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           {aiConfigured && (
             <div className={styles.prSection}>
-              <div className={styles.prTitle}>
-                IA Productora
-                <span className={styles.aiChipSm}><i className="ti ti-robot" /> Auto</span>
-              </div>
-              <p className={styles.autoCintHint}>
-                {producerStatus || 'Director IA, cintillos y música se configuran solos según tu evento.'}
-              </p>
-              <label className={styles.autoCintToggle}>
-                <input
-                  type="checkbox"
-                  checked={switchMode === 'ai'}
-                  disabled={!planLimits.aiDirector}
-                  onChange={e => setSwitchMode(e.target.checked ? 'ai' : 'off')}
-                />
-                Director IA de cámaras{!planLimits.aiDirector ? ' (Pro)' : ''}
-              </label>
-              <label className={styles.autoCintToggle}>
-                <input type="checkbox" checked={autoCintillos} onChange={e => setAutoCintillos(e.target.checked)} />
-                Cintillos automáticos
-              </label>
-              <label className={styles.autoCintToggle}>
-                <input
-                  type="checkbox"
-                  checked={subtitlesOn}
-                  disabled={!subtitlesSupported}
-                  onChange={e => setSubtitlesOn(e.target.checked)}
-                />
-                Subtítulos al grabar {subtitlesSupported ? '' : '(Chrome/Edge)'}
-              </label>
+              <button
+                type="button"
+                className={`${styles.sectionToggle} ${openSections.aiProducer ? styles.sectionToggleActive : ''}`}
+                onClick={() => toggleSection('aiProducer')}
+              >
+                <i className={`ti ti-robot ${styles.sectionIcon}`} />
+                <span className={styles.sectionToggleTitle}>IA Productora</span>
+                <span className={styles.sectionToggleBadge}>
+                  {switchMode === 'ai' ? 'Director IA' : 'Configurar'}
+                </span>
+                <i className={`ti ti-chevron-${openSections.aiProducer ? 'up' : 'down'} ${styles.sectionChevron}`} />
+              </button>
+              {openSections.aiProducer && (
+                <div className={styles.sectionBody}>
+                  <p className={styles.autoCintHint}>
+                    {producerStatus || 'Director IA, cintillos y música se configuran solos según tu evento.'}
+                  </p>
+                  <label className={styles.autoCintToggle}>
+                    <input
+                      type="checkbox"
+                      checked={switchMode === 'ai'}
+                      disabled={!planLimits.aiDirector}
+                      onChange={e => setSwitchMode(e.target.checked ? 'ai' : 'off')}
+                    />
+                    Director IA de cámaras{!planLimits.aiDirector ? ' (Pro)' : ''}
+                  </label>
+                  <label className={styles.autoCintToggle}>
+                    <input type="checkbox" checked={autoCintillos} onChange={e => setAutoCintillos(e.target.checked)} />
+                    Cintillos automáticos
+                  </label>
+                  <label className={styles.autoCintToggle}>
+                    <input
+                      type="checkbox"
+                      checked={subtitlesOn}
+                      disabled={!subtitlesSupported}
+                      onChange={e => setSubtitlesOn(e.target.checked)}
+                    />
+                    Subtítulos al grabar {subtitlesSupported ? '' : '(Chrome/Edge)'}
+                  </label>
+                </div>
+              )}
             </div>
           )}
           {/* MUSIC */}
           <div className={styles.prSection}>
-            <div className={styles.prTitle}>Música sin copyright</div>
-            <MusicBank
-              tracks={MUSIC_TRACKS}
-              sfxList={MUSIC_SFX}
-              currentTrack={currentMusic}
-              playing={musicPlaying}
-              loading={musicLoading}
-              error={musicError}
-              volume={musicVol}
-              onVolumeChange={setMusicVol}
-              onSelectTrack={(id, autoPlay) => selectTrackById(id, autoPlay)}
-              onTogglePlay={toggleMusic}
-              onPlaySfx={playSfx}
-              playingSfxId={playingSfxId}
-              sfxError={sfxError}
-              podcastGenre={proj.podcastGenre}
-            />
+            <button
+              type="button"
+              className={`${styles.sectionToggle} ${openSections.music ? styles.sectionToggleActive : ''}`}
+              onClick={() => toggleSection('music')}
+            >
+              <i className={`ti ti-music ${styles.sectionIcon}`} />
+              <span className={styles.sectionToggleTitle}>Música sin copyright</span>
+              <span className={styles.sectionToggleBadge}>
+                {musicPlaying ? 'Sonando' : (currentMusic ? 'Cargada' : 'Seleccionar')}
+              </span>
+              <i className={`ti ti-chevron-${openSections.music ? 'up' : 'down'} ${styles.sectionChevron}`} />
+            </button>
+            {openSections.music && (
+              <div className={styles.sectionBody}>
+                <MusicBank
+                  tracks={MUSIC_TRACKS}
+                  sfxList={MUSIC_SFX}
+                  currentTrack={currentMusic}
+                  playing={musicPlaying}
+                  loading={musicLoading}
+                  error={musicError}
+                  volume={musicVol}
+                  onVolumeChange={setMusicVol}
+                  onSelectTrack={(id, autoPlay) => selectTrackById(id, autoPlay)}
+                  onTogglePlay={toggleMusic}
+                  onPlaySfx={playSfx}
+                  playingSfxId={playingSfxId}
+                  sfxError={sfxError}
+                  podcastGenre={proj.podcastGenre}
+                />
+              </div>
+            )}
           </div>
 
           {/* RECORD CONTROLS */}
