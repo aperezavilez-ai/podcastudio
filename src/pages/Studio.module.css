@@ -241,15 +241,83 @@
   min-height: 0;
   position: relative;
   overflow: hidden;
-  background: #050508;
-  padding: 4px 8px 2px;
+  background: radial-gradient(ellipse at center, #0f0f18 0%, #050508 100%);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
 }
+
 .viewportInner {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  aspect-ratio: var(--viewport-aspect, 16 / 9);
+  max-width: 100cqw;
+  max-height: 100cqh;
+  width: min(100cqw, calc(100cqh * var(--vp-ar, 1.7777778)));
+  height: min(100cqh, calc(100cqw / var(--vp-ar, 1.7777778)));
   background: #0a0a10;
   overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 8px 36px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), height 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease;
 }
+
+.viewportInner[data-format="9:16"] {
+  aspect-ratio: 9 / 16;
+  width: min(100cqw, calc(100cqh * 0.5625));
+  height: min(100cqh, calc(100cqw / 0.5625));
+  border-radius: 14px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.9), 0 0 0 1.5px rgba(0, 242, 254, 0.35);
+}
+
+.viewportInner[data-format="1:1"] {
+  aspect-ratio: 1 / 1;
+  width: min(100cqw, 100cqh);
+  height: min(100cqw, 100cqh);
+  border-radius: 12px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.9), 0 0 0 1.5px rgba(225, 48, 108, 0.35);
+}
+
+.viewportInner[data-format="16:9"] {
+  aspect-ratio: 16 / 9;
+  width: min(100cqw, calc(100cqh * 1.7777778));
+  height: min(100cqh, calc(100cqw / 1.7777778));
+  box-shadow: 0 8px 36px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+@supports not (container-type: size) {
+  .viewportInner {
+    height: 100%;
+    width: auto;
+    max-width: 100%;
+    max-height: 100%;
+    aspect-ratio: var(--viewport-aspect, 16 / 9);
+    margin: auto;
+  }
+}
+
+.activeFormatBadge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(8, 8, 14, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  animation: fadeIn 0.2s ease;
+}
+
 .scanlines {
   position: absolute; inset: 0; pointer-events: none;
   background: repeating-linear-gradient(transparent, transparent 2px, rgba(0,0,0,.03) 2px, rgba(0,0,0,.03) 4px);
@@ -582,12 +650,255 @@
 .camError button:hover { color: var(--text-primary); }
 .fmtSelector {
   display: flex;
-  gap: 5px;
+  gap: 6px;
   margin-left: auto;
   flex-shrink: 0;
-  align-items: flex-end;
+  align-items: center;
   padding: 2px 0;
 }
+
+.socialPresets {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: rgba(14, 14, 22, 0.85);
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  padding: 3px 4px;
+}
+
+.socialBtn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all .15s ease;
+  font: inherit;
+}
+
+.socialBtn:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.socialBtnActive {
+  background: rgba(232, 97, 42, 0.16) !important;
+  border-color: rgba(232, 97, 42, 0.4) !important;
+  color: #fff !important;
+}
+
+.socialBtnActive[data-format="9:16"] {
+  background: rgba(0, 242, 254, 0.15) !important;
+  border-color: rgba(0, 242, 254, 0.45) !important;
+  color: #00f2fe !important;
+}
+
+.socialBtnActive[data-format="1:1"] {
+  background: rgba(225, 48, 108, 0.15) !important;
+  border-color: rgba(225, 48, 108, 0.45) !important;
+  color: #ff5f9e !important;
+}
+
+.socialBtnActive[data-format="16:9"] {
+  background: rgba(239, 68, 68, 0.15) !important;
+  border-color: rgba(239, 68, 68, 0.45) !important;
+  color: #ff6b6b !important;
+}
+
+.socialBtnIcon {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+}
+
+.socialBtnLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.socialBtnRatio {
+  font-size: 8.5px;
+  opacity: 0.7;
+  font-family: var(--font-mono, monospace);
+  padding: 1px 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+
+.socialMoreBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.socialMoreBtn:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border-color: var(--border-3);
+}
+
+/* Modal / Dropdown Adaptar para Redes Sociales */
+.socialModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.18s ease;
+}
+
+.socialModal {
+  width: 100%;
+  max-width: 560px;
+  background: #0d0e15;
+  border: 1px solid var(--border-2);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.85);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.socialModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-1);
+  background: #11121c;
+}
+
+.socialModalTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.socialModalClose {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+}
+
+.socialModalClose:hover {
+  background: var(--surface-2);
+  color: #fff;
+}
+
+.socialModalBody {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.socialGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.socialCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.socialCard:hover {
+  background: var(--surface-2);
+  border-color: var(--border-3);
+  transform: translateY(-1px);
+}
+
+.socialCardActive {
+  background: rgba(232, 97, 42, 0.12) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 16px rgba(232, 97, 42, 0.2);
+}
+
+.socialCardIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+
+.socialCardInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.socialCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.socialCardName {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.socialCardRatio {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+.socialCardDesc {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
 .fmtOpt {
   display: flex;
   flex-direction: column;
@@ -1284,7 +1595,8 @@
   }
 
   .viewportInner {
-    inset: 0;
+    max-width: 100%;
+    max-height: 100%;
   }
 
   .panelRight {

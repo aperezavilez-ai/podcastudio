@@ -3,9 +3,16 @@ import { drawCompositorFrame, COMPOSITOR_W, COMPOSITOR_H } from '../utils/canvas
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 import { getCintilloMotion, getTransitionProgress, TRANSITION_DURATION_MS } from '../utils/videoLook.js'
 
+export function getResolutionForFormat(fmt) {
+  if (fmt === '9:16') return { width: 1080, height: 1920 }
+  if (fmt === '1:1') return { width: 1080, height: 1080 }
+  return { width: 1920, height: 1080 }
+}
+
 export function useStudioCompositor({
   streams,
   activeCamera,
+  format = '16:9',
   logoUrl = null,
   logoPosition = 'tr',
   podcastName = '',
@@ -40,10 +47,12 @@ export function useStudioCompositor({
   const animKeyRef = useRef(animKey)
   const animPhaseStartRef = useRef(performance.now())
 
+  const initialRes = getResolutionForFormat(format)
+
   if (!canvasRef.current && typeof document !== 'undefined') {
     const canvas = document.createElement('canvas')
-    canvas.width = COMPOSITOR_W
-    canvas.height = COMPOSITOR_H
+    canvas.width = initialRes.width
+    canvas.height = initialRes.height
     canvasRef.current = canvas
     try {
       outputStreamRef.current = canvas.captureStream?.(30) || null
@@ -175,6 +184,22 @@ export function useStudioCompositor({
     animPhaseStartRef.current = performance.now()
   }, [animPhase, animKey])
 
+  // Actualizar resolución del canvas al cambiar formato (si no está grabando)
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas || recording) return
+    const { width: tw, height: th } = getResolutionForFormat(format)
+    if (canvas.width !== tw || canvas.height !== th) {
+      canvas.width = tw
+      canvas.height = th
+      try {
+        outputStreamRef.current = canvas.captureStream?.(30) || null
+      } catch {
+        outputStreamRef.current = null
+      }
+    }
+  }, [format, recording])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || !compositorActive) {
@@ -212,8 +237,11 @@ export function useStudioCompositor({
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = 'medium'
 
+      const cw = canvas.width
+      const ch = canvas.height
+
       try {
-        drawCompositorFrame(ctx, COMPOSITOR_W, COMPOSITOR_H, {
+        drawCompositorFrame(ctx, cw, ch, {
           video,
           videoFrom: videoFrom && s.transitionStartMs ? videoFrom : null,
           transitionMode: s.transitionMode,
@@ -248,7 +276,7 @@ export function useStudioCompositor({
         })
       } catch {
         ctx.fillStyle = '#07070a'
-        ctx.fillRect(0, 0, COMPOSITOR_W, COMPOSITOR_H)
+        ctx.fillRect(0, 0, cw, ch)
       }
 
       rafRef.current = requestAnimationFrame(draw)

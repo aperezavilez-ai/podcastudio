@@ -172,30 +172,50 @@ export function drawCompositorFrame(ctx, w, h, {
       progress,
     })
   } else if (layout === 'split' && secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
-    // Modo Split 50/50
-    const halfW = (w - 12) / 2
-    ctx.save()
-    ctx.beginPath()
-    ctx.rect(0, 0, halfW, h)
-    ctx.clip()
-    drawVideoCover(ctx, video, 0, 0, halfW, h, directorCrop)
-    ctx.restore()
+    const isVertical = h > w
+    if (isVertical) {
+      // Split vertical para 9:16 (uno arriba, otro abajo)
+      const halfH = (h - 12) / 2
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, w, halfH)
+      ctx.clip()
+      drawVideoCover(ctx, video, 0, 0, w, halfH, directorCrop)
+      ctx.restore()
 
-    ctx.save()
-    ctx.beginPath()
-    ctx.rect(halfW + 12, 0, halfW, h)
-    ctx.clip()
-    drawVideoCover(ctx, secondaryVideo, halfW + 12, 0, halfW, h, null)
-    ctx.restore()
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, halfH + 12, w, halfH)
+      ctx.clip()
+      drawVideoCover(ctx, secondaryVideo, 0, halfH + 12, w, halfH, null)
+      ctx.restore()
+    } else {
+      // Modo Split 50/50 horizontal (para 16:9 y 1:1)
+      const halfW = (w - 12) / 2
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(0, 0, halfW, h)
+      ctx.clip()
+      drawVideoCover(ctx, video, 0, 0, halfW, h, directorCrop)
+      ctx.restore()
+
+      ctx.save()
+      ctx.beginPath()
+      ctx.rect(halfW + 12, 0, halfW, h)
+      ctx.clip()
+      drawVideoCover(ctx, secondaryVideo, halfW + 12, 0, halfW, h, null)
+      ctx.restore()
+    }
   } else if (video && video.readyState >= 2 && video.videoWidth) {
     drawMainVideo(video, directorCrop)
 
     // Si está en modo PiP y hay pipVideo
     if (layout === 'pip' && pipVideo && pipVideo.readyState >= 2 && pipVideo.videoWidth) {
-      const pipW = w * 0.28
+      const isVertical = h > w
+      const pipW = isVertical ? w * 0.38 : w * 0.28
       const pipH = (pipW * 9) / 16
-      const pipX = w - pipW - 36
-      const pipY = 36
+      const pipX = w - pipW - (isVertical ? 20 : 36)
+      const pipY = isVertical ? 24 : 36
       ctx.save()
       ctx.shadowColor = 'rgba(0,0,0,0.7)'
       ctx.shadowBlur = 24

@@ -70,6 +70,39 @@ function isWrongStudioHost() {
 
 const CINTILLO_PRESET_MAP = Object.fromEntries(CINTILLO_PRESETS.map(p => [p.id, p]))
 
+export const SOCIAL_FORMAT_PRESETS = [
+  {
+    id: 'youtube',
+    format: '16:9',
+    label: 'YouTube / FB',
+    ratio: '16:9',
+    icon: 'ti ti-brand-youtube',
+    network: 'YouTube · Facebook Watch · Twitch · Web',
+    desc: 'Formato horizontal Full HD (1920x1080). Ideal para episodios completos, entrevistas en mesa y podcasts en pantallas grandes.',
+    color: '#ef4444',
+  },
+  {
+    id: 'tiktok',
+    format: '9:16',
+    label: 'TikTok / Reels',
+    ratio: '9:16',
+    icon: 'ti ti-brand-tiktok',
+    network: 'TikTok · Instagram Reels · YouTube Shorts',
+    desc: 'Formato vertical Full HD (1080x1920). Diseñado para teléfonos móviles con encuadre centrado y split vertical arriba/abajo.',
+    color: '#00f2fe',
+  },
+  {
+    id: 'instagram',
+    format: '1:1',
+    label: 'Instagram Feed',
+    ratio: '1:1',
+    icon: 'ti ti-brand-instagram',
+    network: 'Instagram Post · Facebook Feed · LinkedIn',
+    desc: 'Formato cuadrado perfecto (1080x1080). Máxima visibilidad y presencia en el feed sin recortes indeseados.',
+    color: '#e1306c',
+  },
+]
+
 const POS_MAP = {
   tl: { top: 10, left: 10 }, tc: { top: 10, left: '50%', transform: 'translateX(-50%)' },
   tr: { top: 10, right: 10 }, ml: { top: '50%', left: 10, transform: 'translateY(-50%)' },
@@ -151,6 +184,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const [cintilloPositions, setCintilloPositions] = useState(loadCintilloPositions)
   const [outputFormat, setOutputFormat] = useState(() => project?.format || '16:9')
   const [micMuted, setMicMuted] = useState(false)
+  const [showSocialModal, setShowSocialModal] = useState(false)
   const [showStylePicker, setShowStylePicker] = useState(true)
   const [connectModalOpen, setConnectModalOpen] = useState(false)
   const [connectModalSlot, setConnectModalSlot] = useState(0)
@@ -297,6 +331,20 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       return updated
     })
     setEditingCintId(null)
+  }, [proj, user?.id, onProjectSave])
+
+  const handleFormatChange = useCallback((f) => {
+    setOutputFormat(f)
+    const updatedProj = { ...proj, format: f }
+    try {
+      localStorage.setItem('podcastudio_project', JSON.stringify(updatedProj))
+      if (user?.id) {
+        saveProject(user.id, updatedProj).catch(() => {})
+      }
+      onProjectSave?.(updatedProj)
+    } catch (e) {
+      console.warn('Error guardando formato:', e)
+    }
   }, [proj, user?.id, onProjectSave])
 
   useEffect(() => {
@@ -488,6 +536,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const { getProgramStream } = useStudioCompositor({
     streams,
     activeCamera: programCamera,
+    format: proj.format,
     layout: screenLayout,
     pipCamera: screenLayout === 'pip' ? pipCameraSlot : null,
     secondaryCamera: screenLayout === 'split' ? splitSecondarySlot : null,
@@ -990,11 +1039,30 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
             <div className={styles.viewport}>
               <div
                 className={styles.viewportInner}
+                data-format={proj.format}
                 style={{
                   '--viewport-aspect': proj.format === '9:16' ? '9 / 16' : proj.format === '1:1' ? '1 / 1' : '16 / 9',
                   '--vp-ar': proj.format === '9:16' ? '0.5625' : proj.format === '1:1' ? '1' : '1.777777778',
                 }}
               >
+                <div className={styles.activeFormatBadge} title="Formato actual de grabación">
+                  {proj.format === '9:16' ? (
+                    <>
+                      <i className="ti ti-brand-tiktok" style={{ color: '#00f2fe' }} />
+                      <span>TikTok · Reels (9:16)</span>
+                    </>
+                  ) : proj.format === '1:1' ? (
+                    <>
+                      <i className="ti ti-brand-instagram" style={{ color: '#ff5f9e' }} />
+                      <span>Instagram Feed (1:1)</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="ti ti-brand-youtube" style={{ color: '#ff4444' }} />
+                      <span>YouTube · FB (16:9)</span>
+                    </>
+                  )}
+                </div>
                 {streams[programCamera] ? (
                   <ProgramPreview
                     stream={streams[programCamera]}
@@ -1283,21 +1351,37 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   </>
                 )}
               </div>
-              {/* FORMAT SELECTOR + MIC MUTE */}
+              {/* FORMAT SELECTOR + MIC MUTE + SOCIAL PRESETS */}
               <div className={styles.fmtSelector}>
                 <MicMuteButton muted={micMuted} onToggle={toggleMicMute} />
-                {[{ f: '16:9', w: 26, h: 15 }, { f: '9:16', w: 12, h: 22 }, { f: '1:1', w: 18, h: 18 }].map(({ f, w, h }) => (
-                  <button
-                    key={f}
-                    type="button"
-                    className={`${styles.fmtOpt} ${proj.format === f ? styles.fmtActive : ''}`}
-                    title={f}
-                    onClick={() => setOutputFormat(f)}
-                  >
-                    <div style={{ width: w * 0.65, height: h * 0.65, border: `1.5px solid ${proj.format === f ? 'var(--purple)' : 'var(--border-3)'}`, borderRadius: 2 }} />
-                    <span style={{ fontSize: 8, color: proj.format === f ? 'var(--purple)' : 'var(--text-muted)' }}>{f}</span>
-                  </button>
-                ))}
+                <div className={styles.socialPresets} role="group" aria-label="Formato de video y Redes Sociales">
+                  {SOCIAL_FORMAT_PRESETS.map((p) => {
+                    const isActive = proj.format === p.format
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={`${styles.socialBtn} ${isActive ? styles.socialBtnActive : ''}`}
+                        data-format={p.format}
+                        title={`${p.label} (${p.ratio}): ${p.network}`}
+                        onClick={() => handleFormatChange(p.format)}
+                      >
+                        <i className={`${p.icon} ${styles.socialBtnIcon}`} style={{ color: isActive ? undefined : p.color }} />
+                        <span className={styles.socialBtnLabel}>{p.label}</span>
+                        <span className={styles.socialBtnRatio}>{p.ratio}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className={styles.socialMoreBtn}
+                  onClick={() => setShowSocialModal(true)}
+                  title="Adaptar para cualquier red social (Facebook, Instagram, TikTok, YouTube)"
+                >
+                  <i className="ti ti-world" />
+                  <span>Redes</span>
+                </button>
               </div>
               </div>
             </div>
@@ -1990,6 +2074,64 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                 : 'Autoriza el acceso a cámaras y micrófono cuando el navegador lo solicite.'}
             </div>
             {initError && <div className={styles.initError}><i className="ti ti-alert-circle" /> {initError}</div>}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ADAPTAR PARA CUALQUIER RED SOCIAL */}
+      {showSocialModal && (
+        <div className={styles.socialModalOverlay} onClick={() => setShowSocialModal(false)}>
+          <div className={styles.socialModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.socialModalHeader}>
+              <div className={styles.socialModalTitle}>
+                <i className="ti ti-world" style={{ color: 'var(--accent)' }} />
+                <span>Adaptar para Redes Sociales</span>
+              </div>
+              <button
+                type="button"
+                className={styles.socialModalClose}
+                onClick={() => setShowSocialModal(false)}
+                title="Cerrar"
+              >
+                <i className="ti ti-x" />
+              </button>
+            </div>
+            <div className={styles.socialModalBody}>
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
+                Selecciona la red social de destino. El encuadre de las cámaras, el visor y la grabación se adaptarán automáticamente:
+              </p>
+              <div className={styles.socialGrid}>
+                {SOCIAL_FORMAT_PRESETS.map((p) => {
+                  const isActive = proj.format === p.format
+                  return (
+                    <div
+                      key={p.id}
+                      className={`${styles.socialCard} ${isActive ? styles.socialCardActive : ''}`}
+                      onClick={() => {
+                        handleFormatChange(p.format)
+                        setShowSocialModal(false)
+                      }}
+                    >
+                      <div className={styles.socialCardIcon} style={{ background: `${p.color}22`, color: p.color }}>
+                        <i className={p.icon} />
+                      </div>
+                      <div className={styles.socialCardInfo}>
+                        <div className={styles.socialCardHeader}>
+                          <span className={styles.socialCardName}>{p.network}</span>
+                          <span className={styles.socialCardRatio}>{p.ratio}</span>
+                          {isActive && (
+                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', marginLeft: 'auto' }}>
+                              ACTIVO
+                            </span>
+                          )}
+                        </div>
+                        <span className={styles.socialCardDesc}>{p.desc}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}
