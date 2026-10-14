@@ -3,10 +3,12 @@ import { getSlotLabel } from '../config/cameraSlots.js'
 import styles from './CameraConnectModal.module.css'
 
 const PRESET_WIFI_STREAMS = [
-  { name: 'DroidCam (Android/iOS)', url: 'http://192.168.1.50:4747/video' },
-  { name: 'IP Webcam (Android)', url: 'http://192.168.1.50:8080/video' },
-  { name: 'GoPro Live Stream', url: 'http://10.5.5.9:8080/live/amba.m3u8' },
-  { name: 'OBS / RTSP HLS Local', url: 'http://localhost:8080/hls/stream.m3u8' },
+  { name: 'GoPro WiFi Stream (Hero 4/5/6/7)', url: 'http://10.5.5.9:8080/live/amba.m3u8' },
+  { name: 'Cámara Acción China (SJCam / Eken)', url: 'http://192.168.1.254:8192' },
+  { name: 'Cámara Acción 4K (LiveDV / XDV IP)', url: 'http://192.168.42.1:8080' },
+  { name: 'DroidCam (Android / iPhone WiFi)', url: 'http://192.168.1.50:4747/video' },
+  { name: 'IP Webcam (Android / SmartCam)', url: 'http://192.168.1.50:8080/video' },
+  { name: 'OBS / NDI HLS Stream Local', url: 'http://localhost:8080/hls/stream.m3u8' },
 ]
 
 export default function CameraConnectModal({
@@ -280,6 +282,19 @@ export default function CameraConnectModal({
                       <span className={styles.presetCardUrl}>{preset.url}</span>
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, background: 'rgba(59, 130, 246, 0.08)', border: '1px solid rgba(59, 130, 246, 0.25)', fontSize: 11, color: '#93c5fd', lineHeight: 1.45 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <i className="ti ti-bulb" style={{ fontSize: 13, color: '#60a5fa' }} />
+                  ¿Cómo conectar GoPro y cámaras de acción chinas?
+                </div>
+                <div>
+                  <strong>Opción 1 (Recomendada, cero lag):</strong> Conecta tu GoPro (Hero 8+) o cámara de acción china (SJCam, Eken, Akaso) con su cable USB a la PC. En la pantallita de la cámara selecciona <em>"Modo PC Cam / Cámara web"</em>. Ve a la pestaña <strong>USB / Capturadora</strong> y aparecerá de inmediato a 1080p sin latencia.
+                </div>
+                <div style={{ marginTop: 5 }}>
+                  <strong>Opción 2 (WiFi directo):</strong> Enciende el Wi-Fi de la cámara, conecta tu computadora a la red Wi-Fi de la cámara e ingresa la URL de stream de arriba.
                 </div>
               </div>
             </>

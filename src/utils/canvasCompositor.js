@@ -128,6 +128,9 @@ export function drawCompositorFrame(ctx, w, h, {
   recordStartMs = null,
   recordDurationSec = 0,
   background = null,
+  layout = 'full',
+  pipVideo = null,
+  secondaryVideo = null,
 }) {
   const useVirtualSet = background?.hasVirtualSet && background?.cameraRect
 
@@ -168,8 +171,53 @@ export function drawCompositorFrame(ctx, w, h, {
       mode: transitionMode,
       progress,
     })
+  } else if (layout === 'split' && secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
+    // Modo Split 50/50
+    const halfW = (w - 12) / 2
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, 0, halfW, h)
+    ctx.clip()
+    drawVideoCover(ctx, video, 0, 0, halfW, h, directorCrop)
+    ctx.restore()
+
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(halfW + 12, 0, halfW, h)
+    ctx.clip()
+    drawVideoCover(ctx, secondaryVideo, halfW + 12, 0, halfW, h, null)
+    ctx.restore()
   } else if (video && video.readyState >= 2 && video.videoWidth) {
     drawMainVideo(video, directorCrop)
+
+    // Si está en modo PiP y hay pipVideo
+    if (layout === 'pip' && pipVideo && pipVideo.readyState >= 2 && pipVideo.videoWidth) {
+      const pipW = w * 0.28
+      const pipH = (pipW * 9) / 16
+      const pipX = w - pipW - 36
+      const pipY = 36
+      ctx.save()
+      ctx.shadowColor = 'rgba(0,0,0,0.7)'
+      ctx.shadowBlur = 24
+      ctx.shadowOffsetY = 6
+      if (ctx.roundRect) {
+        ctx.beginPath()
+        ctx.roundRect(pipX, pipY, pipW, pipH, 12)
+        ctx.clip()
+      }
+      drawVideoCover(ctx, pipVideo, pipX, pipY, pipW, pipH, null)
+      ctx.restore()
+
+      ctx.save()
+      ctx.strokeStyle = '#e8612a'
+      ctx.lineWidth = 3
+      if (ctx.roundRect) {
+        ctx.beginPath()
+        ctx.roundRect(pipX, pipY, pipW, pipH, 12)
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
   }
 
   let vignette = look?.vignette ?? 0

@@ -8,6 +8,8 @@ export default function SwitcherMasterBar({
   cameraMeta = {},
   masterCameraSlot = 1,
   proSwitcherMode = false, // false = 1-click Direct Cut, true = PGM/PVW Broadcast
+  screenLayout = 'full', // 'full' | 'pip' | 'split' | 'triple'
+  onSelectLayout = () => {},
   onToggleProSwitcherMode,
   onCut,
   onAutoTransition,
@@ -37,6 +39,46 @@ export default function SwitcherMasterBar({
             <span>PVW: {pvwLabel || 'Ninguna'}</span>
           </div>
         )}
+
+        {/* Selector de Composición / Layout */}
+        <div className={styles.layoutGroup} title="Composición de pantalla al aire">
+          <button
+            type="button"
+            className={`${styles.layoutBtn} ${screenLayout === 'full' ? styles.layoutBtnActive : ''}`}
+            onClick={() => onSelectLayout('full')}
+            title="1 Cámara Pantalla Completa"
+          >
+            <i className="ti ti-square" />
+            <span>Solo</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles.layoutBtn} ${screenLayout === 'pip' ? styles.layoutBtnActive : ''}`}
+            onClick={() => onSelectLayout('pip')}
+            title="Picture-in-Picture: Master de fondo + Recuadro miniatura flotante"
+          >
+            <i className="ti ti-picture-in-picture" />
+            <span>PiP</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles.layoutBtn} ${screenLayout === 'split' ? styles.layoutBtnActive : ''}`}
+            onClick={() => onSelectLayout('split')}
+            title="Doble Cámara: Pantalla dividida 50/50"
+          >
+            <i className="ti ti-layout-columns" />
+            <span>Doble</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles.layoutBtn} ${screenLayout === 'triple' ? styles.layoutBtnActive : ''}`}
+            onClick={() => onSelectLayout('triple')}
+            title="Triple Cámara: 1 Master principal + 2 secundarias"
+          >
+            <i className="ti ti-layout-grid" />
+            <span>Triple</span>
+          </button>
+        </div>
       </div>
 
       <div className={styles.actionsSection}>

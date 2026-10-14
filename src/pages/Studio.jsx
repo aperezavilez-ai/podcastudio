@@ -173,6 +173,36 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     setConnectModalOpen(true)
   }, [])
 
+  // Modos de composición multi-cámara (Solo, PiP, Split 50/50, Triple)
+  const [screenLayout, setScreenLayout] = useState(() => {
+    if (typeof window === 'undefined') return 'full'
+    return localStorage.getItem('podcastudio_screen_layout') || 'full'
+  })
+  const [pipCameraSlot, setPipCameraSlot] = useState(0)
+  const [splitSecondarySlot, setSplitSecondarySlot] = useState(2)
+  const [tripleTertiarySlot, setTripleTertiarySlot] = useState(0)
+
+  const handleSelectLayout = useCallback((layoutMode) => {
+    setScreenLayout(layoutMode)
+    try { localStorage.setItem('podcastudio_screen_layout', layoutMode) } catch {}
+  }, [])
+
+  const handleSetPipSlot = useCallback((slot) => {
+    setPipCameraSlot(slot)
+    setScreenLayout('pip')
+    try { localStorage.setItem('podcastudio_screen_layout', 'pip') } catch {}
+  }, [])
+
+  // Posición unificada de cintillos para la toma Master
+  const [masterCintilloPosition, setMasterCintilloPosition] = useState(() => {
+    if (typeof window === 'undefined') return 'bl'
+    return localStorage.getItem('podcastudio_master_cintillo_pos') || 'bl'
+  })
+  const handleSetMasterCintilloPosition = useCallback((pos) => {
+    setMasterCintilloPosition(pos)
+    try { localStorage.setItem('podcastudio_master_cintillo_pos', pos) } catch {}
+  }, [])
+
   // Secciones colapsables del panel derecho (estilo Teleprompter)
   const [openSections, setOpenSections] = useState(() => {
     try {
@@ -365,15 +395,14 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     return cintillo
   }, [cintillo])
 
-  /** Visor principal: solo el cintillo activo de esa cámara (tema/promo 10s en MASTER, sin pegarse). */
-  const cintilloForMainView = useCallback((slot) => {
-    const c = cintilloForSlot(slot)
-    if (!c) return null
+  /** Visor principal: cintillo activo renderizado sobre la toma Master */
+  const cintilloForMainView = useCallback(() => {
+    if (!cintillo?.active) return null
     return {
-      ...c,
-      position: c.position || cintilloPositions[getRoleForSlot(slot)] || cintilloPositions.master,
+      ...cintillo,
+      position: masterCintilloPosition || cintillo.position || 'bl',
     }
-  }, [cintilloForSlot, cintilloPositions])
+  }, [cintillo, masterCintilloPosition])
 
   useEffect(() => {
     getMicStream()?.getAudioTracks?.()?.forEach(track => {
@@ -429,11 +458,14 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const { getProgramStream } = useStudioCompositor({
     streams,
     activeCamera: programCamera,
+    layout: screenLayout,
+    pipCamera: screenLayout === 'pip' ? pipCameraSlot : null,
+    secondaryCamera: screenLayout === 'split' ? splitSecondarySlot : null,
     logoUrl: proj.logoUrl,
     logoPosition: proj.logoPosition || 'tr',
     podcastName: proj.name || 'Mi Podcast',
     cintillo,
-    cintilloPosition: cintillo?.position || cintilloPositions.master,
+    cintilloPosition: cintillo?.position || masterCintilloPosition || 'bl',
     cintilloStyle,
     animPhase,
     animKey,
@@ -690,7 +722,19 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
   const showCintillo = (preset) => {
     setAutoCintillos(false)
-    showManual(preset)
+    if (cintillo.active && cintillo.presetId === preset.id) {
+      hideCintillo()
+      return
+    }
+    const txt = resolveCintilloText(preset.id, proj)
+    showCustom({
+      tag: preset.tag,
+      text: txt,
+      color: preset.color,
+      targetSlot: programCamera,
+      position: masterCintilloPosition,
+      presetId: preset.id,
+    })
   }
 
   const handleGenerateScript = async () => {
@@ -927,6 +971,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     cameraKey={programCamera}
                     look={look}
                     directorCrop={effectiveCrop}
+                    layout={screenLayout}
+                    pipStream={screenLayout === 'pip' ? streams[pipCameraSlot] : null}
+                    pipLabel={getSlotLabel(pipCameraSlot, cameraMeta[pipCameraSlot]?.customLabel, pipCameraSlot === masterCameraSlot)}
+                    onClosePip={() => handleSelectLayout('full')}
+                    secondaryStream={screenLayout === 'split' ? streams[splitSecondarySlot] : null}
+                    secondaryLabel={getSlotLabel(splitSecondarySlot, cameraMeta[splitSecondarySlot]?.customLabel, splitSecondarySlot === masterCameraSlot)}
+                    primaryLabel={getSlotLabel(programCamera, cameraMeta[programCamera]?.customLabel, programCamera === masterCameraSlot)}
                   />
                 ) : (
                   <div className={styles.noSignalViewport}>
@@ -951,9 +1002,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   />
                 )}
                 {(() => {
-                  const mainCint = cintilloForMainView(programCamera)
+                  const mainCint = cintilloForMainView()
                   if (!mainCint) return null
-                  const isLive = cintillo?.active && cintillo.targetSlot === programCamera
                   return (
                     <CintilloOverlay
                       styleId={cintilloStyle}
@@ -961,9 +1011,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       text={mainCint.text}
                       accentColor={mainCint.color}
                       position={mainCint.position}
-                      size={programCamera === masterCameraSlot ? 'large' : 'normal'}
-                      animPhase={isLive ? animPhase : 'hold'}
-                      animKey={isLive ? animKey : 0}
+                      size="large"
+                      animPhase={animPhase}
+                      animKey={animKey}
                       onClose={hideCintillo}
                     />
                   )
@@ -1005,6 +1055,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               cameraMeta={cameraMeta}
               masterCameraSlot={masterCameraSlot}
               proSwitcherMode={proSwitcherMode}
+              screenLayout={screenLayout}
+              onSelectLayout={handleSelectLayout}
               onToggleProSwitcherMode={toggleProSwitcherMode}
               onCut={handleCut}
               onAutoTransition={handleAutoTransition}
@@ -1061,6 +1113,23 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     >
                       <i className="ti ti-settings" />
                     </button>
+                    {streams[i] && (
+                      <button
+                        type="button"
+                        className={`${styles.camPipBtn} ${screenLayout === 'pip' && pipCameraSlot === i ? styles.camPipBtnActive : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (screenLayout === 'pip' && pipCameraSlot === i) {
+                            handleSelectLayout('full')
+                          } else {
+                            handleSetPipSlot(i)
+                          }
+                        }}
+                        title={screenLayout === 'pip' && pipCameraSlot === i ? 'Quitar recuadro PiP' : 'Mandar como recuadro PiP al Master'}
+                      >
+                        {screenLayout === 'pip' && pipCameraSlot === i ? '✓ PiP' : '+ PiP'}
+                      </button>
+                    )}
                     {isLivePgm && (
                       <div className={styles.camTallyBadge}>PGM</div>
                     )}
@@ -1524,121 +1593,128 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                 )}
 
                 <p className={styles.autoCintHint} style={{ marginTop: 8 }}>
-                  Cada cintillo se muestra solo en su cámara: conductor izquierda, invitado derecha, centrales en MASTER.
+                  Los cintillos se proyectan directamente sobre la toma Master en vivo. Configura la posición en pantalla y activa el cintillo deseado.
                 </p>
 
-                {CINTILLO_CAMERA_GROUPS.map((group) => (
-                  <div key={group.role} className={styles.cintCameraBlock}>
-                    <div className={styles.cintCameraHead}>{group.label}</div>
-                    <div className={styles.posGrid}>
-                      {CINTILLO_POSITION_OPTIONS.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          className={`${styles.posBtn} ${cintilloPositions[group.role] === p.id ? styles.posBtnActive : ''}`}
-                          onClick={() => setCintilloPositions((prev) => ({ ...prev, [group.role]: p.id }))}
-                          title={p.label}
-                        >
-                          <i className={`ti ${p.icon}`} />
-                        </button>
-                      ))}
-                    </div>
-                    {group.presetIds.map((id) => {
-                      const preset = CINTILLO_PRESET_MAP[id]
-                      if (!preset) return null
-                      const currentText = resolveCintilloText(id, proj)
-                      const isEditing = editingCintId === id
-                      const isCurrentActive = cintillo.active && cintillo.presetId === id
-                      return (
-                        <div key={id} className={`${styles.cintCard} ${isCurrentActive ? styles.cintCardActive : ''}`}>
-                          <div className={styles.cintCardHeader}>
-                            <div className={styles.cintDot} style={{ background: preset.color }} />
-                            <div className={styles.cintCardMeta}>
-                              <div style={{ display: 'flex', alignItems: 'center' }}>
-                                <span className={styles.cintItemLabel}>{preset.label}</span>
-                                {isCurrentActive && <span className={styles.cintLiveBadge}>AL AIRE</span>}
-                              </div>
-                              <span className={styles.cintCurrentText} title={currentText || 'Sin texto asignado'}>
-                                {currentText || <em style={{ opacity: 0.5 }}>Sin texto asignado</em>}
-                              </span>
+                <div className={styles.cintCameraBlock}>
+                  <div className={styles.cintCameraHead} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>Posición en Pantalla Master</span>
+                    <span style={{ fontSize: 9, opacity: 0.7, textTransform: 'none', fontWeight: 400 }}>
+                      (Aplica a la toma principal)
+                    </span>
+                  </div>
+                  <div className={styles.posGrid}>
+                    {CINTILLO_POSITION_OPTIONS.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className={`${styles.posBtn} ${masterCintilloPosition === p.id ? styles.posBtnActive : ''}`}
+                        onClick={() => handleSetMasterCintilloPosition(p.id)}
+                        title={p.label}
+                      >
+                        <i className={`ti ${p.icon}`} />
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ marginTop: 12, marginBottom: 6, fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    Cintillos disponibles para Master:
+                  </div>
+
+                  {CINTILLO_PRESETS.map((preset) => {
+                    const id = preset.id
+                    const currentText = resolveCintilloText(id, proj)
+                    const isEditing = editingCintId === id
+                    const isCurrentActive = cintillo.active && cintillo.presetId === id
+                    return (
+                      <div key={id} className={`${styles.cintCard} ${isCurrentActive ? styles.cintCardActive : ''}`}>
+                        <div className={styles.cintCardHeader}>
+                          <div className={styles.cintDot} style={{ background: preset.color }} />
+                          <div className={styles.cintCardMeta}>
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <span className={styles.cintItemLabel}>{preset.label}</span>
+                              {isCurrentActive && <span className={styles.cintLiveBadge}>AL AIRE</span>}
                             </div>
-                            <div className={styles.cintActions}>
+                            <span className={styles.cintCurrentText} title={currentText || 'Sin texto asignado'}>
+                              {currentText || <em style={{ opacity: 0.5 }}>Sin texto asignado</em>}
+                            </span>
+                          </div>
+                          <div className={styles.cintActions}>
+                            <button
+                              type="button"
+                              className={`${styles.cintActionBtn} ${isEditing ? styles.cintActionBtnActive : ''}`}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (isEditing) {
+                                  setEditingCintId(null)
+                                } else {
+                                  setEditingCintId(id)
+                                  setEditingCintText(currentText)
+                                }
+                              }}
+                              title="Editar texto del cintillo"
+                            >
+                              <i className="ti ti-edit" />
+                            </button>
+                            <button
+                              type="button"
+                              className={`${styles.cintActionBtn} ${isCurrentActive ? styles.cintLiveBtn : styles.cintPlayBtn}`}
+                              onClick={() => showCintillo(preset)}
+                              title={isCurrentActive ? 'Quitar cintillo del aire' : 'Lanzar este cintillo a Master'}
+                            >
+                              <i className={`ti ${isCurrentActive ? 'ti-player-stop' : 'ti-player-play'}`} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {isEditing && (
+                          <div className={styles.cintEditBox}>
+                            <input
+                              type="text"
+                              className={styles.cintInput}
+                              value={editingCintText}
+                              onChange={(e) => setEditingCintText(e.target.value)}
+                              placeholder={`Texto para ${preset.label}...`}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveCintilloText(id, editingCintText)
+                                if (e.key === 'Escape') setEditingCintId(null)
+                              }}
+                            />
+                            <div className={styles.cintEditBtns}>
                               <button
                                 type="button"
-                                className={`${styles.cintActionBtn} ${isEditing ? styles.cintActionBtnActive : ''}`}
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  if (isEditing) {
-                                    setEditingCintId(null)
-                                  } else {
-                                    setEditingCintId(id)
-                                    setEditingCintText(currentText)
-                                  }
-                                }}
-                                title="Editar texto del cintillo"
+                                className={styles.cintSaveBtn}
+                                onClick={() => handleSaveCintilloText(id, editingCintText)}
                               >
-                                <i className="ti ti-edit" />
+                                <i className="ti ti-check" /> Guardar
                               </button>
                               <button
                                 type="button"
-                                className={`${styles.cintActionBtn} ${styles.cintPlayBtn}`}
-                                onClick={() => showCintillo(preset)}
-                                title="Lanzar este cintillo a pantalla"
+                                className={styles.cintLiveBtn}
+                                onClick={() => {
+                                  handleSaveCintilloText(id, editingCintText)
+                                  showCintillo(preset)
+                                }}
+                                title="Guardar y mostrar de inmediato en Master"
                               >
-                                <i className="ti ti-player-play" />
+                                <i className="ti ti-broadcast" /> Al aire
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.cintCancelBtn}
+                                onClick={() => setEditingCintId(null)}
+                                title="Cancelar"
+                              >
+                                <i className="ti ti-x" />
                               </button>
                             </div>
                           </div>
-
-                          {isEditing && (
-                            <div className={styles.cintEditBox}>
-                              <input
-                                type="text"
-                                className={styles.cintInput}
-                                value={editingCintText}
-                                onChange={(e) => setEditingCintText(e.target.value)}
-                                placeholder={`Texto para ${preset.label}...`}
-                                autoFocus
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleSaveCintilloText(id, editingCintText)
-                                  if (e.key === 'Escape') setEditingCintId(null)
-                                }}
-                              />
-                              <div className={styles.cintEditBtns}>
-                                <button
-                                  type="button"
-                                  className={styles.cintSaveBtn}
-                                  onClick={() => handleSaveCintilloText(id, editingCintText)}
-                                >
-                                  <i className="ti ti-check" /> Guardar
-                                </button>
-                                <button
-                                  type="button"
-                                  className={styles.cintLiveBtn}
-                                  onClick={() => {
-                                    handleSaveCintilloText(id, editingCintText)
-                                    showCintillo(preset)
-                                  }}
-                                  title="Guardar y mostrar de inmediato"
-                                >
-                                  <i className="ti ti-broadcast" /> Al aire
-                                </button>
-                                <button
-                                  type="button"
-                                  className={styles.cintCancelBtn}
-                                  onClick={() => setEditingCintId(null)}
-                                  title="Cancelar"
-                                >
-                                  <i className="ti ti-x" />
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                ))}
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
 
                 <div className={styles.cintDivider} />
 

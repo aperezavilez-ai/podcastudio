@@ -173,3 +173,44 @@
   color: rgba(255, 255, 255, 0.35);
   margin-left: 2px;
 }
+
+/* Layout Selector (Solo / PiP / Split / Triple) */
+.layoutGroup {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.layoutBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #8888a0);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.layoutBtn i {
+  font-size: 11px;
+}
+
+.layoutBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.layoutBtnActive {
+  background: var(--accent-dim, rgba(232, 97, 42, 0.2)) !important;
+  color: var(--accent, #e8612a) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}

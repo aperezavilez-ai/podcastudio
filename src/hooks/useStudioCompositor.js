@@ -20,6 +20,9 @@ export function useStudioCompositor({
   recordDurationSec = 0,
   compositorActive = false,
   background = null,
+  layout = 'full',
+  pipCamera = null,
+  secondaryCamera = null,
 }) {
   const canvasRef = useRef(null)
   const outputStreamRef = useRef(null)
@@ -93,6 +96,9 @@ export function useStudioCompositor({
     fromCamera: transitionFromRef.current,
     cintilloMotionEnabled: look?.cintilloMotion !== false,
     background,
+    layout,
+    pipCamera,
+    secondaryCamera,
   }
 
   useEffect(() => {
@@ -236,6 +242,9 @@ export function useStudioCompositor({
             ...s.background,
             customImage: customBgImageRef.current,
           } : null,
+          layout: s.layout || 'full',
+          pipVideo: s.pipCamera !== null ? videosRef.current[s.pipCamera] : null,
+          secondaryVideo: s.secondaryCamera !== null ? videosRef.current[s.secondaryCamera] : null,
         })
       } catch {
         ctx.fillStyle = '#07070a'
