@@ -134,3 +134,79 @@
   color: var(--green);
   font-size: 14px;
 }
+
+.packBtnDirect {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(232, 97, 42, 0.4);
+  background: linear-gradient(135deg, rgba(232, 97, 42, 0.18), rgba(0, 242, 254, 0.12));
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.packBtnDirect:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(232, 97, 42, 0.3), rgba(0, 242, 254, 0.22));
+  transform: translateY(-1px);
+}
+
+.packBtnDirect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.liveBtnDirect {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.liveBtnDirect:hover {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.networksList {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.netCard {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.netFormatBadge {
+  font-size: 9px;
+  color: var(--accent);
+  background: rgba(232, 97, 42, 0.1);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+

@@ -158,13 +158,10 @@ export default function CintilloOverlay({
 
     case 'neon':
       return shell(
-        <>
-          {avatar}
-          <div className={styles.neonBody}>
-            <span className={textCls}>{text}</span>
-            {subtitle && <span className={`${styles.neonSub} ${subCls}`} style={{ background: primary }}>{subtitle}</span>}
-          </div>
-        </>
+        <div className={styles.neonBody}>
+          <span className={textCls}>{text}</span>
+          {subtitle && <span className={`${styles.neonSub} ${subCls}`} style={{ background: primary }}>{subtitle}</span>}
+        </div>
       )
 
     case 'sport':
@@ -192,7 +189,6 @@ export default function CintilloOverlay({
     case 'premium':
       return shell(
         <>
-          {avatar}
           <div className={`${styles.premiumMain} ${styles.animPart2}`} style={{ background: primary }}>
             <span className={tagCls}>{tag}</span>
             <span className={textCls}>{text}</span>

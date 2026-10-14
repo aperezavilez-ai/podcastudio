@@ -59,6 +59,8 @@ import CameraConnectModal from '../components/CameraConnectModal.jsx'
 import SwitcherMasterBar from '../components/SwitcherMasterBar.jsx'
 import { useMicMonitor } from '../hooks/useMicMonitor.js'
 import MultiFormatExportModal from '../components/MultiFormatExportModal.jsx'
+import { useLiveStreaming } from '../hooks/useLiveStreaming.js'
+import LiveStreamModal from '../components/LiveStreamModal.jsx'
 import styles from './Studio.module.css'
 
 const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
@@ -141,6 +143,20 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   } = useRecorder()
   const [showMultiFormatModal, setShowMultiFormatModal] = useState(false)
   const [multiFormatRecording, setMultiFormatRecording] = useState(null)
+  const {
+    destinations: liveDestinations,
+    updateDestination: updateLiveDestination,
+    activeDestinations: liveActiveDestinations,
+    isLive,
+    liveDuration,
+    formatLiveDuration,
+    liveStats,
+    liveError,
+    setLiveError,
+    startLiveStream,
+    stopLiveStream,
+  } = useLiveStreaming()
+  const [showLiveModal, setShowLiveModal] = useState(false)
   const { generateCintillo, generateTeleprompterScript, formatTeleprompterDocument, analyzeEventWithAI, loadingCintillo, loadingScript, loadingProducer, aiConfigured, checkAIStatus } = useAI()
   const { runProducer, shouldAutoRun, markRan } = useAIProducer({ analyzeEventWithAI, aiConfigured })
   const [showAiInfo, setShowAiInfo] = useState(false)
@@ -176,8 +192,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const [camSlot, setCamSlot] = useState(PRIMARY_CAMERA_SLOT)
   const userPickedCameraRef = useRef(false)
   const programCamera = useMemo(() => {
-    if (userPickedCameraRef.current && streams[activeCamera]) return activeCamera
-    return pickPrimaryActiveSlot(streams, masterCameraSlot)
+    if (userPickedCameraRef.current) return masterCameraSlot ?? activeCamera ?? 0
+    return masterCameraSlot ?? pickPrimaryActiveSlot(streams, masterCameraSlot)
   }, [activeCamera, streams, masterCameraSlot])
   const [switchMode, setSwitchMode] = useState('ai')
   const [switchInterval, setSwitchInterval] = useState(8)
@@ -1037,6 +1053,35 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     teleprompter.setRecordingActive(false)
   }
 
+  const handleStartLiveStream = useCallback(async () => {
+    const videoStream = getProgramStream()
+    if (!videoStream) {
+      setLiveError('No se encontró señal de video para emitir.')
+      return
+    }
+    const masterCamStream = streams[masterCameraSlot]
+    const cameraAudioTrack = masterCamStream?.getAudioTracks?.()?.[0]
+    const inputMicStream = getMicStream() || (cameraAudioTrack ? masterCamStream : null)
+
+    let combined = videoStream
+    try {
+      combined = await buildRecordingStream(videoStream, {
+        micStream: inputMicStream,
+        musicEl: getAudioElement(),
+        musicVolume: musicVol,
+        musicPlaying,
+        dspSettings,
+      })
+    } catch {
+      combined = videoStream
+    }
+
+    const success = await startLiveStream(combined)
+    if (success) {
+      setShowLiveModal(false)
+    }
+  }, [getProgramStream, streams, masterCameraSlot, getMicStream, buildRecordingStream, getAudioElement, musicVol, musicPlaying, dspSettings, startLiveStream, setLiveError])
+
   const showCintillo = (preset) => {
     setAutoCintillos(false)
     if (cintillo.active && cintillo.presetId === preset.id) {
@@ -1154,6 +1199,15 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               {aiConfigured ? 'IA activa' : 'IA sin configurar'}
             </button>
           )}
+          <button
+            type="button"
+            className={`${styles.liveHeaderBtn} ${isLive ? styles.liveHeaderBtnOn : ''}`}
+            onClick={() => setShowLiveModal(true)}
+            title={isLive ? 'Emitiendo en vivo - Clic para ver panel' : 'Transmitir en vivo a YouTube, Facebook y TikTok'}
+          >
+            <span className={styles.liveHeaderDot} />
+            <span>{isLive ? `EN VIVO ${formatLiveDuration(liveDuration)}` : 'TRANSMITIR EN VIVO'}</span>
+          </button>
           <button
             type="button"
             className={`${styles.iconBtn} ${styles.mobileOnly}`}
@@ -1301,9 +1355,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     </>
                   )}
                 </div>
-                {streams[programCamera] ? (
+                {(streams[programCamera] || Object.values(streams).some(Boolean)) ? (
                   <ProgramPreview
-                    stream={streams[programCamera]}
+                    stream={streams[programCamera] || null}
                     cameraKey={programCamera}
                     look={look}
                     directorCrop={effectiveCrop}
@@ -1315,7 +1369,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     tertiaryStream={screenLayout === 'triple' ? streams[tripleTertiarySlot] : null}
                     tertiaryLabel={getSlotLabel(tripleTertiarySlot, cameraMeta[tripleTertiarySlot]?.customLabel, false)}
                     primaryLabel={getSlotLabel(programCamera, cameraMeta[programCamera]?.customLabel, true)}
-                    onOpenConnectModal={() => handleOpenConnectModal(screenLayout === 'pip' ? pipCameraSlot : splitSecondarySlot)}
+                    onPromoteSecondaryToMaster={() => handlePromoteToMaster(splitSecondarySlot)}
+                    onPromoteTertiaryToMaster={() => handlePromoteToMaster(tripleTertiarySlot)}
+                    onPromotePipToMaster={() => handlePromoteToMaster(pipCameraSlot)}
+                    onClosePip={() => handleSelectLayout('full')}
                   />
                 ) : (
                   <div className={styles.noSignalViewport}>
@@ -1928,6 +1985,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               <div className={styles.sectionBody}>
                 <PublishPanel
                   onOpenPosts={() => setTab('posts')}
+                  onOpenPackRedes={() => {
+                    if (recordings.length > 0) {
+                      setMultiFormatRecording(recordings[recordings.length - 1])
+                      setShowMultiFormatModal(true)
+                    }
+                  }}
+                  onOpenLiveStream={() => setShowLiveModal(true)}
                   hasRecordings={recordings.length > 0 || cloudRecordings.length > 0}
                   youtubeConnected={youtubeConnected}
                   onYouTubeConnect={integrations?.youtube ? connectYouTubeChannel : null}
@@ -2564,6 +2628,21 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         recording={multiFormatRecording}
         onDownloadOriginal={downloadRecording}
         onDownloadMp4={downloadRecordingMp4}
+      />
+
+      {/* MODAL TRANSMISIÓN EN VIVO MULTI-STREAMING */}
+      <LiveStreamModal
+        open={showLiveModal}
+        onClose={() => setShowLiveModal(false)}
+        destinations={liveDestinations}
+        onUpdateDestination={updateLiveDestination}
+        isLive={isLive}
+        liveDuration={liveDuration}
+        formatLiveDuration={formatLiveDuration}
+        liveStats={liveStats}
+        liveError={liveError}
+        onStartLive={handleStartLiveStream}
+        onStopLive={stopLiveStream}
       />
     </div>
     </LandscapeGate>

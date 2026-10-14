@@ -3,52 +3,87 @@ import styles from './PublishPanel.module.css'
 import { fetchYouTubeStatus, getYouTubeAuthUrl } from '../lib/integrations.js'
 
 const NETWORKS = [
-  { id: 'youtube', label: 'YouTube', icon: 'ti-brand-youtube', color: '#e05050' },
-  { id: 'instagram', label: 'Instagram', icon: 'ti-brand-instagram', color: '#d4537e' },
-  { id: 'tiktok', label: 'TikTok', icon: 'ti-brand-tiktok', color: '#ccc' },
-  { id: 'facebook', label: 'Facebook', icon: 'ti-brand-facebook', color: '#4a90d9' },
+  { id: 'youtube', label: 'YouTube', format: '16:9', icon: 'ti-brand-youtube', color: '#ef4444', desc: 'Full HD Horizontal' },
+  { id: 'tiktok', label: 'TikTok', format: '9:16', icon: 'ti-brand-tiktok', color: '#00f2fe', desc: 'Vertical Auto-Framing' },
+  { id: 'instagram', label: 'Instagram', format: '9:16 · 1:1', icon: 'ti-brand-instagram', color: '#e1306c', desc: 'Reels & Feed' },
+  { id: 'facebook', label: 'Facebook', format: '16:9 · 9:16', icon: 'ti-brand-facebook', color: '#1877f2', desc: 'Watch & Reels' },
 ]
 
-export default function PublishPanel({ onOpenPosts, hasRecordings, youtubeConnected, onYouTubeConnect }) {
+export default function PublishPanel({
+  onOpenPosts,
+  onOpenPackRedes,
+  onOpenLiveStream,
+  hasRecordings,
+  youtubeConnected,
+  onYouTubeConnect,
+}) {
   return (
     <div className={styles.panel}>
       <p className={styles.lead}>
-        Graba tu episodio, descárgalo y súbelo a tus redes. No necesitas Restream ni OBS.
+        Genera el formato ideal para cada red social, descárgalo o transmite en vivo directamente.
       </p>
 
-      <ol className={styles.steps}>
-        <li><i className="ti ti-circle" /> Pulsa <strong>Grabar</strong> en el estudio</li>
-        <li><i className="ti ti-download" /> Descarga en <strong>WebM</strong> o <strong>MP4</strong></li>
-        <li><i className="ti ti-sparkles" /> Genera textos con <strong>Posts IA</strong></li>
-        <li><i className="ti ti-upload" /> Sube el video en cada red</li>
-      </ol>
+      {/* BOTONES DIRECTOS DESTACADOS */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '4px 0' }}>
+        {onOpenPackRedes && (
+          <button
+            type="button"
+            className={styles.packBtnDirect}
+            onClick={onOpenPackRedes}
+            disabled={!hasRecordings}
+            title={hasRecordings ? 'Generar y descargar en 16:9, 9:16 y 1:1' : 'Graba un video primero'}
+          >
+            <i className="ti ti-package" style={{ fontSize: 13 }} />
+            <span>Descargar Pack Redes (16:9, 9:16, 1:1)</span>
+          </button>
+        )}
 
-      <div className={styles.networks}>
+        {onOpenLiveStream && (
+          <button
+            type="button"
+            className={styles.liveBtnDirect}
+            onClick={onOpenLiveStream}
+          >
+            <i className="ti ti-broadcast" style={{ fontSize: 13 }} />
+            <span>Emitir En Vivo (YouTube, FB, TikTok)</span>
+          </button>
+        )}
+      </div>
+
+      <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginTop: 4 }}>
+        Formatos optimizados por plataforma:
+      </div>
+
+      <div className={styles.networksList}>
         {NETWORKS.map(n => (
-          <span key={n.id} className={styles.netChip} style={{ borderColor: `${n.color}40`, color: n.color }}>
-            <i className={`ti ${n.icon}`} />
-            {n.label}
-          </span>
+          <div key={n.id} className={styles.netCard} style={{ borderColor: `${n.color}35` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <i className={`ti ${n.icon}`} style={{ color: n.color, fontSize: 15 }} />
+              <strong style={{ fontSize: 11, color: '#fff' }}>{n.label}</strong>
+              <span className={styles.netFormatBadge}>{n.format}</span>
+            </div>
+            <span style={{ fontSize: 9.5, color: 'var(--text-muted)' }}>{n.desc}</span>
+          </div>
         ))}
       </div>
 
       {onOpenPosts && (
         <button type="button" className={styles.postsBtn} onClick={onOpenPosts}>
-          <i className="ti ti-sparkles" /> Generar posts para redes
+          <i className="ti ti-sparkles" /> Generar copys y hashtags con IA
         </button>
       )}
 
       {hasRecordings && (
         <p className={styles.hint}>
-          <i className="ti ti-check" /> Tienes grabaciones listas. Ve a la pestaña Grabaciones para descargar.
+          <i className="ti ti-check" /> Tienes grabaciones listas para exportar en múltiples formatos.
         </p>
       )}
 
       {onYouTubeConnect && (
         <div className={styles.youtubeRow}>
           <div>
-            <strong><i className="ti ti-brand-youtube" /> YouTube (opcional)</strong>
-            <p>{youtubeConnected ? 'Canal conectado — puedes publicar desde Grabaciones' : 'Conecta tu canal para subir el video automáticamente'}</p>
+            <strong><i className="ti ti-brand-youtube" style={{ color: '#ef4444' }} /> YouTube Direct Upload</strong>
+            <p>{youtubeConnected ? 'Canal conectado — listo para subir videos' : 'Conecta tu cuenta para publicar directamente'}</p>
           </div>
           {!youtubeConnected && (
             <button type="button" className={styles.ytBtn} onClick={onYouTubeConnect}>

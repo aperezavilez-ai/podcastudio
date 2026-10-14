@@ -45,6 +45,9 @@ export default function ProgramPreview({
   tertiaryStream = null,
   tertiaryLabel = '',
   primaryLabel = '',
+  onPromoteSecondaryToMaster = null,
+  onPromoteTertiaryToMaster = null,
+  onPromotePipToMaster = null,
   onOpenConnectModal = null,
 }) {
   const videoRef = useRef(null)
@@ -197,7 +200,11 @@ export default function ProgramPreview({
             )}
             {primaryLabel && <div className={styles.splitBadge}>{primaryLabel}</div>}
           </div>
-          <div className={styles.splitPane}>
+          <div
+            className={`${styles.splitPane} ${styles.clickablePane}`}
+            onClick={onPromoteSecondaryToMaster}
+            title="Clic para mandar a MASTER"
+          >
             {secondaryStream ? (
               <video
                 ref={secondaryVideoRef}
@@ -207,12 +214,15 @@ export default function ProgramPreview({
                 playsInline
               />
             ) : (
-              <div className={styles.emptyPane} onClick={onOpenConnectModal} title="Clic para conectar o cambiar cámara">
+              <div className={styles.emptyPane}>
                 <i className="ti ti-video-plus" style={{ fontSize: 28, color: 'var(--accent, #e8612a)' }} />
                 <span>{secondaryLabel || '2ª Cámara (Sin señal)'}</span>
-                <span className={styles.emptyPaneSub}>Haz clic para conectar o seleccionar cámara</span>
+                <span className={styles.emptyPaneSub}>Haz clic para mandar a MASTER</span>
               </div>
             )}
+            <div className={styles.clickToMasterHint}>
+              <i className="ti ti-arrow-left" /> Clic para Master
+            </div>
             {secondaryLabel && <div className={styles.splitBadge}>{secondaryLabel}</div>}
           </div>
         </div>
@@ -241,7 +251,7 @@ export default function ProgramPreview({
                 }}
               />
             ) : (
-              <div className={styles.emptyPane} onClick={onOpenConnectModal}>
+              <div className={styles.emptyPane}>
                 <i className="ti ti-video-off" style={{ fontSize: 24 }} />
                 <span>{primaryLabel || 'Master (Sin señal)'}</span>
               </div>
@@ -249,7 +259,11 @@ export default function ProgramPreview({
             {primaryLabel && <div className={styles.splitBadge}>{primaryLabel}</div>}
           </div>
           <div className={styles.tripleSidePane}>
-            <div className={styles.tripleSubPane}>
+            <div
+              className={`${styles.tripleSubPane} ${styles.clickablePane}`}
+              onClick={onPromoteSecondaryToMaster}
+              title="Clic para mandar a MASTER"
+            >
               {secondaryStream ? (
                 <video
                   ref={secondaryVideoRef}
@@ -259,14 +273,22 @@ export default function ProgramPreview({
                   playsInline
                 />
               ) : (
-                <div className={styles.emptyPane} onClick={onOpenConnectModal}>
+                <div className={styles.emptyPane}>
                   <i className="ti ti-video-plus" style={{ fontSize: 20 }} />
                   <span style={{ fontSize: 10 }}>{secondaryLabel || '2ª Cámara'}</span>
+                  <span className={styles.emptyPaneSub} style={{ fontSize: 8 }}>Clic para Master</span>
                 </div>
               )}
+              <div className={styles.clickToMasterHint}>
+                <i className="ti ti-arrow-left" /> Master
+              </div>
               {secondaryLabel && <div className={styles.splitBadge}>{secondaryLabel}</div>}
             </div>
-            <div className={styles.tripleSubPane}>
+            <div
+              className={`${styles.tripleSubPane} ${styles.clickablePane}`}
+              onClick={onPromoteTertiaryToMaster}
+              title="Clic para mandar a MASTER"
+            >
               {tertiaryStream ? (
                 <video
                   ref={tertiaryVideoRef}
@@ -276,11 +298,15 @@ export default function ProgramPreview({
                   playsInline
                 />
               ) : (
-                <div className={styles.emptyPane} onClick={onOpenConnectModal}>
+                <div className={styles.emptyPane}>
                   <i className="ti ti-video-plus" style={{ fontSize: 20 }} />
                   <span style={{ fontSize: 10 }}>{tertiaryLabel || '3ª Cámara'}</span>
+                  <span className={styles.emptyPaneSub} style={{ fontSize: 8 }}>Clic para Master</span>
                 </div>
               )}
+              <div className={styles.clickToMasterHint}>
+                <i className="ti ti-arrow-left" /> Master
+              </div>
               {tertiaryLabel && <div className={styles.splitBadge}>{tertiaryLabel}</div>}
             </div>
           </div>
@@ -309,7 +335,11 @@ export default function ProgramPreview({
 
       {/* Recuadro PiP (Picture in Picture) */}
       {layout === 'pip' && (
-        <div className={styles.pipContainer}>
+        <div
+          className={`${styles.pipContainer} ${styles.clickablePane}`}
+          onClick={onPromotePipToMaster}
+          title="Clic para mandar a MASTER"
+        >
           {pipStream ? (
             <video
               ref={pipVideoRef}
@@ -319,18 +349,24 @@ export default function ProgramPreview({
               playsInline
             />
           ) : (
-            <div className={styles.pipPlaceholder} onClick={onOpenConnectModal} title="Clic para asignar o conectar cámara PiP">
+            <div className={styles.pipPlaceholder}>
               <i className="ti ti-video-plus" style={{ fontSize: 22, color: 'var(--accent, #e8612a)' }} />
               <span>{pipLabel || 'PiP'} (Sin señal)</span>
-              <span className={styles.emptyPaneSub}>Clic para asignar cámara</span>
+              <span className={styles.emptyPaneSub}>Clic para mandar a Master</span>
             </div>
           )}
+          <div className={styles.clickToMasterHint}>
+            <i className="ti ti-arrows-exchange" /> Master
+          </div>
           {pipLabel && <div className={styles.pipBadge}>{pipLabel}</div>}
           {onClosePip && (
             <button
               type="button"
               className={styles.pipCloseBtn}
-              onClick={onClosePip}
+              onClick={(e) => {
+                e.stopPropagation()
+                onClosePip()
+              }}
               title="Cerrar recuadro PiP"
             >
               <i className="ti ti-x" />
