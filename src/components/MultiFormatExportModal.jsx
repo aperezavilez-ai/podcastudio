@@ -53,9 +53,9 @@ export default function MultiFormatExportModal({
   }
 
   const handleDownloadFullPack = async () => {
-    setPackProgress({ current: 1, total: 3, label: 'YouTube (16:9)...' })
+    setPackProgress({ current: 1, total: 3, label: 'Facebook / YouTube (16:9 Master)...' })
     try {
-      // 1. YouTube 16:9
+      // 1. Facebook / YouTube 16:9
       onDownloadOriginal(recording)
       await new Promise(r => setTimeout(r, 600))
 

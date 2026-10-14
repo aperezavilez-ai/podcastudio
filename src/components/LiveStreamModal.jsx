@@ -14,7 +14,7 @@ export default function LiveStreamModal({
   onStartLive,
   onStopLive,
 }) {
-  const [activeTab, setActiveTab] = useState('youtube')
+  const [activeTab, setActiveTab] = useState('facebook')
   const [showKeys, setShowKeys] = useState({})
 
   if (!open) return null
@@ -23,7 +23,7 @@ export default function LiveStreamModal({
     setShowKeys(prev => ({ ...prev, [id]: !prev[id] }))
   }
 
-  const currentDest = destinations[activeTab] || destinations.youtube
+  const currentDest = destinations[activeTab] || destinations.facebook || destinations.youtube
   const enabledCount = Object.values(destinations).filter(d => d.enabled && d.streamKey?.trim()).length
 
   return (

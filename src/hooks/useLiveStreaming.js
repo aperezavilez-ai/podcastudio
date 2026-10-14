@@ -1,21 +1,21 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 
 const DEFAULT_DESTINATIONS = {
-  youtube: {
-    id: 'youtube',
-    name: 'YouTube Live',
-    icon: 'ti-brand-youtube',
-    color: '#ef4444',
-    serverUrl: 'rtmp://a.rtmp.youtube.com/live2',
-    streamKey: '',
-    enabled: true,
-  },
   facebook: {
     id: 'facebook',
     name: 'Facebook Live',
     icon: 'ti-brand-facebook',
     color: '#1877f2',
     serverUrl: 'rtmps://live-api-s.facebook.com:443/rtmp/',
+    streamKey: '',
+    enabled: true,
+  },
+  youtube: {
+    id: 'youtube',
+    name: 'YouTube Live',
+    icon: 'ti-brand-youtube',
+    color: '#ef4444',
+    serverUrl: 'rtmp://a.rtmp.youtube.com/live2',
     streamKey: '',
     enabled: false,
   },

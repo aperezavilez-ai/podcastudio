@@ -3,10 +3,10 @@ import styles from './PublishPanel.module.css'
 import { fetchYouTubeStatus, getYouTubeAuthUrl } from '../lib/integrations.js'
 
 const NETWORKS = [
-  { id: 'youtube', label: 'YouTube', format: '16:9', icon: 'ti-brand-youtube', color: '#ef4444', desc: 'Full HD Horizontal' },
-  { id: 'tiktok', label: 'TikTok', format: '9:16', icon: 'ti-brand-tiktok', color: '#00f2fe', desc: 'Vertical Auto-Framing' },
+  { id: 'facebook', label: 'Facebook', format: '16:9 · 9:16', icon: 'ti-brand-facebook', color: '#1877f2', desc: 'Facebook Live · Watch · Reels' },
+  { id: 'youtube', label: 'YouTube', format: '16:9', icon: 'ti-brand-youtube', color: '#ef4444', desc: 'YouTube Live · Canal · Full HD' },
+  { id: 'tiktok', label: 'TikTok', format: '9:16', icon: 'ti-brand-tiktok', color: '#00f2fe', desc: 'TikTok Live · Vertical Reels' },
   { id: 'instagram', label: 'Instagram', format: '9:16 · 1:1', icon: 'ti-brand-instagram', color: '#e1306c', desc: 'Reels & Feed' },
-  { id: 'facebook', label: 'Facebook', format: '16:9 · 9:16', icon: 'ti-brand-facebook', color: '#1877f2', desc: 'Watch & Reels' },
 ]
 
 export default function PublishPanel({
@@ -20,11 +20,22 @@ export default function PublishPanel({
   return (
     <div className={styles.panel}>
       <p className={styles.lead}>
-        Genera el formato ideal para cada red social, descárgalo o transmite en vivo directamente.
+        Genera el formato ideal para cada red social, descárgalo o transmite en vivo directamente a Facebook, YouTube y TikTok.
       </p>
 
       {/* BOTONES DIRECTOS DESTACADOS */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '4px 0' }}>
+        {onOpenLiveStream && (
+          <button
+            type="button"
+            className={styles.liveBtnDirect}
+            onClick={onOpenLiveStream}
+          >
+            <i className="ti ti-broadcast" style={{ fontSize: 13 }} />
+            <span>Transmitir En Vivo (Facebook Live, YouTube, TikTok)</span>
+          </button>
+        )}
+
         {onOpenPackRedes && (
           <button
             type="button"
@@ -35,17 +46,6 @@ export default function PublishPanel({
           >
             <i className="ti ti-package" style={{ fontSize: 13 }} />
             <span>Descargar Pack Redes (16:9, 9:16, 1:1)</span>
-          </button>
-        )}
-
-        {onOpenLiveStream && (
-          <button
-            type="button"
-            className={styles.liveBtnDirect}
-            onClick={onOpenLiveStream}
-          >
-            <i className="ti ti-broadcast" style={{ fontSize: 13 }} />
-            <span>Emitir En Vivo (YouTube, FB, TikTok)</span>
           </button>
         )}
       </div>

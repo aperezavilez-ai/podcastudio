@@ -711,8 +711,20 @@
 }
 
 .socialBtnActive[data-format="16:9"] {
-  background: rgba(239, 68, 68, 0.15) !important;
-  border-color: rgba(239, 68, 68, 0.45) !important;
+  background: rgba(24, 119, 242, 0.16) !important;
+  border-color: rgba(24, 119, 242, 0.5) !important;
+  color: #1877f2 !important;
+}
+
+.socialBtnActive[data-preset="facebook"] {
+  background: rgba(24, 119, 242, 0.18) !important;
+  border-color: rgba(24, 119, 242, 0.6) !important;
+  color: #1877f2 !important;
+}
+
+.socialBtnActive[data-preset="youtube"] {
+  background: rgba(239, 68, 68, 0.16) !important;
+  border-color: rgba(239, 68, 68, 0.5) !important;
   color: #ff6b6b !important;
 }
 
@@ -735,6 +747,117 @@
   padding: 1px 4px;
   background: rgba(255, 255, 255, 0.06);
   border-radius: 3px;
+}
+
+.bottomLiveBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.12);
+  color: #ff8b8b;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.bottomLiveBtn:hover {
+  background: rgba(239, 68, 68, 0.24);
+  border-color: #ef4444;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.35);
+}
+
+.bottomLiveBtnActive {
+  background: rgba(239, 68, 68, 0.3) !important;
+  border-color: #ef4444 !important;
+  color: #fff !important;
+  animation: liveHeaderPulse 1.6s infinite;
+}
+
+.bottomPackBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(232, 97, 42, 0.45);
+  background: rgba(232, 97, 42, 0.12);
+  color: #ffa375;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.bottomPackBtn:hover {
+  background: rgba(232, 97, 42, 0.24);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(232, 97, 42, 0.35);
+}
+
+.liveHeaderBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: rgba(24, 119, 242, 0.14);
+  border: 1px solid rgba(24, 119, 242, 0.45);
+  color: #60a5fa;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.liveHeaderBtn:hover {
+  background: rgba(24, 119, 242, 0.25);
+  border-color: #1877f2;
+  color: #fff;
+  box-shadow: 0 0 12px rgba(24, 119, 242, 0.4);
+}
+
+.liveHeaderBtnActive,
+.liveHeaderBtnOn {
+  background: rgba(239, 68, 68, 0.22) !important;
+  border-color: #ef4444 !important;
+  color: #fff !important;
+  animation: liveHeaderPulse 1.8s infinite;
+}
+
+.liveHeaderDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+  display: inline-block;
+  animation: liveHeaderPulse 1.2s infinite;
+}
+
+@keyframes liveHeaderPulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.slLiveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  animation: liveHeaderPulse 1.2s infinite;
 }
 
 .socialMoreBtn {

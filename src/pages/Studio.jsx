@@ -76,13 +76,23 @@ const CINTILLO_PRESET_MAP = Object.fromEntries(CINTILLO_PRESETS.map(p => [p.id, 
 
 export const SOCIAL_FORMAT_PRESETS = [
   {
+    id: 'facebook',
+    format: '16:9',
+    label: 'Facebook',
+    ratio: '16:9',
+    icon: 'ti ti-brand-facebook',
+    network: 'Facebook Watch · Facebook Live · Páginas FB',
+    desc: 'Formato horizontal Full HD (1920x1080) optimizado para páginas de Facebook, Facebook Watch y Facebook Live.',
+    color: '#1877f2',
+  },
+  {
     id: 'youtube',
     format: '16:9',
-    label: 'YouTube / FB',
+    label: 'YouTube',
     ratio: '16:9',
     icon: 'ti ti-brand-youtube',
-    network: 'YouTube · Facebook Watch · Twitch · Web',
-    desc: 'Formato horizontal Full HD (1920x1080). Ideal para episodios completos, entrevistas en mesa y podcasts en pantallas grandes.',
+    network: 'YouTube · YouTube Live · Canal',
+    desc: 'Formato horizontal Full HD (1920x1080) para directos y episodios completos en YouTube.',
     color: '#ef4444',
   },
   {
@@ -91,8 +101,8 @@ export const SOCIAL_FORMAT_PRESETS = [
     label: 'TikTok / Reels',
     ratio: '9:16',
     icon: 'ti ti-brand-tiktok',
-    network: 'TikTok · Instagram Reels · YouTube Shorts',
-    desc: 'Formato vertical Full HD (1080x1920). Diseñado para teléfonos móviles con encuadre centrado y split vertical arriba/abajo.',
+    network: 'TikTok · Facebook Reels · Instagram Reels · Shorts',
+    desc: 'Formato vertical Full HD (1080x1920) para móviles con encuadre centrado y split vertical.',
     color: '#00f2fe',
   },
   {
@@ -102,7 +112,7 @@ export const SOCIAL_FORMAT_PRESETS = [
     ratio: '1:1',
     icon: 'ti ti-brand-instagram',
     network: 'Instagram Post · Facebook Feed · LinkedIn',
-    desc: 'Formato cuadrado perfecto (1080x1080). Máxima visibilidad y presencia en el feed sin recortes indeseados.',
+    desc: 'Formato cuadrado perfecto (1080x1080). Máxima visibilidad y presencia en el feed.',
     color: '#e1306c',
   },
 ]
@@ -253,6 +263,12 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     try { localStorage.removeItem('podcastudio_cintillo_logo') } catch {}
   }, [])
   const [outputFormat, setOutputFormat] = useState(() => project?.format || '16:9')
+  const [activeSocialPreset, setActiveSocialPreset] = useState(() => {
+    if (project?.socialPreset) return project.socialPreset
+    if (project?.format === '9:16') return 'tiktok'
+    if (project?.format === '1:1') return 'instagram'
+    return 'facebook'
+  })
   const [micMuted, setMicMuted] = useState(false)
   const [showSocialModal, setShowSocialModal] = useState(false)
   const [showStylePicker, setShowStylePicker] = useState(true)
@@ -547,9 +563,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     if (editingCintId === id) setEditingCintId(null)
   }, [editingCintId])
 
-  const handleFormatChange = useCallback((f) => {
+  const handleFormatChange = useCallback((f, presetId) => {
     setOutputFormat(f)
-    const updatedProj = { ...proj, format: f }
+    const effectivePreset = presetId || (f === '9:16' ? 'tiktok' : f === '1:1' ? 'instagram' : 'facebook')
+    setActiveSocialPreset(effectivePreset)
+    const updatedProj = { ...proj, format: f, socialPreset: effectivePreset }
     try {
       localStorage.setItem('podcastudio_project', JSON.stringify(updatedProj))
       if (user?.id) {
@@ -562,8 +580,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   }, [proj, user?.id, onProjectSave])
 
   useEffect(() => {
-    if (project?.format) setOutputFormat(project.format)
-  }, [project?.format])
+    if (project?.format) {
+      setOutputFormat(project.format)
+      if (project.socialPreset) setActiveSocialPreset(project.socialPreset)
+    }
+  }, [project?.format, project?.socialPreset])
 
   useEffect(() => {
     document.documentElement.classList.add('studio-active')
@@ -1291,6 +1312,31 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
             <i className="ti ti-book" />
             <span className={styles.slBtnLabel}>Guía</span>
           </button>
+          <button
+            type="button"
+            className={`${styles.slBtn} ${showLiveModal ? styles.slBtnActive : ''}`}
+            onClick={() => setShowLiveModal(true)}
+            title="Transmisión en Vivo (Facebook Live, YouTube, TikTok)"
+            style={{ position: 'relative' }}
+          >
+            <i className="ti ti-broadcast" style={{ color: isLive ? '#ef4444' : '#1877f2' }} />
+            <span className={styles.slBtnLabel}>En Vivo</span>
+            {isLive && <span className={styles.slLiveDot} />}
+          </button>
+          <button
+            type="button"
+            className={`${styles.slBtn} ${showMultiFormatModal ? styles.slBtnActive : ''}`}
+            onClick={() => {
+              if (recordings.length > 0) {
+                setMultiFormatRecording(recordings[recordings.length - 1])
+              }
+              setShowMultiFormatModal(true)
+            }}
+            title="Descargar Pack Multi-Redes (Facebook, YouTube, TikTok, Instagram)"
+          >
+            <i className="ti ti-world" style={{ color: '#e8612a' }} />
+            <span className={styles.slBtnLabel}>Redes</span>
+          </button>
           {[
             { id: 'posts', icon: 'ti-sparkles', label: 'Posts IA', short: 'Posts' },
             { id: 'recordings', icon: 'ti-files', label: 'Grabaciones', short: 'Clips' },
@@ -1345,13 +1391,18 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     </>
                   ) : proj.format === '1:1' ? (
                     <>
-                      <i className="ti ti-brand-instagram" style={{ color: '#ff5f9e' }} />
+                      <i className="ti ti-brand-instagram" style={{ color: '#e1306c' }} />
                       <span>Instagram Feed (1:1)</span>
+                    </>
+                  ) : activeSocialPreset === 'youtube' ? (
+                    <>
+                      <i className="ti ti-brand-youtube" style={{ color: '#ef4444' }} />
+                      <span>YouTube (16:9)</span>
                     </>
                   ) : (
                     <>
-                      <i className="ti ti-brand-youtube" style={{ color: '#ff4444' }} />
-                      <span>YouTube · FB (16:9)</span>
+                      <i className="ti ti-brand-facebook" style={{ color: '#1877f2' }} />
+                      <span>Facebook (16:9)</span>
                     </>
                   )}
                 </div>
@@ -1646,15 +1697,16 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                 <MicMuteButton muted={micMuted} onToggle={toggleMicMute} />
                 <div className={styles.socialPresets} role="group" aria-label="Formato de video y Redes Sociales">
                   {SOCIAL_FORMAT_PRESETS.map((p) => {
-                    const isActive = proj.format === p.format
+                    const isActive = proj.format === p.format && (p.format !== '16:9' || activeSocialPreset === p.id)
                     return (
                       <button
                         key={p.id}
                         type="button"
                         className={`${styles.socialBtn} ${isActive ? styles.socialBtnActive : ''}`}
                         data-format={p.format}
+                        data-preset={p.id}
                         title={`${p.label} (${p.ratio}): ${p.network}`}
-                        onClick={() => handleFormatChange(p.format)}
+                        onClick={() => handleFormatChange(p.format, p.id)}
                       >
                         <i className={`${p.icon} ${styles.socialBtnIcon}`} style={{ color: isActive ? undefined : p.color }} />
                         <span className={styles.socialBtnLabel}>{p.label}</span>
@@ -1663,6 +1715,31 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     )
                   })}
                 </div>
+                {/* BOTÓN DIRECTO TRANSMISIÓN EN VIVO */}
+                <button
+                  type="button"
+                  className={`${styles.bottomLiveBtn} ${isLive ? styles.bottomLiveBtnActive : ''}`}
+                  onClick={() => setShowLiveModal(true)}
+                  title="Configurar transmisión en vivo (Facebook Live, YouTube, TikTok)"
+                >
+                  <i className="ti ti-broadcast" style={{ color: isLive ? '#fff' : '#1877f2', fontSize: 13 }} />
+                  <span>{isLive ? `● EN VIVO (${formatLiveDuration(liveDuration)})` : '🔴 En Vivo'}</span>
+                </button>
+                {/* BOTÓN DIRECTO PACK REDES MULTI-FORMATO */}
+                <button
+                  type="button"
+                  className={styles.bottomPackBtn}
+                  onClick={() => {
+                    if (recordings.length > 0) {
+                      setMultiFormatRecording(recordings[recordings.length - 1])
+                    }
+                    setShowMultiFormatModal(true)
+                  }}
+                  title="Descargar pack multi-redes (16:9 Facebook/YT, 9:16 TikTok/Reels, 1:1 IG Feed)"
+                >
+                  <i className="ti ti-share" style={{ fontSize: 12, color: 'var(--accent)' }} />
+                  <span>Pack Redes</span>
+                </button>
                 <button
                   type="button"
                   className={styles.socialMoreBtn}
@@ -1670,7 +1747,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   title="Adaptar para cualquier red social (Facebook, Instagram, TikTok, YouTube)"
                 >
                   <i className="ti ti-world" />
-                  <span>Redes</span>
+                  <span>Todos</span>
                 </button>
               </div>
               </div>
@@ -1967,17 +2044,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
             )}
           </div>
 
-          {/* PUBLICAR */}
+          {/* TRANSMISIÓN Y REDES SOCIALES */}
           <div className={styles.prSection}>
             <button
               type="button"
               className={`${styles.sectionToggle} ${openSections.publish ? styles.sectionToggleActive : ''}`}
               onClick={() => toggleSection('publish')}
             >
-              <i className={`ti ti-brand-youtube ${styles.sectionIcon}`} />
-              <span className={styles.sectionToggleTitle}>Publicar episodio</span>
+              <i className={`ti ti-broadcast ${styles.sectionIcon}`} style={{ color: isLive ? '#ef4444' : '#1877f2' }} />
+              <span className={styles.sectionToggleTitle}>Transmisión y Redes Sociales</span>
               <span className={styles.sectionToggleBadge}>
-                {youtubeConnected ? 'YouTube listo' : 'Exportar'}
+                {isLive ? '● En Vivo' : 'FB · YouTube · TikTok'}
               </span>
               <i className={`ti ti-chevron-${openSections.publish ? 'up' : 'down'} ${styles.sectionChevron}`} />
             </button>
