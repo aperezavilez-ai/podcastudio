@@ -341,6 +341,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     return 'facebook'
   })
   const [micMuted, setMicMuted] = useState(false)
+  const [monitorHeadphones, setMonitorHeadphones] = useState(false)
   const [selectedNetworks, setSelectedNetworks] = useState(() => {
     try {
       const saved = localStorage.getItem('podcastudio_selected_networks')
@@ -1089,7 +1090,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     })
   }, [micMuted, micLabel, getMicStream])
 
-  useMicMonitor(getMicStream(), micMuted)
+  useMicMonitor(getMicStream(), !monitorHeadphones || micMuted)
 
   const defaultScript = proj.teleprompterScript || [
     proj.episodeTitle && `Hoy hablamos de: ${proj.episodeTitle}`,
@@ -2631,6 +2632,30 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   <span style={{ fontSize: 10, color: 'var(--text-muted)', minWidth: 32 }}>
                     {micLevel > 0 ? `-${Math.round(40 - micLevel * 0.32)} dB` : '–∞'}
                   </span>
+                </div>
+                <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <i className="ti ti-headphones" style={{ color: monitorHeadphones ? 'var(--accent)' : 'var(--text-muted)', fontSize: 14 }} />
+                    <span style={{ fontSize: 11, color: '#e2e8f0' }}>Monitoreo (usar con auriculares)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMonitorHeadphones(prev => !prev)}
+                    title={monitorHeadphones ? 'Desactivar monitoreo en vivo' : 'Activar solo con auriculares para evitar eco'}
+                    style={{
+                      padding: '3px 8px',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      borderRadius: 4,
+                      border: '1px solid',
+                      borderColor: monitorHeadphones ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
+                      background: monitorHeadphones ? 'rgba(99,102,241,0.2)' : 'transparent',
+                      color: monitorHeadphones ? 'var(--accent)' : 'var(--text-muted)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {monitorHeadphones ? 'EN VIVO' : 'OFF'}
+                  </button>
                 </div>
                 <AudioDspPanel
                   settings={dspSettings}

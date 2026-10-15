@@ -115,6 +115,8 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
     video.crossOrigin = 'anonymous'
     video.playsInline = true
     video.preload = 'auto'
+    video.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;'
+    document.body.appendChild(video)
     const blobUrl = sourceMedia instanceof Blob ? URL.createObjectURL(sourceMedia) : sourceMedia
     video.src = blobUrl
 

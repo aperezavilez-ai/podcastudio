@@ -63,51 +63,33 @@ export default function MultiFormatExportModal({
   }
 
   const handleDownloadSingle = async (preset) => {
-    if (preset.baseFormat === '16:9' || preset.key === '16:9') {
-      // Descarga master con nombre correspondiente
-      if (preset.filenameSuffix && recording.name) {
-        const fn = `${recording.name}_${preset.filenameSuffix}.${recording.ext || 'webm'}`
-        const url = URL.createObjectURL(recording.blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = fn
-        a.click()
-        URL.revokeObjectURL(url)
-      } else {
-        onDownloadOriginal(recording)
-      }
-      return
-    }
-
     setConvertingKey(preset.key)
     setProgress(0)
     try {
-      let finalBlob
-      if (preset.baseFormat === '16:9' || preset.key === '16:9') {
-        finalBlob = recording.blob
-      } else {
-        finalBlob = await convertVideoToFormat(recording.blob, preset.key, {
+      const { finalizeUniversalMp4 } = await import('../utils/exportVideo.js')
+      let outputBlob = null
+      try {
+        outputBlob = await finalizeUniversalMp4(recording.blob, {
+          format: preset.baseFormat || preset.key,
           mode: cropMode,
-          duration: recording.duration,
           onProgress: (pct) => setProgress(pct),
         })
-      }
-      if (!finalBlob) throw new Error('No se generó el video')
-
-      let outputBlob = finalBlob
-      let ext = 'mp4'
-      if (finalBlob.type.includes('webm') || (!finalBlob.type.includes('mp4') && recording.ext === 'webm')) {
-        try {
-          const { convertWebmToMp4 } = await import('../utils/exportVideo.js')
-          outputBlob = await convertWebmToMp4(finalBlob, (pct) => setProgress(Math.min(99, pct)))
-          ext = 'mp4'
-        } catch (e) {
-          console.warn('MP4 fallback:', e)
-          ext = finalBlob.type.includes('mp4') ? 'mp4' : 'webm'
+      } catch (ffmpegErr) {
+        console.warn('FFmpeg export fallback to canvas:', ffmpegErr)
+        if (preset.baseFormat === '16:9' || preset.key === '16:9') {
+          outputBlob = recording.blob
+        } else {
+          outputBlob = await convertVideoToFormat(recording.blob, preset.key, {
+            mode: cropMode,
+            duration: recording.duration,
+            onProgress: (pct) => setProgress(pct),
+          })
         }
       }
 
-      const filename = buildFormatFilename(recording.name, preset.key, ext)
+      if (!outputBlob) throw new Error('No se generó el video')
+
+      const filename = buildFormatFilename(recording.name, preset.key, 'mp4')
       const url = URL.createObjectURL(outputBlob)
       const a = document.createElement('a')
       a.href = url
@@ -127,6 +109,7 @@ export default function MultiFormatExportModal({
     const presetsToExport = SOCIAL_PRESETS_EXPORT.filter(p => selectedKeys.includes(p.key))
     if (presetsToExport.length === 0) return
 
+    const { finalizeUniversalMp4 } = await import('../utils/exportVideo.js')
     const total = presetsToExport.length
     for (let i = 0; i < total; i++) {
       const preset = presetsToExport[i]
@@ -134,32 +117,28 @@ export default function MultiFormatExportModal({
       setProgress(0)
 
       try {
-        let rawBlob
-        if (preset.baseFormat === '16:9' || preset.key === '16:9') {
-          rawBlob = recording.blob
-        } else {
-          rawBlob = await convertVideoToFormat(recording.blob, preset.key, {
+        let outputBlob = null
+        try {
+          outputBlob = await finalizeUniversalMp4(recording.blob, {
+            format: preset.baseFormat || preset.key,
             mode: cropMode,
-            duration: recording.duration,
             onProgress: (pct) => setProgress(pct),
           })
+        } catch (ffmpegErr) {
+          console.warn('FFmpeg pack export fallback to canvas:', ffmpegErr)
+          if (preset.baseFormat === '16:9' || preset.key === '16:9') {
+            outputBlob = recording.blob
+          } else {
+            outputBlob = await convertVideoToFormat(recording.blob, preset.key, {
+              mode: cropMode,
+              duration: recording.duration,
+              onProgress: (pct) => setProgress(pct),
+            })
+          }
         }
 
-        if (rawBlob) {
-          let outputBlob = rawBlob
-          let ext = 'mp4'
-          if (rawBlob.type.includes('webm') || (!rawBlob.type.includes('mp4') && recording.ext === 'webm')) {
-            try {
-              const { convertWebmToMp4 } = await import('../utils/exportVideo.js')
-              outputBlob = await convertWebmToMp4(rawBlob, (pct) => setProgress(Math.min(99, pct)))
-              ext = 'mp4'
-            } catch (e) {
-              console.warn('MP4 fallback:', e)
-              ext = rawBlob.type.includes('mp4') ? 'mp4' : 'webm'
-            }
-          }
-
-          const fn = buildFormatFilename(recording.name, preset.key, ext)
+        if (outputBlob) {
+          const fn = buildFormatFilename(recording.name, preset.key, 'mp4')
           const u = URL.createObjectURL(outputBlob)
           const a = document.createElement('a')
           a.href = u

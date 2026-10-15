@@ -191,24 +191,23 @@ export function useRecorder() {
   }, [])
 
   const downloadRecordingMp4 = useCallback(async (rec) => {
-    if (rec.ext === 'mp4' || isMp4Recording(rec.mimeType)) {
-      downloadRecording({ ...rec, name: rec.name.replace(/\.webm$/i, '.mp4') })
-      return
-    }
     setConverting(true)
     setConvertProgress(0)
     try {
-      const { convertWebmToMp4 } = await import('../utils/exportVideo.js')
-      const mp4Blob = await convertWebmToMp4(rec.blob, setConvertProgress)
+      const { finalizeUniversalMp4 } = await import('../utils/exportVideo.js')
+      const mp4Blob = await finalizeUniversalMp4(rec.blob, {
+        format: 'original',
+        onProgress: setConvertProgress,
+      })
       const url = URL.createObjectURL(mp4Blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = rec.name.replace(/\.webm$/i, '.mp4')
+      a.download = rec.name.replace(/\.(webm|mp4)$/i, '') + '.mp4'
       a.click()
       URL.revokeObjectURL(url)
     } catch (e) {
-      console.error('MP4 conversion error:', e)
-      alert('No se pudo convertir a MP4. Descarga el archivo WebM.')
+      console.warn('MP4 finalization fallback to raw download:', e)
+      downloadRecording({ ...rec, name: rec.name.replace(/\.webm$/i, '.mp4') })
     } finally {
       setConverting(false)
       setConvertProgress(0)
