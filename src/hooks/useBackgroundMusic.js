@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-export function useBackgroundMusic(tracks, initialVolume = 30) {
+export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } = {}) {
   const audioRef = useRef(null)
   const playingRef = useRef(false)
   const [trackIndex, setTrackIndex] = useState(0)
@@ -8,6 +8,29 @@ export function useBackgroundMusic(tracks, initialVolume = 30) {
   const [volume, setVolume] = useState(initialVolume)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [duckingEnabled, setDuckingEnabledState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_audio_ducking')
+      return saved !== null ? saved === 'true' : true
+    } catch {
+      return true
+    }
+  })
+
+  const isDuckingRef = useRef(false)
+  const duckReleaseTimerRef = useRef(null)
+
+  const setDuckingEnabled = useCallback((enabledOrFn) => {
+    setDuckingEnabledState(prev => {
+      const next = typeof enabledOrFn === 'function' ? enabledOrFn(prev) : enabledOrFn
+      try { localStorage.setItem('podcastudio_audio_ducking', String(next)) } catch {}
+      return next
+    })
+  }, [])
+
+  const toggleDucking = useCallback(() => {
+    setDuckingEnabled(prev => !prev)
+  }, [setDuckingEnabled])
 
   playingRef.current = playing
 
@@ -22,6 +45,36 @@ export function useBackgroundMusic(tracks, initialVolume = 30) {
       audioRef.current = null
     }
   }, [])
+
+  // Auto-Ducking reactivo al nivel de voz del micrófono
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    const baseVol = Math.max(0, Math.min(1, volume / 100))
+
+    if (!duckingEnabled || !playing) {
+      audio.volume = baseVol
+      return
+    }
+
+    const speaking = micLevel > 14
+    if (speaking) {
+      clearTimeout(duckReleaseTimerRef.current)
+      isDuckingRef.current = true
+      // Atenuación suave a un 25% del volumen normal (sensación broadcast)
+      audio.volume = baseVol * 0.25
+    } else if (isDuckingRef.current) {
+      clearTimeout(duckReleaseTimerRef.current)
+      duckReleaseTimerRef.current = setTimeout(() => {
+        isDuckingRef.current = false
+        if (audioRef.current) {
+          audioRef.current.volume = baseVol
+        }
+      }, 1000)
+    } else {
+      audio.volume = baseVol
+    }
+  }, [micLevel, volume, duckingEnabled, playing])
 
   useEffect(() => {
     const audio = audioRef.current
@@ -114,6 +167,9 @@ export function useBackgroundMusic(tracks, initialVolume = 30) {
     setPlaying,
     volume,
     setVolume,
+    duckingEnabled,
+    setDuckingEnabled,
+    toggleDucking,
     loading,
     error,
     currentTrack: tracks[trackIndex],

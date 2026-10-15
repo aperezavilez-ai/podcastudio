@@ -153,7 +153,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const {
     recording, duration, recordings, converting, convertProgress,
     recoveredSession, restoreRecoveredSession, dismissRecoveredSession,
-    startRecording, stopRecording, downloadRecording, downloadRecordingMp4, formatDuration,
+    startRecording, stopRecording, downloadRecording, downloadRecordingMp4, downloadCleanVoice, formatDuration,
   } = useRecorder()
   const [showMultiFormatModal, setShowMultiFormatModal] = useState(false)
   const [multiFormatRecording, setMultiFormatRecording] = useState(null)
@@ -202,9 +202,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const {
     trackIndex: musicTrack, playing: musicPlaying, toggle: toggleMusic,
     nextTrack: nextMusicTrack, volume: musicVol, setVolume: setMusicVol,
+    duckingEnabled: musicDuckingEnabled, toggleDucking: toggleMusicDucking,
     loading: musicLoading, error: musicError, currentTrack: currentMusic,
     getAudioElement, selectTrackById, setPlaying: setMusicPlaying,
-  } = useBackgroundMusic(MUSIC_TRACKS, 30)
+  } = useBackgroundMusic(MUSIC_TRACKS, 30, { micLevel })
   const { playSfx, playingSfxId, sfxError } = useSoundEffect()
   const [countdown, setCountdown] = useState(null)
   const [preparingRecord, setPreparingRecord] = useState(false)
@@ -1414,10 +1415,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         musicPlaying,
         dspSettings,
       })
-      startRecording(combined, { quality: recordQuality })
+      startRecording(combined, { quality: recordQuality, cleanVoiceStream: inputMicStream })
     } catch (e) {
       console.error('Recording mix error:', e)
-      startRecording(videoStream, { quality: recordQuality })
+      startRecording(videoStream, { quality: recordQuality, cleanVoiceStream: inputMicStream })
     } finally {
       setPreparingRecord(false)
     }
@@ -3237,6 +3238,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   error={musicError}
                   volume={musicVol}
                   onVolumeChange={setMusicVol}
+                  duckingEnabled={musicDuckingEnabled}
+                  onToggleDucking={toggleMusicDucking}
                   onSelectTrack={(id, autoPlay) => selectTrackById(id, autoPlay)}
                   onTogglePlay={toggleMusic}
                   onPlaySfx={playSfx}
@@ -3307,6 +3310,19 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                 <i className={`ti ${converting ? 'ti-loader' : 'ti-download'}`} style={{ fontSize: 13, color: 'var(--text-secondary)' }} />
                 <span>{converting ? `Exportando MP4 (${convertProgress}%)...` : 'Descargar Master (MP4)'}</span>
               </button>
+
+              {recordings.length > 0 && recordings[recordings.length - 1]?.hasCleanVoice && (
+                <button
+                  type="button"
+                  className={styles.recActionBtn}
+                  onClick={() => downloadCleanVoice(recordings[recordings.length - 1])}
+                  title="Descargar pista aislada de voz limpia (sin música ni efectos) para edición profesional"
+                  style={{ borderColor: 'rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.1)', color: '#34d399' }}
+                >
+                  <i className="ti ti-microphone" style={{ fontSize: 13, color: '#34d399' }} />
+                  <span>Voz Limpia (ISO)</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -3513,6 +3529,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         selectedNetworks={selectedNetworks}
         onDownloadOriginal={downloadRecording}
         onDownloadMp4={downloadRecordingMp4}
+        onDownloadCleanVoice={downloadCleanVoice}
         onOpenPublish={() => {
           setTab('posts')
           closeControlsPanel()

@@ -13,6 +13,7 @@ export default function MultiFormatExportModal({
   selectedNetworks = ['facebook', 'youtube', 'tiktok', 'instagram'],
   onDownloadOriginal,
   onDownloadMp4,
+  onDownloadCleanVoice,
   onOpenPublish,
 }) {
   const [cropMode, setCropMode] = useState('smart-crop') // 'smart-crop' | 'blur-fill'
@@ -371,6 +372,20 @@ export default function MultiFormatExportModal({
               >
                 <i className="ti ti-file-export" />
                 Descargar Master MP4
+              </button>
+            )}
+
+            {recording?.hasCleanVoice && onDownloadCleanVoice && (
+              <button
+                type="button"
+                className={styles.mp4Btn}
+                onClick={() => onDownloadCleanVoice(recording)}
+                disabled={isBusy}
+                style={{ borderColor: 'rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.1)', color: '#34d399' }}
+                title="Descargar pista de audio aislada de voz limpia sin música ni efectos de fondo"
+              >
+                <i className="ti ti-microphone" />
+                Voz Limpia (ISO)
               </button>
             )}
 

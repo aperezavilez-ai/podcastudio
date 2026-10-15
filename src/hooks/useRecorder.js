@@ -21,7 +21,9 @@ export function useRecorder() {
   const [recoveredSession, setRecoveredSession] = useState(null)
 
   const mediaRecorderRef = useRef(null)
+  const voiceRecorderRef = useRef(null)
   const chunksRef = useRef([])
+  const voiceChunksRef = useRef([])
   const timerRef = useRef(null)
   const mimeTypeRef = useRef('video/webm')
   const durationRef = useRef(0)
@@ -76,6 +78,7 @@ export function useRecorder() {
   const startRecording = useCallback((stream, options = {}) => {
     if (!stream) return
     chunksRef.current = []
+    voiceChunksRef.current = []
     chunkIndexRef.current = 0
     const sessionId = 'rec_' + Date.now()
     sessionIdRef.current = sessionId
@@ -92,6 +95,26 @@ export function useRecorder() {
     // Inicializar sesión protegida en base de datos local
     startVaultSession(sessionId, { mimeType, ext, name: recName, quality })
 
+    // Iniciar grabador de voz limpia aislado si se proporciona micStream
+    const cleanVoiceStream = options.cleanVoiceStream
+    if (cleanVoiceStream && cleanVoiceStream.getAudioTracks().length > 0) {
+      try {
+        const audioMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/mp4')
+            ? 'audio/mp4'
+            : ''
+        const vr = audioMime ? new MediaRecorder(cleanVoiceStream, { mimeType: audioMime }) : new MediaRecorder(cleanVoiceStream)
+        vr.ondataavailable = e => {
+          if (e.data && e.data.size > 0) voiceChunksRef.current.push(e.data)
+        }
+        vr.start(1000)
+        voiceRecorderRef.current = vr
+      } catch (err) {
+        console.warn('No se pudo inicializar grabador de voz limpia:', err)
+      }
+    }
+
     try {
       const mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond, audioBitsPerSecond: 320000 })
       
@@ -107,6 +130,14 @@ export function useRecorder() {
         finalizeVaultSession(sessionId, durationRef.current)
         const blob = new Blob(chunksRef.current, { type: mimeType })
         const url = URL.createObjectURL(blob)
+
+        let cleanVoiceBlob = null
+        let cleanVoiceUrl = null
+        if (voiceChunksRef.current && voiceChunksRef.current.length > 0) {
+          cleanVoiceBlob = new Blob(voiceChunksRef.current, { type: 'audio/webm' })
+          cleanVoiceUrl = URL.createObjectURL(cleanVoiceBlob)
+        }
+
         const rec = {
           sessionId,
           url,
@@ -117,6 +148,9 @@ export function useRecorder() {
           ext,
           quality,
           duration: durationRef.current,
+          cleanVoiceBlob,
+          cleanVoiceUrl,
+          hasCleanVoice: Boolean(cleanVoiceBlob),
         }
         setRecordings(prev => [...prev, rec])
         onCompleteRef.current?.(rec)
@@ -141,6 +175,9 @@ export function useRecorder() {
     if (typeof onComplete === 'function') onCompleteRef.current = onComplete
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
+    }
+    if (voiceRecorderRef.current && voiceRecorderRef.current.state !== 'inactive') {
+      voiceRecorderRef.current.stop()
     }
     clearInterval(timerRef.current)
     setRecording(false)
@@ -185,6 +222,14 @@ export function useRecorder() {
     return `${h}:${m}:${s}`
   }
 
+  const downloadCleanVoice = useCallback((rec) => {
+    if (!rec?.cleanVoiceUrl) return
+    const a = document.createElement('a')
+    a.href = rec.cleanVoiceUrl
+    a.download = rec.name.replace(/\.(mp4|webm)$/i, '-VOZ-LIMPIA.webm')
+    a.click()
+  }, [])
+
   return {
     recording,
     duration,
@@ -198,6 +243,7 @@ export function useRecorder() {
     stopRecording,
     downloadRecording,
     downloadRecordingMp4,
+    downloadCleanVoice,
     formatDuration,
   }
 }

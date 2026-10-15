@@ -11,6 +11,8 @@ export default function MusicBank({
   error,
   volume,
   onVolumeChange,
+  duckingEnabled = true,
+  onToggleDucking,
   onSelectTrack,
   onTogglePlay,
   onPlaySfx,
@@ -116,6 +118,34 @@ export default function MusicBank({
             <i className="ti ti-volume" />
             <input type="range" min={0} max={100} step={1} value={volume} onChange={(e) => onVolumeChange(+e.target.value)} />
             <span>{volume}%</span>
+          </div>
+
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <button
+              type="button"
+              onClick={onToggleDucking}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '5px 10px',
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 600,
+                border: duckingEnabled ? '1px solid rgba(232, 97, 42, 0.4)' : '1px solid var(--border, #2a2a35)',
+                background: duckingEnabled ? 'rgba(232, 97, 42, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                color: duckingEnabled ? '#f97316' : 'var(--text-secondary, #94a3b8)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              title="Atenúa la música automáticamente mientras el conductor habla para que la voz se entienda nítida"
+            >
+              <i className={`ti ${duckingEnabled ? 'ti-wand' : 'ti-circle-off'}`} />
+              <span>Auto-Ducking de voz {duckingEnabled ? 'ON (-12dB)' : 'OFF'}</span>
+            </button>
+            <span style={{ fontSize: 10, color: 'var(--text-muted, #64748b)' }}>
+              {duckingEnabled ? 'Baja con la voz' : 'Volumen fijo'}
+            </span>
           </div>
         </>
       )}
