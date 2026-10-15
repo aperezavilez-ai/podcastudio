@@ -140,13 +140,14 @@ export default function ProgramPreview({
   }, [look, directorCrop?.filter])
 
   function getCropStyle(crop, isPushIn = false) {
-    if (!crop) return {}
-    const z = crop.zoom > 1.02 ? crop.zoom : 1
-    const ox = `${(crop.focusX ?? 0.5) * 100}%`
-    const oy = `${(crop.focusY ?? 0.42) * 100}%`
+    const z = crop?.zoom > 1.02 ? crop.zoom : 1
+    const fx = (crop?.focusX ?? 0.5) * 100
+    const fy = (crop?.focusY ?? 0.42) * 100
     return {
+      objectFit: 'cover',
+      objectPosition: `${fx}% ${fy}%`,
       transform: z > 1 ? `scale(${z})` : undefined,
-      transformOrigin: `${ox} ${oy}`,
+      transformOrigin: `${fx}% ${fy}%`,
       transition: isPushIn
         ? 'transform 7s cubic-bezier(0.2, 0.7, 0.2, 1), transform-origin 1.2s ease-out'
         : 'transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), transform-origin 0.4s cubic-bezier(0.25, 1, 0.5, 1)',
