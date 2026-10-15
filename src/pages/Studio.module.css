@@ -2511,4 +2511,107 @@
   background: currentColor;
 }
 
+/* WATERMARK PERMANENTE DEL CANAL SOBRE MONITOR MASTER */
+.projectWatermark {
+  position: absolute;
+  z-index: 28;
+  pointer-events: none;
+  max-width: 130px;
+  max-height: 65px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.75));
+  animation: fadeInWatermark 0.5s ease;
+}
+
+.watermark_tl {
+  top: 18px;
+  left: 20px;
+}
+
+.watermark_tr {
+  top: 18px;
+  right: 20px;
+}
+
+.projectWatermark img {
+  max-width: 120px;
+  max-height: 55px;
+  object-fit: contain;
+}
+
+@keyframes fadeInWatermark {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* SECCIÓN CONFIGURACIÓN LOGO DEL PROYECTO (MOSCA) */
+.projectWatermarkSection {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  margin-bottom: 12px;
+}
+
+.watermarkPosRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.watermarkPosBtns {
+  display: flex;
+  gap: 6px;
+}
+
+.watermarkPosBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.watermarkPosBtn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.watermarkPosBtnActive {
+  background: var(--accent, #e8612a) !important;
+  border-color: var(--accent, #e8612a) !important;
+  color: #fff !important;
+}
+
+.projectLogoThumb {
+  width: 50px;
+  height: 50px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.projectLogoThumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 

@@ -117,7 +117,7 @@ export function drawCintillo(ctx, w, h, overlay, motion = null) {
 
   const tagH = 28
   const baseContentH = subtitle ? 66 : 46
-  const barH = Math.max(baseContentH, hasLogo ? logoSize + 16 : 46)
+  const barH = Math.max(baseContentH + (isSocials ? 28 : 0), hasLogo ? logoSize + 16 : 46)
   const totalH = tagH + barH + 4
 
   const { x, y } = getBoxPosition(position, w, h, barW, totalH)
@@ -195,29 +195,19 @@ export function drawCintillo(ctx, w, h, overlay, motion = null) {
   const contentY = y + tagH + 12
   let textStartX = x + 20
 
-  // Dibujar Logotipo si está disponible
+  // Dibujar Logotipo flotante si está disponible (sin caja de fondo plano)
   if (hasLogo) {
     const logoX = x + 18
     const logoY = contentY
-    const lSize = logoSize - 10
+    const lSize = logoSize - 8
 
     ctx.save()
-    // Contenedor 3D con sombra
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)'
-    ctx.shadowBlur = 8
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.06)'
-    roundRectPath(ctx, logoX, logoY, lSize, lSize, 10)
-    ctx.fill()
-
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)'
-    ctx.lineWidth = 1
-    roundRectPath(ctx, logoX, logoY, lSize, lSize, 10)
-    ctx.stroke()
-
-    // Imagen del logo recortada con bordes redondeados
-    roundRectPath(ctx, logoX + 2, logoY + 2, lSize - 4, lSize - 4, 8)
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)'
+    ctx.shadowBlur = 10
+    ctx.shadowOffsetY = 3
+    roundRectPath(ctx, logoX, logoY, lSize, lSize, 8)
     ctx.clip()
-    ctx.drawImage(overlay.logoImage, logoX + 2, logoY + 2, lSize - 4, lSize - 4)
+    ctx.drawImage(overlay.logoImage, logoX, logoY, lSize, lSize)
     ctx.restore()
 
     textStartX = logoX + lSize + 14
@@ -234,13 +224,7 @@ export function drawCintillo(ctx, w, h, overlay, motion = null) {
   ctx.fillStyle = '#ffffff'
   ctx.font = '700 24px "Segoe UI", system-ui, sans-serif'
   ctx.textBaseline = 'top'
-
-  // Si es sección de redes sociales y tiene múltiples redes en formato clave:valor o badges
-  if (isSocials && (text.includes('@') || text.includes(' '))) {
-    ctx.fillText(text, textStartX, contentY - 2, textAvailableW)
-  } else {
-    ctx.fillText(text, textStartX, contentY - 2, textAvailableW)
-  }
+  ctx.fillText(text, textStartX, contentY - 2, textAvailableW)
   ctx.restore()
 
   // 8. Subtítulo (si existe)
@@ -249,6 +233,38 @@ export function drawCintillo(ctx, w, h, overlay, motion = null) {
     ctx.font = '500 16px "Segoe UI", system-ui, sans-serif'
     ctx.textBaseline = 'top'
     ctx.fillText(subtitle, textStartX, contentY + 28, textAvailableW)
+  }
+
+  // Badges estilizados cuando es REDES (YouTube, Spotify, Apple, Instagram, TikTok, Facebook)
+  if (isSocials) {
+    const badgeY = contentY + (subtitle ? 54 : 34)
+    const badges = [
+      { color: '#FF0000', label: 'YT' },
+      { color: '#1ED760', label: 'SP' },
+      { color: '#8727FF', label: 'AP' },
+      { color: '#E1306C', label: 'IG' },
+      { color: '#010101', border: '#25F4EE', label: 'TK' },
+      { color: '#1877F2', label: 'FB' },
+    ]
+    let bx = textStartX
+    for (const b of badges) {
+      ctx.fillStyle = b.color
+      roundRectPath(ctx, bx, badgeY, 26, 17, 4)
+      ctx.fill()
+      if (b.border) {
+        ctx.strokeStyle = b.border
+        ctx.lineWidth = 1
+        roundRectPath(ctx, bx, badgeY, 26, 17, 4)
+        ctx.stroke()
+      }
+      ctx.fillStyle = '#FFFFFF'
+      ctx.font = 'bold 9px "Segoe UI", system-ui, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(b.label, bx + 13, badgeY + 8.5)
+      bx += 31
+    }
+    ctx.textAlign = 'start'
   }
 
   // 9. Destello especular de cristal en el borde superior (Gleam)
@@ -268,44 +284,50 @@ export function drawCintillo(ctx, w, h, overlay, motion = null) {
 export function drawLogo(ctx, w, h, overlay) {
   if (!overlay?.podcastName && !overlay?.logoImage?.complete) return
 
-  const name = overlay.podcastName || 'Podcast'
   const position = overlay.position || 'tr'
-  const logoSize = 42
+  const isVertical = h > w
+  const m = isVertical ? 24 : 36
 
   ctx.save()
-  ctx.font = '600 20px "Segoe UI", system-ui, sans-serif'
+
+  if (overlay.logoImage?.complete && overlay.logoImage.naturalWidth > 0) {
+    const naturalW = overlay.logoImage.naturalWidth
+    const naturalH = overlay.logoImage.naturalHeight
+    const targetH = isVertical ? 46 : 56
+    const targetW = targetH * (naturalW / naturalH)
+
+    const x = position === 'tl' ? m : (w - targetW - m)
+    const y = m
+
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.75)'
+    ctx.shadowBlur = 12
+    ctx.shadowOffsetY = 4
+    ctx.drawImage(overlay.logoImage, x, y, targetW, targetH)
+    ctx.restore()
+    return
+  }
+
+  const name = overlay.podcastName || 'Podcast'
+  ctx.font = '600 18px "Segoe UI", system-ui, sans-serif'
   const textW = ctx.measureText(name).width
   const padX = 14
-  const boxW = (overlay.logoImage?.complete ? logoSize + 12 : 0) + textW + padX * 2 + 4
-  const boxH = logoSize + 16
+  const boxW = textW + padX * 2
+  const boxH = 36
   const { x, y } = getLogoPosition(position, w, h, boxW, boxH)
 
-  // Fondo glassmorphism sutil
-  ctx.fillStyle = 'rgba(10, 14, 24, 0.68)'
-  roundRectPath(ctx, x, y, boxW, boxH, 10)
+  ctx.fillStyle = 'rgba(10, 14, 24, 0.65)'
+  roundRectPath(ctx, x, y, boxW, boxH, 8)
   ctx.fill()
 
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)'
   ctx.lineWidth = 1
-  roundRectPath(ctx, x, y, boxW, boxH, 10)
+  roundRectPath(ctx, x, y, boxW, boxH, 8)
   ctx.stroke()
-
-  let textX = x + padX
-  if (overlay.logoImage?.complete) {
-    const ix = x + padX
-    const iy = y + (boxH - logoSize) / 2
-    ctx.save()
-    roundRectPath(ctx, ix, iy, logoSize, logoSize, 8)
-    ctx.clip()
-    ctx.drawImage(overlay.logoImage, ix, iy, logoSize, logoSize)
-    ctx.restore()
-    textX = ix + logoSize + 10
-  }
 
   ctx.fillStyle = '#ffffff'
   ctx.textBaseline = 'middle'
   ctx.shadowColor = 'rgba(0, 0, 0, 0.6)'
   ctx.shadowBlur = 4
-  ctx.fillText(name, textX, y + boxH / 2)
+  ctx.fillText(name, x + padX, y + boxH / 2)
   ctx.restore()
 }

@@ -61,7 +61,7 @@ export function useAIDirector({
   const detectorRef = useRef(null)
   const videosRef = useRef({})
   const lastSwitchRef = useRef(0)
-  const cycleRef = useRef({ 0: null, 2: null })
+  const cycleRef = useRef({ 0: null, 1: null, 2: null })
   const appliedCropRef = useRef(emptyCrops())
   const isAnalyzingRef = useRef(false)
   const statusRef = useRef('')
@@ -235,15 +235,13 @@ export function useAIDirector({
         faces[slot] = { fx, fy, faceScore, boundingBox, videoWidth: vw, videoHeight: vh }
       }
 
-      // Switcheo por actividad vocal y presencia de rostro
+      // Switcheo por actividad vocal y presencia de rostro entre cámaras activas
       if (speaking && slots.length > 1) {
-        const sideActive = SIDE_SLOTS.filter((s) => activeStreams[s])
-        const pool = sideActive.length > 0 ? sideActive : slots.filter((s) => s !== PRIMARY_CAMERA_SLOT)
-        const best = pool.reduce((a, b) => (scores[a] >= scores[b] ? a : b))
+        const best = slots.reduce((a, b) => (scores[a] >= scores[b] ? a : b))
 
         if (
           best !== currentActive &&
-          scores[best] > (scores[currentActive] ?? 0) * 1.15 &&
+          scores[best] > (scores[currentActive] ?? 0) * 1.18 &&
           now - lastSwitchRef.current > minCutSec * 1000
         ) {
           setActiveCameraRef.current?.(best)
@@ -255,25 +253,55 @@ export function useAIDirector({
       let statusDetail = ''
 
       for (const slot of [0, 1, 2]) {
-        if (slot === PRIMARY_CAMERA_SLOT || !activeStreams[slot]) {
+        if (!activeStreams[slot]) {
           nextCrops[slot] = { ...DEFAULT_CROP }
           appliedCropRef.current[slot] = { ...DEFAULT_CROP }
           continue
         }
 
-        const { crop, status } = resolveSideTarget(slot, faces[slot], now)
-        if (slot === currentActive) statusDetail = status
-        nextCrops[slot] = { ...crop }
-        appliedCropRef.current[slot] = { ...crop }
+        const face = faces[slot]
+        const hasFace = (face?.faceScore ?? 0) > 0.05 && face?.boundingBox
+
+        if (hasFace && speaking && slot === currentActive) {
+          // Encuadre dinámico de orador activo en programa
+          const target = cropFromFace(face.boundingBox, face.videoWidth, face.videoHeight)
+          const prev = appliedCropRef.current[slot] || { ...DEFAULT_CROP }
+          // Suavizado cinemático exponencial
+          const smoothCrop = {
+            focusX: prev.focusX + (target.focusX - prev.focusX) * 0.35,
+            focusY: prev.focusY + (target.focusY - prev.focusY) * 0.35,
+            zoom: prev.zoom + (target.zoom - prev.zoom) * 0.32,
+          }
+          nextCrops[slot] = smoothCrop
+          appliedCropRef.current[slot] = smoothCrop
+          statusDetail = `Siguiendo orador · zoom ${Math.round(smoothCrop.zoom * 100)}%`
+        } else if (hasFace && slot === currentActive) {
+          // Rostro presente pero en pausa de voz: mantener plano general centrado
+          const prev = appliedCropRef.current[slot] || { ...DEFAULT_CROP }
+          const wideTarget = { focusX: face.fx, focusY: face.fy, zoom: 1 }
+          const smoothCrop = {
+            focusX: prev.focusX + (wideTarget.focusX - prev.focusX) * 0.25,
+            focusY: prev.focusY + (wideTarget.focusY - prev.focusY) * 0.25,
+            zoom: Math.max(1, prev.zoom + (1 - prev.zoom) * 0.25),
+          }
+          nextCrops[slot] = smoothCrop
+          appliedCropRef.current[slot] = smoothCrop
+          statusDetail = 'Encuadre centrado · Plano general'
+        } else {
+          const { crop, status } = resolveSideTarget(slot, face, now)
+          if (slot === currentActive) statusDetail = status
+          nextCrops[slot] = { ...crop }
+          appliedCropRef.current[slot] = { ...crop }
+        }
       }
 
       setDirectorCrops(nextCrops)
 
       const cam = activeCameraRef.current ?? PRIMARY_CAMERA_SLOT
       const camLabel = slotLabel(cam)
-      const nextStatus = cam === PRIMARY_CAMERA_SLOT
-        ? (speaking ? `${camLabel} · toma fija` : 'En espera de voz…')
-        : (speaking ? `${camLabel} · ${statusDetail || 'siguiendo voz'}` : `${camLabel} · en espera de rostro`)
+      const nextStatus = speaking
+        ? `${camLabel} · ${statusDetail || 'Voz activa'}`
+        : `${camLabel} · En espera de voz (Plano general)`
 
       if (nextStatus !== statusRef.current) {
         statusRef.current = nextStatus
@@ -286,7 +314,7 @@ export function useAIDirector({
 
   useEffect(() => {
     if (!enabled) {
-      cycleRef.current = { 0: null, 2: null }
+      cycleRef.current = { 0: null, 1: null, 2: null }
       appliedCropRef.current = emptyCrops()
       setDirectorCrops(emptyCrops())
       setDirectorStatus('')
@@ -294,13 +322,12 @@ export function useAIDirector({
       return undefined
     }
 
-    // Intervalo relajado a 1.2s para fluidez total del video a 60fps sin saturar la CPU
-    const id = setInterval(analyze, 1200)
+    // Intervalo de 800ms para seguimiento fluido y responsivo
+    const id = setInterval(analyze, 800)
     return () => clearInterval(id)
   }, [enabled, analyze])
 
   const getDirectorCrop = useCallback((slot) => {
-    if (slot === PRIMARY_CAMERA_SLOT) return null
     const crop = directorCrops[slot]
     if (!crop || crop.zoom <= 1.02) return null
     return crop

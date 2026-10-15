@@ -265,6 +265,65 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     setCintilloLogoUrl(null)
     try { localStorage.removeItem('podcastudio_cintillo_logo') } catch {}
   }, [])
+
+  // Logo permanente del Proyecto (Mosca / Watermark de Canal)
+  const [projectLogoUrl, setProjectLogoUrl] = useState(() => {
+    try {
+      return project?.logoUrl || localStorage.getItem(`podcastudio_project_logo_${project?.id || 'default'}`) || null
+    } catch {
+      return null
+    }
+  })
+  const [projectLogoPosition, setProjectLogoPosition] = useState(() => {
+    try {
+      return project?.logoPosition || localStorage.getItem(`podcastudio_project_logo_pos_${project?.id || 'default'}`) || 'tr'
+    } catch {
+      return 'tr'
+    }
+  })
+
+  const handleProjectLogoUpload = useCallback((e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const url = event.target?.result
+      if (url) {
+        setProjectLogoUrl(url)
+        try {
+          localStorage.setItem(`podcastudio_project_logo_${project?.id || 'default'}`, url)
+          const updatedProj = { ...(project || {}), logoUrl: url, logoPosition: projectLogoPosition }
+          localStorage.setItem('podcastudio_project', JSON.stringify(updatedProj))
+          if (user?.id) saveProject(user.id, updatedProj).catch(() => {})
+          onProjectSave?.(updatedProj)
+        } catch {}
+      }
+    }
+    reader.readAsDataURL(file)
+  }, [project, projectLogoPosition, user?.id, onProjectSave])
+
+  const handleSetProjectLogoPosition = useCallback((pos) => {
+    setProjectLogoPosition(pos)
+    try {
+      localStorage.setItem(`podcastudio_project_logo_pos_${project?.id || 'default'}`, pos)
+      const updatedProj = { ...(project || {}), logoUrl: projectLogoUrl, logoPosition: pos }
+      localStorage.setItem('podcastudio_project', JSON.stringify(updatedProj))
+      if (user?.id) saveProject(user.id, updatedProj).catch(() => {})
+      onProjectSave?.(updatedProj)
+    } catch {}
+  }, [project, projectLogoUrl, user?.id, onProjectSave])
+
+  const handleRemoveProjectLogo = useCallback(() => {
+    setProjectLogoUrl(null)
+    try {
+      localStorage.removeItem(`podcastudio_project_logo_${project?.id || 'default'}`)
+      const updatedProj = { ...(project || {}), logoUrl: null }
+      localStorage.setItem('podcastudio_project', JSON.stringify(updatedProj))
+      if (user?.id) saveProject(user.id, updatedProj).catch(() => {})
+      onProjectSave?.(updatedProj)
+    } catch {}
+  }, [project, user?.id, onProjectSave])
+
   const [outputFormat, setOutputFormat] = useState(() => project?.format || '16:9')
   const [activeSocialPreset, setActiveSocialPreset] = useState(() => {
     if (project?.socialPreset) return project.socialPreset
@@ -502,10 +561,12 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const proj = {
     ...(enrichedProject || project || {
       name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
-      logoPosition: 'tr', logoUrl: null, format: '16:9', cintillos: {},
+      format: '16:9', cintillos: {},
       cintilloStyle: 'classic', cintilloPosition: 'bl',
       subtitlesEnabled: false, subtitleLanguage: 'es-MX', directorMode: 'ai', autoCintillos: true,
     }),
+    logoPosition: projectLogoPosition,
+    logoUrl: projectLogoUrl,
     cintillos: {
       ...((enrichedProject || project)?.cintillos || {}),
       ...customCintillos,
@@ -1216,6 +1277,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       logoUrl: resolved.logoUrl || cintilloLogoUrl || null,
       socials: resolved.socials || null,
     })
+    if (autoCintillos) {
+      window.setTimeout(() => {
+        showManual(preset.id)
+      }, 60)
+    }
   }
 
   const handleGenerateScript = async () => {
@@ -1554,6 +1620,14 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     onReset={resetZoom}
                   />
                 )}
+                {proj.logoUrl && (
+                  <div
+                    className={`${styles.projectWatermark} ${styles[`watermark_${proj.logoPosition || 'tr'}`]}`}
+                    title={`Logo permanente del canal (${proj.logoPosition === 'tl' ? 'Arriba Izquierda' : 'Arriba Derecha'})`}
+                  >
+                    <img src={proj.logoUrl} alt="Logo Canal" />
+                  </div>
+                )}
                 {(() => {
                   const mainCint = cintilloForMainView()
                   if (!mainCint) return null
@@ -1565,6 +1639,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       subtitle={mainCint.subtitle || ''}
                       accentColor={mainCint.color}
                       position={mainCint.position}
+                      presetId={mainCint.presetId}
+                      socials={mainCint.socials}
                       logoUrl={mainCint.logoUrl || cintilloLogoUrl || null}
                       size="large"
                       format={proj.format}
@@ -2233,30 +2309,76 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               <div className={styles.sectionBody}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 6 }}>
                   <div className={styles.prTitle} style={{ margin: 0 }}>Cintillos Broadcast</div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button
-                      type="button"
-                      className={styles.newCintilloBtn}
-                      onClick={() => {
-                        setCintEditorData(null)
-                        setShowCintEditorModal(true)
-                      }}
-                      title="Crear cintillo 100% personalizado para invitado"
-                    >
-                      <i className="ti ti-plus" /> Crear
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.aiGenerateCintilloBtn}
-                      onClick={() => {
-                        setCintEditorData(null)
-                        setShowCintEditorModal(true)
-                      }}
-                      title="Asistente de redacción IA para cintillos"
-                    >
-                      <i className="ti ti-sparkles" /> IA
-                    </button>
+                  <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Presets listos para editar</span>
+                </div>
+
+                {/* LOGO INDEPENDIENTE DEL PROYECTO (Mosca / Watermark de Canal) */}
+                <div className={styles.projectWatermarkSection}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-primary)' }}>
+                      <i className="ti ti-badge" style={{ marginRight: 6, color: '#ef4444' }} />
+                      Logo del Proyecto (Mosca / Watermark)
+                    </span>
+                    <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+                      {projectLogoUrl ? '● Activo en pantalla' : 'Sin logo'}
+                    </span>
                   </div>
+                  <p style={{ fontSize: 10, color: 'var(--text-muted)', margin: '0 0 8px 0', lineHeight: 1.4 }}>
+                    Marca de agua permanente tipo TV. Independiente de los cintillos.
+                  </p>
+
+                  {/* Selector de posición: Arriba Izquierda vs Arriba Derecha */}
+                  <div className={styles.watermarkPosRow}>
+                    <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Posición:</span>
+                    <div className={styles.watermarkPosBtns}>
+                      <button
+                        type="button"
+                        className={`${styles.watermarkPosBtn} ${projectLogoPosition === 'tl' ? styles.watermarkPosBtnActive : ''}`}
+                        onClick={() => handleSetProjectLogoPosition('tl')}
+                        title="Esquina Arriba a la Izquierda"
+                      >
+                        <i className="ti ti-arrow-up-left" /> Arriba Izq
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.watermarkPosBtn} ${projectLogoPosition === 'tr' ? styles.watermarkPosBtnActive : ''}`}
+                        onClick={() => handleSetProjectLogoPosition('tr')}
+                        title="Esquina Arriba a la Derecha"
+                      >
+                        <i className="ti ti-arrow-up-right" /> Arriba Der
+                      </button>
+                    </div>
+                  </div>
+
+                  {projectLogoUrl ? (
+                    <div className={styles.cintLogoPreviewRow} style={{ marginTop: 8 }}>
+                      <div className={styles.projectLogoThumb}>
+                        <img src={projectLogoUrl} alt="Logo del Proyecto" />
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flex: 1 }}>
+                        <label className={styles.cintLogoUploadBtn} style={{ cursor: 'pointer' }}>
+                          <i className="ti ti-refresh" />
+                          Cambiar
+                          <input type="file" accept="image/*" onChange={handleProjectLogoUpload} style={{ display: 'none' }} />
+                        </label>
+                        <button
+                          type="button"
+                          className={styles.cintLogoRemoveBtn}
+                          onClick={handleRemoveProjectLogo}
+                        >
+                          <i className="ti ti-trash" />
+                          Quitar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className={styles.cintLogoUploadBox} style={{ marginTop: 8 }}>
+                      <i className="ti ti-cloud-upload" style={{ fontSize: 16 }} />
+                      <span>Subir Logo del Proyecto (PNG / SVG transparente)</span>
+                      <span className={styles.cintLogoUploadSub}>Se fijará en la esquina seleccionada durante todo el podcast</span>
+                      <input type="file" accept="image/*" onChange={handleProjectLogoUpload} style={{ display: 'none' }} />
+                    </label>
+                  )}
                 </div>
 
                 <button
@@ -2372,17 +2494,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
                       Cintillos disponibles para Master:
                     </span>
-                    <button
-                      type="button"
-                      className={styles.newCintilloSmallBtn}
-                      onClick={() => {
-                        setCintEditorData(null)
-                        setShowCintEditorModal(true)
-                      }}
-                      title="Crear nuevo cintillo de invitado"
-                    >
-                      <i className="ti ti-plus" /> + Nuevo Invitado
-                    </button>
+                    <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>
+                      Toca el lápiz para editar texto o logo
+                    </span>
                   </div>
 
                   {[...CINTILLO_PRESETS, ...customCintilloList].map((preset) => {
