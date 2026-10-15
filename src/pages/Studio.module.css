@@ -556,6 +556,12 @@
   background: var(--accent);
   color: #fff;
 }
+.camConfigBtnActive {
+  background: #ea580c !important;
+  border-color: #fdba74 !important;
+  color: #fff !important;
+  opacity: 1 !important;
+}
 .camTallyBadge {
   padding: 1px 4px;
   border-radius: 3px;
@@ -584,10 +590,11 @@
   z-index: 6;
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
 }
 .camRolePill {
-  padding: 1px 5px;
+  padding: 1px 4px;
+  min-width: 15px;
   height: 15px;
   border-radius: 3px;
   background: rgba(0, 0, 0, 0.78);
@@ -2635,5 +2642,118 @@
   max-height: 100%;
   object-fit: contain;
 }
+
+/* Botón Maestro Activar Cintillos */
+.cintilloMasterHeader {
+  margin-bottom: 12px;
+  padding: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+}
+
+.masterCintilloToggleBtn {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  text-align: left;
+}
+
+.masterCintilloToggleBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.masterCintilloToggleActive {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+  border-color: #34d399 !important;
+  color: #fff !important;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+.masterCintilloIconWrap {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.masterCintilloToggleActive .masterCintilloIconWrap {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.masterCintilloTextCol {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.masterCintilloMainText {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+}
+
+.masterCintilloSubText {
+  font-size: 9.5px;
+  opacity: 0.85;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+
+.masterCintilloPill {
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.masterCintilloPillOn {
+  background: #fff;
+  color: #065f46;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.masterCintilloPillOff {
+  background: rgba(0, 0, 0, 0.5);
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.masterCintilloDesc {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  margin: 8px 2px 0 2px;
+  line-height: 1.35;
+}
+
+.badgeActiveGreen {
+  background: #10b981 !important;
+  color: #fff !important;
+  font-weight: 800 !important;
+}
+
 
 

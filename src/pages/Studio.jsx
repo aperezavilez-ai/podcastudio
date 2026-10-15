@@ -190,6 +190,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const [muxUploading, setMuxUploading] = useState(false)
   const [uploadMsg, setUploadMsg] = useState('')
   const [youtubeConnected, setYoutubeConnected] = useState(false)
+  const [cintillosEnabled, setCintillosEnabled] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_cintillos_enabled')
+      if (saved !== null) return saved === 'true'
+    } catch {}
+    return false // Por defecto DESACTIVADO: "mientras no se active no entran los cintillos"
+  })
   const [autoCintillos, setAutoCintillos] = useState(true)
   const [cintDisplaySec, setCintDisplaySec] = useState(10)
   const {
@@ -865,15 +872,34 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     cintillo, animPhase, animKey, showManual, showCustom, hide: hideCintillo,
   } = useCintilloRotation({
     project: proj,
-    enabled: autoCintillos,
+    enabled: cintillosEnabled && autoCintillos,
     displaySec: cintDisplaySec,
     positions: cintilloPositions,
     masterPosition: masterCintilloPosition || 'bl',
   })
 
+  const toggleCintillosEnabled = useCallback(() => {
+    setCintillosEnabled(prev => {
+      const next = !prev
+      try { localStorage.setItem('podcastudio_cintillos_enabled', String(next)) } catch {}
+      if (!next) {
+        hideCintillo()
+      } else {
+        if (autoCintillos) {
+          showManual('topic')
+        }
+      }
+      return next
+    })
+  }, [hideCintillo, autoCintillos, showManual])
+
   const handleVoiceIntent = useCallback((presetId) => {
+    if (!cintillosEnabled) {
+      setCintillosEnabled(true)
+      try { localStorage.setItem('podcastudio_cintillos_enabled', 'true') } catch {}
+    }
     showManual(presetId)
-  }, [showManual])
+  }, [showManual, cintillosEnabled])
 
   const subtitleLang = proj.subtitleLanguage || 'es-MX'
   const { displayText: subtitleText, interim: subtitleInterim, supported: subtitlesSupported } = useSpeechSubtitles({
@@ -884,19 +910,19 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   })
 
   const cintilloForSlot = useCallback((slot) => {
-    if (!cintillo?.active || cintillo.targetSlot !== slot) return null
+    if (!cintillosEnabled || !cintillo?.active || cintillo.targetSlot !== slot) return null
     return cintillo
-  }, [cintillo])
+  }, [cintillosEnabled, cintillo])
 
   /** Visor principal: cintillo activo renderizado sobre la toma Master */
   const cintilloForMainView = useCallback(() => {
-    if (!cintillo?.active) return null
+    if (!cintillosEnabled || !cintillo?.active) return null
     return {
       ...cintillo,
       position: masterCintilloPosition || cintillo.position || 'bl',
       logoUrl: cintillo.logoUrl || cintilloLogoUrl || null,
     }
-  }, [cintillo, masterCintilloPosition, cintilloLogoUrl])
+  }, [cintillosEnabled, cintillo, masterCintilloPosition, cintilloLogoUrl])
 
   const handleSetMasterCintilloPosition = useCallback((pos) => {
     setMasterCintilloPosition(pos)
@@ -993,7 +1019,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     logoUrl: proj.logoUrl,
     logoPosition: proj.logoPosition || 'tr',
     podcastName: proj.name || 'Mi Podcast',
-    cintillo,
+    cintillo: cintillosEnabled ? cintillo : null,
     cintilloPosition: masterCintilloPosition || 'bl',
     cintilloStyle,
     cintilloLogoUrl: cintilloLogoUrl || proj.cintilloLogoUrl || null,
@@ -1308,9 +1334,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   }, [getProgramStream, streams, masterCameraSlot, getMicStream, buildRecordingStream, getAudioElement, musicVol, musicPlaying, dspSettings, startLiveStream, setLiveError])
 
   const showCintillo = (preset) => {
-    if (cintillo.active && cintillo.presetId === preset.id) {
+    if (cintillosEnabled && cintillo.active && cintillo.presetId === preset.id) {
       hideCintillo()
       return
+    }
+    if (!cintillosEnabled) {
+      setCintillosEnabled(true)
+      try { localStorage.setItem('podcastudio_cintillos_enabled', 'true') } catch {}
     }
     const resolved = getResolvedCintillo(preset)
     showCustom({
@@ -1761,6 +1791,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               onCut={handleCut}
               onAutoTransition={handleAutoTransition}
               onOpenConnectModal={() => handleOpenConnectModal(programCamera)}
+              cintillosEnabled={cintillosEnabled}
+              onToggleCintillos={toggleCintillosEnabled}
             />
 
             {/* MULTICÁMARA (hasta 15 cámaras) con Swisher Master */}
@@ -1810,6 +1842,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       </button>
                       <button
                         type="button"
+                        className={`${styles.camConfigBtn} ${showCalibratorModal && calibratorTargetSlot === i ? styles.camConfigBtnActive : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleOpenCalibrator(i)
+                        }}
+                        title="Calibrar zoom, encuadre, color y audio antes de enviar a Master"
+                      >
+                        <i className="ti ti-adjustments-horizontal" />
+                      </button>
+                      <button
+                        type="button"
                         className={styles.camConfigBtn}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -1829,17 +1872,6 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     <div className={styles.camActionPills}>
                       <button
                         type="button"
-                        className={`${styles.camRolePill} ${styles.camRolePillCalib} ${showCalibratorModal && calibratorTargetSlot === i ? styles.camRolePillCalibActive : ''}`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleOpenCalibrator(i)
-                        }}
-                        title="Calibrar zoom, encuadre, color y audio antes de enviar a Master"
-                      >
-                        <i className="ti ti-adjustments-horizontal" style={{ marginRight: 2 }} /> Calibrar
-                      </button>
-                      <button
-                        type="button"
                         className={`${styles.camRolePill} ${screenLayout === 'pip' && pipCameraSlot === i ? styles.camRolePillPipActive : ''}`}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -1856,9 +1888,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                           e.stopPropagation()
                           handleToggleSplitOnCamera(i)
                         }}
-                        title={screenLayout === 'split' && splitSecondarySlot === i ? 'Quitar de pantalla Doble' : 'Enviar como 2ª cámara (Doble)'}
+                        title={screenLayout === 'split' && splitSecondarySlot === i ? 'Quitar de pantalla Doble (2)' : 'Enviar como 2ª cámara (2)'}
                       >
-                        {screenLayout === 'split' && splitSecondarySlot === i ? '✓ Doble' : 'Doble'}
+                        {screenLayout === 'split' && splitSecondarySlot === i ? '✓ 2' : '2'}
                       </button>
                       <button
                         type="button"
@@ -1867,9 +1899,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                           e.stopPropagation()
                           handleToggleTripleOnCamera(i)
                         }}
-                        title={screenLayout === 'triple' && (splitSecondarySlot === i || tripleTertiarySlot === i) ? 'Quitar de pantalla Triple' : 'Enviar a pantalla Triple'}
+                        title={screenLayout === 'triple' && (splitSecondarySlot === i || tripleTertiarySlot === i) ? 'Quitar de pantalla Triple (3)' : 'Enviar a pantalla Triple (3)'}
                       >
-                        {screenLayout === 'triple' && (splitSecondarySlot === i || tripleTertiarySlot === i) ? '✓ Triple' : 'Triple'}
+                        {screenLayout === 'triple' && (splitSecondarySlot === i || tripleTertiarySlot === i) ? '✓ 3' : '3'}
                       </button>
                       <button
                         type="button"
@@ -1878,9 +1910,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                           e.stopPropagation()
                           handleToggleQuadOnCamera(i)
                         }}
-                        title={screenLayout === 'quad' && (splitSecondarySlot === i || tripleTertiarySlot === i || quadQuaternarySlot === i) ? 'Quitar de pantalla Cuádruple' : 'Enviar a pantalla Cuádruple'}
+                        title={screenLayout === 'quad' && (splitSecondarySlot === i || tripleTertiarySlot === i || quadQuaternarySlot === i) ? 'Quitar de pantalla Cuádruple (4)' : 'Enviar a pantalla Cuádruple (4)'}
                       >
-                        {screenLayout === 'quad' && (splitSecondarySlot === i || tripleTertiarySlot === i || quadQuaternarySlot === i) ? '✓ Cuád' : 'Cuád'}
+                        {screenLayout === 'quad' && (splitSecondarySlot === i || tripleTertiarySlot === i || quadQuaternarySlot === i) ? '✓ 4' : '4'}
                       </button>
                     </div>
                     <CameraThumb
@@ -2374,15 +2406,45 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               className={`${styles.sectionToggle} ${openSections.cintillos ? styles.sectionToggleActive : ''}`}
               onClick={() => toggleSection('cintillos')}
             >
-              <i className={`ti ti-typography ${styles.sectionIcon}`} />
+              <i className={`ti ti-typography ${styles.sectionIcon}`} style={{ color: cintillosEnabled ? '#10b981' : undefined }} />
               <span className={styles.sectionToggleTitle}>Cintillos & Gráficos</span>
-              <span className={styles.sectionToggleBadge}>
-                {cintillo.active ? 'AL AIRE' : (autoCintillos ? 'Auto rot.' : 'Manual')}
+              <span className={`${styles.sectionToggleBadge} ${cintillosEnabled ? styles.badgeActiveGreen : ''}`}>
+                {cintillosEnabled ? (cintillo.active ? '● AL AIRE' : 'ACTIVADOS') : 'DESACTIVADO'}
               </span>
               <i className={`ti ti-chevron-${openSections.cintillos ? 'up' : 'down'} ${styles.sectionChevron}`} />
             </button>
             {openSections.cintillos && (
               <div className={styles.sectionBody}>
+                {/* BOTÓN MAESTRO DE ACTIVACIÓN DE CINTILLOS */}
+                <div className={styles.cintilloMasterHeader}>
+                  <button
+                    type="button"
+                    className={`${styles.masterCintilloToggleBtn} ${cintillosEnabled ? styles.masterCintilloToggleActive : ''}`}
+                    onClick={toggleCintillosEnabled}
+                    title={cintillosEnabled ? 'Haz clic para desactivar y ocultar todos los cintillos' : 'Haz clic para activar la emisión de cintillos en pantalla'}
+                  >
+                    <span className={styles.masterCintilloIconWrap}>
+                      <i className={`ti ${cintillosEnabled ? 'ti-player-play-filled' : 'ti-player-pause'}`} />
+                    </span>
+                    <div className={styles.masterCintilloTextCol}>
+                      <span className={styles.masterCintilloMainText}>
+                        {cintillosEnabled ? 'CINTILLOS ACTIVADOS' : 'ACTIVAR CINTILLOS'}
+                      </span>
+                      <span className={styles.masterCintilloSubText}>
+                        {cintillosEnabled ? '● Al aire en la toma Master' : 'Cintillos apagados (no saldrán en pantalla)'}
+                      </span>
+                    </div>
+                    <div className={`${styles.masterCintilloPill} ${cintillosEnabled ? styles.masterCintilloPillOn : styles.masterCintilloPillOff}`}>
+                      {cintillosEnabled ? 'ON' : 'OFF'}
+                    </div>
+                  </button>
+                  <p className={styles.masterCintilloDesc}>
+                    {cintillosEnabled
+                      ? '● Los cintillos están autorizados y se proyectan en pantalla Master según la configuración.'
+                      : '⏸ Mientras no actives este botón, ningún cintillo entrará a pantalla ni a la grabación.'}
+                  </p>
+                </div>
+
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 6 }}>
                   <div className={styles.prTitle} style={{ margin: 0 }}>Cintillos Broadcast</div>
                   <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>Presets listos para editar</span>

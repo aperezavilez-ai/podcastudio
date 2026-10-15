@@ -27,6 +27,8 @@ export default function SwitcherMasterBar({
   onCut,
   onAutoTransition,
   onOpenConnectModal,
+  cintillosEnabled = false,
+  onToggleCintillos = () => {},
 }) {
   const pgmMeta = cameraMeta[programCamera]
   const pgmLabel = getSlotLabel(programCamera, pgmMeta?.customLabel, programCamera === masterCameraSlot)
@@ -59,16 +61,16 @@ export default function SwitcherMasterBar({
             type="button"
             className={`${styles.layoutBtn} ${screenLayout === 'full' ? styles.layoutBtnActive : ''}`}
             onClick={() => onSelectLayout('full')}
-            title="1 Cámara Pantalla Completa"
+            title="1 Cámara (Solo pantalla completa)"
           >
             <i className="ti ti-square" />
-            <span>Solo</span>
+            <span>1</span>
           </button>
           <button
             type="button"
             className={`${styles.layoutBtn} ${screenLayout === 'pip' ? styles.layoutBtnActive : ''}`}
             onClick={() => onSelectLayout('pip')}
-            title="Picture-in-Picture: Master de fondo + Recuadro miniatura flotante"
+            title="PiP (Master de fondo + Recuadro miniatura)"
           >
             <i className="ti ti-picture-in-picture" />
             <span>PiP</span>
@@ -77,30 +79,41 @@ export default function SwitcherMasterBar({
             type="button"
             className={`${styles.layoutBtn} ${screenLayout === 'split' ? styles.layoutBtnActive : ''}`}
             onClick={() => onSelectLayout('split')}
-            title="Doble Cámara: Pantalla dividida 50/50"
+            title="2 Cámaras (Doble pantalla 50/50)"
           >
             <i className="ti ti-layout-columns" />
-            <span>Doble</span>
+            <span>2</span>
           </button>
           <button
             type="button"
             className={`${styles.layoutBtn} ${screenLayout === 'triple' ? styles.layoutBtnActive : ''}`}
             onClick={() => onSelectLayout('triple')}
-            title="Triple Cámara: 1 Master principal + 2 secundarias"
+            title="3 Cámaras (Triple pantalla)"
           >
             <i className="ti ti-layout-grid" />
-            <span>Triple</span>
+            <span>3</span>
           </button>
           <button
             type="button"
             className={`${styles.layoutBtn} ${screenLayout === 'quad' ? styles.layoutBtnActive : ''}`}
             onClick={() => onSelectLayout('quad')}
-            title="Cuádruple: 4 cámaras en cuadrícula 2x2"
+            title="4 Cámaras (Cuádruple 2x2)"
           >
             <i className="ti ti-grid-dots" />
-            <span>Cuádruple</span>
+            <span>4</span>
           </button>
         </div>
+
+        {/* Botón Activar / Desactivar Cintillos */}
+        <button
+          type="button"
+          className={`${styles.cintilloBarBtn} ${cintillosEnabled ? styles.cintilloBarBtnActive : ''}`}
+          onClick={onToggleCintillos}
+          title={cintillosEnabled ? 'Cintillos ACTIVADOS (Al Aire) - Clic para apagar' : 'Cintillos DESACTIVADOS - Clic para activar'}
+        >
+          <i className={`ti ${cintillosEnabled ? 'ti-typography' : 'ti-typography-off'}`} />
+          <span>{cintillosEnabled ? 'Cintillos ON' : 'Cintillos OFF'}</span>
+        </button>
 
         {/* Asignación de canales según el layout activo */}
         {screenLayout === 'pip' && (
