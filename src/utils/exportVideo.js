@@ -21,8 +21,20 @@ export async function convertWebmToMp4(webmBlob, onProgress) {
   }
   const { fetchFile } = await import('@ffmpeg/util')
   await ffmpeg.writeFile('input.webm', await fetchFile(webmBlob))
-  await ffmpeg.exec(['-i', 'input.webm', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'aac', '-b:a', '192k', 'output.mp4'])
+  await ffmpeg.exec([
+    '-i', 'input.webm',
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-pix_fmt', 'yuv420p',
+    '-movflags', '+faststart',
+    '-crf', '22',
+    '-c:a', 'aac',
+    '-b:a', '192k',
+    'output.mp4',
+  ])
   const data = await ffmpeg.readFile('output.mp4')
+  await ffmpeg.deleteFile('input.webm').catch(() => {})
+  await ffmpeg.deleteFile('output.mp4').catch(() => {})
   return new Blob([data.buffer], { type: 'video/mp4' })
 }
 

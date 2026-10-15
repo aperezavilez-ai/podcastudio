@@ -32,11 +32,17 @@ export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
   const animFrameRef = useRef(null)
   const lastTimeRef = useRef(performance.now())
 
+  const saveTimerRef = useRef(null)
+
   useEffect(() => {
     cropsRef.current = crops
-    try {
-      localStorage.setItem('podcastudio_camera_crops', JSON.stringify(crops))
-    } catch {}
+    clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      try {
+        localStorage.setItem('podcastudio_camera_crops', JSON.stringify(crops))
+      } catch {}
+    }, 400)
+    return () => clearTimeout(saveTimerRef.current)
   }, [crops])
 
   const getSlotCrop = useCallback((slot) => {
@@ -141,12 +147,16 @@ export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
     setCrops(prev => {
       const current = prev[targetSlot] || DEFAULT_CROP
       const nextPushIn = !current.pushIn
+      const base = current.baseZoom || (current.zoom > 1.05 && !current.pushIn ? current.zoom : 1.0)
+      const target = nextPushIn ? Math.min(2.4, Math.max(1.35, base + 0.45)) : base
       return {
         ...prev,
         [targetSlot]: {
           ...current,
+          baseZoom: base,
           pushIn: nextPushIn,
-          targetZoom: nextPushIn ? Math.min(3.0, current.zoom + 0.35) : current.zoom,
+          zoom: target,
+          targetZoom: target,
         },
       }
     })
@@ -158,36 +168,6 @@ export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
       ...prev,
       [targetSlot]: { ...DEFAULT_CROP },
     }))
-  }, [activeCamera])
-
-  // Animación continua y suave para Push-In (Dolly cinemático) y Lerp
-  useEffect(() => {
-    const tick = (now) => {
-      const deltaMs = Math.min(100, now - lastTimeRef.current)
-      lastTimeRef.current = now
-
-      const currentActive = cropsRef.current[activeCamera]
-      if (currentActive?.pushIn) {
-        const speed = 0.015 * (deltaMs / 1000) // incremento sutil por segundo
-        if (currentActive.zoom < currentActive.targetZoom) {
-          const nextZoom = Math.min(currentActive.targetZoom, currentActive.zoom + speed)
-          setCrops(prev => ({
-            ...prev,
-            [activeCamera]: {
-              ...(prev[activeCamera] || DEFAULT_CROP),
-              zoom: nextZoom,
-            },
-          }))
-        }
-      }
-
-      animFrameRef.current = requestAnimationFrame(tick)
-    }
-
-    animFrameRef.current = requestAnimationFrame(tick)
-    return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
-    }
   }, [activeCamera])
 
   const activeCrop = crops[activeCamera] || DEFAULT_CROP

@@ -179,6 +179,9 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
         }
 
         const mimeType = [
+          'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+          'video/mp4;codecs=avc1,mp4a.40.2',
+          'video/mp4',
           'video/webm;codecs=vp9,opus',
           'video/webm;codecs=vp8,opus',
           'video/webm',
@@ -293,7 +296,7 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
 /**
  * Genera el nombre de archivo optimizado según el formato y red social
  */
-export function buildFormatFilename(baseName, formatKey, ext = 'webm') {
+export function buildFormatFilename(baseName, formatKey, ext = 'mp4') {
   const cleanBase = (baseName || 'Episodio').replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_')
   const preset = SOCIAL_PRESETS_EXPORT.find(p => p.key === formatKey)
   const suffix = preset ? preset.filenameSuffix : formatKey.replace(':', 'x')

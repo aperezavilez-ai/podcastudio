@@ -3,7 +3,38 @@ import { pickPreferredMicrophone, isBuiltInMicrophone } from '../utils/micDevice
 import { openCameraStream, openCameraStreamFacing, waitMs } from '../utils/openCamera.js'
 import { applyStreamQualityHints } from '../utils/videoStream.js'
 import { isTouchDevice } from '../lib/device.js'
-import { PRIMARY_CAMERA_SLOT, pickPrimaryActiveSlot } from '../config/cameraSlots.js'
+import { PRIMARY_CAMERA_SLOT, DEFAULT_CAMERA_SLOT_COUNT, pickPrimaryActiveSlot } from '../config/cameraSlots.js'
+
+const STORAGE_KEY_CAMERA_SLOTS = 'podcastudio_camera_slots_config'
+
+function loadSavedSlotsConfig() {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CAMERA_SLOTS)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveSlotConfig(slotIndex, meta) {
+  if (typeof window === 'undefined') return
+  try {
+    const config = loadSavedSlotsConfig()
+    if (meta) {
+      config[slotIndex] = {
+        type: meta.type || 'usb',
+        deviceId: meta.deviceId || null,
+        url: meta.url || null,
+        label: meta.label || '',
+        customLabel: meta.customLabel || '',
+      }
+    } else {
+      delete config[slotIndex]
+    }
+    localStorage.setItem(STORAGE_KEY_CAMERA_SLOTS, JSON.stringify(config))
+  } catch {}
+}
 
 const WIFI_PRESETS = [
   { label: 'IP Webcam (Android)', url: 'http://192.168.1.100:8080/video' },
@@ -157,8 +188,44 @@ export function useWebcam() {
   const [autoConnecting, setAutoConnecting] = useState(false)
   const [connectedCount, setConnectedCount] = useState(0)
   const [mobilePrimaryFacing, setMobilePrimaryFacing] = useState('environment')
-  const [slotsCount, setSlotsCount] = useState(3)
-  const [masterCameraSlot, setMasterCameraSlot] = useState(PRIMARY_CAMERA_SLOT)
+  const [slotsCount, setSlotsCountState] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_CAMERA_SLOT_COUNT
+    try {
+      const saved = localStorage.getItem('podcastudio_slots_count')
+      const parsed = saved ? parseInt(saved, 10) : NaN
+      return !isNaN(parsed) && parsed >= 1 ? Math.min(20, Math.max(4, parsed)) : DEFAULT_CAMERA_SLOT_COUNT
+    } catch {
+      return DEFAULT_CAMERA_SLOT_COUNT
+    }
+  })
+
+  const setSlotsCount = useCallback((updater) => {
+    setSlotsCountState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      const clamped = Math.min(20, Math.max(1, next))
+      try { localStorage.setItem('podcastudio_slots_count', String(clamped)) } catch {}
+      return clamped
+    })
+  }, [])
+
+  const [masterCameraSlot, setMasterCameraSlotState] = useState(() => {
+    if (typeof window === 'undefined') return PRIMARY_CAMERA_SLOT
+    try {
+      const saved = localStorage.getItem('podcastudio_master_camera_slot')
+      const parsed = saved !== null ? parseInt(saved, 10) : NaN
+      return !isNaN(parsed) && parsed >= 0 ? parsed : PRIMARY_CAMERA_SLOT
+    } catch {
+      return PRIMARY_CAMERA_SLOT
+    }
+  })
+
+  const setMasterCameraSlot = useCallback((updater) => {
+    setMasterCameraSlotState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      try { localStorage.setItem('podcastudio_master_camera_slot', String(next)) } catch {}
+      return next
+    })
+  }, [])
 
   const micRef = useRef(null)
   const audioCtxRef = useRef(null)
@@ -226,10 +293,13 @@ export function useWebcam() {
       cameraMetaRef.current = next
       return next
     })
+    if (meta) {
+      saveSlotConfig(slotIndex, meta)
+    }
     setError(null)
   }, [])
 
-  const stopCamera = useCallback((slotIndex) => {
+  const stopCamera = useCallback((slotIndex, isUserDisconnect = false) => {
     userDisabledSlotsRef.current.add(slotIndex)
     setSlotCleanup(slotIndex, null)
     delete cleanupRef.current[slotIndex]
@@ -249,6 +319,10 @@ export function useWebcam() {
       cameraMetaRef.current = next
       return next
     })
+
+    if (isUserDisconnect) {
+      saveSlotConfig(slotIndex, null)
+    }
   }, [setSlotCleanup])
 
   const startCamera = useCallback(async (deviceId, slotIndex, labelOverride) => {
@@ -337,101 +411,6 @@ export function useWebcam() {
     }
   }, [attachStream, mobilePrimaryFacing, stopCamera])
 
-  const autoConnectAll = useCallback(async (cameraList, maxCameras = 3) => {
-    if (autoConnectLockRef.current) return connectedCountRef.current
-    if (isTouchDevice()) return initMobileCameras()
-
-    const list = uniqueCameras(cameraList || devices.cameras)
-    if (!list.length) {
-      setConnectedCount(0)
-      connectedCountRef.current = 0
-      return 0
-    }
-
-    autoConnectLockRef.current = true
-    setAutoConnecting(true)
-    setError(null)
-    let connected = 0
-
-    try {
-      const usedDeviceIds = getAssignedDeviceIds(cameraMetaRef.current, streamsRef.current)
-
-      if (list.length === 1) {
-        if (!streamsRef.current[PRIMARY_CAMERA_SLOT] && !userDisabledSlotsRef.current.has(PRIMARY_CAMERA_SLOT)) {
-          const cam = list[0]
-          const stream = await startCamera(cam.deviceId, PRIMARY_CAMERA_SLOT, cam.label || 'CAM 2 · Centro')
-          if (stream) connected = 1
-        } else if (streamsRef.current[PRIMARY_CAMERA_SLOT]) {
-          connected = 1
-        }
-      } else {
-        let camIdx = 0
-        const targetSlots = Math.min(15, Math.max(slotsCount, Math.min(list.length, maxCameras)))
-        for (let slot = 0; slot < targetSlots && connected < maxCameras; slot++) {
-          if (streamsRef.current[slot]) {
-            connected++
-            continue
-          }
-          if (userDisabledSlotsRef.current.has(slot)) {
-            continue
-          }
-
-          while (camIdx < list.length && usedDeviceIds.has(list[camIdx].deviceId)) camIdx++
-          if (camIdx >= list.length) break
-
-          const cam = list[camIdx++]
-          usedDeviceIds.add(cam.deviceId)
-          const stream = await startCamera(cam.deviceId, slot, cam.label || `USB Cam ${slot + 1}`)
-          if (stream) {
-            connected++
-            await delay(300)
-          }
-        }
-        setSlotsCount(prev => Math.max(prev, connected, 3))
-      }
-
-      setActiveCamera(pickPrimaryActiveSlot(streamsRef.current, masterCameraSlot))
-      setConnectedCount(connected)
-      connectedCountRef.current = connected
-      return connected
-    } finally {
-      autoConnectLockRef.current = false
-      setAutoConnecting(false)
-    }
-  }, [devices.cameras, initMobileCameras, startCamera])
-
-  const addCameraSlot = useCallback(() => {
-    setSlotsCount(prev => Math.min(20, prev + 1))
-  }, [])
-
-  const removeCameraSlot = useCallback((slotIndex) => {
-    stopCamera(slotIndex)
-    setSlotsCount(prev => Math.max(1, prev - 1))
-  }, [stopCamera])
-
-  const renameCameraSlot = useCallback((slotIndex, label) => {
-    setCameraMeta(prev => ({
-      ...prev,
-      [slotIndex]: {
-        ...(prev[slotIndex] || {}),
-        label: label?.trim() || prev[slotIndex]?.label || `CAM ${slotIndex + 1}`,
-        customLabel: label?.trim() || '',
-      },
-    }))
-  }, [])
-
-  const connectNextCameraToSlot = useCallback(async (slotIndex) => {
-    const { cameras } = await enumerateDevices(false)
-    const list = uniqueCameras(cameras)
-    const usedDeviceIds = getAssignedDeviceIds(cameraMetaRef.current, streamsRef.current)
-    const next = list.find(cam => !usedDeviceIds.has(cam.deviceId))
-    if (!next) {
-      setError('No hay más cámaras USB disponibles para este slot.')
-      return null
-    }
-    return startCamera(next.deviceId, slotIndex, next.label || `USB Cam ${slotIndex + 1}`)
-  }, [enumerateDevices, startCamera])
-
   const connectWifiCamera = useCallback(async (url, slotIndex, label) => {
     const trimmed = url?.trim()
     if (!trimmed) {
@@ -460,6 +439,160 @@ export function useWebcam() {
       setWifiConnecting(false)
     }
   }, [attachStream, setSlotCleanup, stopCamera])
+
+  const renameCameraSlot = useCallback((slotIndex, label) => {
+    setCameraMeta(prev => {
+      const updated = {
+        ...(prev[slotIndex] || {}),
+        label: label?.trim() || prev[slotIndex]?.label || `CAM ${slotIndex + 1}`,
+        customLabel: label?.trim() || '',
+      }
+      saveSlotConfig(slotIndex, updated)
+      return {
+        ...prev,
+        [slotIndex]: updated,
+      }
+    })
+  }, [])
+
+  const autoConnectAll = useCallback(async (cameraList, maxCameras = 4) => {
+    if (autoConnectLockRef.current) return connectedCountRef.current
+    if (isTouchDevice()) return initMobileCameras()
+
+    const list = uniqueCameras(cameraList || devices.cameras)
+    const savedConfig = loadSavedSlotsConfig()
+    const savedSlotKeys = Object.keys(savedConfig).map(Number).filter(n => !isNaN(n)).sort((a, b) => a - b)
+
+    if (!list.length && !savedSlotKeys.some(k => savedConfig[k]?.type === 'wifi')) {
+      setConnectedCount(0)
+      connectedCountRef.current = 0
+      return 0
+    }
+
+    autoConnectLockRef.current = true
+    setAutoConnecting(true)
+    setError(null)
+    let connected = 0
+
+    try {
+      const usedDeviceIds = getAssignedDeviceIds(cameraMetaRef.current, streamsRef.current)
+
+      // 1. Paso 1: Restaurar configuración previa guardada (cámaras WiFi y USB asignadas a slots específicos)
+      for (const slot of savedSlotKeys) {
+        if (slot >= 20) continue
+        if (streamsRef.current[slot]) {
+          connected++
+          continue
+        }
+        if (userDisabledSlotsRef.current.has(slot)) {
+          continue
+        }
+
+        const config = savedConfig[slot]
+        if (!config) continue
+
+        if (config.type === 'wifi' && config.url) {
+          try {
+            const stream = await connectWifiCamera(config.url, slot, config.label || `Cámara WiFi ${slot + 1}`)
+            if (stream) {
+              connected++
+              if (config.customLabel) {
+                renameCameraSlot(slot, config.customLabel)
+              }
+              await delay(200)
+            }
+          } catch (e) {
+            console.warn(`[AutoConnect] No se pudo restaurar cámara WiFi en slot ${slot}:`, e)
+          }
+        } else if (config.type === 'usb' && list.length > 0) {
+          let matched = list.find(c => c.deviceId === config.deviceId && !usedDeviceIds.has(c.deviceId))
+          if (!matched && config.label) {
+            matched = list.find(c => c.label && c.label === config.label && !usedDeviceIds.has(c.deviceId))
+          }
+          if (matched) {
+            usedDeviceIds.add(matched.deviceId)
+            const stream = await startCamera(matched.deviceId, slot, config.label || matched.label || `USB Cam ${slot + 1}`)
+            if (stream) {
+              connected++
+              if (config.customLabel) {
+                renameCameraSlot(slot, config.customLabel)
+              }
+              await delay(250)
+            }
+          }
+        }
+      }
+
+      // 2. Paso 2: Conectar cámaras USB restantes a slots vacíos hasta targetSlots
+      const targetSlots = Math.min(20, Math.max(slotsCount, savedSlotKeys.length ? Math.max(...savedSlotKeys) + 1 : 4, 4))
+      const maxAllowed = Math.max(targetSlots, maxCameras)
+
+      if (list.length === 1 && connected === 0) {
+        if (!streamsRef.current[PRIMARY_CAMERA_SLOT] && !userDisabledSlotsRef.current.has(PRIMARY_CAMERA_SLOT)) {
+          const cam = list[0]
+          const stream = await startCamera(cam.deviceId, PRIMARY_CAMERA_SLOT, cam.label || 'CAM 1')
+          if (stream) connected = 1
+        } else if (streamsRef.current[PRIMARY_CAMERA_SLOT]) {
+          connected = 1
+        }
+      } else {
+        let camIdx = 0
+        for (let slot = 0; slot < targetSlots && connected < maxAllowed; slot++) {
+          if (streamsRef.current[slot]) {
+            continue
+          }
+          if (userDisabledSlotsRef.current.has(slot)) {
+            continue
+          }
+
+          while (camIdx < list.length && usedDeviceIds.has(list[camIdx].deviceId)) {
+            camIdx++
+          }
+          if (camIdx >= list.length) break
+
+          const cam = list[camIdx++]
+          usedDeviceIds.add(cam.deviceId)
+          const stream = await startCamera(cam.deviceId, slot, cam.label || `USB Cam ${slot + 1}`)
+          if (stream) {
+            connected++
+            await delay(250)
+          }
+        }
+      }
+
+      const finalSlots = Math.min(20, Math.max(slotsCount, connected, savedSlotKeys.length ? Math.max(...savedSlotKeys) + 1 : 4, 4))
+      setSlotsCount(finalSlots)
+      setActiveCamera(pickPrimaryActiveSlot(streamsRef.current, masterCameraSlot))
+      setConnectedCount(connected)
+      connectedCountRef.current = connected
+      return connected
+    } finally {
+      autoConnectLockRef.current = false
+      setAutoConnecting(false)
+    }
+  }, [connectWifiCamera, devices.cameras, initMobileCameras, masterCameraSlot, renameCameraSlot, setSlotsCount, slotsCount, startCamera])
+
+  const addCameraSlot = useCallback(() => {
+    setSlotsCount(prev => Math.min(20, prev + 1))
+  }, [setSlotsCount])
+
+  const removeCameraSlot = useCallback((slotIndex) => {
+    stopCamera(slotIndex, true)
+    saveSlotConfig(slotIndex, null)
+    setSlotsCount(prev => Math.max(1, prev - 1))
+  }, [stopCamera, setSlotsCount])
+
+  const connectNextCameraToSlot = useCallback(async (slotIndex) => {
+    const { cameras } = await enumerateDevices(false)
+    const list = uniqueCameras(cameras)
+    const usedDeviceIds = getAssignedDeviceIds(cameraMetaRef.current, streamsRef.current)
+    const next = list.find(cam => !usedDeviceIds.has(cam.deviceId))
+    if (!next) {
+      setError('No hay más cámaras USB disponibles para este slot.')
+      return null
+    }
+    return startCamera(next.deviceId, slotIndex, next.label || `USB Cam ${slotIndex + 1}`)
+  }, [enumerateDevices, startCamera])
 
   const scanBluetoothCamera = useCallback(async (slotIndex) => {
     if (!navigator.bluetooth) {
@@ -566,16 +699,16 @@ export function useWebcam() {
         audio: deviceId
           ? {
             deviceId: { exact: deviceId },
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
             channelCount: { ideal: 2 },
             sampleRate: { ideal: 48000 },
           }
           : {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
             channelCount: { ideal: 2 },
             sampleRate: { ideal: 48000 },
           },
@@ -588,7 +721,7 @@ export function useWebcam() {
       } catch {
         if (!deviceId) throw new Error('no mic')
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: { deviceId: { ideal: deviceId }, echoCancellation: true, noiseSuppression: true },
+          audio: { deviceId: { ideal: deviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           video: false,
         })
       }

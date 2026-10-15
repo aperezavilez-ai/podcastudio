@@ -52,6 +52,12 @@ export default function ProgramPreview({
   cameraKey = 0,
   look = null,
   directorCrop = null,
+  crops = {},
+  masterCameraSlot = 0,
+  secondarySlot = null,
+  tertiarySlot = null,
+  quaternarySlot = null,
+  pipCameraSlot = null,
   virtualSet = null,
   layout = 'full', // 'full' | 'pip' | 'split' | 'triple' | 'quad'
   pipStream = null,
@@ -133,9 +139,26 @@ export default function ProgramPreview({
     return undefined
   }, [look, directorCrop?.filter])
 
-  const zoom = directorCrop?.zoom > 1.02 ? directorCrop.zoom : 1
-  const originX = `${(directorCrop?.focusX ?? 0.5) * 100}%`
-  const originY = `${(directorCrop?.focusY ?? 0.42) * 100}%`
+  function getCropStyle(crop, isPushIn = false) {
+    if (!crop) return {}
+    const z = crop.zoom > 1.02 ? crop.zoom : 1
+    const ox = `${(crop.focusX ?? 0.5) * 100}%`
+    const oy = `${(crop.focusY ?? 0.42) * 100}%`
+    return {
+      transform: z > 1 ? `scale(${z})` : undefined,
+      transformOrigin: `${ox} ${oy}`,
+      transition: isPushIn
+        ? 'transform 7s cubic-bezier(0.2, 0.7, 0.2, 1), transform-origin 1.2s ease-out'
+        : 'transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), transform-origin 0.4s cubic-bezier(0.25, 1, 0.5, 1)',
+    }
+  }
+
+  const effectiveMasterCrop = directorCrop || (masterCameraSlot !== null ? crops[masterCameraSlot] : null)
+  const masterStyle = getCropStyle(effectiveMasterCrop, effectiveMasterCrop?.pushIn)
+  const secondaryStyle = getCropStyle(secondarySlot !== null ? crops[secondarySlot] : null)
+  const tertiaryStyle = getCropStyle(tertiarySlot !== null ? crops[tertiarySlot] : null)
+  const quaternaryStyle = getCropStyle(quaternarySlot !== null ? crops[quaternarySlot] : null)
+  const pipStyle = getCropStyle(pipCameraSlot !== null ? crops[pipCameraSlot] : null)
 
   const hasAnyStream = Boolean(stream || pipStream || secondaryStream || tertiaryStream || quaternaryStream)
   if (!hasAnyStream && layout === 'full') {
@@ -167,9 +190,7 @@ export default function ProgramPreview({
             width: `${width}%`,
             height: `${height}%`,
             filter: cssFilter,
-            transform: zoom > 1 ? `scale(${zoom})` : undefined,
-            transformOrigin: `${originX} ${originY}`,
-            transition: directorCrop?.pushIn ? 'none' : 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1), transform-origin 0.35s cubic-bezier(0.25, 1, 0.5, 1)',
+            ...masterStyle,
           }}
         />
         <LookOverlays look={look} />
@@ -198,6 +219,7 @@ export default function ProgramPreview({
                 onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                 style={{
                   filter: cssFilter,
+                  ...masterStyle,
                 }}
               />
             ) : (
@@ -222,6 +244,7 @@ export default function ProgramPreview({
                 playsInline
                 onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
                 onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+                style={secondaryStyle}
               />
             ) : (
               <div className={styles.emptyPane}>
@@ -262,6 +285,7 @@ export default function ProgramPreview({
                 onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                 style={{
                   filter: cssFilter,
+                  ...masterStyle,
                 }}
               />
             ) : (
@@ -287,6 +311,7 @@ export default function ProgramPreview({
                   playsInline
                   onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
                   onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+                  style={secondaryStyle}
                 />
               ) : (
                 <div className={styles.emptyPane}>
@@ -314,6 +339,7 @@ export default function ProgramPreview({
                   playsInline
                   onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
                   onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+                  style={tertiaryStyle}
                 />
               ) : (
                 <div className={styles.emptyPane}>
@@ -356,6 +382,7 @@ export default function ProgramPreview({
                 onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                 style={{
                   filter: cssFilter,
+                  ...masterStyle,
                 }}
               />
             ) : (
@@ -382,6 +409,7 @@ export default function ProgramPreview({
                 playsInline
                 onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
                 onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+                style={secondaryStyle}
               />
             ) : (
               <div className={styles.emptyPane}>
@@ -411,6 +439,7 @@ export default function ProgramPreview({
                 playsInline
                 onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
                 onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+                style={tertiaryStyle}
               />
             ) : (
               <div className={styles.emptyPane}>
@@ -440,6 +469,7 @@ export default function ProgramPreview({
                 playsInline
                 onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
                 onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+                style={quaternaryStyle}
               />
             ) : (
               <div className={styles.emptyPane}>
@@ -475,9 +505,7 @@ export default function ProgramPreview({
           onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
           style={{
             filter: cssFilter,
-            transform: zoom > 1 ? `scale(${zoom})` : undefined,
-            transformOrigin: `${originX} ${originY}`,
-            transition: directorCrop?.pushIn ? 'none' : 'transform 0.35s cubic-bezier(0.25, 1, 0.5, 1), transform-origin 0.35s cubic-bezier(0.25, 1, 0.5, 1)',
+            ...masterStyle,
           }}
         />
       ) : (
@@ -508,6 +536,7 @@ export default function ProgramPreview({
               playsInline
               onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
               onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+              style={pipStyle}
             />
           ) : (
             <div className={styles.pipPlaceholder}>

@@ -20,7 +20,7 @@ export default function CameraCalibratorModal({
   isOpen,
   onClose,
   initialSlot = 0,
-  slotsCount = 3,
+  slotsCount = 4,
   streams = [],
   cameraMeta = [],
   crops = {},

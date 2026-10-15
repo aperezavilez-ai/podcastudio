@@ -1,5 +1,5 @@
 export const MAX_CAMERA_SLOTS = 20
-export const DEFAULT_CAMERA_SLOT_COUNT = 3
+export const DEFAULT_CAMERA_SLOT_COUNT = 4
 export const PRIMARY_CAMERA_SLOT = 0
 
 export const CAM_SLOT_LABELS = Array.from({ length: MAX_CAMERA_SLOTS }, (_, i) => `CAM ${i + 1}`)

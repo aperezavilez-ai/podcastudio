@@ -422,44 +422,109 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     setConnectModalOpen(true)
   }, [])
 
-  // Modos de composición multi-cámara (Solo, PiP, Split 50/50, Triple)
-  const [screenLayout, setScreenLayout] = useState(() => {
+  // Modos de composición multi-cámara (Solo, PiP, Split 50/50, Triple, Cuádruple)
+  const [screenLayout, setScreenLayoutState] = useState(() => {
     if (typeof window === 'undefined') return 'full'
     return localStorage.getItem('podcastudio_screen_layout') || 'full'
   })
-  const [pipCameraSlot, setPipCameraSlot] = useState(0)
-  const [splitSecondarySlot, setSplitSecondarySlot] = useState(2)
-  const [tripleTertiarySlot, setTripleTertiarySlot] = useState(0)
-  const [quadQuaternarySlot, setQuadQuaternarySlot] = useState(3)
 
   const handleSelectLayout = useCallback((layoutMode) => {
-    setScreenLayout(layoutMode)
+    setScreenLayoutState(layoutMode)
     try { localStorage.setItem('podcastudio_screen_layout', layoutMode) } catch {}
+  }, [])
+  const setScreenLayout = handleSelectLayout
+
+  const [pipCameraSlot, setPipCameraSlotState] = useState(() => {
+    if (typeof window === 'undefined') return 0
+    try {
+      const saved = localStorage.getItem('podcastudio_pip_slot')
+      const parsed = saved !== null ? parseInt(saved, 10) : NaN
+      return !isNaN(parsed) && parsed >= 0 ? parsed : 0
+    } catch {
+      return 0
+    }
+  })
+  const setPipCameraSlot = useCallback((slotOrFn) => {
+    setPipCameraSlotState(prev => {
+      const next = typeof slotOrFn === 'function' ? slotOrFn(prev) : slotOrFn
+      try { localStorage.setItem('podcastudio_pip_slot', String(next)) } catch {}
+      return next
+    })
+  }, [])
+
+  const [splitSecondarySlot, setSplitSecondarySlotState] = useState(() => {
+    if (typeof window === 'undefined') return 1
+    try {
+      const saved = localStorage.getItem('podcastudio_split_secondary_slot')
+      const parsed = saved !== null ? parseInt(saved, 10) : NaN
+      return !isNaN(parsed) && parsed >= 0 ? parsed : 1
+    } catch {
+      return 1
+    }
+  })
+  const setSplitSecondarySlot = useCallback((slotOrFn) => {
+    setSplitSecondarySlotState(prev => {
+      const next = typeof slotOrFn === 'function' ? slotOrFn(prev) : slotOrFn
+      try { localStorage.setItem('podcastudio_split_secondary_slot', String(next)) } catch {}
+      return next
+    })
+  }, [])
+
+  const [tripleTertiarySlot, setTripleTertiarySlotState] = useState(() => {
+    if (typeof window === 'undefined') return 2
+    try {
+      const saved = localStorage.getItem('podcastudio_triple_tertiary_slot')
+      const parsed = saved !== null ? parseInt(saved, 10) : NaN
+      return !isNaN(parsed) && parsed >= 0 ? parsed : 2
+    } catch {
+      return 2
+    }
+  })
+  const setTripleTertiarySlot = useCallback((slotOrFn) => {
+    setTripleTertiarySlotState(prev => {
+      const next = typeof slotOrFn === 'function' ? slotOrFn(prev) : slotOrFn
+      try { localStorage.setItem('podcastudio_triple_tertiary_slot', String(next)) } catch {}
+      return next
+    })
+  }, [])
+
+  const [quadQuaternarySlot, setQuadQuaternarySlotState] = useState(() => {
+    if (typeof window === 'undefined') return 3
+    try {
+      const saved = localStorage.getItem('podcastudio_quad_quaternary_slot')
+      const parsed = saved !== null ? parseInt(saved, 10) : NaN
+      return !isNaN(parsed) && parsed >= 0 ? parsed : 3
+    } catch {
+      return 3
+    }
+  })
+  const setQuadQuaternarySlot = useCallback((slotOrFn) => {
+    setQuadQuaternarySlotState(prev => {
+      const next = typeof slotOrFn === 'function' ? slotOrFn(prev) : slotOrFn
+      try { localStorage.setItem('podcastudio_quad_quaternary_slot', String(next)) } catch {}
+      return next
+    })
   }, [])
 
   const handleSetPipSlot = useCallback((slot) => {
     setPipCameraSlot(slot)
-    setScreenLayout('pip')
-    try { localStorage.setItem('podcastudio_screen_layout', 'pip') } catch {}
-  }, [])
+    handleSelectLayout('pip')
+  }, [handleSelectLayout, setPipCameraSlot])
 
   const handleSetSplitSlot = useCallback((slot) => {
     setSplitSecondarySlot(slot)
-    setScreenLayout('split')
-    try { localStorage.setItem('podcastudio_screen_layout', 'split') } catch {}
-  }, [])
+    handleSelectLayout('split')
+  }, [handleSelectLayout, setSplitSecondarySlot])
 
   const handleSetTripleSlot = useCallback((slot) => {
     setTripleTertiarySlot(slot)
-    setScreenLayout('triple')
-    try { localStorage.setItem('podcastudio_screen_layout', 'triple') } catch {}
-  }, [])
+    handleSelectLayout('triple')
+  }, [handleSelectLayout, setTripleTertiarySlot])
 
   const handleSetQuadSlot = useCallback((slot) => {
     setQuadQuaternarySlot(slot)
-    setScreenLayout('quad')
-    try { localStorage.setItem('podcastudio_screen_layout', 'quad') } catch {}
-  }, [])
+    handleSelectLayout('quad')
+  }, [handleSelectLayout, setQuadQuaternarySlot])
 
   // Calidad de grabación Master (4K Ultra HD, 1080p Full HD, 720p HD)
   const [recordQuality, setRecordQuality] = useState(() => {
@@ -550,12 +615,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     }
 
     setSplitSecondarySlot(slot)
-    handleSelectLayout('split')
-  }, [screenLayout, splitSecondarySlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot])
+    if (screenLayout !== 'triple' && screenLayout !== 'quad') {
+      handleSelectLayout('split')
+    }
+  }, [screenLayout, splitSecondarySlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot, setSplitSecondarySlot])
 
   const handleToggleTripleOnCamera = useCallback((slot) => {
-    const isInTriple = screenLayout === 'triple' && (splitSecondarySlot === slot || tripleTertiarySlot === slot)
-    if (isInTriple) {
+    if (screenLayout === 'triple' && tripleTertiarySlot === slot) {
       handleSelectLayout('full')
       return
     }
@@ -571,19 +637,21 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       effectiveMaster = nextMaster
     }
 
-    const availableSlots = Array.from({ length: slotsCount })
-      .map((_, idx) => idx)
-      .filter(idx => idx !== effectiveMaster && idx !== slot)
-    const otherSlot = availableSlots[0] ?? (slot === 0 ? 2 : 0)
+    if (splitSecondarySlot === slot) {
+      const availableSlots = Array.from({ length: slotsCount })
+        .map((_, idx) => idx)
+        .filter(idx => idx !== effectiveMaster && idx !== slot)
+      setSplitSecondarySlot(availableSlots[0] ?? (slot === 0 ? 1 : 0))
+    }
 
-    setSplitSecondarySlot(slot)
-    setTripleTertiarySlot(otherSlot)
-    handleSelectLayout('triple')
-  }, [screenLayout, splitSecondarySlot, tripleTertiarySlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot])
+    setTripleTertiarySlot(slot)
+    if (screenLayout !== 'quad') {
+      handleSelectLayout('triple')
+    }
+  }, [screenLayout, splitSecondarySlot, tripleTertiarySlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot, setSplitSecondarySlot, setTripleTertiarySlot])
 
   const handleToggleQuadOnCamera = useCallback((slot) => {
-    const isInQuad = screenLayout === 'quad' && (splitSecondarySlot === slot || tripleTertiarySlot === slot || quadQuaternarySlot === slot)
-    if (isInQuad) {
+    if (screenLayout === 'quad' && quadQuaternarySlot === slot) {
       handleSelectLayout('full')
       return
     }
@@ -603,11 +671,16 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       .map((_, idx) => idx)
       .filter(idx => idx !== effectiveMaster && idx !== slot)
 
-    setSplitSecondarySlot(slot)
-    setTripleTertiarySlot(availableSlots[0] ?? (slot === 0 ? 2 : 0))
-    setQuadQuaternarySlot(availableSlots[1] ?? (slot <= 1 ? 3 : 1))
+    if (splitSecondarySlot === slot) {
+      setSplitSecondarySlot(availableSlots[0] ?? 1)
+    }
+    if (tripleTertiarySlot === slot) {
+      setTripleTertiarySlot(availableSlots[1] ?? availableSlots[0] ?? 2)
+    }
+
+    setQuadQuaternarySlot(slot)
     handleSelectLayout('quad')
-  }, [screenLayout, splitSecondarySlot, tripleTertiarySlot, quadQuaternarySlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot])
+  }, [screenLayout, splitSecondarySlot, tripleTertiarySlot, quadQuaternarySlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot, setSplitSecondarySlot, setTripleTertiarySlot, setQuadQuaternarySlot])
 
   const handleSwapPipMaster = useCallback(() => {
     handlePromoteToMaster(pipCameraSlot)
@@ -1093,6 +1166,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     animPhase,
     animKey,
     directorCrop: effectiveCrop,
+    secondaryCrop: cameraCrops[splitSecondarySlot] || null,
+    tertiaryCrop: cameraCrops[tripleTertiarySlot] || null,
+    quaternaryCrop: cameraCrops[quadQuaternarySlot] || null,
+    pipCrop: cameraCrops[pipCameraSlot] || null,
     look,
     recording,
     recordDurationSec: duration,
@@ -1226,15 +1303,20 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       if (isTouchDevice()) {
         const n = await initMobileCameras()
         if (n === 0) setInitError('Permite el acceso a la cámara en el navegador y pulsa reconectar.')
-      } else if (devs.cameras.length > 0) {
-        let n = await autoConnectAll(devs.cameras, planLimits.maxCameras)
-        if (n === 0 && devs.cameras[0]) {
-          await startCamera(devs.cameras[0].deviceId, PRIMARY_CAMERA_SLOT, devs.cameras[0].label)
+      } else {
+        const maxCams = Math.max(4, planLimits.maxCameras || 4)
+        let n = await autoConnectAll(devs.cameras, maxCams)
+        if (n === 0 && devs.cameras.length > 0 && devs.cameras[0]) {
+          await startCamera(devs.cameras[0].deviceId, masterCameraSlot, devs.cameras[0].label)
           n = 1
         }
-        if (n === 0) setInitError('Permite el acceso a la cámara en el navegador y pulsa reconectar.')
-      } else {
-        setInitError('No se detectaron cámaras USB. Conecta una y autoriza el acceso.')
+        if (n === 0) {
+          if (devs.cameras.length === 0) {
+            setInitError('No se detectaron cámaras USB ni WiFi configuradas. Conecta una y autoriza el acceso.')
+          } else {
+            setInitError('Permite el acceso a la cámara en el navegador y pulsa reconectar.')
+          }
+        }
       }
       if (devs.microphones.length > 0) await startPreferredMic(devs.microphones)
       await checkAIStatus()
@@ -1756,6 +1838,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     cameraKey={programCamera}
                     look={look}
                     directorCrop={effectiveCrop}
+                    crops={cameraCrops}
+                    masterCameraSlot={masterCameraSlot}
+                    secondarySlot={splitSecondarySlot}
+                    tertiarySlot={tripleTertiarySlot}
+                    quaternarySlot={quadQuaternarySlot}
+                    pipCameraSlot={pipCameraSlot}
+                    pushInActive={cameraCrops[programCamera]?.pushIn || false}
                     layout={screenLayout}
                     pipStream={screenLayout === 'pip' ? streams[pipCameraSlot] : null}
                     pipLabel={getSlotLabel(pipCameraSlot, cameraMeta[pipCameraSlot]?.customLabel, pipCameraSlot === masterCameraSlot)}
@@ -1989,7 +2078,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                         onClick={(e) => {
                           e.stopPropagation()
                           if (streams[i]) {
-                            stopCamera(i)
+                            stopCamera(i, true)
                           } else {
                             handleOpenConnectModal(i)
                           }
@@ -2406,7 +2495,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     if (isTouchDevice()) {
                       await initMobileCameras()
                     } else {
-                      let n = await autoConnectAll(devs.cameras, planLimits.maxCameras, slotsCount)
+                      let n = await autoConnectAll(devs.cameras, Math.max(4, planLimits.maxCameras || 4))
                       if (n === 0 && devs.cameras[0]) {
                         await startCamera(devs.cameras[0].deviceId, masterCameraSlot, devs.cameras[0].label)
                       }
@@ -2421,7 +2510,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   onWifiConnect={connectWifiCamera}
                   onBluetoothScan={scanBluetoothCamera}
                   onBluetoothWifiConnect={connectBluetoothWifiStream}
-                  onDisconnect={stopCamera}
+                  onDisconnect={(slot) => stopCamera(slot, true)}
                 />
                 {camError && (
                   <div className={styles.camError}>
@@ -3211,12 +3300,12 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               <button
                 type="button"
                 className={styles.recActionBtn}
-                onClick={() => { if (recordings.length > 0) downloadRecording(recordings[recordings.length - 1]) }}
-                disabled={recordings.length === 0}
-                title="Descargar última grabación master"
+                onClick={() => { if (recordings.length > 0) downloadRecordingMp4(recordings[recordings.length - 1]) }}
+                disabled={recordings.length === 0 || converting}
+                title="Descargar última grabación master en MP4 universal (H.264 + Faststart)"
               >
-                <i className="ti ti-download" style={{ fontSize: 13, color: 'var(--text-secondary)' }} />
-                <span>Descargar Master</span>
+                <i className={`ti ${converting ? 'ti-loader' : 'ti-download'}`} style={{ fontSize: 13, color: 'var(--text-secondary)' }} />
+                <span>{converting ? `Exportando MP4 (${convertProgress}%)...` : 'Descargar Master (MP4)'}</span>
               </button>
 
               <button
@@ -3277,7 +3366,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
           if (stream) setConnectModalOpen(false)
         }}
         onDisconnect={(slot) => {
-          stopCamera(slot)
+          stopCamera(slot, true)
         }}
         onRenameSlot={(slot, label) => {
           renameCameraSlot(slot, label)

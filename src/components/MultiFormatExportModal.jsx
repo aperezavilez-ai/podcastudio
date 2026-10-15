@@ -81,15 +81,33 @@ export default function MultiFormatExportModal({
     setConvertingKey(preset.key)
     setProgress(0)
     try {
-      const convertedBlob = await convertVideoToFormat(recording.blob, preset.key, {
-        mode: cropMode,
-        duration: recording.duration,
-        onProgress: (pct) => setProgress(pct),
-      })
-      if (!convertedBlob) throw new Error('No se generó el video')
+      let finalBlob
+      if (preset.baseFormat === '16:9' || preset.key === '16:9') {
+        finalBlob = recording.blob
+      } else {
+        finalBlob = await convertVideoToFormat(recording.blob, preset.key, {
+          mode: cropMode,
+          duration: recording.duration,
+          onProgress: (pct) => setProgress(pct),
+        })
+      }
+      if (!finalBlob) throw new Error('No se generó el video')
 
-      const filename = buildFormatFilename(recording.name, preset.key, recording.ext || 'webm')
-      const url = URL.createObjectURL(convertedBlob)
+      let outputBlob = finalBlob
+      let ext = 'mp4'
+      if (finalBlob.type.includes('webm') || (!finalBlob.type.includes('mp4') && recording.ext === 'webm')) {
+        try {
+          const { convertWebmToMp4 } = await import('../utils/exportVideo.js')
+          outputBlob = await convertWebmToMp4(finalBlob, (pct) => setProgress(Math.min(99, pct)))
+          ext = 'mp4'
+        } catch (e) {
+          console.warn('MP4 fallback:', e)
+          ext = finalBlob.type.includes('mp4') ? 'mp4' : 'webm'
+        }
+      }
+
+      const filename = buildFormatFilename(recording.name, preset.key, ext)
+      const url = URL.createObjectURL(outputBlob)
       const a = document.createElement('a')
       a.href = url
       a.download = filename
@@ -115,31 +133,38 @@ export default function MultiFormatExportModal({
       setProgress(0)
 
       try {
+        let rawBlob
         if (preset.baseFormat === '16:9' || preset.key === '16:9') {
-          // Master nativo
-          const fn = `${recording.name || 'podcastudio'}_${preset.filenameSuffix || '16x9'}.${recording.ext || 'webm'}`
-          const u = URL.createObjectURL(recording.blob)
+          rawBlob = recording.blob
+        } else {
+          rawBlob = await convertVideoToFormat(recording.blob, preset.key, {
+            mode: cropMode,
+            duration: recording.duration,
+            onProgress: (pct) => setProgress(pct),
+          })
+        }
+
+        if (rawBlob) {
+          let outputBlob = rawBlob
+          let ext = 'mp4'
+          if (rawBlob.type.includes('webm') || (!rawBlob.type.includes('mp4') && recording.ext === 'webm')) {
+            try {
+              const { convertWebmToMp4 } = await import('../utils/exportVideo.js')
+              outputBlob = await convertWebmToMp4(rawBlob, (pct) => setProgress(Math.min(99, pct)))
+              ext = 'mp4'
+            } catch (e) {
+              console.warn('MP4 fallback:', e)
+              ext = rawBlob.type.includes('mp4') ? 'mp4' : 'webm'
+            }
+          }
+
+          const fn = buildFormatFilename(recording.name, preset.key, ext)
+          const u = URL.createObjectURL(outputBlob)
           const a = document.createElement('a')
           a.href = u
           a.download = fn
           a.click()
           URL.revokeObjectURL(u)
-        } else {
-          // Reencuadre vertical o cuadrado
-          const convertedBlob = await convertVideoToFormat(recording.blob, preset.key, {
-            mode: cropMode,
-            duration: recording.duration,
-            onProgress: (pct) => setProgress(pct),
-          })
-          if (convertedBlob) {
-            const fn = buildFormatFilename(recording.name, preset.key, recording.ext || 'webm')
-            const u = URL.createObjectURL(convertedBlob)
-            const a = document.createElement('a')
-            a.href = u
-            a.download = fn
-            a.click()
-            URL.revokeObjectURL(u)
-          }
         }
         await new Promise(r => setTimeout(r, 600))
       } catch (err) {

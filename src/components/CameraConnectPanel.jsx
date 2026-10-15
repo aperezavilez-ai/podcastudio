@@ -21,7 +21,7 @@ export default function CameraConnectPanel({
   wifiConnecting,
   btScanning,
   wifiPresets,
-  slotsCount = 3,
+  slotsCount = 4,
   onAddSlot,
   onSelectSlot,
   onUsbConnect,
