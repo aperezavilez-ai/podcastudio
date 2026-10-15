@@ -566,14 +566,18 @@ export function useWebcam() {
         audio: deviceId
           ? {
             deviceId: { exact: deviceId },
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: { ideal: 2 },
+            sampleRate: { ideal: 48000 },
           }
           : {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: { ideal: 2 },
+            sampleRate: { ideal: 48000 },
           },
         video: false,
       }
@@ -584,7 +588,7 @@ export function useWebcam() {
       } catch {
         if (!deviceId) throw new Error('no mic')
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: { deviceId: { ideal: deviceId } },
+          audio: { deviceId: { ideal: deviceId }, echoCancellation: true, noiseSuppression: true },
           video: false,
         })
       }

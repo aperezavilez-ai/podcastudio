@@ -83,6 +83,7 @@ export default function MultiFormatExportModal({
     try {
       const convertedBlob = await convertVideoToFormat(recording.blob, preset.key, {
         mode: cropMode,
+        duration: recording.duration,
         onProgress: (pct) => setProgress(pct),
       })
       if (!convertedBlob) throw new Error('No se generó el video')
@@ -127,6 +128,7 @@ export default function MultiFormatExportModal({
           // Reencuadre vertical o cuadrado
           const convertedBlob = await convertVideoToFormat(recording.blob, preset.key, {
             mode: cropMode,
+            duration: recording.duration,
             onProgress: (pct) => setProgress(pct),
           })
           if (convertedBlob) {

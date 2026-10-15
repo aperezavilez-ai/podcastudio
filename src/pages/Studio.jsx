@@ -588,8 +588,25 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       cintillos: false,
       aiProducer: false,
       music: false,
+      teleprompter: false,
     }
   })
+
+  const [teleprompterOnScreen, setTeleprompterOnScreen] = useState(() => {
+    try {
+      return localStorage.getItem('podcastudio_teleprompter_on_screen') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  const handleToggleTeleprompterOnScreen = useCallback(() => {
+    setTeleprompterOnScreen(prev => {
+      const next = !prev
+      try { localStorage.setItem('podcastudio_teleprompter_on_screen', String(next)) } catch {}
+      return next
+    })
+  }, [])
 
   const toggleSection = useCallback((key) => {
     setOpenSections(prev => {
@@ -958,7 +975,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     'Introduce el tema, desarrolla los puntos clave y cierra con una llamada a la acción.',
   ].filter(Boolean).join('\n\n')
 
-  const teleprompter = useTeleprompter(defaultScript, true)
+  const teleprompter = useTeleprompter(defaultScript, false)
 
   const { look, setField: setLookField, applyPreset: applyLookPreset, resetLook } = useLookSettings()
 
@@ -1089,11 +1106,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
   useEffect(() => {
     if (tab !== 'studio') return
-    if (!teleprompter.visible && !recording && countdown == null) return
+    if (!teleprompterOnScreen && !openSections.teleprompter) return
 
     const onKeyDown = (e) => {
       handleTeleprompterKeydown(e, {
-        onToggle: teleprompter.toggle,
+        onToggle: () => {
+          if (!teleprompterOnScreen) {
+            setTeleprompterOnScreen(true)
+            try { localStorage.setItem('podcastudio_teleprompter_on_screen', 'true') } catch {}
+          }
+          teleprompter.toggle()
+        },
         onReset: teleprompter.reset,
         lastActionRef: teleprompterKeyRef,
       })
@@ -1101,7 +1124,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [tab, teleprompter.visible, teleprompter.toggle, teleprompter.reset, recording, countdown])
+  }, [tab, teleprompterOnScreen, openSections.teleprompter, teleprompter.toggle, teleprompter.reset])
 
   // Atajos de teclado para switcher multicámara (1-9 = CAM 1 a 9, 0 = CAM 10, Espacio = CUT, Enter = AUTO)
   useEffect(() => {
@@ -1236,8 +1259,6 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     if (countdown) return
 
     setPreparingRecord(true)
-    teleprompter.setVisible(true)
-    teleprompter.reset()
     for (let i = 3; i >= 1; i--) {
       setCountdown(i)
       await new Promise(r => setTimeout(r, 1000))
@@ -1261,11 +1282,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         musicPlaying,
         dspSettings,
       })
-      teleprompter.setRecordingActive(true)
       startRecording(combined)
     } catch (e) {
       console.error('Recording mix error:', e)
-      teleprompter.setRecordingActive(true)
       startRecording(videoStream)
     } finally {
       setPreparingRecord(false)
@@ -1742,7 +1761,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     <span>{directorStatus}</span>
                   </div>
                 )}
-                {(teleprompter.visible || recording || preparingRecord || countdown != null) && (
+                {teleprompterOnScreen && (
                   <TeleprompterOverlay
                     script={teleprompter.script}
                     playing={teleprompter.playing}
@@ -2249,24 +2268,32 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
           <div className={styles.prSection}>
             <button
               type="button"
-              className={`${styles.sectionToggle} ${teleprompter.visible ? styles.sectionToggleActive : ''}`}
-              onClick={() => teleprompter.setVisible(v => !v)}
+              className={`${styles.sectionToggle} ${openSections.teleprompter ? styles.sectionToggleActive : ''}`}
+              onClick={() => toggleSection('teleprompter')}
             >
-              <i className={`ti ti-script ${styles.sectionIcon}`} />
+              <i className={`ti ti-script ${styles.sectionIcon}`} style={{ color: teleprompterOnScreen ? '#10b981' : undefined }} />
               <span className={styles.sectionToggleTitle}>Teleprompter</span>
-              <span className={styles.sectionToggleBadge}>
-                {teleprompter.visible ? 'Activo' : 'Cerrado'}
+              <span className={`${styles.sectionToggleBadge} ${teleprompterOnScreen ? styles.badgeActiveGreen : ''}`}>
+                {teleprompterOnScreen ? (teleprompter.playing ? '● Leyendo' : 'En Pantalla') : (openSections.teleprompter ? 'Abierto' : 'Cerrado')}
               </span>
-              <i className={`ti ti-chevron-${teleprompter.visible ? 'up' : 'down'} ${styles.sectionChevron}`} />
+              <i className={`ti ti-chevron-${openSections.teleprompter ? 'up' : 'down'} ${styles.sectionChevron}`} />
             </button>
-            {teleprompter.visible && (
+            {openSections.teleprompter && (
               <div className={styles.sectionBody}>
                 <Teleprompter
                   script={teleprompter.script}
                   onScriptChange={teleprompter.setScript}
                   playing={teleprompter.playing}
-                  onToggle={teleprompter.toggle}
+                  onToggle={() => {
+                    if (!teleprompterOnScreen && !teleprompter.playing) {
+                      setTeleprompterOnScreen(true)
+                      try { localStorage.setItem('podcastudio_teleprompter_on_screen', 'true') } catch {}
+                    }
+                    teleprompter.toggle()
+                  }}
                   onReset={teleprompter.reset}
+                  onScreen={teleprompterOnScreen}
+                  onToggleOnScreen={handleToggleTeleprompterOnScreen}
                   speed={teleprompter.speed}
                   onSpeedChange={teleprompter.setSpeed}
                   fontSize={teleprompter.fontSize}
@@ -2283,7 +2310,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       compact
                       aiConfigured={aiConfigured}
                       processing={loadingScript}
-                      onScriptReady={(text) => { teleprompter.setScript(text); teleprompter.reset(); teleprompter.setVisible(true) }}
+                      onScriptReady={(text) => {
+                        teleprompter.setScript(text)
+                        teleprompter.reset()
+                      }}
                       onFormatWithAI={(raw) => formatTeleprompterDocument(raw, {
                         podcast: proj.name,
                         topic: proj.episodeTitle,

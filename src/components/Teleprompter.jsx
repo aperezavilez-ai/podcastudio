@@ -6,12 +6,22 @@ export default function Teleprompter({
   speed, onSpeedChange, fontSize, onFontSizeChange,
   mirror, onMirrorChange, direction, onDirectionChange,
   onGenerateScript, generatingScript, aiConfigured, docUpload,
+  onScreen = false, onToggleOnScreen = () => {},
 }) {
   return (
     <div className={styles.docked}>
       {docUpload}
       <div className={styles.toolbar}>
         <div className={styles.tools}>
+          <button
+            type="button"
+            className={`${styles.launchBtn} ${onScreen ? styles.launchBtnActive : ''}`}
+            onClick={onToggleOnScreen}
+            title={onScreen ? 'Quitar teleprompter de la pantalla' : 'Lanzar teleprompter al visor principal'}
+          >
+            <i className={`ti ${onScreen ? 'ti-screen-share-off' : 'ti-screen-share'}`} />
+            <span>{onScreen ? 'En Pantalla' : 'Lanzar'}</span>
+          </button>
           <button type="button" className={`${styles.playBtn} ${playing ? styles.playing : ''}`} onClick={onToggle}>
             <i className={`ti ${playing ? 'ti-player-pause' : 'ti-player-play'}`} />
             {playing ? 'Pausar' : 'Leer'}

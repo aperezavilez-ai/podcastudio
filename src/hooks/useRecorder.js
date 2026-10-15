@@ -90,7 +90,7 @@ export function useRecorder() {
     startVaultSession(sessionId, { mimeType, ext, name: recName })
 
     try {
-      const mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8000000, audioBitsPerSecond: 192000 })
+      const mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12000000, audioBitsPerSecond: 320000 })
       
       mr.ondataavailable = e => {
         if (e.data && e.data.size > 0) {
