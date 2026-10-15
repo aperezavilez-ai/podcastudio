@@ -31,6 +31,11 @@ export default function SwitcherMasterBar({
   onToggleCintillos = () => {},
   showMasterGrid = false,
   onToggleMasterGrid = () => {},
+  switchMode = 'off',
+  onToggleAiSwitchMode = () => {},
+  directorStatus = '',
+  transitionMode = 'crossfade',
+  onSelectTransitionMode = () => {},
 }) {
   const pgmMeta = cameraMeta[programCamera]
   const pgmLabel = getSlotLabel(programCamera, pgmMeta?.customLabel, programCamera === masterCameraSlot)
@@ -289,6 +294,36 @@ export default function SwitcherMasterBar({
       </div>
 
       <div className={styles.actionsSection}>
+        {/* Botón Auto Switcher IA (Conmutador Inteligente) */}
+        <button
+          type="button"
+          className={`${styles.aiSwitcherBtn} ${switchMode === 'ai' ? styles.aiSwitcherActive : ''}`}
+          onClick={onToggleAiSwitchMode}
+          title={switchMode === 'ai'
+            ? `Auto Switcher IA ACTIVO: Conmutando cámaras inteligentemente ${directorStatus ? `(${directorStatus})` : ''} — Clic para pausar`
+            : 'Activar Auto Switcher IA (Conmutación automática de cámaras por voz y ritmo)'}
+        >
+          <i className="ti ti-wand" />
+          <span>{switchMode === 'ai' ? 'Auto Switcher IA: ON' : 'Auto Switcher IA'}</span>
+          {switchMode === 'ai' && <span className={styles.aiLivePulse} />}
+        </button>
+
+        {/* Selector de Transición Profesional */}
+        <div className={styles.transitionSelectorWrap} title="Efecto de transición entre cámaras al cambiar">
+          <i className="ti ti-transform" style={{ fontSize: 13, color: 'var(--text-muted, #94a3b8)' }} />
+          <select
+            className={styles.transitionSelect}
+            value={transitionMode}
+            onChange={(e) => onSelectTransitionMode(e.target.value)}
+            title="Efecto de transición entre cámaras"
+          >
+            <option value="crossfade">Disolución (Suave)</option>
+            <option value="push">Barrido (Push)</option>
+            <option value="dip">Fundido a negro (Dip)</option>
+            <option value="cut">Corte limpio (Cut)</option>
+          </select>
+        </div>
+
         {/* Controles CUT y AUTO en modo Studio Pro */}
         {proSwitcherMode ? (
           <>

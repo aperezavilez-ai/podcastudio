@@ -999,10 +999,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       userPickedCameraRef.current = true
       const prevProgram = programCamera
       setActiveCamera(previewCamera)
+      setMasterCameraSlot(previewCamera)
       setCamSlot(previewCamera)
       setPreviewCamera(prevProgram)
     }
-  }, [previewCamera, streams, programCamera, setActiveCamera, setCamSlot])
+  }, [previewCamera, streams, programCamera, setActiveCamera, setMasterCameraSlot, setCamSlot])
 
   const handleAutoTransition = useCallback(() => {
     handleCut()
@@ -1573,12 +1574,19 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       {/* TOPBAR */}
       <div className={styles.topbar}>
         <div className={styles.topLeft}>
-          <div className={styles.winBtns}>
-            <div className={`${styles.wb} ${styles.wbR}`} onClick={() => navigate('/')} title="Salir" />
-            <div className={`${styles.wb} ${styles.wbY}`} />
-            <div className={`${styles.wb} ${styles.wbG}`} />
-          </div>
-          <div className={styles.brand}>Podcast<span>Studio</span></div>
+          <button
+            type="button"
+            className={styles.headerBackBtn}
+            onClick={() => {
+              if (recording && !window.confirm('Hay una grabación en curso. ¿Deseas salir a la página principal?')) return
+              navigate('/')
+            }}
+            title="Volver a la página principal"
+          >
+            <i className="ti ti-arrow-left" />
+            <span>Inicio</span>
+          </button>
+          <div className={styles.brand} onClick={() => navigate('/')} style={{ cursor: 'pointer' }} title="Ir al Inicio">Podcast<span>Studio</span></div>
         </div>
         <div className={styles.topCenter}>
           <div className={styles.projectTag}>
@@ -2018,6 +2026,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               onToggleCintillos={toggleCintillosEnabled}
               showMasterGrid={showMasterGrid}
               onToggleMasterGrid={toggleMasterGrid}
+              switchMode={switchMode}
+              onToggleAiSwitchMode={() => setSwitchMode(m => m === 'ai' ? 'off' : 'ai')}
+              directorStatus={directorStatus}
+              transitionMode={look?.transition || 'crossfade'}
+              onSelectTransitionMode={(mode) => setLookField('transition', mode)}
             />
 
             {/* MULTICÁMARA (hasta 20 cámaras) con Swisher Master */}

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { buildCanvasFilter } from '../utils/videoLook.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 import SetBackground from './SetBackground.jsx'
@@ -44,6 +44,257 @@ function safeAttachVideo(videoEl, targetStream) {
   } else if (videoEl.srcObject) {
     videoEl.srcObject = null
   }
+}
+
+/** Motor de video A/B con doble búfer: elimina al 100% el parpadeo en negro al conmutar cámaras y aplica transiciones fluidas a 60fps */
+function SeamlessMasterVideo({
+  stream,
+  className = '',
+  style = {},
+  filter,
+  transitionMode = 'crossfade',
+  cameraKey = 0,
+  onClick,
+  title,
+  mainVideoRef,
+}) {
+  const [activeBus, setActiveBus] = useState('A')
+  const [streamA, setStreamA] = useState(stream)
+  const [streamB, setStreamB] = useState(null)
+  const [transitionPhase, setTransitionPhase] = useState('idle')
+
+  const videoARef = useRef(null)
+  const videoBRef = useRef(null)
+  const prevStreamRef = useRef(stream)
+  const prevKeyRef = useRef(cameraKey)
+  const timeoutRef = useRef(null)
+
+  useEffect(() => {
+    if (mainVideoRef) {
+      mainVideoRef.current = activeBus === 'A' ? videoARef.current : videoBRef.current
+    }
+  }, [activeBus, mainVideoRef])
+
+  useEffect(() => {
+    safeAttachVideo(videoARef.current, streamA)
+  }, [streamA])
+
+  useEffect(() => {
+    safeAttachVideo(videoBRef.current, streamB)
+  }, [streamB])
+
+  useEffect(() => {
+    const unbindA = bindVideoKeepAlive(videoARef.current)
+    const unbindB = bindVideoKeepAlive(videoBRef.current)
+    return () => {
+      unbindA?.()
+      unbindB?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    const streamChanged = stream !== prevStreamRef.current
+    const keyChanged = cameraKey !== prevKeyRef.current
+    prevStreamRef.current = stream
+    prevKeyRef.current = cameraKey
+
+    if (!streamChanged && !keyChanged) return
+
+    if (!streamA && !streamB) {
+      setStreamA(stream)
+      setActiveBus('A')
+      return
+    }
+
+    if (!stream) {
+      if (activeBus === 'A') setStreamA(null)
+      else setStreamB(null)
+      return
+    }
+
+    const incomingBus = activeBus === 'A' ? 'B' : 'A'
+    const incomingRef = incomingBus === 'B' ? videoBRef : videoARef
+
+    if (incomingBus === 'B') {
+      setStreamB(stream)
+    } else {
+      setStreamA(stream)
+    }
+
+    const duration = transitionMode === 'cut' ? 40 : 360
+
+    const executeTransition = () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+      setTransitionPhase('transitioning')
+
+      timeoutRef.current = setTimeout(() => {
+        setActiveBus(incomingBus)
+        setTransitionPhase('idle')
+      }, duration)
+    }
+
+    const node = incomingRef.current
+    if (node && node.readyState >= 2) {
+      executeTransition()
+    } else if (node) {
+      const handleReady = () => {
+        node.removeEventListener('canplay', handleReady)
+        node.removeEventListener('loadeddata', handleReady)
+        executeTransition()
+      }
+      node.addEventListener('canplay', handleReady, { once: true })
+      node.addEventListener('loadeddata', handleReady, { once: true })
+      timeoutRef.current = setTimeout(executeTransition, 90)
+    } else {
+      timeoutRef.current = setTimeout(executeTransition, 50)
+    }
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [stream, cameraKey, activeBus, transitionMode, streamA, streamB])
+
+  const isA = activeBus === 'A'
+  const isTransitioning = transitionPhase === 'transitioning'
+
+  const { top, left, width, height, ...videoCropStyle } = style
+  const hasExplicitDimensions = top !== undefined || left !== undefined
+
+  const containerStyle = hasExplicitDimensions ? {
+    position: 'absolute',
+    top,
+    left,
+    width,
+    height,
+    overflow: 'hidden',
+    borderRadius: '4px',
+    boxShadow: '0 4px 24px rgba(0, 0, 0, 0.45)',
+    cursor: onClick ? 'pointer' : 'default',
+  } : {
+    position: 'relative',
+    width: '100%',
+    height: '100%',
+    overflow: 'hidden',
+    cursor: onClick ? 'pointer' : 'default',
+  }
+
+  let styleA = {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    filter,
+    ...videoCropStyle,
+  }
+  let styleB = {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    filter,
+    ...videoCropStyle,
+  }
+
+  if (transitionMode === 'push') {
+    const dur = '380ms cubic-bezier(0.2, 0.8, 0.2, 1)'
+    if (isA) {
+      styleA = {
+        ...styleA,
+        transform: isTransitioning ? 'translateX(-100%)' : (videoCropStyle.transform || undefined),
+        transition: isTransitioning ? `transform ${dur}` : videoCropStyle.transition,
+        zIndex: 2,
+        opacity: 1,
+      }
+      styleB = {
+        ...styleB,
+        transform: isTransitioning ? (videoCropStyle.transform || 'translateX(0)') : 'translateX(100%)',
+        transition: isTransitioning ? `transform ${dur}` : undefined,
+        zIndex: 3,
+        opacity: streamB ? 1 : 0,
+      }
+    } else {
+      styleB = {
+        ...styleB,
+        transform: isTransitioning ? 'translateX(-100%)' : (videoCropStyle.transform || undefined),
+        transition: isTransitioning ? `transform ${dur}` : videoCropStyle.transition,
+        zIndex: 2,
+        opacity: 1,
+      }
+      styleA = {
+        ...styleA,
+        transform: isTransitioning ? (videoCropStyle.transform || 'translateX(0)') : 'translateX(100%)',
+        transition: isTransitioning ? `transform ${dur}` : undefined,
+        zIndex: 3,
+        opacity: streamA ? 1 : 0,
+      }
+    }
+  } else if (transitionMode === 'cut') {
+    styleA = {
+      ...styleA,
+      zIndex: isA ? 2 : 1,
+      opacity: isA ? 1 : 0,
+      pointerEvents: isA ? 'auto' : 'none',
+    }
+    styleB = {
+      ...styleB,
+      zIndex: !isA ? 2 : 1,
+      opacity: !isA ? 1 : 0,
+      pointerEvents: !isA ? 'auto' : 'none',
+    }
+  } else {
+    // Crossfade o Dip (Crossfade default profesional)
+    const dur = '350ms cubic-bezier(0.25, 1, 0.5, 1)'
+    const opacityA = isA ? (isTransitioning ? 0 : 1) : (isTransitioning ? 1 : 0)
+    const opacityB = isA ? (isTransitioning ? 1 : 0) : (isTransitioning ? 0 : 1)
+
+    styleA = {
+      ...styleA,
+      zIndex: isA ? 2 : 1,
+      opacity: opacityA,
+      transition: isTransitioning ? `opacity ${dur}` : videoCropStyle.transition,
+      pointerEvents: isA ? 'auto' : 'none',
+    }
+    styleB = {
+      ...styleB,
+      zIndex: !isA ? 2 : 1,
+      opacity: opacityB,
+      transition: isTransitioning ? `opacity ${dur}` : videoCropStyle.transition,
+      pointerEvents: !isA ? 'auto' : 'none',
+    }
+  }
+
+  return (
+    <div
+      className={`${styles.seamlessWrapper} ${className}`}
+      style={containerStyle}
+      onClick={onClick}
+      title={title}
+    >
+      <video
+        ref={videoARef}
+        className={className}
+        autoPlay
+        muted
+        playsInline
+        onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+        onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+        style={styleA}
+      />
+      <video
+        ref={videoBRef}
+        className={className}
+        autoPlay
+        muted
+        playsInline
+        onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+        onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+        style={styleB}
+      />
+      {transitionMode === 'dip' && isTransitioning && (
+        <div className={`${styles.seamlessDipOverlay} ${styles.seamlessDipActive}`} />
+      )}
+    </div>
+  )
 }
 
 /** Visor principal: video HTML directo (fluido) + filtros CSS del LOOK PRO + Layouts Multi-cámara (Solo, PiP, Split, Triple, Quad). */
@@ -109,28 +360,24 @@ export default function ProgramPreview({
     safeAttachVideo(node, pipStream)
   }, [pipStream])
 
-  // Efecto continuo de sincronización y keep-alive cuando cambian layout, streams o cámaras
   useEffect(() => {
-    safeAttachVideo(videoRef.current, stream)
     safeAttachVideo(secondaryVideoRef.current, secondaryStream)
     safeAttachVideo(tertiaryVideoRef.current, tertiaryStream)
     safeAttachVideo(quaternaryVideoRef.current, quaternaryStream)
     safeAttachVideo(pipVideoRef.current, pipStream)
 
-    const unbind1 = bindVideoKeepAlive(videoRef.current)
     const unbind2 = bindVideoKeepAlive(secondaryVideoRef.current)
     const unbind3 = bindVideoKeepAlive(tertiaryVideoRef.current)
     const unbind4 = bindVideoKeepAlive(quaternaryVideoRef.current)
     const unbind5 = bindVideoKeepAlive(pipVideoRef.current)
 
     return () => {
-      unbind1?.()
       unbind2?.()
       unbind3?.()
       unbind4?.()
       unbind5?.()
     }
-  }, [stream, secondaryStream, tertiaryStream, quaternaryStream, pipStream, cameraKey, layout])
+  }, [secondaryStream, tertiaryStream, quaternaryStream, pipStream, cameraKey, layout])
 
   const cssFilter = useMemo(() => {
     const f = buildCanvasFilter(look)
@@ -177,22 +424,20 @@ export default function ProgramPreview({
     return (
       <div className={styles.preview}>
         <SetBackground templateId={virtualSet.templateId} customUrl={virtualSet.customUrl} />
-        <video
-          ref={setMainVideo}
+        <SeamlessMasterVideo
+          stream={stream}
           className={styles.videoInset}
-          autoPlay
-          muted
-          playsInline
-          onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
-          onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
           style={{
             top: `${top}%`,
             left: `${left}%`,
             width: `${width}%`,
             height: `${height}%`,
-            filter: cssFilter,
             ...masterStyle,
           }}
+          filter={cssFilter}
+          transitionMode={look?.transition || 'crossfade'}
+          cameraKey={cameraKey}
+          mainVideoRef={videoRef}
         />
         <LookOverlays look={look} />
       </div>
@@ -210,18 +455,14 @@ export default function ProgramPreview({
             title="Master Central: Haz clic para cerrar división y volver a pantalla completa"
           >
             {stream ? (
-              <video
-                ref={setMainVideo}
+              <SeamlessMasterVideo
+                stream={stream}
                 className={styles.videoSplit}
-                autoPlay
-                muted
-                playsInline
-                onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
-                onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
-                style={{
-                  filter: cssFilter,
-                  ...masterStyle,
-                }}
+                style={masterStyle}
+                filter={cssFilter}
+                transitionMode={look?.transition || 'crossfade'}
+                cameraKey={cameraKey}
+                mainVideoRef={videoRef}
               />
             ) : (
               <div className={styles.emptyPane} onClick={onOpenConnectModal}>
@@ -276,18 +517,14 @@ export default function ProgramPreview({
             title="Master Central: Haz clic para cerrar división y volver a pantalla completa"
           >
             {stream ? (
-              <video
-                ref={setMainVideo}
+              <SeamlessMasterVideo
+                stream={stream}
                 className={styles.videoSplit}
-                autoPlay
-                muted
-                playsInline
-                onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
-                onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
-                style={{
-                  filter: cssFilter,
-                  ...masterStyle,
-                }}
+                style={masterStyle}
+                filter={cssFilter}
+                transitionMode={look?.transition || 'crossfade'}
+                cameraKey={cameraKey}
+                mainVideoRef={videoRef}
               />
             ) : (
               <div className={styles.emptyPane}>
@@ -373,18 +610,14 @@ export default function ProgramPreview({
             title="Master Central: Haz clic para cerrar cuadrícula y volver a pantalla completa"
           >
             {stream ? (
-              <video
-                ref={setMainVideo}
+              <SeamlessMasterVideo
+                stream={stream}
                 className={styles.video}
-                autoPlay
-                muted
-                playsInline
-                onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
-                onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
-                style={{
-                  filter: cssFilter,
-                  ...masterStyle,
-                }}
+                style={masterStyle}
+                filter={cssFilter}
+                transitionMode={look?.transition || 'crossfade'}
+                cameraKey={cameraKey}
+                mainVideoRef={videoRef}
               />
             ) : (
               <div className={styles.emptyPane} onClick={onOpenConnectModal}>
@@ -494,20 +727,16 @@ export default function ProgramPreview({
   return (
     <div className={styles.preview}>
       {stream ? (
-        <video
-          ref={setMainVideo}
+        <SeamlessMasterVideo
+          stream={stream}
           className={`${styles.video} ${layout === 'pip' ? styles.clickablePane : ''}`}
+          style={masterStyle}
+          filter={cssFilter}
+          transitionMode={look?.transition || 'crossfade'}
+          cameraKey={cameraKey}
           onClick={layout === 'pip' ? onClosePip : undefined}
           title={layout === 'pip' ? 'Haz clic en Master para ocultar el PiP y volver a pantalla completa' : undefined}
-          autoPlay
-          muted
-          playsInline
-          onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
-          onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
-          style={{
-            filter: cssFilter,
-            ...masterStyle,
-          }}
+          mainVideoRef={videoRef}
         />
       ) : (
         <div className={styles.empty} onClick={onOpenConnectModal} style={{ cursor: onOpenConnectModal ? 'pointer' : 'default' }}>

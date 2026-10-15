@@ -40,9 +40,7 @@ function emptyCrops() {
 }
 
 function slotLabel(slot) {
-  if (slot === 0) return 'CAM 1 · Izquierda'
-  if (slot === 2) return 'CAM 3 · Derecha'
-  return 'CAM 2 · MASTER'
+  return `CAM ${Number(slot) + 1}`
 }
 
 export function useAIDirector({
@@ -167,7 +165,8 @@ export function useAIDirector({
       const currentActive = activeCameraRef.current ?? PRIMARY_CAMERA_SLOT
       const detector = detectorRef.current
 
-      const slots = [0, 1, 2].filter((i) => activeStreams[i] && videosRef.current[i]?.videoWidth)
+      const allActiveSlots = Object.keys(activeStreams).map(Number).filter(i => activeStreams[i])
+      const slots = allActiveSlots.filter((i) => videosRef.current[i]?.videoWidth)
       if (slots.length === 0) return
 
       const speaking = curMic >= micThreshold
@@ -201,16 +200,30 @@ export function useAIDirector({
         faces[slot] = { fx, fy, faceScore, boundingBox, videoWidth: vw, videoHeight: vh }
       }
 
-      // Switcheo por actividad vocal y presencia de rostro entre cámaras activas
-      if (speaking && slots.length > 1) {
-        const best = slots.reduce((a, b) => (scores[a] >= scores[b] ? a : b))
+      // Switcheo por actividad vocal, presencia de rostro o ritmo de conversación (cadencia televisiva)
+      if (slots.length > 1) {
+        let candidate = null
+        const timeSinceLastSwitch = (now - lastSwitchRef.current) / 1000
 
-        if (
-          best !== currentActive &&
-          scores[best] > (scores[currentActive] ?? 0) * 1.18 &&
-          now - lastSwitchRef.current > minCutSec * 1000
-        ) {
-          setActiveCameraRef.current?.(best)
+        // 1. Detección de orador activo con rostro identificado
+        if (speaking) {
+          const best = slots.reduce((a, b) => (scores[a] >= scores[b] ? a : b))
+          if (best !== currentActive && scores[best] > (scores[currentActive] ?? 0) * 1.15) {
+            candidate = best
+          }
+        }
+
+        // 2. Cadencia inteligente de conversación: si se sigue hablando o transcurrió el tiempo de corte,
+        // alternar a la siguiente cámara activa para ritmo dinámico de podcast
+        const cadenceSec = Math.max(minCutSec, 8)
+        if (candidate === null && speaking && timeSinceLastSwitch >= cadenceSec) {
+          const currentIdx = slots.indexOf(currentActive)
+          const nextIdx = currentIdx === -1 ? 0 : (currentIdx + 1) % slots.length
+          candidate = slots[nextIdx]
+        }
+
+        if (candidate !== null && candidate !== currentActive && timeSinceLastSwitch >= minCutSec) {
+          setActiveCameraRef.current?.(candidate)
           lastSwitchRef.current = now
         }
       }
@@ -218,7 +231,7 @@ export function useAIDirector({
       const nextCrops = emptyCrops()
       let statusDetail = ''
 
-      for (const slot of [0, 1, 2]) {
+      for (const slot of allActiveSlots) {
         if (!activeStreams[slot]) {
           nextCrops[slot] = { ...DEFAULT_CROP }
           appliedCropRef.current[slot] = { ...DEFAULT_CROP }

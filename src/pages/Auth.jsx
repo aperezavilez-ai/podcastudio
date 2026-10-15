@@ -136,6 +136,16 @@ export default function Auth({ onAuth }) {
 
   return (
     <div className={styles.page}>
+      <button
+        type="button"
+        className={styles.backHomeBtn}
+        onClick={() => navigate('/')}
+        title="Regresar a la página principal"
+      >
+        <i className="ti ti-arrow-left" />
+        <span>Volver a la página principal</span>
+      </button>
+
       <div className={styles.brand} onClick={() => navigate('/')}>
         <div className={styles.brandLogo}><i className="ti ti-microphone" /></div>
         <span>Podcast<strong>Studio</strong></span>
@@ -240,6 +250,15 @@ export default function Auth({ onAuth }) {
             {mode === 'login' ? 'Regístrate gratis' : 'Inicia sesión'}
           </button>
         </p>
+        <div className={styles.homeReturnBox}>
+          <button
+            type="button"
+            className={styles.homeReturnBtn}
+            onClick={() => navigate('/')}
+          >
+            <i className="ti ti-arrow-left" /> Regresar a la página principal
+          </button>
+        </div>
       </div>
     </div>
   )
