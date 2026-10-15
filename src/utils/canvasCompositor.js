@@ -12,6 +12,45 @@ import { drawSetBackground, drawVideoInset } from './drawSetBackground.js'
 const W = 1920
 const H = 1080
 
+export function drawVideoContain(ctx, video, x, y, w, h) {
+  if (!video || video.readyState < 2 || !video.videoWidth) return
+  const vw = video.videoWidth
+  const vh = video.videoHeight
+  const videoAspect = vw / vh
+  const boxAspect = w / h
+
+  // Fondo oscuro
+  ctx.fillStyle = '#08090e'
+  ctx.fillRect(x, y, w, h)
+
+  // Fondo ambiental difuminado sutil para acabado televisivo impecable
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(x, y, w, h)
+  ctx.clip()
+  try {
+    ctx.filter = 'blur(18px) brightness(0.35)'
+    ctx.drawImage(video, x, y, w, h)
+  } catch {}
+  ctx.restore()
+
+  // Calcular encuadre exacto completo sin recortar nada
+  let dw, dh, dx, dy
+  if (boxAspect > videoAspect) {
+    dh = h
+    dw = Math.round(h * videoAspect)
+    dx = Math.round(x + (w - dw) / 2)
+    dy = y
+  } else {
+    dw = w
+    dh = Math.round(w / videoAspect)
+    dx = x
+    dy = Math.round(y + (h - dh) / 2)
+  }
+
+  ctx.drawImage(video, 0, 0, vw, vh, dx, dy, dw, dh)
+}
+
 export function drawVideoCover(ctx, video, x, y, w, h, directorCrop = null) {
   if (!video || video.readyState < 2 || !video.videoWidth) return
   const vw = video.videoWidth
@@ -202,14 +241,14 @@ export function drawCompositorFrame(ctx, w, h, {
       }
       ctx.restore()
     } else {
-      // Modo Split 50/50 horizontal (para 16:9 y 1:1)
+      // Modo Split 50/50 horizontal (para 16:9 y 1:1) - Cuadratura 16:9 completa sin recortes
       const halfW = (w - 12) / 2
       ctx.save()
       ctx.beginPath()
       ctx.rect(0, 0, halfW, h)
       ctx.clip()
       if (video && video.readyState >= 2 && video.videoWidth) {
-        drawVideoCover(ctx, video, 0, 0, halfW, h, directorCrop)
+        drawVideoContain(ctx, video, 0, 0, halfW, h)
       } else {
         ctx.fillStyle = '#0d0d12'
         ctx.fillRect(0, 0, halfW, h)
@@ -221,7 +260,7 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.rect(halfW + 12, 0, halfW, h)
       ctx.clip()
       if (secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
-        drawVideoCover(ctx, secondaryVideo, halfW + 12, 0, halfW, h, null)
+        drawVideoContain(ctx, secondaryVideo, halfW + 12, 0, halfW, h)
       } else {
         ctx.fillStyle = '#0d0d12'
         ctx.fillRect(halfW + 12, 0, halfW, h)
@@ -242,7 +281,7 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.rect(0, 0, w, mainH)
       ctx.clip()
       if (video && video.readyState >= 2 && video.videoWidth) {
-        drawVideoCover(ctx, video, 0, 0, w, mainH, directorCrop)
+        drawVideoContain(ctx, video, 0, 0, w, mainH)
       } else {
         ctx.fillStyle = '#0d0d12'
         ctx.fillRect(0, 0, w, mainH)
@@ -254,7 +293,7 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.rect(0, subY, subW, subH)
       ctx.clip()
       if (secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
-        drawVideoCover(ctx, secondaryVideo, 0, subY, subW, subH, null)
+        drawVideoContain(ctx, secondaryVideo, 0, subY, subW, subH)
       } else {
         ctx.fillStyle = '#0d0d12'
         ctx.fillRect(0, subY, subW, subH)
@@ -266,7 +305,7 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.rect(subW + 12, subY, subW, subH)
       ctx.clip()
       if (tertiaryVideo && tertiaryVideo.readyState >= 2 && tertiaryVideo.videoWidth) {
-        drawVideoCover(ctx, tertiaryVideo, subW + 12, subY, subW, subH, null)
+        drawVideoContain(ctx, tertiaryVideo, subW + 12, subY, subW, subH)
       } else {
         ctx.fillStyle = '#0d0d12'
         ctx.fillRect(subW + 12, subY, subW, subH)
@@ -284,7 +323,7 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.rect(0, 0, mainW, h)
       ctx.clip()
       if (video && video.readyState >= 2 && video.videoWidth) {
-        drawVideoCover(ctx, video, 0, 0, mainW, h, directorCrop)
+        drawVideoContain(ctx, video, 0, 0, mainW, h)
       } else {
         ctx.fillStyle = '#0d0d12'
         ctx.fillRect(0, 0, mainW, h)
@@ -296,7 +335,7 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.rect(sideX, 0, sideW, sideH)
       ctx.clip()
       if (secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
-        drawVideoCover(ctx, secondaryVideo, sideX, 0, sideW, sideH, null)
+        drawVideoContain(ctx, secondaryVideo, sideX, 0, sideW, sideH)
       } else {
         ctx.fillStyle = '#0d0d12'
         ctx.fillRect(sideX, 0, sideW, sideH)
@@ -308,7 +347,7 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.rect(sideX, sideH + 12, sideW, sideH)
       ctx.clip()
       if (tertiaryVideo && tertiaryVideo.readyState >= 2 && tertiaryVideo.videoWidth) {
-        drawVideoCover(ctx, tertiaryVideo, sideX, sideH + 12, sideW, sideH, null)
+        drawVideoContain(ctx, tertiaryVideo, sideX, sideH + 12, sideW, sideH)
       } else {
         ctx.fillStyle = '#0d0d12'
         ctx.fillRect(sideX, sideH + 12, sideW, sideH)
@@ -319,13 +358,13 @@ export function drawCompositorFrame(ctx, w, h, {
     const halfW = Math.round((w - 12) / 2)
     const halfH = Math.round((h - 12) / 2)
 
-    // Cam 1 (Master) - Top Left
+    // Cam 1 (Master) - Top Left (sin recorte ni zoom forzado)
     ctx.save()
     ctx.beginPath()
     ctx.rect(0, 0, halfW, halfH)
     ctx.clip()
     if (video && video.readyState >= 2 && video.videoWidth) {
-      drawVideoCover(ctx, video, 0, 0, halfW, halfH, directorCrop)
+      drawVideoCover(ctx, video, 0, 0, halfW, halfH, null)
     } else {
       ctx.fillStyle = '#0d0d12'
       ctx.fillRect(0, 0, halfW, halfH)

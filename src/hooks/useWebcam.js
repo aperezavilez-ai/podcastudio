@@ -401,7 +401,7 @@ export function useWebcam() {
   }, [devices.cameras, initMobileCameras, startCamera])
 
   const addCameraSlot = useCallback(() => {
-    setSlotsCount(prev => Math.min(15, prev + 1))
+    setSlotsCount(prev => Math.min(20, prev + 1))
   }, [])
 
   const removeCameraSlot = useCallback((slotIndex) => {

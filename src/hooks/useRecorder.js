@@ -73,7 +73,7 @@ export function useRecorder() {
     return types.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm'
   }
 
-  const startRecording = useCallback((stream) => {
+  const startRecording = useCallback((stream, options = {}) => {
     if (!stream) return
     chunksRef.current = []
     chunkIndexRef.current = 0
@@ -86,11 +86,14 @@ export function useRecorder() {
     const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')
     const recName = `episodio-${ts}.${ext}`
 
+    const quality = options.quality || '1080p'
+    const videoBitsPerSecond = quality === '4k' ? 35000000 : quality === '720p' ? 6000000 : 12000000
+
     // Inicializar sesión protegida en base de datos local
-    startVaultSession(sessionId, { mimeType, ext, name: recName })
+    startVaultSession(sessionId, { mimeType, ext, name: recName, quality })
 
     try {
-      const mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12000000, audioBitsPerSecond: 320000 })
+      const mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond, audioBitsPerSecond: 320000 })
       
       mr.ondataavailable = e => {
         if (e.data && e.data.size > 0) {
@@ -112,6 +115,7 @@ export function useRecorder() {
           blob,
           mimeType,
           ext,
+          quality,
           duration: durationRef.current,
         }
         setRecordings(prev => [...prev, rec])

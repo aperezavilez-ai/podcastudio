@@ -442,6 +442,31 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     try { localStorage.setItem('podcastudio_screen_layout', 'quad') } catch {}
   }, [])
 
+  // Calidad de grabación Master (4K Ultra HD, 1080p Full HD, 720p HD)
+  const [recordQuality, setRecordQuality] = useState(() => {
+    try { return localStorage.getItem('podcastudio_record_quality') || '1080p' } catch { return '1080p' }
+  })
+  const handleSelectRecordQuality = useCallback((q) => {
+    setRecordQuality(q)
+    try { localStorage.setItem('podcastudio_record_quality', q) } catch {}
+  }, [])
+
+  const camStripCamsRef = useRef(null)
+
+  // Scroll horizontal fluido con rueda del ratón en la tira de cámaras
+  useEffect(() => {
+    const el = camStripCamsRef.current
+    if (!el) return
+    const onWheel = (e) => {
+      if (Math.abs(e.deltaY) > 0) {
+        e.preventDefault()
+        el.scrollLeft += e.deltaY * 1.2
+      }
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
   /** Promueve de inmediato cualquier cámara a MASTER (toma central grande) */
   const handlePromoteToMaster = useCallback((slot) => {
     userPickedCameraRef.current = true
@@ -1028,6 +1053,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     streams,
     activeCamera: programCamera,
     format: proj.format,
+    quality: recordQuality,
     layout: screenLayout,
     pipCamera: screenLayout === 'pip' ? pipCameraSlot : null,
     secondaryCamera: (screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') ? splitSecondarySlot : null,
@@ -1282,10 +1308,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         musicPlaying,
         dspSettings,
       })
-      startRecording(combined)
+      startRecording(combined, { quality: recordQuality })
     } catch (e) {
       console.error('Recording mix error:', e)
-      startRecording(videoStream)
+      startRecording(videoStream, { quality: recordQuality })
     } finally {
       setPreparingRecord(false)
     }
@@ -1698,7 +1724,35 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     </span>
                   </div>
                 )}
-                {streams[programCamera] && (
+                {/* MARCADOR DE AUDIO BROADCAST EN PANTALLA */}
+                <div
+                  className={styles.masterAudioMeter}
+                  title={`Audio en vivo: ${micLevel}% ${micMuted ? '(Silenciado)' : '(Captando señal)'}`}
+                >
+                  <div className={styles.masterAudioIconWrap}>
+                    <i
+                      className={`ti ${micMuted ? 'ti-microphone-off' : 'ti-microphone'}`}
+                      style={{ color: micMuted ? '#ef4444' : micLevel > 12 ? '#22c55e' : '#94a3b8' }}
+                    />
+                    <span className={styles.masterAudioLabel}>
+                      {micMuted ? 'MUTED' : micLabel ? micLabel.slice(0, 14) : 'AUDIO MASTER'}
+                    </span>
+                  </div>
+                  <div className={styles.masterAudioBarTrack}>
+                    <div
+                      className={styles.masterAudioBarFill}
+                      style={{
+                        width: `${micMuted ? 0 : Math.min(100, Math.max(micLevel > 0 ? 8 : 0, micLevel * 1.4))}%`,
+                        backgroundColor: micMuted ? '#ef4444' : micLevel > 75 ? '#ef4444' : micLevel > 50 ? '#f59e0b' : '#22c55e',
+                      }}
+                    />
+                  </div>
+                  <span className={styles.masterAudioDbText}>
+                    {micMuted ? 'MUTE' : micLevel > 0 ? `${Math.round(-42 + (micLevel / 100) * 42)} dB` : '-∞ dB'}
+                  </span>
+                </div>
+
+                {streams[programCamera] && screenLayout === 'full' && (
                   <DynamicZoomControl
                     activeCamera={programCamera}
                     cameraLabel={getSlotLabel(programCamera, cameraMeta[programCamera]?.customLabel, programCamera === masterCameraSlot)}
@@ -1814,9 +1868,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               onToggleCintillos={toggleCintillosEnabled}
             />
 
-            {/* MULTICÁMARA (hasta 15 cámaras) con Swisher Master */}
+            {/* MULTICÁMARA (hasta 20 cámaras) con Swisher Master */}
             <div className={styles.camStrip}>
-              <div className={styles.camStripCams}>
+              <div className={styles.camStripCams} ref={camStripCamsRef}>
               {Array.from({ length: slotsCount }).map((_, i) => {
                 const meta = cameraMeta[i]
                 const isMaster = i === masterCameraSlot
@@ -1832,17 +1886,27 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       handlePromoteToMaster(i)
                     }}
                   >
-                    <button
-                      type="button"
-                      className={`${styles.camMasterBadgeBtn} ${isMaster ? styles.camMasterBadgeActive : ''}`}
-                      title={isMaster ? 'Cámara Master Principal' : 'Hacer Master (Toma Principal)'}
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handlePromoteToMaster(i)
-                      }}
-                    >
-                      {isMaster ? '★ MASTER' : 'HACER MASTER'}
-                    </button>
+                    {/* Encabezado con número de cámara asignado (1..20) y botón Master */}
+                    <div className={styles.camNumberHeader}>
+                      <div
+                        className={`${styles.camNumberBadge} ${isLivePgm ? styles.camNumberBadgeLive : isMaster ? styles.camNumberBadgeMaster : ''}`}
+                        title={`Canal de Cámara ${i + 1}`}
+                      >
+                        CAM {i + 1}
+                      </div>
+                      <button
+                        type="button"
+                        className={`${styles.camMasterBadgeBtn} ${isMaster ? styles.camMasterBadgeActive : ''}`}
+                        title={isMaster ? 'Cámara Master Principal' : 'Hacer Master (Toma Principal)'}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handlePromoteToMaster(i)
+                        }}
+                      >
+                        {isMaster ? '★ MASTER' : 'MASTER'}
+                      </button>
+                    </div>
+
                     <div className={styles.camTopControls}>
                       <button
                         type="button"
@@ -1888,6 +1952,18 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                         <div className={styles.camTallyBadgePvw}>PVW</div>
                       )}
                     </div>
+
+                    {/* Marcador de audio en la cámara */}
+                    {streams[i] && (
+                      <div
+                        className={`${styles.camAudioMeterIcon} ${(isLivePgm && !micMuted && micLevel > 10) || streams[i]?.getAudioTracks()?.length > 0 ? styles.camAudioMeterIconActive : ''}`}
+                        title={isLivePgm ? `Transmitiendo audio de Programa (Nivel: ${micLevel}%)` : streams[i]?.getAudioTracks()?.length > 0 ? 'Entrada de audio detectada en esta cámara' : 'Cámara activa'}
+                      >
+                        <i className={`ti ${isLivePgm && micMuted ? 'ti-microphone-off' : 'ti-microphone'}`} />
+                        {isLivePgm && !micMuted && micLevel > 12 && <span className={styles.camAudioPulse} />}
+                      </div>
+                    )}
+
                     <div className={styles.camActionPills}>
                       <button
                         type="button"
@@ -1959,7 +2035,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   </div>
                 )
               })}
-              {slotsCount < 15 && (
+              {slotsCount < 20 && (
                 <button
                   type="button"
                   className={styles.addCamStripBtn}
@@ -1967,7 +2043,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     addCameraSlot()
                     handleOpenConnectModal(slotsCount)
                   }}
-                  title="Agregar otra cámara (hasta 15 cámaras)"
+                  title="Agregar otra cámara (hasta 20 cámaras)"
                 >
                   <i className="ti ti-plus" />
                   <span>+ CAM</span>
@@ -1975,6 +2051,25 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               )}
               </div>
               <div className={styles.camStripTools}>
+              {/* SELECTOR DE CALIDAD DE GRABACIÓN MASTER (4K UHD, 1080p, 720p) */}
+              <div className={styles.recordQualityGroup} title="Calidad de Grabación Master">
+                <span className={styles.recordQualityLabel}>Calidad:</span>
+                {[
+                  { id: '4k', label: '4K UHD', title: '4K Ultra HD (3840x2160 @ 35 Mbps) - Máxima nitidez para cámaras 4K' },
+                  { id: '1080p', label: '1080p', title: 'Full HD (1920x1080 @ 12 Mbps) - Estándar broadcast recomendado' },
+                  { id: '720p', label: '720p', title: 'HD (1280x720 @ 6 Mbps) - Ligero para streaming' },
+                ].map(q => (
+                  <button
+                    key={q.id}
+                    type="button"
+                    className={`${styles.qualityBtn} ${recordQuality === q.id ? styles.qualityBtnActive : ''}`}
+                    onClick={() => handleSelectRecordQuality(q.id)}
+                    title={q.title}
+                  >
+                    {q.label}
+                  </button>
+                ))}
+              </div>
               {isTouchDevice() && (
                 <button
                   type="button"

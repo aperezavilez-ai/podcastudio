@@ -177,7 +177,7 @@ export default function ProgramPreview({
     )
   }
 
-  // MODO SPLIT (50/50 Lado a lado)
+  // MODO SPLIT (50/50 Lado a lado - Cuadratura 16:9 completa sin recortes)
   if (layout === 'split') {
     return (
       <div className={styles.preview}>
@@ -186,7 +186,7 @@ export default function ProgramPreview({
             {stream ? (
               <video
                 ref={setMainVideo}
-                className={styles.video}
+                className={styles.videoSplit}
                 autoPlay
                 muted
                 playsInline
@@ -194,8 +194,6 @@ export default function ProgramPreview({
                 onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                 style={{
                   filter: cssFilter,
-                  transform: zoom > 1 ? `scale(${zoom})` : undefined,
-                  transformOrigin: `${originX} ${originY}`,
                 }}
               />
             ) : (
@@ -214,7 +212,7 @@ export default function ProgramPreview({
             {secondaryStream ? (
               <video
                 ref={setSecondaryVideo}
-                className={styles.video}
+                className={styles.videoSplit}
                 autoPlay
                 muted
                 playsInline
@@ -239,7 +237,7 @@ export default function ProgramPreview({
     )
   }
 
-  // MODO TRIPLE (1 Master + 2 Secundarias)
+  // MODO TRIPLE (1 Master + 2 Secundarias - Cuadratura preservada)
   if (layout === 'triple') {
     return (
       <div className={styles.preview}>
@@ -248,7 +246,7 @@ export default function ProgramPreview({
             {stream ? (
               <video
                 ref={setMainVideo}
-                className={styles.video}
+                className={styles.videoSplit}
                 autoPlay
                 muted
                 playsInline
@@ -256,8 +254,6 @@ export default function ProgramPreview({
                 onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                 style={{
                   filter: cssFilter,
-                  transform: zoom > 1 ? `scale(${zoom})` : undefined,
-                  transformOrigin: `${originX} ${originY}`,
                 }}
               />
             ) : (
@@ -277,7 +273,7 @@ export default function ProgramPreview({
               {secondaryStream ? (
                 <video
                   ref={setSecondaryVideo}
-                  className={styles.video}
+                  className={styles.videoSplit}
                   autoPlay
                   muted
                   playsInline
@@ -304,7 +300,7 @@ export default function ProgramPreview({
               {tertiaryStream ? (
                 <video
                   ref={setTertiaryVideo}
-                  className={styles.video}
+                  className={styles.videoSplit}
                   autoPlay
                   muted
                   playsInline
@@ -330,12 +326,12 @@ export default function ProgramPreview({
     )
   }
 
-  // MODO CUÁDRUPLE (2x2 Grid de 4 Cámaras)
+  // MODO CUÁDRUPLE (2x2 Grid de 4 Cámaras - Cuadrantes 16:9 naturales)
   if (layout === 'quad') {
     return (
       <div className={styles.preview}>
         <div className={styles.quadContainer}>
-          {/* Cámara 1: Master (Arriba Izquierda) */}
+          {/* Cámara 1: Master (Arriba Izquierda - Sin zoom forzado) */}
           <div className={styles.quadPane}>
             {stream ? (
               <video
@@ -348,8 +344,6 @@ export default function ProgramPreview({
                 onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                 style={{
                   filter: cssFilter,
-                  transform: zoom > 1 ? `scale(${zoom})` : undefined,
-                  transformOrigin: `${originX} ${originY}`,
                 }}
               />
             ) : (

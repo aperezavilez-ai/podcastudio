@@ -3,7 +3,18 @@ import { drawCompositorFrame, COMPOSITOR_W, COMPOSITOR_H } from '../utils/canvas
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 import { getCintilloMotion, getTransitionProgress, TRANSITION_DURATION_MS } from '../utils/videoLook.js'
 
-export function getResolutionForFormat(fmt) {
+export function getResolutionForFormat(fmt, quality = '1080p') {
+  if (quality === '4k') {
+    if (fmt === '9:16') return { width: 2160, height: 3840 }
+    if (fmt === '1:1') return { width: 2160, height: 2160 }
+    return { width: 3840, height: 2160 }
+  }
+  if (quality === '720p') {
+    if (fmt === '9:16') return { width: 720, height: 1280 }
+    if (fmt === '1:1') return { width: 720, height: 720 }
+    return { width: 1280, height: 720 }
+  }
+  // Default 1080p (Full HD)
   if (fmt === '9:16') return { width: 1080, height: 1920 }
   if (fmt === '1:1') return { width: 1080, height: 1080 }
   return { width: 1920, height: 1080 }
@@ -13,6 +24,7 @@ export function useStudioCompositor({
   streams,
   activeCamera,
   format = '16:9',
+  quality = '1080p',
   logoUrl = null,
   logoPosition = 'tr',
   podcastName = '',
@@ -51,7 +63,7 @@ export function useStudioCompositor({
   const animKeyRef = useRef(animKey)
   const animPhaseStartRef = useRef(performance.now())
 
-  const initialRes = getResolutionForFormat(format)
+  const initialRes = getResolutionForFormat(format, quality)
 
   if (!canvasRef.current && typeof document !== 'undefined') {
     const canvas = document.createElement('canvas')
@@ -64,6 +76,20 @@ export function useStudioCompositor({
       outputStreamRef.current = null
     }
   }
+
+  // Sincronizar dimensiones del canvas cuando cambia el formato o la calidad (4K, Full HD, HD)
+  useEffect(() => {
+    const res = getResolutionForFormat(format, quality)
+    if (canvasRef.current) {
+      if (canvasRef.current.width !== res.width || canvasRef.current.height !== res.height) {
+        canvasRef.current.width = res.width
+        canvasRef.current.height = res.height
+        if (typeof canvasRef.current.captureStream === 'function') {
+          outputStreamRef.current = canvasRef.current.captureStream(30)
+        }
+      }
+    }
+  }, [format, quality])
 
   if (animKeyRef.current !== animKey) {
     animKeyRef.current = animKey
@@ -281,7 +307,7 @@ export function useStudioCompositor({
             socials: c.socials || null,
           } : null,
           cintilloMotion,
-          directorCrop: s.directorCrop,
+          directorCrop: s.layout === 'full' ? s.directorCrop : null,
           fromCrop: null,
           look: s.look,
           recording: s.recording,

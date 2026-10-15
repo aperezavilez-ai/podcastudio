@@ -139,11 +139,14 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
 
     video.onloadedmetadata = async () => {
       try {
-        const duration = await resolveVideoDuration(video, hintDuration)
+        const is4K = (options.quality === '4k') || (video.videoWidth >= 2500)
+        const finalW = is4K ? (targetFormat === '9:16' ? 2160 : targetFormat === '1:1' ? 2160 : 3840) : targetW
+        const finalH = is4K ? (targetFormat === '9:16' ? 3840 : targetFormat === '1:1' ? 2160 : 2160) : targetH
+        const exportBitrate = is4K ? 35000000 : 12000000
 
         const canvas = document.createElement('canvas')
-        canvas.width = targetW
-        canvas.height = targetH
+        canvas.width = finalW
+        canvas.height = finalH
         const ctx = canvas.getContext('2d', { alpha: false })
 
         // Capturar audio del video
@@ -183,8 +186,8 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
 
         recorder = new MediaRecorder(combinedStream, {
           mimeType,
-          videoBitsPerSecond: 12000000, // 12 Mbps nitidez broadcast
-          audioBitsPerSecond: 320000,  // 320 kbps audio estudio
+          videoBitsPerSecond: exportBitrate,
+          audioBitsPerSecond: 320000,
         })
 
         const chunks = []
@@ -226,21 +229,21 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
           onProgress(currentPct)
 
           ctx.fillStyle = '#0a0a0f'
-          ctx.fillRect(0, 0, targetW, targetH)
+          ctx.fillRect(0, 0, finalW, finalH)
 
           if (mode === 'blur-fill') {
             // Fondo desenfocado dinámico para rellenar los bordes
             ctx.save()
             ctx.filter = 'blur(30px) brightness(0.6)'
-            ctx.drawImage(video, -40, -40, targetW + 80, targetH + 80)
+            ctx.drawImage(video, -40, -40, finalW + 80, finalH + 80)
             ctx.restore()
 
             // Video principal contenido en el centro sin deformar
-            const scale = Math.min(targetW / vw, targetH / vh)
+            const scale = Math.min(finalW / vw, finalH / vh)
             const dw = vw * scale
             const dh = vh * scale
-            const dx = (targetW - dw) / 2
-            const dy = (targetH - dh) / 2
+            const dx = (finalW - dw) / 2
+            const dy = (finalH - dh) / 2
 
             ctx.save()
             ctx.shadowColor = 'rgba(0,0,0,0.65)'
@@ -249,7 +252,7 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
             ctx.restore()
           } else {
             // Smart-crop: llena toda la proporción objetivo (9:16 vertical o 1:1 cuadrado)
-            const targetRatio = targetW / targetH
+            const targetRatio = finalW / finalH
             const srcRatio = vw / vh
 
             let sx = 0
@@ -267,7 +270,7 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
               sy = (vh - sHeight) / 2
             }
 
-            ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, targetW, targetH)
+            ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, finalW, finalH)
           }
 
           animId = requestAnimationFrame(renderFrame)
