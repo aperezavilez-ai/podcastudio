@@ -626,6 +626,22 @@
   border-color: #c4b5fd !important;
   color: #fff !important;
 }
+.camRolePillCalib {
+  background: rgba(16, 24, 39, 0.88);
+  border-color: rgba(232, 97, 42, 0.4);
+  color: #fdba74;
+}
+.camRolePillCalib:hover {
+  background: #ea580c !important;
+  border-color: #fb923c !important;
+  color: #fff !important;
+}
+.camRolePillCalibActive {
+  opacity: 1;
+  background: #ea580c !important;
+  border-color: #fdba74 !important;
+  color: #fff !important;
+}
 .addCamStripBtn {
   width: 90px;
   height: 62px;

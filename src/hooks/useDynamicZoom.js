@@ -21,18 +21,44 @@ function clamp(val, min, max) {
 }
 
 export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
-  const [crops, setCrops] = useState({})
+  const [crops, setCrops] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_camera_crops')
+      if (saved) return JSON.parse(saved)
+    } catch {}
+    return {}
+  })
   const cropsRef = useRef({})
   const animFrameRef = useRef(null)
   const lastTimeRef = useRef(performance.now())
 
   useEffect(() => {
     cropsRef.current = crops
+    try {
+      localStorage.setItem('podcastudio_camera_crops', JSON.stringify(crops))
+    } catch {}
   }, [crops])
 
   const getSlotCrop = useCallback((slot) => {
     return crops[slot] || DEFAULT_CROP
   }, [crops])
+
+  const setSlotProfile = useCallback((slot, profile) => {
+    setCrops(prev => {
+      const current = prev[slot] || DEFAULT_CROP
+      return {
+        ...prev,
+        [slot]: {
+          ...current,
+          ...profile,
+          zoom: clamp(Number(profile.zoom ?? current.zoom) || 1.0, 1.0, 3.0),
+          targetZoom: clamp(Number(profile.zoom ?? current.zoom) || 1.0, 1.0, 3.0),
+          focusX: clamp(Number(profile.focusX ?? current.focusX) ?? 0.5, 0.1, 0.9),
+          focusY: clamp(Number(profile.focusY ?? current.focusY) ?? 0.42, 0.1, 0.9),
+        },
+      }
+    })
+  }, [])
 
   const setSlotZoom = useCallback((slotOrZoom, maybeZoom) => {
     let targetSlot = activeCamera
@@ -174,6 +200,8 @@ export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
     getZoomCrop: getSlotCrop,
     getEffectiveCrop: getSlotCrop,
     getDynamicCrop: getSlotCrop,
+    setSlotProfile,
+    setSlotCrop: setSlotProfile,
     setZoom: setSlotZoom,
     setManualZoom: setSlotZoom,
     setPan: setSlotPan,

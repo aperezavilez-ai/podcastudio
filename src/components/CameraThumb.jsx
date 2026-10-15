@@ -11,11 +11,13 @@ export default function CameraThumb({
   cintillo = null,
   cintilloPosition = 'bl',
   logoOverlay = null,
+  crop = null,
   directorCrop = null,
   maxFps = 12,
 }) {
   const canvasRef = useRef(null)
   const videoRef = useRef(null)
+  const effectiveCrop = crop || directorCrop
 
   useEffect(() => {
     if (!stream || !canvasRef.current) return
@@ -65,7 +67,11 @@ export default function CameraThumb({
         const scale = pw / COMPOSITOR_W
         ctx.save()
         ctx.scale(scale, scale)
-        drawVideoCover(ctx, video, 0, 0, COMPOSITOR_W, COMPOSITOR_H, directorCrop)
+        if (effectiveCrop?.filter && effectiveCrop.filter !== 'none') {
+          try { ctx.filter = effectiveCrop.filter } catch {}
+        }
+        drawVideoCover(ctx, video, 0, 0, COMPOSITOR_W, COMPOSITOR_H, effectiveCrop)
+        ctx.filter = 'none'
         if (logoOverlay) drawLogo(ctx, COMPOSITOR_W, COMPOSITOR_H, logoOverlay)
         if (cintillo?.active) {
           drawCintillo(ctx, COMPOSITOR_W, COMPOSITOR_H, {
@@ -87,7 +93,7 @@ export default function CameraThumb({
       cancelAnimationFrame(rafId)
       unbindKeepAlive()
     }
-  }, [stream, cintillo, cintilloPosition, logoOverlay, directorCrop, maxFps])
+  }, [stream, cintillo, cintilloPosition, logoOverlay, effectiveCrop, maxFps])
 
   if (!stream) {
     return (

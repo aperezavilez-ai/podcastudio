@@ -138,8 +138,10 @@ export default function ProgramPreview({
 
   const cssFilter = useMemo(() => {
     const f = buildCanvasFilter(look)
-    return f && f !== 'none' ? f : undefined
-  }, [look])
+    if (f && f !== 'none') return f
+    if (directorCrop?.filter && directorCrop.filter !== 'none') return directorCrop.filter
+    return undefined
+  }, [look, directorCrop?.filter])
 
   const zoom = directorCrop?.zoom > 1.02 ? directorCrop.zoom : 1
   const originX = `${(directorCrop?.focusX ?? 0.5) * 100}%`

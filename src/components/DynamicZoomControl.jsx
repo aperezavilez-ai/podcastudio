@@ -16,6 +16,7 @@ export default function DynamicZoomControl({
   onPushInToggle,
   onResetZoom,
   onReset,
+  onOpenCalibrator,
   className = '',
   style = {},
 }) {
@@ -109,6 +110,21 @@ export default function DynamicZoomControl({
           title="Restablecer plano normal"
         >
           <i className="ti ti-rotate" />
+        </button>
+      )}
+
+      {onOpenCalibrator && (
+        <button
+          type="button"
+          className={styles.resetBtn}
+          onClick={(e) => {
+            e.stopPropagation()
+            onOpenCalibrator(activeCamera)
+          }}
+          title="Abrir Calibrador Completo y Monitor Preview (PVW)"
+          style={{ marginLeft: 4 }}
+        >
+          <i className="ti ti-adjustments-horizontal" />
         </button>
       )}
     </div>

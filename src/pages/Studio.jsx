@@ -62,6 +62,7 @@ import MultiFormatExportModal from '../components/MultiFormatExportModal.jsx'
 import { useLiveStreaming } from '../hooks/useLiveStreaming.js'
 import LiveStreamModal from '../components/LiveStreamModal.jsx'
 import CintilloEditorModal from '../components/CintilloEditorModal.jsx'
+import CameraCalibratorModal from '../components/CameraCalibratorModal.jsx'
 import styles from './Studio.module.css'
 
 const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
@@ -917,6 +918,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const {
     zoomState,
     activeZoom,
+    crops: cameraCrops,
+    setSlotProfile,
     setPreset: setZoomPreset,
     setZoom: setManualZoom,
     setPan: setZoomPan,
@@ -925,13 +928,21 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     getEffectiveCrop: getDynamicCrop,
   } = useDynamicZoom({ activeCamera: programCamera, recording })
 
+  const [showCalibratorModal, setShowCalibratorModal] = useState(false)
+  const [calibratorTargetSlot, setCalibratorTargetSlot] = useState(0)
+
+  const handleOpenCalibrator = useCallback((slot) => {
+    setCalibratorTargetSlot(slot)
+    setShowCalibratorModal(true)
+  }, [])
+
   const effectiveCrop = useMemo(() => {
     if (switchMode === 'ai' && planLimits.aiDirector && typeof getDirectorCrop === 'function') {
       const aiCrop = getDirectorCrop(programCamera)
       if (aiCrop && aiCrop.zoom > 1.02) return aiCrop
     }
     const dyn = typeof getDynamicCrop === 'function' ? getDynamicCrop(programCamera) : null
-    if (dyn && dyn.zoom > 1.01) return dyn
+    if (dyn) return dyn
     return null
   }, [switchMode, planLimits.aiDirector, getDirectorCrop, getDynamicCrop, programCamera, zoomState, activeZoom])
 
@@ -1618,6 +1629,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     onPushInToggle={togglePushIn}
                     onResetZoom={resetZoom}
                     onReset={resetZoom}
+                    onOpenCalibrator={handleOpenCalibrator}
                   />
                 )}
                 {proj.logoUrl && (
@@ -1776,6 +1788,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     <div className={styles.camActionPills}>
                       <button
                         type="button"
+                        className={`${styles.camRolePill} ${styles.camRolePillCalib} ${showCalibratorModal && calibratorTargetSlot === i ? styles.camRolePillCalibActive : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleOpenCalibrator(i)
+                        }}
+                        title="Calibrar zoom, encuadre, color y audio antes de enviar a Master"
+                      >
+                        <i className="ti ti-adjustments-horizontal" style={{ marginRight: 2 }} /> Calibrar
+                      </button>
+                      <button
+                        type="button"
                         className={`${styles.camRolePill} ${screenLayout === 'pip' && pipCameraSlot === i ? styles.camRolePillPipActive : ''}`}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -1817,6 +1840,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                         podcastName: proj.name || 'Mi Podcast',
                         position: proj.logoPosition || 'tr',
                       }}
+                      crop={getDynamicCrop(i)}
                       directorCrop={switchMode === 'ai' ? getDirectorCrop(i) : null}
                     />
                     {typeIcon && (
@@ -3145,6 +3169,20 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
             return updated
           })
         }}
+      />
+
+      {/* MODAL MONITOR PREVIEW (PVW) Y CALIBRADOR DE CÁMARAS INDEPENDIENTES */}
+      <CameraCalibratorModal
+        isOpen={showCalibratorModal}
+        onClose={() => setShowCalibratorModal(false)}
+        initialSlot={calibratorTargetSlot}
+        slotsCount={slotsCount}
+        streams={streams}
+        cameraMeta={cameraMeta}
+        crops={cameraCrops}
+        masterCameraSlot={masterCameraSlot}
+        onSaveSlotProfile={setSlotProfile}
+        onPromoteToMaster={handlePromoteToMaster}
       />
     </div>
     </LandscapeGate>
