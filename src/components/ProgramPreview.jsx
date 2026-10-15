@@ -182,7 +182,11 @@ export default function ProgramPreview({
     return (
       <div className={styles.preview}>
         <div className={styles.splitContainer}>
-          <div className={styles.splitPane}>
+          <div
+            className={`${styles.splitPane} ${styles.clickablePane}`}
+            onClick={onClosePip}
+            title="Master Central: Haz clic para cerrar división y volver a pantalla completa"
+          >
             {stream ? (
               <video
                 ref={setMainVideo}
@@ -242,7 +246,11 @@ export default function ProgramPreview({
     return (
       <div className={styles.preview}>
         <div className={styles.tripleContainer}>
-          <div className={styles.tripleMainPane}>
+          <div
+            className={`${styles.tripleMainPane} ${styles.clickablePane}`}
+            onClick={onClosePip}
+            title="Master Central: Haz clic para cerrar división y volver a pantalla completa"
+          >
             {stream ? (
               <video
                 ref={setMainVideo}
@@ -332,7 +340,11 @@ export default function ProgramPreview({
       <div className={styles.preview}>
         <div className={styles.quadContainer}>
           {/* Cámara 1: Master (Arriba Izquierda - Sin zoom forzado) */}
-          <div className={styles.quadPane}>
+          <div
+            className={`${styles.quadPane} ${styles.clickablePane}`}
+            onClick={onClosePip}
+            title="Master Central: Haz clic para cerrar cuadrícula y volver a pantalla completa"
+          >
             {stream ? (
               <video
                 ref={setMainVideo}
@@ -453,7 +465,9 @@ export default function ProgramPreview({
       {stream ? (
         <video
           ref={setMainVideo}
-          className={styles.video}
+          className={`${styles.video} ${layout === 'pip' ? styles.clickablePane : ''}`}
+          onClick={layout === 'pip' ? onClosePip : undefined}
+          title={layout === 'pip' ? 'Haz clic en Master para ocultar el PiP y volver a pantalla completa' : undefined}
           autoPlay
           muted
           playsInline

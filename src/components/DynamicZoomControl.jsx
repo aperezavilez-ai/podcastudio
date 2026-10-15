@@ -17,6 +17,8 @@ export default function DynamicZoomControl({
   onResetZoom,
   onReset,
   onOpenCalibrator,
+  showGrid = false,
+  onToggleGrid = null,
   className = '',
   style = {},
 }) {
@@ -125,6 +127,21 @@ export default function DynamicZoomControl({
           style={{ marginLeft: 4 }}
         >
           <i className="ti ti-adjustments-horizontal" />
+        </button>
+      )}
+
+      {onToggleGrid && (
+        <button
+          type="button"
+          className={`${styles.resetBtn} ${showGrid ? styles.presetActive : ''}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleGrid()
+          }}
+          title={showGrid ? 'Desactivar cuadrícula de centrado' : 'Activar cuadrícula de centrado (Regla de Tercios)'}
+          style={{ marginLeft: 4 }}
+        >
+          <i className="ti ti-border-all" />
         </button>
       )}
     </div>

@@ -5,12 +5,15 @@ import { buildCanvasFilter } from '../utils/videoLook.js'
 import { getSlotLabel } from '../config/cameraSlots.js'
 
 const CALIBRATION_LOOK_PRESETS = [
-  { id: 'original', name: 'Original', brightness: 100, contrast: 100, saturation: 100, warmth: 0 },
-  { id: 'warm', name: 'Cálido TV', brightness: 104, contrast: 108, saturation: 106, warmth: 16 },
-  { id: 'cine', name: 'Cine Pop', brightness: 98, contrast: 118, saturation: 112, warmth: 4 },
-  { id: 'vibrant', name: 'Vibrante', brightness: 102, contrast: 112, saturation: 128, warmth: 0 },
-  { id: 'cool', name: 'Frío / Tech', brightness: 102, contrast: 110, saturation: 94, warmth: -14 },
-  { id: 'mono', name: 'B&W Drama', brightness: 105, contrast: 120, saturation: 0, warmth: 0 },
+  { id: 'original', name: 'Original', brightness: 100, contrast: 100, saturation: 100, warmth: 0, tint: 0, lutId: 'none' },
+  { id: 'kodak-2383', name: 'Kodak 2383 Film', brightness: 101, contrast: 114, saturation: 105, warmth: 12, tint: -2, lutId: 'kodak-2383' },
+  { id: 'teal-orange-pro', name: 'Teal & Orange Pro', brightness: 100, contrast: 118, saturation: 112, warmth: 14, tint: 2, lutId: 'teal-orange-pro' },
+  { id: 'scinetone', name: 'Sony S-Cinetone', brightness: 103, contrast: 108, saturation: 102, warmth: 6, tint: -1, lutId: 'scinetone' },
+  { id: 'arri-warm', name: 'Arri Alexa Golden', brightness: 102, contrast: 110, saturation: 106, warmth: 20, tint: -3, lutId: 'arri-warm' },
+  { id: 'clean-broadcast', name: 'Broadcast TV Neutro', brightness: 102, contrast: 114, saturation: 102, warmth: 0, tint: 0, lutId: 'clean-broadcast' },
+  { id: 'fuji-eterna', name: 'Fuji Eterna 500T', brightness: 104, contrast: 98, saturation: 90, warmth: 4, tint: -4, lutId: 'fuji-eterna' },
+  { id: 'cyber-cool', name: 'Cyber Tech Blue', brightness: 101, contrast: 114, saturation: 94, warmth: -16, tint: 4, lutId: 'cyber-cool' },
+  { id: 'noir-contrast', name: 'B&W Silver Gelatin', brightness: 98, contrast: 128, saturation: 0, warmth: 0, tint: 0, lutId: 'noir-contrast' },
 ]
 
 export default function CameraCalibratorModal({
@@ -45,6 +48,8 @@ export default function CameraCalibratorModal({
   const [brightness, setBrightness] = useState(currentSlotCrop.brightness ?? 100)
   const [contrast, setContrast] = useState(currentSlotCrop.contrast ?? 100)
   const [saturation, setSaturation] = useState(currentSlotCrop.saturation ?? 100)
+  const [warmth, setWarmth] = useState(currentSlotCrop.warmth ?? 0)
+  const [tint, setTint] = useState(currentSlotCrop.tint ?? 0)
   const [audioGain, setAudioGain] = useState(currentSlotCrop.audioGain ?? 1.0)
   const [audioMuted, setAudioMuted] = useState(Boolean(currentSlotCrop.audioMuted))
 
@@ -68,6 +73,8 @@ export default function CameraCalibratorModal({
     setBrightness(sc.brightness ?? 100)
     setContrast(sc.contrast ?? 100)
     setSaturation(sc.saturation ?? 100)
+    setWarmth(sc.warmth ?? (CALIBRATION_LOOK_PRESETS.find(p => p.id === sc.lookPreset)?.warmth || 0))
+    setTint(sc.tint ?? (CALIBRATION_LOOK_PRESETS.find(p => p.id === sc.lookPreset)?.tint || 0))
     setAudioGain(sc.audioGain ?? 1.0)
     setAudioMuted(Boolean(sc.audioMuted))
   }, [selectedSlot, crops])
@@ -92,9 +99,10 @@ export default function CameraCalibratorModal({
       brightness,
       contrast,
       saturation,
-      warmth: CALIBRATION_LOOK_PRESETS.find(p => p.id === lookPreset)?.warmth || 0,
+      warmth,
+      tint,
     })
-  }, [brightness, contrast, saturation, lookPreset])
+  }, [brightness, contrast, saturation, warmth, tint])
 
   // Medidor VU de audio en tiempo real sin feedback
   useEffect(() => {
@@ -175,6 +183,8 @@ export default function CameraCalibratorModal({
     setBrightness(p.brightness)
     setContrast(p.contrast)
     setSaturation(p.saturation)
+    setWarmth(p.warmth ?? 0)
+    setTint(p.tint ?? 0)
   }
 
   const handleReset = () => {
@@ -187,6 +197,8 @@ export default function CameraCalibratorModal({
     setBrightness(100)
     setContrast(100)
     setSaturation(100)
+    setWarmth(0)
+    setTint(0)
     setAudioGain(1.0)
     setAudioMuted(false)
   }
@@ -201,6 +213,9 @@ export default function CameraCalibratorModal({
     brightness,
     contrast,
     saturation,
+    warmth,
+    tint,
+    lutId: CALIBRATION_LOOK_PRESETS.find(p => p.id === lookPreset)?.lutId || 'none',
     filter: computedFilter !== 'none' ? computedFilter : null,
     audioGain,
     audioMuted,
@@ -547,6 +562,34 @@ export default function CameraCalibratorModal({
                   className={styles.slider}
                 />
                 <span className={styles.sliderValue}>{saturation}%</span>
+              </div>
+
+              <div className={styles.sliderRow}>
+                <span className={styles.sliderLabel}>Temp (Kelvin)</span>
+                <input
+                  type="range"
+                  min="-40"
+                  max="40"
+                  step="1"
+                  value={warmth}
+                  onChange={(e) => setWarmth(parseInt(e.target.value, 10))}
+                  className={styles.slider}
+                />
+                <span className={styles.sliderValue}>{warmth > 0 ? `+${warmth}` : warmth}</span>
+              </div>
+
+              <div className={styles.sliderRow}>
+                <span className={styles.sliderLabel}>Tinte (Matiz)</span>
+                <input
+                  type="range"
+                  min="-25"
+                  max="25"
+                  step="1"
+                  value={tint}
+                  onChange={(e) => setTint(parseInt(e.target.value, 10))}
+                  className={styles.slider}
+                />
+                <span className={styles.sliderValue}>{tint > 0 ? `+${tint}` : tint}</span>
               </div>
             </div>
 

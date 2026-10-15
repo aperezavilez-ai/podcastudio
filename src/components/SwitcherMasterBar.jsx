@@ -29,6 +29,8 @@ export default function SwitcherMasterBar({
   onOpenConnectModal,
   cintillosEnabled = false,
   onToggleCintillos = () => {},
+  showMasterGrid = false,
+  onToggleMasterGrid = () => {},
 }) {
   const pgmMeta = cameraMeta[programCamera]
   const pgmLabel = getSlotLabel(programCamera, pgmMeta?.customLabel, programCamera === masterCameraSlot)
@@ -113,6 +115,17 @@ export default function SwitcherMasterBar({
         >
           <i className={`ti ${cintillosEnabled ? 'ti-typography' : 'ti-typography-off'}`} />
           <span>{cintillosEnabled ? 'Cintillos ON' : 'Cintillos OFF'}</span>
+        </button>
+
+        {/* Botón Activar / Desactivar Cuadrícula y Guías de Encuadre */}
+        <button
+          type="button"
+          className={`${styles.cintilloBarBtn} ${showMasterGrid ? styles.gridBarBtnActive : ''}`}
+          onClick={onToggleMasterGrid}
+          title={showMasterGrid ? 'Cuadrícula y guías ACTIVADAS en Master — Clic para ocultar' : 'Activar Cuadrícula de Centrado (Regla de Tercios + Margen Seguro)'}
+        >
+          <i className="ti ti-border-all" />
+          <span>{showMasterGrid ? 'Cuadrícula ON' : 'Cuadrícula'}</span>
         </button>
 
         {/* Asignación de canales según el layout activo */}

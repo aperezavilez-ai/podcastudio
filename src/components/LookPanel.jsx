@@ -78,6 +78,7 @@ export default function LookPanel({ look, onPreset, onField, onReset, limits = n
         <Slider label="Contraste" value={look.contrast} min={70} max={140} onChange={v => onField('contrast', v)} />
         <Slider label="Saturación" value={look.saturation} min={60} max={140} onChange={v => onField('saturation', v)} />
         <Slider label="Temperatura" value={look.warmth} min={-30} max={30} onChange={v => onField('warmth', v)} />
+        <Slider label="Tinte (Matiz)" value={look.tint ?? 0} min={-25} max={25} onChange={v => onField('tint', v)} />
         <Slider label="Viñeta" value={look.vignette} min={0} max={60} onChange={v => onField('vignette', v)} unit="%" />
         <Slider label="Suavidad viñeta" value={look.vignetteSoft} min={20} max={90} onChange={v => onField('vignetteSoft', v)} />
         <Slider label="Nitidez" value={look.sharpness} min={0} max={30} onChange={v => onField('sharpness', v)} />

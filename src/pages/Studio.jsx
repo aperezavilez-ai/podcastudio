@@ -351,6 +351,25 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     return ALL_SOCIAL_NETWORKS
   })
 
+  // Cuadrícula y guías de centrado en pantalla Master (Regla de Tercios + Área Segura)
+  const [showMasterGrid, setShowMasterGrid] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_master_grid')
+      if (saved !== null) return saved === 'true'
+    } catch {}
+    return false
+  })
+
+  const toggleMasterGrid = useCallback(() => {
+    setShowMasterGrid(prev => {
+      const next = !prev
+      try {
+        localStorage.setItem('podcastudio_master_grid', String(next))
+      } catch {}
+      return next
+    })
+  }, [])
+
   const toggleNetwork = useCallback((networkId) => {
     setSelectedNetworks(prev => {
       let next
@@ -467,10 +486,14 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     return () => el.removeEventListener('wheel', onWheel)
   }, [])
 
-  /** Promueve de inmediato cualquier cámara a MASTER (toma central grande) */
+  /** Promueve de inmediato cualquier cámara a MASTER (toma central grande) y limpia PiPs/multicámaras */
   const handlePromoteToMaster = useCallback((slot) => {
     userPickedCameraRef.current = true
     const prevMaster = masterCameraSlot
+
+    // Regla de estudio: Al hacer clic en la cámara Master o en cualquier cámara para pasar a Master,
+    // se limpian los PiPs / multicámaras y la toma vuelve a 1 sola cámara limpia en pantalla completa
+    handleSelectLayout('full')
 
     setMasterCameraSlot(slot)
     setActiveCamera(slot)
@@ -489,7 +512,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     if (quadQuaternarySlot === slot) {
       setQuadQuaternarySlot(prevMaster)
     }
-  }, [masterCameraSlot, pipCameraSlot, splitSecondarySlot, tripleTertiarySlot, quadQuaternarySlot, setActiveCamera, setCamSlot, setMasterCameraSlot])
+  }, [masterCameraSlot, pipCameraSlot, splitSecondarySlot, tripleTertiarySlot, quadQuaternarySlot, setActiveCamera, setCamSlot, setMasterCameraSlot, handleSelectLayout])
+
 
   const handleTogglePipOnCamera = useCallback((slot) => {
     if (screenLayout === 'pip' && pipCameraSlot === slot) {
@@ -1669,7 +1693,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   '--vp-ar': proj.format === '9:16' ? '0.5625' : proj.format === '1:1' ? '1' : '1.777777778',
                 }}
               >
-                <div className={styles.activeFormatBadge} title="Formato actual de grabación">
+                <div className={styles.activeFormatBadge} title="Formato actual y redes armadas de grabación">
                   {proj.format === '9:16' ? (
                     <>
                       <i className="ti ti-brand-tiktok" style={{ color: '#00f2fe' }} />
@@ -1680,7 +1704,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       <i className="ti ti-brand-instagram" style={{ color: '#e1306c' }} />
                       <span>Instagram Feed (1:1)</span>
                     </>
-                  ) : activeSocialPreset === 'youtube' ? (
+                  ) : selectedNetworks?.length === 4 ? (
+                    <>
+                      <i className="ti ti-world" style={{ color: '#38bdf8' }} />
+                      <span>Pack Multi-Redes (4/4) · Master 16:9</span>
+                    </>
+                  ) : selectedNetworks?.length > 1 ? (
+                    <>
+                      <i className="ti ti-share" style={{ color: '#38bdf8' }} />
+                      <span>Multi-Redes ({selectedNetworks.length}/4) · Master 16:9</span>
+                    </>
+                  ) : selectedNetworks?.includes('youtube') || activeSocialPreset === 'youtube' ? (
                     <>
                       <i className="ti ti-brand-youtube" style={{ color: '#ef4444' }} />
                       <span>YouTube (16:9)</span>
@@ -1692,6 +1726,30 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     </>
                   )}
                 </div>
+
+                {/* BOTÓN TOGGLE CUADRÍCULA DE ENCUADRE Y CENTRADO EN MASTER */}
+                <button
+                  type="button"
+                  className={`${styles.masterGridToggleBtn} ${showMasterGrid ? styles.masterGridToggleBtnActive : ''}`}
+                  onClick={toggleMasterGrid}
+                  title={showMasterGrid ? 'Desactivar cuadrícula y guías de encuadre' : 'Activar cuadrícula de centrado (Regla de Tercios + Margen Seguro)'}
+                >
+                  <i className="ti ti-border-all" />
+                  <span>{showMasterGrid ? 'Cuadrícula ON' : 'Cuadrícula'}</span>
+                </button>
+
+                {/* GUÍAS VISUALES DE CENTRADO (REGLA DE TERCIOS + ÁREA SEGURA + CRUZ CENTRAL) */}
+                {showMasterGrid && (
+                  <div className={styles.masterGridOverlay} aria-hidden>
+                    <div className={styles.masterGridLineH1} />
+                    <div className={styles.masterGridLineH2} />
+                    <div className={styles.masterGridLineV1} />
+                    <div className={styles.masterGridLineV2} />
+                    <div className={styles.masterSafeArea} />
+                    <div className={styles.masterCrosshair} />
+                  </div>
+                )}
+
                 {(streams[programCamera] || Object.values(streams).some(Boolean) || screenLayout !== 'full') ? (
                   <ProgramPreview
                     stream={streams[programCamera] || null}
@@ -1772,6 +1830,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     onResetZoom={resetZoom}
                     onReset={resetZoom}
                     onOpenCalibrator={handleOpenCalibrator}
+                    showGrid={showMasterGrid}
+                    onToggleGrid={toggleMasterGrid}
                   />
                 )}
                 {proj.logoUrl && (
@@ -1866,6 +1926,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               onOpenConnectModal={() => handleOpenConnectModal(programCamera)}
               cintillosEnabled={cintillosEnabled}
               onToggleCintillos={toggleCintillosEnabled}
+              showMasterGrid={showMasterGrid}
+              onToggleMasterGrid={toggleMasterGrid}
             />
 
             {/* MULTICÁMARA (hasta 20 cámaras) con Swisher Master */}
@@ -1886,7 +1948,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       handlePromoteToMaster(i)
                     }}
                   >
-                    {/* Encabezado con número de cámara asignado (1..20) y botón Master */}
+                    {/* Encabezado con número de cámara asignado (1..20) y badge de Master único */}
                     <div className={styles.camNumberHeader}>
                       <div
                         className={`${styles.camNumberBadge} ${isLivePgm ? styles.camNumberBadgeLive : isMaster ? styles.camNumberBadgeMaster : ''}`}
@@ -1894,17 +1956,30 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       >
                         CAM {i + 1}
                       </div>
-                      <button
-                        type="button"
-                        className={`${styles.camMasterBadgeBtn} ${isMaster ? styles.camMasterBadgeActive : ''}`}
-                        title={isMaster ? 'Cámara Master Principal' : 'Hacer Master (Toma Principal)'}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handlePromoteToMaster(i)
-                        }}
-                      >
-                        {isMaster ? '★ MASTER' : 'MASTER'}
-                      </button>
+                      {isMaster ? (
+                        <div
+                          className={styles.camMasterBadgeActive}
+                          title="Cámara Master Central única (Clic para quitar PiP y volver a pantalla completa)"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handlePromoteToMaster(i)
+                          }}
+                        >
+                          ★ MASTER
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className={styles.camMasterBadgeBtn}
+                          title={`Pasar CAM ${i + 1} a Master y volver a pantalla completa`}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handlePromoteToMaster(i)
+                          }}
+                        >
+                          Hacer Master
+                        </button>
+                      )}
                     </div>
 
                     <div className={styles.camTopControls}>

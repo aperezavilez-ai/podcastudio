@@ -244,6 +244,14 @@
   box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
 }
 
+.gridBarBtnActive {
+  background: rgba(56, 189, 248, 0.25) !important;
+  border-color: #38bdf8 !important;
+  color: #38bdf8 !important;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+}
+
+
 .layoutConfigBar {
   display: flex;
   align-items: center;
