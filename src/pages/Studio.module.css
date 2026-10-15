@@ -626,6 +626,12 @@
   border-color: #c4b5fd !important;
   color: #fff !important;
 }
+.camRolePillQuadActive {
+  opacity: 1;
+  background: #059669 !important;
+  border-color: #6ee7b7 !important;
+  color: #fff !important;
+}
 .camRolePillCalib {
   background: rgba(16, 24, 39, 0.88);
   border-color: rgba(232, 97, 42, 0.4);

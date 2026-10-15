@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo } from 'react'
+import React, { useEffect, useRef, useMemo, useCallback } from 'react'
 import { buildCanvasFilter } from '../utils/videoLook.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 import SetBackground from './SetBackground.jsx'
@@ -29,14 +29,31 @@ function LookOverlays({ look }) {
   )
 }
 
-/** Visor principal: video HTML directo (fluido) + filtros CSS del LOOK PRO + Layouts Multi-cámara (Solo, PiP, Split, Triple). */
+function safeAttachVideo(videoEl, targetStream) {
+  if (!videoEl) return
+  videoEl.setAttribute('playsinline', '')
+  videoEl.setAttribute('webkit-playsinline', '')
+  videoEl.muted = true
+
+  if (targetStream) {
+    if (videoEl.srcObject !== targetStream) {
+      videoEl.srcObject = targetStream
+    }
+    const p = videoEl.play()
+    if (p && typeof p.catch === 'function') p.catch(() => {})
+  } else if (videoEl.srcObject) {
+    videoEl.srcObject = null
+  }
+}
+
+/** Visor principal: video HTML directo (fluido) + filtros CSS del LOOK PRO + Layouts Multi-cámara (Solo, PiP, Split, Triple, Quad). */
 export default function ProgramPreview({
   stream,
   cameraKey = 0,
   look = null,
   directorCrop = null,
   virtualSet = null,
-  layout = 'full', // 'full' | 'pip' | 'split' | 'triple'
+  layout = 'full', // 'full' | 'pip' | 'split' | 'triple' | 'quad'
   pipStream = null,
   pipLabel = '',
   onClosePip = null,
@@ -44,9 +61,12 @@ export default function ProgramPreview({
   secondaryLabel = '',
   tertiaryStream = null,
   tertiaryLabel = '',
+  quaternaryStream = null,
+  quaternaryLabel = '',
   primaryLabel = '',
   onPromoteSecondaryToMaster = null,
   onPromoteTertiaryToMaster = null,
+  onPromoteQuaternaryToMaster = null,
   onPromotePipToMaster = null,
   onOpenConnectModal = null,
 }) {
@@ -54,87 +74,57 @@ export default function ProgramPreview({
   const pipVideoRef = useRef(null)
   const secondaryVideoRef = useRef(null)
   const tertiaryVideoRef = useRef(null)
+  const quaternaryVideoRef = useRef(null)
   const hasSet = virtualSet?.enabled
 
-  // Video principal
+  // Callback refs: asignan el stream de forma inmediata y síncrona en cuanto el elemento DOM se monta
+  const setMainVideo = useCallback((node) => {
+    videoRef.current = node
+    safeAttachVideo(node, stream)
+  }, [stream])
+
+  const setSecondaryVideo = useCallback((node) => {
+    secondaryVideoRef.current = node
+    safeAttachVideo(node, secondaryStream)
+  }, [secondaryStream])
+
+  const setTertiaryVideo = useCallback((node) => {
+    tertiaryVideoRef.current = node
+    safeAttachVideo(node, tertiaryStream)
+  }, [tertiaryStream])
+
+  const setQuaternaryVideo = useCallback((node) => {
+    quaternaryVideoRef.current = node
+    safeAttachVideo(node, quaternaryStream)
+  }, [quaternaryStream])
+
+  const setPipVideo = useCallback((node) => {
+    pipVideoRef.current = node
+    safeAttachVideo(node, pipStream)
+  }, [pipStream])
+
+  // Efecto continuo de sincronización y keep-alive cuando cambian layout, streams o cámaras
   useEffect(() => {
-    const video = videoRef.current
-    if (!video) return undefined
+    safeAttachVideo(videoRef.current, stream)
+    safeAttachVideo(secondaryVideoRef.current, secondaryStream)
+    safeAttachVideo(tertiaryVideoRef.current, tertiaryStream)
+    safeAttachVideo(quaternaryVideoRef.current, quaternaryStream)
+    safeAttachVideo(pipVideoRef.current, pipStream)
 
-    video.setAttribute('playsinline', '')
-    video.setAttribute('webkit-playsinline', '')
-    video.muted = true
+    const unbind1 = bindVideoKeepAlive(videoRef.current)
+    const unbind2 = bindVideoKeepAlive(secondaryVideoRef.current)
+    const unbind3 = bindVideoKeepAlive(tertiaryVideoRef.current)
+    const unbind4 = bindVideoKeepAlive(quaternaryVideoRef.current)
+    const unbind5 = bindVideoKeepAlive(pipVideoRef.current)
 
-    if (stream && video.srcObject !== stream) {
-      video.srcObject = stream
-      video.play().catch(() => {})
-    }
-
-    const off = bindVideoKeepAlive(video)
     return () => {
-      off()
+      unbind1?.()
+      unbind2?.()
+      unbind3?.()
+      unbind4?.()
+      unbind5?.()
     }
-  }, [stream, cameraKey])
-
-  // Video PiP (Picture in Picture)
-  useEffect(() => {
-    const video = pipVideoRef.current
-    if (!video) return undefined
-
-    video.setAttribute('playsinline', '')
-    video.setAttribute('webkit-playsinline', '')
-    video.muted = true
-
-    if (pipStream && video.srcObject !== pipStream) {
-      video.srcObject = pipStream
-      video.play().catch(() => {})
-    }
-
-    const off = bindVideoKeepAlive(video)
-    return () => {
-      off()
-    }
-  }, [pipStream, layout])
-
-  // Video secundario (Split / Triple)
-  useEffect(() => {
-    const video = secondaryVideoRef.current
-    if (!video) return undefined
-
-    video.setAttribute('playsinline', '')
-    video.setAttribute('webkit-playsinline', '')
-    video.muted = true
-
-    if (secondaryStream && video.srcObject !== secondaryStream) {
-      video.srcObject = secondaryStream
-      video.play().catch(() => {})
-    }
-
-    const off = bindVideoKeepAlive(video)
-    return () => {
-      off()
-    }
-  }, [secondaryStream, layout])
-
-  // Video terciario (Triple)
-  useEffect(() => {
-    const video = tertiaryVideoRef.current
-    if (!video) return undefined
-
-    video.setAttribute('playsinline', '')
-    video.setAttribute('webkit-playsinline', '')
-    video.muted = true
-
-    if (tertiaryStream && video.srcObject !== tertiaryStream) {
-      video.srcObject = tertiaryStream
-      video.play().catch(() => {})
-    }
-
-    const off = bindVideoKeepAlive(video)
-    return () => {
-      off()
-    }
-  }, [tertiaryStream, layout])
+  }, [stream, secondaryStream, tertiaryStream, quaternaryStream, pipStream, cameraKey, layout])
 
   const cssFilter = useMemo(() => {
     const f = buildCanvasFilter(look)
@@ -147,7 +137,7 @@ export default function ProgramPreview({
   const originX = `${(directorCrop?.focusX ?? 0.5) * 100}%`
   const originY = `${(directorCrop?.focusY ?? 0.42) * 100}%`
 
-  const hasAnyStream = Boolean(stream || pipStream || secondaryStream || tertiaryStream)
+  const hasAnyStream = Boolean(stream || pipStream || secondaryStream || tertiaryStream || quaternaryStream)
   if (!hasAnyStream && layout === 'full') {
     return (
       <div className={styles.empty} onClick={onOpenConnectModal} style={{ cursor: onOpenConnectModal ? 'pointer' : 'default' }}>
@@ -157,17 +147,20 @@ export default function ProgramPreview({
     )
   }
 
+  // SET VIRTUAL CON FONDO
   if (hasSet && virtualSet.cameraRect) {
     const { top, left, width, height } = virtualSet.cameraRect
     return (
       <div className={styles.preview}>
         <SetBackground templateId={virtualSet.templateId} customUrl={virtualSet.customUrl} />
         <video
-          ref={videoRef}
+          ref={setMainVideo}
           className={styles.videoInset}
           autoPlay
           muted
           playsInline
+          onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+          onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
           style={{
             top: `${top}%`,
             left: `${left}%`,
@@ -192,11 +185,13 @@ export default function ProgramPreview({
           <div className={styles.splitPane}>
             {stream ? (
               <video
-                ref={videoRef}
+                ref={setMainVideo}
                 className={styles.video}
                 autoPlay
                 muted
                 playsInline
+                onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+                onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                 style={{
                   filter: cssFilter,
                   transform: zoom > 1 ? `scale(${zoom})` : undefined,
@@ -218,11 +213,13 @@ export default function ProgramPreview({
           >
             {secondaryStream ? (
               <video
-                ref={secondaryVideoRef}
+                ref={setSecondaryVideo}
                 className={styles.video}
                 autoPlay
                 muted
                 playsInline
+                onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+                onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
               />
             ) : (
               <div className={styles.emptyPane}>
@@ -250,11 +247,13 @@ export default function ProgramPreview({
           <div className={styles.tripleMainPane}>
             {stream ? (
               <video
-                ref={videoRef}
+                ref={setMainVideo}
                 className={styles.video}
                 autoPlay
                 muted
                 playsInline
+                onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+                onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                 style={{
                   filter: cssFilter,
                   transform: zoom > 1 ? `scale(${zoom})` : undefined,
@@ -277,11 +276,13 @@ export default function ProgramPreview({
             >
               {secondaryStream ? (
                 <video
-                  ref={secondaryVideoRef}
+                  ref={setSecondaryVideo}
                   className={styles.video}
                   autoPlay
                   muted
                   playsInline
+                  onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+                  onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                 />
               ) : (
                 <div className={styles.emptyPane}>
@@ -302,11 +303,13 @@ export default function ProgramPreview({
             >
               {tertiaryStream ? (
                 <video
-                  ref={tertiaryVideoRef}
+                  ref={setTertiaryVideo}
                   className={styles.video}
                   autoPlay
                   muted
                   playsInline
+                  onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+                  onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                 />
               ) : (
                 <div className={styles.emptyPane}>
@@ -327,16 +330,141 @@ export default function ProgramPreview({
     )
   }
 
+  // MODO CUÁDRUPLE (2x2 Grid de 4 Cámaras)
+  if (layout === 'quad') {
+    return (
+      <div className={styles.preview}>
+        <div className={styles.quadContainer}>
+          {/* Cámara 1: Master (Arriba Izquierda) */}
+          <div className={styles.quadPane}>
+            {stream ? (
+              <video
+                ref={setMainVideo}
+                className={styles.video}
+                autoPlay
+                muted
+                playsInline
+                onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+                onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+                style={{
+                  filter: cssFilter,
+                  transform: zoom > 1 ? `scale(${zoom})` : undefined,
+                  transformOrigin: `${originX} ${originY}`,
+                }}
+              />
+            ) : (
+              <div className={styles.emptyPane} onClick={onOpenConnectModal}>
+                <i className="ti ti-video-off" style={{ fontSize: 24 }} />
+                <span>{primaryLabel || 'Master (Sin señal)'}</span>
+              </div>
+            )}
+            {primaryLabel && <div className={styles.splitBadge}>{primaryLabel}</div>}
+          </div>
+
+          {/* Cámara 2: Secundaria (Arriba Derecha) */}
+          <div
+            className={`${styles.quadPane} ${styles.clickablePane}`}
+            onClick={onPromoteSecondaryToMaster}
+            title="Clic para mandar a MASTER"
+          >
+            {secondaryStream ? (
+              <video
+                ref={setSecondaryVideo}
+                className={styles.video}
+                autoPlay
+                muted
+                playsInline
+                onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+                onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+              />
+            ) : (
+              <div className={styles.emptyPane}>
+                <i className="ti ti-video-plus" style={{ fontSize: 22 }} />
+                <span style={{ fontSize: 11 }}>{secondaryLabel || '2ª Cámara'}</span>
+                <span className={styles.emptyPaneSub}>Clic para Master</span>
+              </div>
+            )}
+            <div className={styles.clickToMasterHint}>
+              <i className="ti ti-arrow-left" /> Master
+            </div>
+            {secondaryLabel && <div className={styles.splitBadge}>{secondaryLabel}</div>}
+          </div>
+
+          {/* Cámara 3: Terciaria (Abajo Izquierda) */}
+          <div
+            className={`${styles.quadPane} ${styles.clickablePane}`}
+            onClick={onPromoteTertiaryToMaster}
+            title="Clic para mandar a MASTER"
+          >
+            {tertiaryStream ? (
+              <video
+                ref={setTertiaryVideo}
+                className={styles.video}
+                autoPlay
+                muted
+                playsInline
+                onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+                onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+              />
+            ) : (
+              <div className={styles.emptyPane}>
+                <i className="ti ti-video-plus" style={{ fontSize: 22 }} />
+                <span style={{ fontSize: 11 }}>{tertiaryLabel || '3ª Cámara'}</span>
+                <span className={styles.emptyPaneSub}>Clic para Master</span>
+              </div>
+            )}
+            <div className={styles.clickToMasterHint}>
+              <i className="ti ti-arrow-left" /> Master
+            </div>
+            {tertiaryLabel && <div className={styles.splitBadge}>{tertiaryLabel}</div>}
+          </div>
+
+          {/* Cámara 4: Cuaternaria (Abajo Derecha) */}
+          <div
+            className={`${styles.quadPane} ${styles.clickablePane}`}
+            onClick={onPromoteQuaternaryToMaster}
+            title="Clic para mandar a MASTER"
+          >
+            {quaternaryStream ? (
+              <video
+                ref={setQuaternaryVideo}
+                className={styles.video}
+                autoPlay
+                muted
+                playsInline
+                onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+                onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+              />
+            ) : (
+              <div className={styles.emptyPane}>
+                <i className="ti ti-video-plus" style={{ fontSize: 22 }} />
+                <span style={{ fontSize: 11 }}>{quaternaryLabel || '4ª Cámara'}</span>
+                <span className={styles.emptyPaneSub}>Clic para Master</span>
+              </div>
+            )}
+            <div className={styles.clickToMasterHint}>
+              <i className="ti ti-arrow-left" /> Master
+            </div>
+            {quaternaryLabel && <div className={styles.splitBadge}>{quaternaryLabel}</div>}
+          </div>
+        </div>
+        <LookOverlays look={look} />
+      </div>
+    )
+  }
+
   // MODO NORMAL (FULL) con o sin PiP
   return (
     <div className={styles.preview}>
       {stream ? (
         <video
-          ref={videoRef}
+          ref={setMainVideo}
           className={styles.video}
           autoPlay
           muted
           playsInline
+          onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+          onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
           style={{
             filter: cssFilter,
             transform: zoom > 1 ? `scale(${zoom})` : undefined,
@@ -365,11 +493,13 @@ export default function ProgramPreview({
         >
           {pipStream ? (
             <video
-              ref={pipVideoRef}
+              ref={setPipVideo}
               className={styles.pipVideo}
               autoPlay
               muted
               playsInline
+              onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+              onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
             />
           ) : (
             <div className={styles.pipPlaceholder}>

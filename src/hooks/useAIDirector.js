@@ -148,47 +148,13 @@ export function useAIDirector({
   }, [enabled, streams])
 
   const resolveSideTarget = useCallback((slot, face, now) => {
+    // El zoom NO debe moverse ni activarse solo: la IA solo monitorea presencia de rostro y voz
     const hasFace = (face?.faceScore ?? 0) > 0.06
-    if (!cycleRef.current[slot]) {
-      cycleRef.current[slot] = {
-        phase: 'wide',
-        phaseStart: now,
-        lockedCrop: null,
-      }
+    return {
+      crop: { ...DEFAULT_CROP },
+      status: hasFace ? 'Rostro enfocado' : 'En espera',
     }
-
-    const cycle = cycleRef.current[slot]
-    const elapsed = now - cycle.phaseStart
-
-    if (cycle.phase === 'zoom') {
-      if (elapsed >= zoomHoldMs) {
-        cycle.phase = 'wide'
-        cycle.phaseStart = now
-        cycle.lockedCrop = null
-        return { crop: { ...DEFAULT_CROP }, status: 'Plano general' }
-      }
-      const remaining = Math.ceil((zoomHoldMs - elapsed) / 1000)
-      const crop = cycle.lockedCrop || { ...DEFAULT_CROP }
-      return { crop, status: `Plano cerrado · ${remaining}s` }
-    }
-
-    // Plano general — sin zoom
-    if (elapsed >= WIDE_HOLD_MS && hasFace && face.boundingBox) {
-      cycle.phase = 'zoom'
-      cycle.phaseStart = now
-      cycle.lockedCrop = cropFromFace(
-        face.boundingBox,
-        face.videoWidth,
-        face.videoHeight,
-      )
-      return {
-        crop: cycle.lockedCrop,
-        status: `Plano cerrado · ${faceZoomSec}s`,
-      }
-    }
-
-    return { crop: { ...DEFAULT_CROP }, status: 'Plano general' }
-  }, [zoomHoldMs, faceZoomSec])
+  }, [])
 
   // Análisis liviano, sin bloqueos de GPU y sin re-ejecución descontrolada
   const analyze = useCallback(() => {

@@ -132,6 +132,7 @@ export function drawCompositorFrame(ctx, w, h, {
   pipVideo = null,
   secondaryVideo = null,
   tertiaryVideo = null,
+  quaternaryVideo = null,
 }) {
   const useVirtualSet = background?.hasVirtualSet && background?.cameraRect
 
@@ -314,6 +315,61 @@ export function drawCompositorFrame(ctx, w, h, {
       }
       ctx.restore()
     }
+  } else if (layout === 'quad') {
+    const halfW = Math.round((w - 12) / 2)
+    const halfH = Math.round((h - 12) / 2)
+
+    // Cam 1 (Master) - Top Left
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, 0, halfW, halfH)
+    ctx.clip()
+    if (video && video.readyState >= 2 && video.videoWidth) {
+      drawVideoCover(ctx, video, 0, 0, halfW, halfH, directorCrop)
+    } else {
+      ctx.fillStyle = '#0d0d12'
+      ctx.fillRect(0, 0, halfW, halfH)
+    }
+    ctx.restore()
+
+    // Cam 2 - Top Right
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(halfW + 12, 0, halfW, halfH)
+    ctx.clip()
+    if (secondaryVideo && secondaryVideo.readyState >= 2 && secondaryVideo.videoWidth) {
+      drawVideoCover(ctx, secondaryVideo, halfW + 12, 0, halfW, halfH, null)
+    } else {
+      ctx.fillStyle = '#0d0d12'
+      ctx.fillRect(halfW + 12, 0, halfW, halfH)
+    }
+    ctx.restore()
+
+    // Cam 3 - Bottom Left
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, halfH + 12, halfW, halfH)
+    ctx.clip()
+    if (tertiaryVideo && tertiaryVideo.readyState >= 2 && tertiaryVideo.videoWidth) {
+      drawVideoCover(ctx, tertiaryVideo, 0, halfH + 12, halfW, halfH, null)
+    } else {
+      ctx.fillStyle = '#0d0d12'
+      ctx.fillRect(0, halfH + 12, halfW, halfH)
+    }
+    ctx.restore()
+
+    // Cam 4 - Bottom Right
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(halfW + 12, halfH + 12, halfW, halfH)
+    ctx.clip()
+    if (quaternaryVideo && quaternaryVideo.readyState >= 2 && quaternaryVideo.videoWidth) {
+      drawVideoCover(ctx, quaternaryVideo, halfW + 12, halfH + 12, halfW, halfH, null)
+    } else {
+      ctx.fillStyle = '#0d0d12'
+      ctx.fillRect(halfW + 12, halfH + 12, halfW, halfH)
+    }
+    ctx.restore()
   } else {
     if (video && video.readyState >= 2 && video.videoWidth) {
       drawMainVideo(video, directorCrop)

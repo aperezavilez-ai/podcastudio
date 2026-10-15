@@ -404,6 +404,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const [pipCameraSlot, setPipCameraSlot] = useState(0)
   const [splitSecondarySlot, setSplitSecondarySlot] = useState(2)
   const [tripleTertiarySlot, setTripleTertiarySlot] = useState(0)
+  const [quadQuaternarySlot, setQuadQuaternarySlot] = useState(3)
 
   const handleSelectLayout = useCallback((layoutMode) => {
     setScreenLayout(layoutMode)
@@ -428,6 +429,12 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     try { localStorage.setItem('podcastudio_screen_layout', 'triple') } catch {}
   }, [])
 
+  const handleSetQuadSlot = useCallback((slot) => {
+    setQuadQuaternarySlot(slot)
+    setScreenLayout('quad')
+    try { localStorage.setItem('podcastudio_screen_layout', 'quad') } catch {}
+  }, [])
+
   /** Promueve de inmediato cualquier cámara a MASTER (toma central grande) */
   const handlePromoteToMaster = useCallback((slot) => {
     userPickedCameraRef.current = true
@@ -447,7 +454,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     if (tripleTertiarySlot === slot) {
       setTripleTertiarySlot(prevMaster)
     }
-  }, [masterCameraSlot, pipCameraSlot, splitSecondarySlot, tripleTertiarySlot, setActiveCamera, setCamSlot, setMasterCameraSlot])
+    if (quadQuaternarySlot === slot) {
+      setQuadQuaternarySlot(prevMaster)
+    }
+  }, [masterCameraSlot, pipCameraSlot, splitSecondarySlot, tripleTertiarySlot, quadQuaternarySlot, setActiveCamera, setCamSlot, setMasterCameraSlot])
 
   const handleTogglePipOnCamera = useCallback((slot) => {
     if (screenLayout === 'pip' && pipCameraSlot === slot) {
@@ -514,6 +524,34 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     setTripleTertiarySlot(otherSlot)
     handleSelectLayout('triple')
   }, [screenLayout, splitSecondarySlot, tripleTertiarySlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot])
+
+  const handleToggleQuadOnCamera = useCallback((slot) => {
+    const isInQuad = screenLayout === 'quad' && (splitSecondarySlot === slot || tripleTertiarySlot === slot || quadQuaternarySlot === slot)
+    if (isInQuad) {
+      handleSelectLayout('full')
+      return
+    }
+
+    let effectiveMaster = masterCameraSlot
+    if (slot === masterCameraSlot) {
+      const nextMaster = Array.from({ length: slotsCount })
+        .map((_, idx) => idx)
+        .find(idx => idx !== slot && streams[idx]) ?? (slot === 0 ? 1 : 0)
+      setMasterCameraSlot(nextMaster)
+      setActiveCamera(nextMaster)
+      setCamSlot(nextMaster)
+      effectiveMaster = nextMaster
+    }
+
+    const availableSlots = Array.from({ length: slotsCount })
+      .map((_, idx) => idx)
+      .filter(idx => idx !== effectiveMaster && idx !== slot)
+
+    setSplitSecondarySlot(slot)
+    setTripleTertiarySlot(availableSlots[0] ?? (slot === 0 ? 2 : 0))
+    setQuadQuaternarySlot(availableSlots[1] ?? (slot <= 1 ? 3 : 1))
+    handleSelectLayout('quad')
+  }, [screenLayout, splitSecondarySlot, tripleTertiarySlot, quadQuaternarySlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot])
 
   const handleSwapPipMaster = useCallback(() => {
     handlePromoteToMaster(pipCameraSlot)
@@ -937,14 +975,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   }, [])
 
   const effectiveCrop = useMemo(() => {
-    if (switchMode === 'ai' && planLimits.aiDirector && typeof getDirectorCrop === 'function') {
-      const aiCrop = getDirectorCrop(programCamera)
-      if (aiCrop && aiCrop.zoom > 1.02) return aiCrop
-    }
+    // El zoom NUNCA debe moverse solo: solo se aplica el zoom configurado por el usuario
     const dyn = typeof getDynamicCrop === 'function' ? getDynamicCrop(programCamera) : null
     if (dyn) return dyn
     return null
-  }, [switchMode, planLimits.aiDirector, getDirectorCrop, getDynamicCrop, programCamera, zoomState, activeZoom])
+  }, [getDynamicCrop, programCamera, zoomState, activeZoom])
 
   const { getProgramStream } = useStudioCompositor({
     streams,
@@ -952,8 +987,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     format: proj.format,
     layout: screenLayout,
     pipCamera: screenLayout === 'pip' ? pipCameraSlot : null,
-    secondaryCamera: (screenLayout === 'split' || screenLayout === 'triple') ? splitSecondarySlot : null,
-    tertiaryCamera: screenLayout === 'triple' ? tripleTertiarySlot : null,
+    secondaryCamera: (screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') ? splitSecondarySlot : null,
+    tertiaryCamera: (screenLayout === 'triple' || screenLayout === 'quad') ? tripleTertiarySlot : null,
+    quaternaryCamera: screenLayout === 'quad' ? quadQuaternarySlot : null,
     logoUrl: proj.logoUrl,
     logoPosition: proj.logoPosition || 'tr',
     podcastName: proj.name || 'Mi Podcast',
@@ -1590,13 +1626,16 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     layout={screenLayout}
                     pipStream={screenLayout === 'pip' ? streams[pipCameraSlot] : null}
                     pipLabel={getSlotLabel(pipCameraSlot, cameraMeta[pipCameraSlot]?.customLabel, pipCameraSlot === masterCameraSlot)}
-                    secondaryStream={(screenLayout === 'split' || screenLayout === 'triple') ? streams[splitSecondarySlot] : null}
+                    secondaryStream={(screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') ? streams[splitSecondarySlot] : null}
                     secondaryLabel={getSlotLabel(splitSecondarySlot, cameraMeta[splitSecondarySlot]?.customLabel, false)}
-                    tertiaryStream={screenLayout === 'triple' ? streams[tripleTertiarySlot] : null}
+                    tertiaryStream={(screenLayout === 'triple' || screenLayout === 'quad') ? streams[tripleTertiarySlot] : null}
                     tertiaryLabel={getSlotLabel(tripleTertiarySlot, cameraMeta[tripleTertiarySlot]?.customLabel, false)}
+                    quaternaryStream={screenLayout === 'quad' ? streams[quadQuaternarySlot] : null}
+                    quaternaryLabel={getSlotLabel(quadQuaternarySlot, cameraMeta[quadQuaternarySlot]?.customLabel, false)}
                     primaryLabel={getSlotLabel(programCamera, cameraMeta[programCamera]?.customLabel, true)}
                     onPromoteSecondaryToMaster={() => handlePromoteToMaster(splitSecondarySlot)}
                     onPromoteTertiaryToMaster={() => handlePromoteToMaster(tripleTertiarySlot)}
+                    onPromoteQuaternaryToMaster={() => handlePromoteToMaster(quadQuaternarySlot)}
                     onPromotePipToMaster={() => handlePromoteToMaster(pipCameraSlot)}
                     onClosePip={() => handleSelectLayout('full')}
                     onOpenConnectModal={() => handleOpenConnectModal(programCamera)}
@@ -1709,6 +1748,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               onSelectSplitSecondarySlot={setSplitSecondarySlot}
               tripleTertiarySlot={tripleTertiarySlot}
               onSelectTripleTertiarySlot={setTripleTertiarySlot}
+              quadQuaternarySlot={quadQuaternarySlot}
+              onSelectQuadQuaternarySlot={setQuadQuaternarySlot}
               onSwapPipMaster={handleSwapPipMaster}
               onSwapSplitSlots={handleSwapSplit}
               onSelectProgramCamera={(slot) => {
@@ -1829,6 +1870,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                         title={screenLayout === 'triple' && (splitSecondarySlot === i || tripleTertiarySlot === i) ? 'Quitar de pantalla Triple' : 'Enviar a pantalla Triple'}
                       >
                         {screenLayout === 'triple' && (splitSecondarySlot === i || tripleTertiarySlot === i) ? '✓ Triple' : 'Triple'}
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.camRolePill} ${screenLayout === 'quad' && (splitSecondarySlot === i || tripleTertiarySlot === i || quadQuaternarySlot === i) ? styles.camRolePillQuadActive : ''}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleToggleQuadOnCamera(i)
+                        }}
+                        title={screenLayout === 'quad' && (splitSecondarySlot === i || tripleTertiarySlot === i || quadQuaternarySlot === i) ? 'Quitar de pantalla Cuádruple' : 'Enviar a pantalla Cuádruple'}
+                      >
+                        {screenLayout === 'quad' && (splitSecondarySlot === i || tripleTertiarySlot === i || quadQuaternarySlot === i) ? '✓ Cuád' : 'Cuád'}
                       </button>
                     </div>
                     <CameraThumb
