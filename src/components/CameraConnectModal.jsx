@@ -26,6 +26,9 @@ export default function CameraConnectModal({
   onWifiConnect,
   onDisconnect,
   onRenameSlot,
+  getRoomCodeForSlot,
+  onListenRemoteSlot,
+  remoteStatus = {},
 }) {
   const [targetSlot, setTargetSlot] = useState(initialSlot)
   const [activeTab, setActiveTab] = useState('usb')
@@ -33,6 +36,12 @@ export default function CameraConnectModal({
   const [wifiConnecting, setWifiConnecting] = useState(false)
   const [customLabel, setCustomLabel] = useState('')
   const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (open && onListenRemoteSlot) {
+      onListenRemoteSlot(targetSlot)
+    }
+  }, [open, targetSlot, onListenRemoteSlot])
 
   useEffect(() => {
     if (open) {
@@ -67,9 +76,14 @@ export default function CameraConnectModal({
     return getSlotLabel(targetSlot, currentMeta?.customLabel, isMaster)
   }, [targetSlot, currentMeta, isMaster])
 
+  const roomCode = useMemo(() => {
+    if (getRoomCodeForSlot) return getRoomCodeForSlot(targetSlot)
+    return `pcd_cam_${targetSlot + 1}`
+  }, [getRoomCodeForSlot, targetSlot])
+
   const remoteUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/remote-cam?slot=${targetSlot + 1}`
-    : `https://podcastudio.mx/remote-cam?slot=${targetSlot + 1}`
+    ? `${window.location.origin}/remote-cam?slot=${targetSlot + 1}&room=${roomCode}`
+    : `https://podcastudio.mx/remote-cam?slot=${targetSlot + 1}&room=${roomCode}`
 
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(remoteUrl)}`
 
@@ -355,16 +369,54 @@ export default function CameraConnectModal({
           {/* TAB REMOTE / QR */}
           {activeTab === 'remote' && (
             <div className={styles.remoteBox}>
-              <div className={styles.qrWrap}>
-                <img src={qrSrc} alt="Escanear con smartphone" className={styles.qrImage} />
-              </div>
-              <div className={styles.remoteText}>
-                Escanea con la cámara de tu <strong>iPhone o Android</strong> conectado a la misma red Wi-Fi para usarlo como cámara inalámbrica en tiempo real.
-              </div>
-              <button type="button" className={styles.copyUrlBtn} onClick={handleCopyLink}>
-                <i className={copied ? 'ti ti-check' : 'ti ti-copy'} />
-                {copied ? '¡Enlace copiado!' : 'Copiar enlace directo de cámara'}
-              </button>
+              {isConnected && currentMeta?.type === 'remote' ? (
+                <div className={styles.remoteConnectedBox}>
+                  <div className={styles.remoteLiveBadge}>
+                    <i className="ti ti-broadcast" />
+                    <span>¡Cámara iPhone Conectada en Vivo!</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>
+                    Transmitiendo señal HD en tiempo real a CAM {targetSlot + 1}
+                  </div>
+                  <p style={{ fontSize: 12, color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>
+                    Puedes voltear la cámara (trasera/frontal) o encender la linterna directamente desde la pantalla de tu teléfono.
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.disconnectAction}
+                    onClick={() => {
+                      if (onDisconnect) onDisconnect(targetSlot)
+                    }}
+                  >
+                    <i className="ti ti-power" /> Desconectar iPhone de este canal
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className={styles.qrWrap}>
+                    <img src={qrSrc} alt="Escanear con smartphone" className={styles.qrImage} />
+                  </div>
+                  <div className={styles.remoteText}>
+                    Escanea con la cámara de tu <strong>iPhone o Android</strong>. No necesitas instalar nada; se abrirá automáticamente la cámara de tu teléfono y se conectará en vivo a <strong>CAM {targetSlot + 1}</strong>.
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <button type="button" className={styles.copyUrlBtn} onClick={handleCopyLink}>
+                      <i className={copied ? 'ti ti-check' : 'ti ti-copy'} />
+                      {copied ? '¡Enlace copiado!' : 'Copiar enlace directo de cámara'}
+                    </button>
+                    <a
+                      href={remoteUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.copyUrlBtn}
+                      style={{ textDecoration: 'none' }}
+                      title="Abrir en otra pestaña para probar en este navegador"
+                    >
+                      <i className="ti ti-external-link" /> Probar en navegador
+                    </a>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

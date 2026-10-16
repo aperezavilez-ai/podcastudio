@@ -14,6 +14,7 @@ const Tour = lazy(() => import('./pages/Tour.jsx'))
 const Manual = lazy(() => import('./pages/Manual.jsx'))
 const ProjectSetup = lazy(() => import('./pages/ProjectSetup.jsx'))
 const Studio = lazy(() => import('./pages/Studio.jsx'))
+const RemoteCam = lazy(() => import('./pages/RemoteCam.jsx'))
 
 function RouteFallback() {
   return (
@@ -166,6 +167,7 @@ export default function App() {
           <Route path="/auth" element={<Auth onAuth={handleAuth} />} />
           <Route path="/tour" element={<Tour user={user} />} />
           <Route path="/guia" element={<Manual />} />
+          <Route path="/remote-cam" element={<RemoteCam />} />
           <Route
             path="/plans"
             element={(

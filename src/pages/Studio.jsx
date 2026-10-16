@@ -63,6 +63,7 @@ import { useLiveStreaming } from '../hooks/useLiveStreaming.js'
 import LiveStreamModal from '../components/LiveStreamModal.jsx'
 import CintilloEditorModal from '../components/CintilloEditorModal.jsx'
 import CameraCalibratorModal from '../components/CameraCalibratorModal.jsx'
+import { useRemoteCameraManager } from '../hooks/useRemoteCameraManager.js'
 import styles from './Studio.module.css'
 
 const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
@@ -147,9 +148,21 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     slotsCount, setSlotsCount, masterCameraSlot, setMasterCameraSlot,
     addCameraSlot, removeCameraSlot, renameCameraSlot,
     enumerateDevices, startCamera, initMobileCameras, switchMobilePrimaryFacing,
-    autoConnectAll, connectNextCameraToSlot, stopCamera, connectWifiCamera,
+    autoConnectAll, connectNextCameraToSlot, stopCamera, connectWifiCamera, connectRemoteStream,
     scanBluetoothCamera, connectBluetoothWifiStream, startPreferredMic, switchMic, selectedMicId, micLabel, getMicStream,
   } = useWebcam()
+  const {
+    getRoomCodeForSlot,
+    listenToSlot: listenRemoteSlot,
+    remoteStatus,
+  } = useRemoteCameraManager({
+    onStreamConnected: (slot, stream, label) => {
+      connectRemoteStream(slot, stream, label)
+    },
+    onStreamDisconnected: (slot) => {
+      stopCamera(slot, true)
+    },
+  })
   const {
     recording, duration, recordings, converting, convertProgress,
     recoveredSession, restoreRecoveredSession, dismissRecoveredSession,
@@ -3351,6 +3364,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         onRenameSlot={(slot, label) => {
           renameCameraSlot(slot, label)
         }}
+        getRoomCodeForSlot={getRoomCodeForSlot}
+        onListenRemoteSlot={listenRemoteSlot}
+        remoteStatus={remoteStatus}
       />
 
       {/* DEVICE INIT OVERLAY */}

@@ -440,6 +440,18 @@ export function useWebcam() {
     }
   }, [attachStream, setSlotCleanup, stopCamera])
 
+  const connectRemoteStream = useCallback((slotIndex, stream, label) => {
+    userDisabledSlotsRef.current.delete(slotIndex)
+    stopCamera(slotIndex)
+    applyStreamQualityHints(stream)
+    attachStream(slotIndex, stream, {
+      type: 'remote',
+      label: label || `iPhone / Móvil ${slotIndex + 1}`,
+      deviceId: 'remote-webrtc',
+    })
+    return stream
+  }, [attachStream, stopCamera])
+
   const renameCameraSlot = useCallback((slotIndex, label) => {
     setCameraMeta(prev => {
       const updated = {
@@ -852,6 +864,7 @@ export function useWebcam() {
     connectNextCameraToSlot,
     stopCamera,
     connectWifiCamera,
+    connectRemoteStream,
     scanBluetoothCamera,
     connectBluetoothWifiStream,
     startMic,
