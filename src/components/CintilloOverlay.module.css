@@ -592,84 +592,13 @@
   }
 }
 
-/* FILA DE BADGES DE REDES SOCIALES (YouTube, Spotify, Apple Podcasts, Instagram, TikTok, Facebook) */
-.socialBadgesRow {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 7px;
-  padding: 6px 14px 10px 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.28);
-}
-
-.socialBadgeItem {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  font-size: 11px;
-  font-weight: 700;
-  color: #ffffff;
-  letter-spacing: 0.3px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-  animation: badgePopIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-
-.socialBadgeItem svg {
-  flex-shrink: 0;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
-}
-
-.socialBadgeItem:nth-child(1) { animation-delay: 0.12s; }
-.socialBadgeItem:nth-child(2) { animation-delay: 0.22s; }
-.socialBadgeItem:nth-child(3) { animation-delay: 0.32s; }
-.socialBadgeItem:nth-child(4) { animation-delay: 0.42s; }
-.socialBadgeItem:nth-child(5) { animation-delay: 0.52s; }
-.socialBadgeItem:nth-child(6) { animation-delay: 0.62s; }
-
-@keyframes badgePopIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.65) translateY(6px);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
-}
-
-.badgeYoutube {
-  background: rgba(255, 0, 0, 0.18);
-  border-color: rgba(255, 0, 0, 0.45);
-}
-
-.badgeSpotify {
-  background: rgba(30, 215, 96, 0.18);
-  border-color: rgba(30, 215, 96, 0.45);
-}
-
-.badgeApple {
-  background: rgba(135, 39, 255, 0.18);
-  border-color: rgba(135, 39, 255, 0.45);
-}
-
-.badgeInstagram {
-  background: rgba(225, 48, 108, 0.18);
-  border-color: rgba(225, 48, 108, 0.45);
-}
-
-.badgeTiktok {
-  background: rgba(37, 244, 238, 0.14);
-  border-color: rgba(37, 244, 238, 0.35);
-}
-
-.badgeFacebook {
-  background: rgba(24, 119, 242, 0.18);
-  border-color: rgba(24, 119, 242, 0.45);
+/* ESTILOS DE LOGO VECTORIAL DE REDES SOCIALES */
+.cintLogoBox svg {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.65));
+  z-index: 2;
 }
 
 .extras {

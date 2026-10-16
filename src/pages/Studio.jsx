@@ -227,6 +227,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const [editingCintText, setEditingCintText] = useState('')
   const [editingCintTag, setEditingCintTag] = useState('')
   const [editingCintLabel, setEditingCintLabel] = useState('')
+  const [editingCintSubtitle, setEditingCintSubtitle] = useState('')
   const [cintilloOverrides, setCintilloOverrides] = useState(() => {
     try {
       const saved = localStorage.getItem('podcastudio_cintillo_overrides')
@@ -787,12 +788,14 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     setEditingCintText(resolved.text)
     setEditingCintTag(resolved.tag)
     setEditingCintLabel(resolved.label)
+    setEditingCintSubtitle(resolved.subtitle || '')
   }, [getResolvedCintillo])
 
-  const handleSaveCintilloFull = useCallback((id, { text, tag, label }) => {
+  const handleSaveCintilloFull = useCallback((id, { text, tag, label, subtitle }) => {
     const trimmedText = (text ?? '').trim()
     const trimmedTag = (tag ?? '').trim().toUpperCase() || 'INFO'
     const trimmedLabel = (label ?? '').trim() || 'Cintillo'
+    const trimmedSubtitle = (subtitle ?? '').trim()
 
     setCintilloOverrides(prev => {
       const next = {
@@ -802,6 +805,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
           text: trimmedText,
           tag: trimmedTag,
           label: trimmedLabel,
+          subtitle: trimmedSubtitle,
         }
       }
       try { localStorage.setItem('podcastudio_cintillo_overrides', JSON.stringify(next)) } catch {}
@@ -813,9 +817,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       const updatedProj = {
         ...proj,
         cintillos: updated,
+        cintilloSubtitles: {
+          ...(proj.cintilloSubtitles || {}),
+          [id]: trimmedSubtitle,
+        },
         cintilloOverrides: {
           ...(proj.cintilloOverrides || {}),
-          [id]: { text: trimmedText, tag: trimmedTag, label: trimmedLabel }
+          [id]: { text: trimmedText, tag: trimmedTag, label: trimmedLabel, subtitle: trimmedSubtitle }
         }
       }
       try {
@@ -2929,7 +2937,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     const resolved = getResolvedCintillo(preset)
                     const isEditing = editingCintId === id
                     const isCurrentActive = cintillo.active && cintillo.presetId === id
-                    const quickTags = ['ENTREVISTA', 'INVITADO', 'TEMA', 'ESPECIALISTA', 'PREGUNTA', 'NOTICIA', 'HOST', 'REDES']
+                    const isSocialPreset = id.startsWith('social_')
+                    const quickTags = isSocialPreset
+                      ? ['YOUTUBE', 'INSTAGRAM', 'TIKTOK', 'FACEBOOK']
+                      : ['ENTREVISTA', 'INVITADO', 'TEMA', 'ESPECIALISTA', 'PREGUNTA', 'NOTICIA', 'HOST']
                     return (
                       <div key={id} className={`${styles.cintCard} ${isCurrentActive ? styles.cintCardActive : ''}`}>
                         <div className={styles.cintCardHeader}>
@@ -3034,13 +3045,15 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                             </div>
 
                             <div className={styles.cintEditField}>
-                              <label className={styles.cintFieldLabel}>Texto Principal en Pantalla:</label>
+                              <label className={styles.cintFieldLabel}>
+                                {isSocialPreset ? 'Usuario / Cuenta en Redes:' : 'Texto Principal en Pantalla:'}
+                              </label>
                               <input
                                 type="text"
                                 className={styles.cintInput}
                                 value={editingCintText}
                                 onChange={(e) => setEditingCintText(e.target.value)}
-                                placeholder="Texto principal del cintillo..."
+                                placeholder={isSocialPreset ? 'Ej. @micanal o nombre de usuario...' : 'Texto principal del cintillo...'}
                                 autoFocus
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
@@ -3048,6 +3061,29 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                                       text: editingCintText,
                                       tag: editingCintTag,
                                       label: editingCintLabel,
+                                      subtitle: editingCintSubtitle,
+                                    })
+                                  }
+                                  if (e.key === 'Escape') setEditingCintId(null)
+                                }}
+                              />
+                            </div>
+
+                            <div className={styles.cintEditField} style={{ marginTop: 8 }}>
+                              <label className={styles.cintFieldLabel}>Subtítulo / Bajada (Opcional):</label>
+                              <input
+                                type="text"
+                                className={styles.cintInputSm}
+                                value={editingCintSubtitle}
+                                onChange={(e) => setEditingCintSubtitle(e.target.value)}
+                                placeholder={isSocialPreset ? 'Ej. Suscríbete para nuevos episodios...' : 'Subtítulo opcional...'}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    handleSaveCintilloFull(id, {
+                                      text: editingCintText,
+                                      tag: editingCintTag,
+                                      label: editingCintLabel,
+                                      subtitle: editingCintSubtitle,
                                     })
                                   }
                                   if (e.key === 'Escape') setEditingCintId(null)
@@ -3063,6 +3099,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                                   text: editingCintText,
                                   tag: editingCintTag,
                                   label: editingCintLabel,
+                                  subtitle: editingCintSubtitle,
                                 })}
                               >
                                 <i className="ti ti-check" /> Guardar
@@ -3075,12 +3112,14 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                                     text: editingCintText,
                                     tag: editingCintTag,
                                     label: editingCintLabel,
+                                    subtitle: editingCintSubtitle,
                                   })
                                   showCintillo({
                                     ...preset,
                                     tag: editingCintTag,
                                     text: editingCintText,
                                     label: editingCintLabel,
+                                    subtitle: editingCintSubtitle,
                                   })
                                 }}
                                 title="Guardar y mostrar de inmediato en Master"

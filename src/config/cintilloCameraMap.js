@@ -8,6 +8,10 @@ export const GUEST_CAMERA_SLOT = 2
 export const CINTILLO_SLOT_BY_PRESET = {
   host: HOST_CAMERA_SLOT,
   social: HOST_CAMERA_SLOT,
+  social_youtube: HOST_CAMERA_SLOT,
+  social_instagram: HOST_CAMERA_SLOT,
+  social_tiktok: HOST_CAMERA_SLOT,
+  social_facebook: HOST_CAMERA_SLOT,
   contact: HOST_CAMERA_SLOT,
   guest: GUEST_CAMERA_SLOT,
   topic: MASTER_CAMERA_SLOT,
@@ -16,7 +20,17 @@ export const CINTILLO_SLOT_BY_PRESET = {
 }
 
 /** Rotación automática: master → invitado → conductor */
-export const CINTILLO_ROTATION_ORDER = ['topic', 'guest', 'host', 'social', 'contact', 'promo']
+export const CINTILLO_ROTATION_ORDER = [
+  'topic',
+  'guest',
+  'host',
+  'social_youtube',
+  'social_instagram',
+  'social_tiktok',
+  'social_facebook',
+  'contact',
+  'promo',
+]
 
 export const DEFAULT_CINTILLO_POSITIONS = {
   host: 'bl',
@@ -42,7 +56,7 @@ export const CINTILLO_CAMERA_GROUPS = [
     slot: HOST_CAMERA_SLOT,
     label: 'CAM 1 · Conductor (izquierda)',
     defaultPosition: 'bl',
-    presetIds: ['host', 'social', 'contact'],
+    presetIds: ['host', 'social_youtube', 'social_instagram', 'social_tiktok', 'social_facebook', 'contact'],
   },
   {
     role: 'master',

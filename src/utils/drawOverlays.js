@@ -62,13 +62,90 @@ function getLogoPosition(position, w, h, boxW, boxH) {
   return map[position] || map.tr
 }
 
+function drawSocialIconOnCanvas(ctx, network, x, y, size) {
+  ctx.save()
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.45)'
+  ctx.shadowBlur = 8
+  ctx.shadowOffsetY = 2
+
+  if (network === 'youtube') {
+    ctx.fillStyle = '#FF0000'
+    roundRectPath(ctx, x, y, size, size, 8)
+    ctx.fill()
+    ctx.shadowColor = 'transparent'
+    ctx.fillStyle = '#FFFFFF'
+    ctx.beginPath()
+    const triW = size * 0.32
+    const triH = size * 0.36
+    const triX = x + (size - triW) / 2 + 1.5
+    const triY = y + (size - triH) / 2
+    ctx.moveTo(triX, triY)
+    ctx.lineTo(triX + triW, triY + triH / 2)
+    ctx.lineTo(triX, triY + triH)
+    ctx.closePath()
+    ctx.fill()
+  } else if (network === 'instagram') {
+    const igGrad = ctx.createLinearGradient(x, y + size, x + size, y)
+    igGrad.addColorStop(0, '#f09433')
+    igGrad.addColorStop(0.3, '#dc2743')
+    igGrad.addColorStop(1, '#bc1888')
+    ctx.fillStyle = igGrad
+    roundRectPath(ctx, x, y, size, size, 8)
+    ctx.fill()
+    ctx.shadowColor = 'transparent'
+    ctx.strokeStyle = '#FFFFFF'
+    ctx.lineWidth = 2
+    const m = size * 0.22
+    const cSize = size - m * 2
+    roundRectPath(ctx, x + m, y + m, cSize, cSize, 5)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(x + size / 2, y + size / 2, cSize * 0.26, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.fillStyle = '#FFFFFF'
+    ctx.beginPath()
+    ctx.arc(x + size - m - 3.5, y + m + 3.5, 1.4, 0, Math.PI * 2)
+    ctx.fill()
+  } else if (network === 'tiktok') {
+    ctx.fillStyle = '#010101'
+    roundRectPath(ctx, x, y, size, size, 8)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)'
+    ctx.lineWidth = 1
+    roundRectPath(ctx, x, y, size, size, 8)
+    ctx.stroke()
+    ctx.shadowColor = 'transparent'
+    const noteSize = Math.round(size * 0.58)
+    ctx.font = `bold ${noteSize}px "Segoe UI", sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#25F4EE'
+    ctx.fillText('♪', x + size / 2 - 1, y + size / 2)
+    ctx.fillStyle = '#FE2C55'
+    ctx.fillText('♪', x + size / 2 + 1, y + size / 2)
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillText('♪', x + size / 2, y + size / 2)
+  } else if (network === 'facebook') {
+    ctx.fillStyle = '#1877F2'
+    roundRectPath(ctx, x, y, size, size, 8)
+    ctx.fill()
+    ctx.shadowColor = 'transparent'
+    ctx.fillStyle = '#FFFFFF'
+    ctx.font = `bold ${Math.round(size * 0.68)}px "Segoe UI", system-ui, sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('f', x + size / 2 + 1, y + size / 2 + 1)
+  }
+  ctx.restore()
+}
+
 /**
  * Dibuja un cintillo profesional moderno Broadcast / Glassmorphism en el canvas.
  * - Fondo traslúcido glassmorphism con specular border
  * - Tag animado con live pulse dot
  * - Tipografía nítida para texto principal y subtítulo
- * - Logotipo del invitado/podcast con reflejo 3D
- * - Badges estilizados cuando es REDES o CONTACTO
+ * - Logotipo del invitado/podcast o icono oficial de red social a un costado
+ * - Diseño limpio e independiente para cada red (YouTube, Instagram, TikTok, Facebook)
  */
 export function drawCintillo(ctx, w, h, overlay, motion = null) {
   if (!overlay?.active || !overlay.text) return
@@ -80,7 +157,16 @@ export function drawCintillo(ctx, w, h, overlay, motion = null) {
   const position = overlay.position || 'bl'
   const styleId = overlay.styleId || 'broadcast'
   const hasLogo = Boolean(overlay.logoImage && overlay.logoImage.complete && overlay.logoImage.naturalWidth > 0)
-  const isSocials = tag === 'REDES' || Boolean(overlay.socials)
+
+  const socialNetwork = overlay.network || (
+    tag === 'YOUTUBE' ? 'youtube' :
+    tag === 'INSTAGRAM' ? 'instagram' :
+    tag === 'TIKTOK' ? 'tiktok' :
+    tag === 'FACEBOOK' ? 'facebook' :
+    (overlay.presetId && overlay.presetId.startsWith('social_')) ? overlay.presetId.replace('social_', '') :
+    null
+  )
+  const hasSocialIcon = !hasLogo && Boolean(socialNetwork)
 
   ctx.save()
 
@@ -108,16 +194,16 @@ export function drawCintillo(ctx, w, h, overlay, motion = null) {
     subTextW = ctx.measureText(subtitle).width
   }
 
-  const logoSize = hasLogo ? 64 : 0
-  const logoPadding = hasLogo ? 16 : 0
+  const iconBoxSize = hasLogo ? 64 : (hasSocialIcon ? 44 : 0)
+  const iconPadding = (hasLogo || hasSocialIcon) ? 14 : 0
   const maxAllowedW = Math.min(w * 0.88, 860)
 
-  const contentW = Math.max(tagW, mainTextW, subTextW) + logoSize + logoPadding + 44
+  const contentW = Math.max(tagW, mainTextW, subTextW) + iconBoxSize + iconPadding + 44
   const barW = Math.min(Math.max(contentW, 360), maxAllowedW)
 
   const tagH = 28
   const baseContentH = subtitle ? 66 : 46
-  const barH = Math.max(baseContentH + (isSocials ? 28 : 0), hasLogo ? logoSize + 16 : 46)
+  const barH = Math.max(baseContentH, (hasLogo || hasSocialIcon) ? iconBoxSize + 16 : 46)
   const totalH = tagH + barH + 4
 
   const { x, y } = getBoxPosition(position, w, h, barW, totalH)
@@ -191,15 +277,15 @@ export function drawCintillo(ctx, w, h, overlay, motion = null) {
   ctx.textBaseline = 'middle'
   ctx.fillText(tag, tagX + 22, tagY + tagH / 2)
 
-  // 6. Contenido principal (Logo + Textos)
+  // 6. Contenido principal (Logo/Icono + Textos a un costado)
   const contentY = y + tagH + 12
   let textStartX = x + 20
 
-  // Dibujar Logotipo flotante si está disponible (sin caja de fondo plano)
+  // Dibujar Logotipo flotante o icono oficial de red social a la izquierda
   if (hasLogo) {
     const logoX = x + 18
     const logoY = contentY
-    const lSize = logoSize - 8
+    const lSize = iconBoxSize - 8
 
     ctx.save()
     ctx.shadowColor = 'rgba(0, 0, 0, 0.7)'
@@ -211,6 +297,12 @@ export function drawCintillo(ctx, w, h, overlay, motion = null) {
     ctx.restore()
 
     textStartX = logoX + lSize + 14
+  } else if (hasSocialIcon) {
+    const iconX = x + 18
+    const iconY = contentY + 2
+    const iSize = 42
+    drawSocialIconOnCanvas(ctx, socialNetwork, iconX, iconY, iSize)
+    textStartX = iconX + iSize + 14
   }
 
   const textAvailableW = barW - (textStartX - x) - 20
@@ -233,38 +325,6 @@ export function drawCintillo(ctx, w, h, overlay, motion = null) {
     ctx.font = '500 16px "Segoe UI", system-ui, sans-serif'
     ctx.textBaseline = 'top'
     ctx.fillText(subtitle, textStartX, contentY + 28, textAvailableW)
-  }
-
-  // Badges estilizados cuando es REDES (YouTube, Spotify, Apple, Instagram, TikTok, Facebook)
-  if (isSocials) {
-    const badgeY = contentY + (subtitle ? 54 : 34)
-    const badges = [
-      { color: '#FF0000', label: 'YT' },
-      { color: '#1ED760', label: 'SP' },
-      { color: '#8727FF', label: 'AP' },
-      { color: '#E1306C', label: 'IG' },
-      { color: '#010101', border: '#25F4EE', label: 'TK' },
-      { color: '#1877F2', label: 'FB' },
-    ]
-    let bx = textStartX
-    for (const b of badges) {
-      ctx.fillStyle = b.color
-      roundRectPath(ctx, bx, badgeY, 26, 17, 4)
-      ctx.fill()
-      if (b.border) {
-        ctx.strokeStyle = b.border
-        ctx.lineWidth = 1
-        roundRectPath(ctx, bx, badgeY, 26, 17, 4)
-        ctx.stroke()
-      }
-      ctx.fillStyle = '#FFFFFF'
-      ctx.font = 'bold 9px "Segoe UI", system-ui, sans-serif'
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(b.label, bx + 13, badgeY + 8.5)
-      bx += 31
-    }
-    ctx.textAlign = 'start'
   }
 
   // 9. Destello especular de cristal en el borde superior (Gleam)

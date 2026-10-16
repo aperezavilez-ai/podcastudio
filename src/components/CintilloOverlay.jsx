@@ -2,6 +2,54 @@ import React from 'react'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
 import styles from './CintilloOverlay.module.css'
 
+function renderSocialIcon(presetId = '', tag = '') {
+  const key = `${presetId} ${tag}`.toLowerCase()
+  if (key.includes('youtube') || key.includes('yt')) {
+    return (
+      <svg viewBox="0 0 28 28" width="34" height="34" fill="none">
+        <rect width="28" height="28" rx="8" fill="#FF0000" />
+        <path d="M11.5 18V10L18.5 14L11.5 18Z" fill="#FFFFFF" />
+      </svg>
+    )
+  }
+  if (key.includes('instagram') || key.includes('ig')) {
+    return (
+      <svg viewBox="0 0 28 28" width="34" height="34" fill="none">
+        <defs>
+          <radialGradient id="igCintGrad" cx="30%" cy="107%" r="150%">
+            <stop offset="0%" stopColor="#fdf497" />
+            <stop offset="5%" stopColor="#fdf497" />
+            <stop offset="45%" stopColor="#fd5949" />
+            <stop offset="60%" stopColor="#d6249f" />
+            <stop offset="90%" stopColor="#285AEB" />
+          </radialGradient>
+        </defs>
+        <rect width="28" height="28" rx="8" fill="url(#igCintGrad)" />
+        <path d="M14 8.75C11.1 8.75 8.75 11.1 8.75 14C8.75 16.9 11.1 19.25 14 19.25C16.9 19.25 19.25 16.9 19.25 14C19.25 11.1 16.9 8.75 14 8.75ZM14 17.38C12.13 17.38 10.62 15.87 10.62 14C10.62 12.13 12.13 10.62 14 10.62C15.87 10.62 17.38 12.13 17.38 14C17.38 15.87 15.87 17.38 14 17.38ZM19.6 9.22C19.6 9.73 19.18 10.15 18.67 10.15C18.16 10.15 17.74 9.73 17.74 9.22C17.74 8.71 18.16 8.29 18.67 8.29C19.18 8.29 19.6 8.71 19.6 9.22ZM21.93 10.74C21.82 9.22 21.47 7.94 20.42 6.89C19.37 5.84 18.09 5.49 16.57 5.38C15.05 5.27 10.62 5.27 9.1 5.38C7.58 5.49 6.3 5.84 5.25 6.89C4.2 7.94 3.85 9.22 3.74 10.74C3.63 12.26 3.63 16.69 3.74 18.21C3.85 19.73 4.2 21.01 5.25 22.06C6.3 23.11 7.58 23.46 9.1 23.57C10.62 23.68 15.05 23.68 16.57 23.57C18.09 23.46 19.37 23.11 20.42 22.06C21.47 21.01 21.82 19.73 21.93 18.21C22.04 16.69 22.04 12.26 21.93 10.74Z" fill="#FFFFFF" />
+      </svg>
+    )
+  }
+  if (key.includes('tiktok') || key.includes('tk')) {
+    return (
+      <svg viewBox="0 0 28 28" width="34" height="34" fill="none">
+        <rect width="28" height="28" rx="8" fill="#010101" />
+        <path d="M19.25 10.73C17.97 10.73 16.8 10.03 16.22 8.98V16.68C16.22 19.37 14 21.58 11.32 21.58C8.63 21.58 6.42 19.37 6.42 16.68C6.42 14 8.63 11.78 11.32 11.78C11.67 11.78 12.02 11.78 12.37 11.9V14.47C12.02 14.35 11.67 14.23 11.32 14.23C9.92 14.23 8.87 15.28 8.87 16.68C8.87 18.08 9.92 19.13 11.32 19.13C12.72 19.13 13.77 18.08 13.77 16.68V5.25H16.22C16.22 6.77 17.38 8.05 18.9 8.28V10.73H19.25Z" fill="#25F4EE" />
+        <path d="M19.48 10.38C18.2 10.38 17.03 9.68 16.45 8.63V16.33C16.45 19.02 14.23 21.23 11.55 21.23C8.87 21.23 6.65 19.02 6.65 16.33C6.65 13.65 8.87 11.43 11.55 11.43C11.9 11.43 12.25 11.43 12.6 11.55V14.12C12.25 14 11.9 13.88 11.55 13.88C10.15 13.88 9.1 14.93 9.1 16.33C9.1 17.73 10.15 18.78 11.55 18.78C12.95 18.78 14 17.73 14 16.33V4.9H16.45C16.45 6.42 17.62 7.7 19.13 7.93V10.38H19.48Z" fill="#FE2C55" />
+        <path d="M19.37 10.5C18.08 10.5 16.92 9.8 16.33 8.75V16.45C16.33 19.13 14.12 21.35 11.43 21.35C8.75 21.35 6.53 19.13 6.53 16.45C6.53 13.77 8.75 11.55 11.43 11.55C11.78 11.55 12.13 11.55 12.48 11.67V14.23C12.13 14.12 11.78 14 11.43 14C10.03 14 8.98 15.05 8.98 16.45C8.98 17.85 10.03 18.9 11.43 18.9C12.83 18.9 13.88 17.85 13.88 16.45V5.02H16.33C16.33 6.53 17.5 7.82 19.02 8.05V10.5H19.37Z" fill="#FFFFFF" />
+      </svg>
+    )
+  }
+  if (key.includes('facebook') || key.includes('fb')) {
+    return (
+      <svg viewBox="0 0 28 28" width="34" height="34" fill="none">
+        <circle cx="14" cy="14" r="14" fill="#1877F2" />
+        <path d="M17.97 15.63L18.44 12.25H15.17V10.03C15.17 9.1 15.63 8.17 17.03 8.17H18.55V5.25C18.55 5.25 17.15 5.02 15.87 5.02C13.18 5.02 11.43 6.65 11.43 9.57V12.25H8.52V15.63H11.43V23.8C12.02 23.92 12.6 23.92 13.3 23.92C14 23.92 14.58 23.92 15.17 23.8V15.63H17.97Z" fill="#FFFFFF" />
+      </svg>
+    )
+  }
+  return null
+}
+
 export default function CintilloOverlay({
   styleId = 'glass',
   tag = 'TEMA',
@@ -26,8 +74,6 @@ export default function CintilloOverlay({
   const styleDef = getCintilloStyle(styleId)
   const primary = accentColor || styleDef.colors.primary
   const secondary = styleDef.colors.secondary
-
-  const isSocials = tag === 'REDES' || tag.includes('RED') || presetId === 'social' || Boolean(socials)
 
   const posClass = {
     tl: styles.posTl,
@@ -77,69 +123,16 @@ export default function CintilloOverlay({
   const subCls = `${styles.subText} ${styles.animPart4}`
 
   const effectiveLogo = logoUrl || imageUrl || null
-  const logoElement = effectiveLogo ? (
-    <div className={`${styles.cintLogoBox} ${styles.logo3dFloat} ${p1}`}>
-      <img src={effectiveLogo} alt="Logo" className={styles.cintLogoImg} />
-      <span className={styles.logoReflection} />
-    </div>
-  ) : null
+  const socialSvg = renderSocialIcon(presetId, tag)
 
-  // Badges oficiales de redes sociales (YouTube, Spotify, Apple Podcasts, Instagram, TikTok, Facebook)
-  const socialBadges = isSocials ? (
-    <div className={styles.socialBadgesRow}>
-      <div className={`${styles.socialBadgeItem} ${styles.badgeYoutube}`} title="YouTube">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-          <rect width="24" height="24" rx="6" fill="#FF0000" />
-          <path d="M10 15.5V8.5L16 12L10 15.5Z" fill="#FFFFFF" />
-        </svg>
-        <span>YouTube</span>
-      </div>
-      <div className={`${styles.socialBadgeItem} ${styles.badgeSpotify}`} title="Spotify">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-          <circle cx="12" cy="12" r="12" fill="#1ED760" />
-          <path d="M17.5 15.2C17.2 15.6 16.7 15.7 16.3 15.4C13.8 13.9 10.7 13.5 6.7 14.4C6.2 14.5 5.8 14.2 5.7 13.8C5.6 13.3 5.9 12.9 6.3 12.8C10.7 11.8 14.2 12.3 17 14C17.4 14.2 17.6 14.7 17.5 15.2ZM18.8 12.6C18.4 13.1 17.8 13.2 17.3 12.9C14.4 11.1 10.1 10.6 6.5 11.7C6 11.9 5.4 11.5 5.2 11C5.1 10.5 5.5 9.9 6 9.7C10.2 8.5 15 9.1 18.3 11.1C18.8 11.4 18.9 12.1 18.8 12.6ZM19 9.8C15.6 7.8 9.9 7.6 6.2 8.7C5.6 8.9 5 8.5 4.8 7.9C4.6 7.3 5 6.7 5.6 6.5C9.9 5.2 16.2 5.4 20.1 7.8C20.6 8.1 20.8 8.7 20.5 9.3C20.2 9.8 19.5 10 19 9.8Z" fill="#000000" />
-        </svg>
-        <span>Spotify</span>
-      </div>
-      <div className={`${styles.socialBadgeItem} ${styles.badgeApple}`} title="Apple Podcasts">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-          <rect width="24" height="24" rx="6" fill="#8727FF" />
-          <path d="M12 6C8.69 6 6 8.69 6 12C6 13.62 6.64 15.09 7.69 16.18L8.76 15.11C7.99 14.32 7.5 13.22 7.5 12C7.5 9.51 9.51 7.5 12 7.5C14.49 7.5 16.5 9.51 16.5 12C16.5 13.22 16.01 14.32 15.24 15.11L16.31 16.18C17.36 15.09 18 13.62 18 12C18 8.69 15.31 6 12 6ZM12 9C10.34 9 9 10.34 9 12C9 12.92 9.42 13.75 10.07 14.29L10.74 13.62C10.29 13.24 10 12.65 10 12C10 10.9 10.9 10 12 10C13.1 10 14 10.9 14 12C14 12.65 13.71 13.24 13.26 13.62L13.93 14.29C14.58 13.75 15 12.92 15 12C15 10.34 13.66 9 12 9ZM12 13C11.45 13 11 13.45 11 14V17C11 17.55 11.45 18 12 18C12.55 18 13 17.55 13 17V14C13 13.45 12.55 13 12 13Z" fill="#FFFFFF" />
-        </svg>
-        <span>Apple</span>
-      </div>
-      <div className={`${styles.socialBadgeItem} ${styles.badgeInstagram}`} title="Instagram">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-          <defs>
-            <radialGradient id="igGradCint" cx="30%" cy="107%" r="150%">
-              <stop offset="0%" stopColor="#fdf497" />
-              <stop offset="5%" stopColor="#fdf497" />
-              <stop offset="45%" stopColor="#fd5949" />
-              <stop offset="60%" stopColor="#d6249f" />
-              <stop offset="90%" stopColor="#285AEB" />
-            </radialGradient>
-          </defs>
-          <rect width="24" height="24" rx="6" fill="url(#igGradCint)" />
-          <path d="M12 7.5C9.51 7.5 7.5 9.51 7.5 12C7.5 14.49 9.51 16.5 12 16.5C14.49 16.5 16.5 14.49 16.5 12C16.5 9.51 14.49 7.5 12 7.5ZM12 14.9C10.4 14.9 9.1 13.6 9.1 12C9.1 10.4 10.4 9.1 12 9.1C13.6 9.1 14.9 10.4 14.9 12C14.9 13.6 13.6 14.9 12 14.9ZM16.8 7.9C16.8 8.34 16.44 8.7 16 8.7C15.56 8.7 15.2 8.34 15.2 7.9C15.2 7.46 15.56 7.1 16 7.1C16.44 7.1 16.8 7.46 16.8 7.9ZM18.8 9.2C18.7 7.9 18.4 6.8 17.5 5.9C16.6 5 15.5 4.7 14.2 4.6C12.9 4.5 9.1 4.5 7.8 4.6C6.5 4.7 5.4 5 4.5 5.9C3.6 6.8 3.3 7.9 3.2 9.2C3.1 10.5 3.1 14.3 3.2 15.6C3.3 16.9 3.6 18 4.5 18.9C5.4 19.8 6.5 20.1 7.8 20.2C9.1 20.3 12.9 20.3 14.2 20.2C15.5 20.1 16.6 19.8 17.5 18.9C18.4 18 18.7 16.9 18.8 15.6C18.9 14.3 18.9 10.5 18.8 9.2ZM17.1 17.1C16.8 17.8 16.3 18.3 15.6 18.6C14.6 19 12.1 19 12 19C11.9 19 9.4 19 8.4 18.6C7.7 18.3 7.2 17.8 6.9 17.1C6.5 16.1 6.5 13.6 6.5 12C6.5 10.4 6.5 7.9 6.9 6.9C7.2 6.2 7.7 5.7 8.4 5.4C9.4 5 11.9 5 12 5C12.1 5 14.6 5 15.6 5.4C16.3 5.7 16.8 6.2 17.1 6.9C17.5 7.9 17.5 10.4 17.5 12C17.5 13.6 17.5 16.1 17.1 17.1Z" fill="#FFFFFF" />
-        </svg>
-        <span>Instagram</span>
-      </div>
-      <div className={`${styles.socialBadgeItem} ${styles.badgeTiktok}`} title="TikTok">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-          <rect width="24" height="24" rx="6" fill="#010101" />
-          <path d="M16.5 9.2C15.4 9.2 14.4 8.6 13.9 7.7V14.3C13.9 16.6 12 18.5 9.7 18.5C7.4 18.5 5.5 16.6 5.5 14.3C5.5 12 7.4 10.1 9.7 10.1C10 10.1 10.3 10.1 10.6 10.2V12.4C10.3 12.3 10 12.2 9.7 12.2C8.5 12.2 7.6 13.1 7.6 14.3C7.6 15.5 8.5 16.4 9.7 16.4C10.9 16.4 11.8 15.5 11.8 14.3V4.5H13.9C13.9 5.8 14.9 6.9 16.2 7.1V9.2H16.5Z" fill="#25F4EE" />
-          <path d="M16.7 8.9C15.6 8.9 14.6 8.3 14.1 7.4V14C14.1 16.3 12.2 18.2 9.9 18.2C7.6 18.2 5.7 16.3 5.7 14C5.7 11.7 7.6 9.8 9.9 9.8C10.2 9.8 10.5 9.8 10.8 9.9V12.1C10.5 12 10.2 11.9 9.9 11.9C8.7 11.9 7.8 12.8 7.8 14C7.8 15.2 8.7 16.1 9.9 16.1C11.1 16.1 12 15.2 12 14V4.2H14.1C14.1 5.5 15.1 6.6 16.4 6.8V8.9H16.7Z" fill="#FE2C55" />
-          <path d="M16.6 9C15.5 9 14.5 8.4 14 7.5V14.1C14 16.4 12.1 18.3 9.8 18.3C7.5 18.3 5.6 16.4 5.6 14.1C5.6 11.8 7.5 9.9 9.8 9.9C10.1 9.9 10.4 9.9 10.7 10V12.2C10.4 12.1 10.1 12 9.8 12C8.6 12 7.7 12.9 7.7 14.1C7.7 15.3 8.6 16.2 9.8 16.2C11 16.2 11.9 15.3 11.9 14.1V4.3H14C14 5.6 15 6.7 16.3 6.9V9H16.6Z" fill="#FFFFFF" />
-        </svg>
-        <span>TikTok</span>
-      </div>
-      <div className={`${styles.socialBadgeItem} ${styles.badgeFacebook}`} title="Facebook">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-          <circle cx="12" cy="12" r="12" fill="#1877F2" />
-          <path d="M15.4 13.4L15.8 10.5H13V8.6C13 7.8 13.4 7 14.6 7H15.9V4.5C15.9 4.5 14.7 4.3 13.6 4.3C11.3 4.3 9.8 5.7 9.8 8.2V10.5H7.3V13.4H9.8V20.4C10.3 20.5 10.8 20.5 11.4 20.5C12 20.5 12.5 20.5 13 20.4V13.4H15.4Z" fill="#FFFFFF" />
-        </svg>
-        <span>Facebook</span>
-      </div>
+  const logoElement = (effectiveLogo || socialSvg) ? (
+    <div className={`${styles.cintLogoBox} ${styles.logo3dFloat} ${p1}`}>
+      {effectiveLogo ? (
+        <img src={effectiveLogo} alt="Logo" className={styles.cintLogoImg} />
+      ) : (
+        socialSvg
+      )}
+      <span className={styles.logoReflection} />
     </div>
   ) : null
 
@@ -153,7 +146,6 @@ export default function CintilloOverlay({
         {logoElement}
         <div className={styles.cintMainBlock}>
           {body}
-          {socialBadges}
         </div>
       </div>
       {extras}
@@ -167,7 +159,7 @@ export default function CintilloOverlay({
           <div className={styles.glassTopBar}>
             <span className={tagCls} style={{ color: primary, background: `${primary}22`, borderColor: `${primary}55` }}>
               <span className={styles.livePulseDot} style={{ background: primary }} />
-              {isSocials ? 'BÚSCANOS COMO' : tag}
+              {tag}
             </span>
           </div>
           <span className={textCls}>{text}</span>
