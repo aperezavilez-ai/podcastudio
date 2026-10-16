@@ -36,6 +36,16 @@ export default function SwitcherMasterBar({
   directorStatus = '',
   transitionMode = 'crossfade',
   onSelectTransitionMode = () => {},
+  pipAudioMuted = true,
+  onTogglePipAudio = () => {},
+  splitAudioMuted = true,
+  onToggleSplitAudio = () => {},
+  tripleAudioMuted = true,
+  onToggleTripleAudio = () => {},
+  quadAudioMuted = true,
+  onToggleQuadAudio = () => {},
+  speakerMonitoring = false,
+  onToggleSpeakerMonitoring = () => {},
 }) {
   const pgmMeta = cameraMeta[programCamera]
   const pgmLabel = getSlotLabel(programCamera, pgmMeta?.customLabel, programCamera === masterCameraSlot)
@@ -132,6 +142,15 @@ export default function SwitcherMasterBar({
                   </option>
                 ))}
             </select>
+            <button
+              type="button"
+              className={`${styles.audioSlotBtn} ${!pipAudioMuted ? styles.audioSlotBtnActive : ''}`}
+              onClick={onTogglePipAudio}
+              title={pipAudioMuted ? 'Audio PiP silenciado — Clic para activar' : 'Audio PiP en vivo — Clic para silenciar'}
+            >
+              <i className={`ti ${pipAudioMuted ? 'ti-microphone-off' : 'ti-microphone'}`} />
+              <span>{pipAudioMuted ? 'Mute' : 'Audio'}</span>
+            </button>
           </div>
         )}
 
@@ -153,6 +172,15 @@ export default function SwitcherMasterBar({
                   </option>
                 ))}
             </select>
+            <button
+              type="button"
+              className={`${styles.audioSlotBtn} ${!splitAudioMuted ? styles.audioSlotBtnActive : ''}`}
+              onClick={onToggleSplitAudio}
+              title={splitAudioMuted ? 'Audio 2ª cámara silenciado — Clic para activar' : 'Audio 2ª cámara en vivo — Clic para silenciar'}
+            >
+              <i className={`ti ${splitAudioMuted ? 'ti-microphone-off' : 'ti-microphone'}`} />
+              <span>{splitAudioMuted ? 'Mute' : 'Audio'}</span>
+            </button>
           </div>
         )}
 
@@ -173,6 +201,14 @@ export default function SwitcherMasterBar({
                   </option>
                 ))}
             </select>
+            <button
+              type="button"
+              className={`${styles.audioSlotBtn} ${!splitAudioMuted ? styles.audioSlotBtnActive : ''}`}
+              onClick={onToggleSplitAudio}
+              title={splitAudioMuted ? 'Audio 2ª cámara silenciado — Clic para activar' : 'Audio 2ª en vivo — Clic para silenciar'}
+            >
+              <i className={`ti ${splitAudioMuted ? 'ti-microphone-off' : 'ti-microphone'}`} />
+            </button>
             <span className={styles.slotTagMini} style={{ color: '#a78bfa' }}>3ª:</span>
             <select
               value={tripleTertiarySlot}
@@ -188,6 +224,14 @@ export default function SwitcherMasterBar({
                   </option>
                 ))}
             </select>
+            <button
+              type="button"
+              className={`${styles.audioSlotBtn} ${!tripleAudioMuted ? styles.audioSlotBtnActive : ''}`}
+              onClick={onToggleTripleAudio}
+              title={tripleAudioMuted ? 'Audio 3ª cámara silenciado — Clic para activar' : 'Audio 3ª en vivo — Clic para silenciar'}
+            >
+              <i className={`ti ${tripleAudioMuted ? 'ti-microphone-off' : 'ti-microphone'}`} />
+            </button>
           </div>
         )}
 
@@ -208,6 +252,14 @@ export default function SwitcherMasterBar({
                   </option>
                 ))}
             </select>
+            <button
+              type="button"
+              className={`${styles.audioSlotBtn} ${!splitAudioMuted ? styles.audioSlotBtnActive : ''}`}
+              onClick={onToggleSplitAudio}
+              title={splitAudioMuted ? 'Audio 2ª silenciado' : 'Audio 2ª activo'}
+            >
+              <i className={`ti ${splitAudioMuted ? 'ti-microphone-off' : 'ti-microphone'}`} />
+            </button>
             <span className={styles.slotTagMini} style={{ color: '#a855f7' }}>3ª:</span>
             <select
               value={tripleTertiarySlot}
@@ -223,6 +275,14 @@ export default function SwitcherMasterBar({
                   </option>
                 ))}
             </select>
+            <button
+              type="button"
+              className={`${styles.audioSlotBtn} ${!tripleAudioMuted ? styles.audioSlotBtnActive : ''}`}
+              onClick={onToggleTripleAudio}
+              title={tripleAudioMuted ? 'Audio 3ª silenciado' : 'Audio 3ª activo'}
+            >
+              <i className={`ti ${tripleAudioMuted ? 'ti-microphone-off' : 'ti-microphone'}`} />
+            </button>
             <span className={styles.slotTagMini} style={{ color: '#10b981' }}>4ª:</span>
             <select
               value={quadQuaternarySlot}
@@ -238,6 +298,14 @@ export default function SwitcherMasterBar({
                   </option>
                 ))}
             </select>
+            <button
+              type="button"
+              className={`${styles.audioSlotBtn} ${!quadAudioMuted ? styles.audioSlotBtnActive : ''}`}
+              onClick={onToggleQuadAudio}
+              title={quadAudioMuted ? 'Audio 4ª silenciado' : 'Audio 4ª activo'}
+            >
+              <i className={`ti ${quadAudioMuted ? 'ti-microphone-off' : 'ti-microphone'}`} />
+            </button>
           </div>
         )}
 
@@ -261,6 +329,17 @@ export default function SwitcherMasterBar({
         >
           <i className="ti ti-border-all" />
           <span>{showMasterGrid ? 'Cuadrícula ON' : 'Cuadrícula'}</span>
+        </button>
+
+        {/* Botón Salida a Bocinas / Altavoces de la PC */}
+        <button
+          type="button"
+          className={`${styles.speakerBarBtn} ${speakerMonitoring ? styles.speakerBarBtnActive : ''}`}
+          onClick={onToggleSpeakerMonitoring}
+          title={speakerMonitoring ? 'Salida de audio a bocinas de la PC: ACTIVADA — Clic para apagar' : 'Escuchar salida de audio en bocinas de la computadora — Clic para activar'}
+        >
+          <i className={`ti ${speakerMonitoring ? 'ti-volume' : 'ti-volume-off'}`} />
+          <span>{speakerMonitoring ? 'Bocinas: ON' : 'Bocinas PC'}</span>
         </button>
       </div>
 

@@ -57,7 +57,6 @@ import { useDynamicZoom } from '../hooks/useDynamicZoom.js'
 import DynamicZoomControl from '../components/DynamicZoomControl.jsx'
 import CameraConnectModal from '../components/CameraConnectModal.jsx'
 import SwitcherMasterBar from '../components/SwitcherMasterBar.jsx'
-import { useMicMonitor } from '../hooks/useMicMonitor.js'
 import MultiFormatExportModal from '../components/MultiFormatExportModal.jsx'
 import { useLiveStreaming } from '../hooks/useLiveStreaming.js'
 import LiveStreamModal from '../components/LiveStreamModal.jsx'
@@ -444,8 +443,29 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     return localStorage.getItem('podcastudio_screen_layout') || 'full'
   })
 
+  // Estados de mute independiente para audio multi-cámara (entran silenciados por defecto para evitar ecos)
+  const [pipAudioMuted, setPipAudioMuted] = useState(true)
+  const [splitAudioMuted, setSplitAudioMuted] = useState(true)
+  const [tripleAudioMuted, setTripleAudioMuted] = useState(true)
+  const [quadAudioMuted, setQuadAudioMuted] = useState(true)
+
+  // Salida de audio a bocinas / altavoces de la computadora (monitoreo en vivo)
+  const [speakerMonitoring, setSpeakerMonitoringState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_speaker_monitoring')
+      return saved === 'true'
+    } catch {
+      return false
+    }
+  })
+
   const handleSelectLayout = useCallback((layoutMode) => {
     setScreenLayoutState(layoutMode)
+    // Al entrar a una composición multi-cámara, las cámaras secundarias entran silenciadas por defecto
+    if (layoutMode === 'pip') setPipAudioMuted(true)
+    if (layoutMode === 'split') setSplitAudioMuted(true)
+    if (layoutMode === 'triple') { setSplitAudioMuted(true); setTripleAudioMuted(true) }
+    if (layoutMode === 'quad') { setSplitAudioMuted(true); setTripleAudioMuted(true); setQuadAudioMuted(true) }
     try { localStorage.setItem('podcastudio_screen_layout', layoutMode) } catch {}
   }, [])
   const setScreenLayout = handleSelectLayout
@@ -1140,8 +1160,6 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     })
   }, [micMuted, micLabel, getMicStream])
 
-  useMicMonitor(getMicStream(), !monitorHeadphones || micMuted)
-
   const defaultScript = proj.teleprompterScript || [
     proj.episodeTitle && `Hoy hablamos de: ${proj.episodeTitle}`,
     proj.guestName && `Con nosotros: ${proj.guestName}${proj.guestRole ? `, ${proj.guestRole}` : ''}`,
@@ -1239,7 +1257,63 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     }
   })
 
-  const { buildRecordingStream, applyDspSettings } = useAudioMix()
+  const {
+    buildRecordingStream,
+    applyDspSettings,
+    syncAudioSources,
+    setSpeakerMonitoring,
+    resumeContext,
+  } = useAudioMix()
+
+  const handleToggleSpeakerMonitoring = useCallback(() => {
+    resumeContext()
+    setSpeakerMonitoringState(prev => {
+      const next = !prev
+      try { localStorage.setItem('podcastudio_speaker_monitoring', String(next)) } catch {}
+      return next
+    })
+  }, [resumeContext])
+
+  useEffect(() => {
+    setSpeakerMonitoring({ enabled: speakerMonitoring, volume: 1.0 })
+  }, [speakerMonitoring, setSpeakerMonitoring])
+
+  // Sincronización continua de audio en tiempo real para monitoreo en bocinas y grabación
+  useEffect(() => {
+    const masterCamStream = streams[programCamera] || streams[masterCameraSlot] || null
+    const extMic = getMicStream()
+
+    syncAudioSources({
+      masterStream: masterCamStream,
+      masterMuted: micMuted,
+      pipStream: screenLayout === 'pip' ? streams[pipCameraSlot] : null,
+      pipMuted: pipAudioMuted,
+      splitStream: (screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') ? streams[splitSecondarySlot] : null,
+      splitMuted: splitAudioMuted,
+      tripleStream: (screenLayout === 'triple' || screenLayout === 'quad') ? streams[tripleTertiarySlot] : null,
+      tripleMuted: tripleAudioMuted,
+      quadStream: screenLayout === 'quad' ? streams[quadQuaternarySlot] : null,
+      quadMuted: quadAudioMuted,
+      extMicStream: extMic,
+      extMicMuted: micMuted,
+    })
+  }, [
+    streams,
+    programCamera,
+    masterCameraSlot,
+    screenLayout,
+    pipCameraSlot,
+    pipAudioMuted,
+    splitSecondarySlot,
+    splitAudioMuted,
+    tripleTertiarySlot,
+    tripleAudioMuted,
+    quadQuaternarySlot,
+    quadAudioMuted,
+    micMuted,
+    getMicStream,
+    syncAudioSources,
+  ])
 
   const handleDspChange = useCallback((newSettings) => {
     setDspSettings(newSettings)
@@ -1457,12 +1531,22 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     }
     let inputMicStream = null
     try {
-      const masterCamStream = streams[masterCameraSlot]
+      const masterCamStream = streams[programCamera] || streams[masterCameraSlot] || null
       const cameraAudioTrack = masterCamStream?.getAudioTracks?.()?.[0]
       inputMicStream = getMicStream() || (cameraAudioTrack ? masterCamStream : null)
 
       const combined = await buildRecordingStream(videoStream, {
-        micStream: inputMicStream,
+        micStream: getMicStream(),
+        masterStream: masterCamStream,
+        masterMuted: micMuted,
+        pipStream: screenLayout === 'pip' ? streams[pipCameraSlot] : null,
+        pipMuted: pipAudioMuted,
+        splitStream: (screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') ? streams[splitSecondarySlot] : null,
+        splitMuted: splitAudioMuted,
+        tripleStream: (screenLayout === 'triple' || screenLayout === 'quad') ? streams[tripleTertiarySlot] : null,
+        tripleMuted: tripleAudioMuted,
+        quadStream: screenLayout === 'quad' ? streams[quadQuaternarySlot] : null,
+        quadMuted: quadAudioMuted,
         musicEl: getAudioElement(),
         musicVolume: musicVol,
         musicPlaying,
@@ -1947,6 +2031,31 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   <span className={styles.masterAudioDbText}>
                     {micMuted ? 'MUTE' : micLevel > 0 ? `${Math.round(-42 + (micLevel / 100) * 42)} dB` : '-∞ dB'}
                   </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleToggleSpeakerMonitoring()
+                    }}
+                    title={speakerMonitoring ? 'Bocinas de PC activas — Clic para silenciar salida' : 'Activar salida de audio en bocinas de la computadora'}
+                    style={{
+                      background: speakerMonitoring ? 'rgba(16,185,129,0.25)' : 'rgba(255,255,255,0.06)',
+                      border: `1px solid ${speakerMonitoring ? '#10b981' : 'rgba(255,255,255,0.15)'}`,
+                      color: speakerMonitoring ? '#34d399' : '#94a3b8',
+                      borderRadius: 4,
+                      padding: '2px 6px',
+                      cursor: 'pointer',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      marginLeft: 6,
+                    }}
+                  >
+                    <i className={`ti ${speakerMonitoring ? 'ti-volume' : 'ti-volume-off'}`} />
+                    <span>{speakerMonitoring ? 'BOCINAS ON' : 'BOCINAS OFF'}</span>
+                  </button>
                 </div>
 
                 {streams[programCamera] && screenLayout === 'full' && (
@@ -2052,6 +2161,16 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               onSelectTripleTertiarySlot={setTripleTertiarySlot}
               quadQuaternarySlot={quadQuaternarySlot}
               onSelectQuadQuaternarySlot={setQuadQuaternarySlot}
+              pipAudioMuted={pipAudioMuted}
+              onTogglePipAudio={() => setPipAudioMuted(p => !p)}
+              splitAudioMuted={splitAudioMuted}
+              onToggleSplitAudio={() => setSplitAudioMuted(p => !p)}
+              tripleAudioMuted={tripleAudioMuted}
+              onToggleTripleAudio={() => setTripleAudioMuted(p => !p)}
+              quadAudioMuted={quadAudioMuted}
+              onToggleQuadAudio={() => setQuadAudioMuted(p => !p)}
+              speakerMonitoring={speakerMonitoring}
+              onToggleSpeakerMonitoring={handleToggleSpeakerMonitoring}
               onSwapPipMaster={handleSwapPipMaster}
               onSwapSplitSlots={handleSwapSplit}
               onSelectProgramCamera={(slot) => {
@@ -2613,26 +2732,26 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                 </div>
                 <div style={{ marginTop: 8, padding: '6px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <i className="ti ti-headphones" style={{ color: monitorHeadphones ? 'var(--accent)' : 'var(--text-muted)', fontSize: 14 }} />
-                    <span style={{ fontSize: 11, color: '#e2e8f0' }}>Monitoreo (usar con auriculares)</span>
+                    <i className="ti ti-volume" style={{ color: speakerMonitoring ? '#10b981' : 'var(--text-muted)', fontSize: 14 }} />
+                    <span style={{ fontSize: 11, color: '#e2e8f0' }}>Salida a Bocinas de la PC</span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setMonitorHeadphones(prev => !prev)}
-                    title={monitorHeadphones ? 'Desactivar monitoreo en vivo' : 'Activar solo con auriculares para evitar eco'}
+                    onClick={handleToggleSpeakerMonitoring}
+                    title={speakerMonitoring ? 'Desactivar salida a bocinas de la PC' : 'Escuchar salida de audio en las bocinas de la computadora'}
                     style={{
                       padding: '3px 8px',
                       fontSize: 10,
                       fontWeight: 700,
                       borderRadius: 4,
                       border: '1px solid',
-                      borderColor: monitorHeadphones ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
-                      background: monitorHeadphones ? 'rgba(99,102,241,0.2)' : 'transparent',
-                      color: monitorHeadphones ? 'var(--accent)' : 'var(--text-muted)',
+                      borderColor: speakerMonitoring ? '#10b981' : 'rgba(255,255,255,0.15)',
+                      background: speakerMonitoring ? 'rgba(16,185,129,0.25)' : 'transparent',
+                      color: speakerMonitoring ? '#34d399' : 'var(--text-muted)',
                       cursor: 'pointer',
                     }}
                   >
-                    {monitorHeadphones ? 'EN VIVO' : 'OFF'}
+                    {speakerMonitoring ? 'EN VIVO' : 'OFF'}
                   </button>
                 </div>
                 <AudioDspPanel

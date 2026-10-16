@@ -11,13 +11,31 @@ export const DEFAULT_DSP_SETTINGS = {
   micGain: 1.0,              // Ganancia maestra
 }
 
+/**
+ * Hook de Mezcla de Audio Broadcast para PODCASTUDIO.
+ * - Soporta latencia interactiva en tiempo real (lip-sync natural sin retraso de audio).
+ * - Salida directa a bocinas/altavoces de la computadora (ctx.destination).
+ * - Enrutamiento dinámico multi-cámara (Master + PiP + Split 2ª + Triple 3ª + Quad 4ª + Micrófono externo).
+ * - Cadena DSP profesional (filtro anti-retumbo, de-hiss, EQ 3 bandas, compresor broadcast y nivelador).
+ */
 export function useAudioMix() {
   const ctxRef = useRef(null)
   const destRef = useRef(null)
-  const micSourceRef = useRef(null)
+  const masterSumGainRef = useRef(null)
+  const monitorGainRef = useRef(null)
   const musicSourceRef = useRef(null)
   const musicGainRef = useRef(null)
   const micGainRef = useRef(null)
+
+  // Canales independientes para cada fuente de audio
+  const channelsRef = useRef({
+    master: { source: null, gain: null, stream: null },
+    pip: { source: null, gain: null, stream: null },
+    split: { source: null, gain: null, stream: null },
+    triple: { source: null, gain: null, stream: null },
+    quad: { source: null, gain: null, stream: null },
+    mic: { source: null, gain: null, stream: null },
+  })
 
   // DSP Audio Nodes
   const lowCutFilterRef = useRef(null)
@@ -27,6 +45,8 @@ export function useAudioMix() {
   const eqHighRef = useRef(null)
   const compressorRef = useRef(null)
   const dspSettingsRef = useRef(DEFAULT_DSP_SETTINGS)
+  const speakerEnabledRef = useRef(false)
+  const speakerVolumeRef = useRef(1.0)
 
   useEffect(() => () => {
     ctxRef.current?.close().catch(() => {})
@@ -35,7 +55,8 @@ export function useAudioMix() {
   const ensureContext = useCallback(() => {
     if (!ctxRef.current) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext
-      ctxRef.current = new AudioCtx()
+      // latencyHint: 'interactive' para eliminar retardos de búfer y garantizar sincronía labial
+      ctxRef.current = new AudioCtx({ latencyHint: 'interactive' })
       const ctx = ctxRef.current
       destRef.current = ctx.createMediaStreamDestination()
 
@@ -84,25 +105,42 @@ export function useAudioMix() {
       compressor.release.value = 0.25
       compressorRef.current = compressor
 
-      // 7. Ganancia final de micrófono
+      // 7. Ganancia maestra de micrófonos procesados
       const micGain = ctx.createGain()
       micGain.gain.value = dspSettingsRef.current.micGain
       micGainRef.current = micGain
 
       // Conexión en cadena DSP:
-      // lowCut -> deHiss -> eqLow -> eqMid -> eqHigh -> compressor -> micGain -> dest
+      // lowCut -> deHiss -> eqLow -> eqMid -> eqHigh -> compressor -> micGain
       lowCut.connect(deHiss)
       deHiss.connect(eqLow)
       eqLow.connect(eqMid)
       eqMid.connect(eqHigh)
       eqHigh.connect(compressor)
       compressor.connect(micGain)
-      micGain.connect(destRef.current)
+
+      // Nodo Sumador Maestro
+      const masterSum = ctx.createGain()
+      masterSum.gain.value = 1.0
+      masterSumGainRef.current = masterSum
+
+      micGain.connect(masterSum)
 
       // Canal de música de fondo
-      musicGainRef.current = ctx.createGain()
-      musicGainRef.current.gain.value = 0
-      musicGainRef.current.connect(destRef.current)
+      const musicGain = ctx.createGain()
+      musicGain.gain.value = 0
+      musicGainRef.current = musicGain
+      musicGain.connect(masterSum)
+
+      // 1. Destino para Grabación en alta calidad
+      masterSum.connect(destRef.current)
+
+      // 2. Destino para SALIDA DE AUDIO A BOCINAS / ALTAVOCES DE LA PC (Monitoreo en vivo)
+      const monitorGain = ctx.createGain()
+      monitorGain.gain.value = speakerEnabledRef.current ? speakerVolumeRef.current : 0
+      monitorGainRef.current = monitorGain
+      masterSum.connect(monitorGain)
+      monitorGain.connect(ctx.destination)
     }
     return { ctx: ctxRef.current, dest: destRef.current }
   }, [])
@@ -139,17 +177,98 @@ export function useAudioMix() {
     }
   }, [])
 
-  const setMicStream = useCallback((micStream) => {
+  // Conectar o actualizar un canal de audio específico (Master, PiP, Split, Triple, Quad, Mic)
+  const updateChannel = useCallback((channelKey, stream, isMuted = false, gainMultiplier = 1.0) => {
     const { ctx } = ensureContext()
-    if (micSourceRef.current) {
-      try { micSourceRef.current.disconnect() } catch { /* */ }
-      micSourceRef.current = null
+    const ch = channelsRef.current[channelKey]
+    if (!ch) return
+
+    const hasAudioTrack = Boolean(stream?.getAudioTracks?.()?.some(t => t.readyState === 'live'))
+
+    if (!stream || !hasAudioTrack) {
+      if (ch.source) {
+        try { ch.source.disconnect() } catch {}
+        ch.source = null
+      }
+      ch.stream = null
+      return
     }
-    if (!micStream) return
-    const src = ctx.createMediaStreamSource(micStream)
-    src.connect(lowCutFilterRef.current)
-    micSourceRef.current = src
+
+    if (!ch.gain) {
+      const g = ctx.createGain()
+      g.connect(lowCutFilterRef.current)
+      ch.gain = g
+    }
+
+    if (ch.stream !== stream || !ch.source) {
+      if (ch.source) {
+        try { ch.source.disconnect() } catch {}
+      }
+      try {
+        const src = ctx.createMediaStreamSource(stream)
+        src.connect(ch.gain)
+        ch.source = src
+        ch.stream = stream
+      } catch (err) {
+        console.warn(`[useAudioMix] Error conectando canal ${channelKey}:`, err)
+      }
+    }
+
+    const targetGain = isMuted ? 0 : (1.0 * gainMultiplier)
+    if (ch.gain) {
+      ch.gain.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.02)
+    }
   }, [ensureContext])
+
+  // Sincronizar todas las fuentes de audio activas del estudio
+  const syncAudioSources = useCallback(({
+    masterStream = null,
+    masterMuted = false,
+    pipStream = null,
+    pipMuted = true,
+    splitStream = null,
+    splitMuted = true,
+    tripleStream = null,
+    tripleMuted = true,
+    quadStream = null,
+    quadMuted = true,
+    extMicStream = null,
+    extMicMuted = false,
+  }) => {
+    updateChannel('master', masterStream, masterMuted)
+    updateChannel('pip', pipStream, pipMuted)
+    updateChannel('split', splitStream, splitMuted)
+    updateChannel('triple', tripleStream, tripleMuted)
+    updateChannel('quad', quadStream, quadMuted)
+    updateChannel('mic', extMicStream, extMicMuted)
+  }, [updateChannel])
+
+  // Salida de audio a bocinas / altavoces de la PC
+  const setSpeakerMonitoring = useCallback(({ enabled = true, volume = 1.0 } = {}) => {
+    speakerEnabledRef.current = enabled
+    speakerVolumeRef.current = volume
+    const { ctx } = ensureContext()
+    if (monitorGainRef.current && ctx) {
+      const target = enabled ? Math.max(0, Math.min(1.5, volume)) : 0
+      monitorGainRef.current.gain.setTargetAtTime(target, ctx.currentTime, 0.03)
+      if (enabled && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {})
+      }
+    }
+  }, [ensureContext])
+
+  const resumeContext = useCallback(async () => {
+    const { ctx } = ensureContext()
+    if (ctx && ctx.state === 'suspended') {
+      try {
+        await ctx.resume()
+      } catch {}
+    }
+  }, [ensureContext])
+
+  const setMicStream = useCallback((micStream) => {
+    updateChannel('mic', micStream, false)
+  }, [updateChannel])
 
   const setMusicMix = useCallback(({ musicEl, volume = 30, playing = false }) => {
     const { ctx } = ensureContext()
@@ -164,16 +283,36 @@ export function useAudioMix() {
 
     if (!musicEl || !playing || typeof musicEl.captureStream !== 'function') return
 
-    const captured = musicEl.captureStream()
-    const track = captured.getAudioTracks()[0]
-    if (!track) return
+    try {
+      const captured = musicEl.captureStream()
+      const track = captured.getAudioTracks()[0]
+      if (!track) return
 
-    const src = ctx.createMediaStreamSource(new MediaStream([track]))
-    src.connect(musicGainRef.current)
-    musicSourceRef.current = src
+      const src = ctx.createMediaStreamSource(new MediaStream([track]))
+      src.connect(musicGainRef.current)
+      musicSourceRef.current = src
+    } catch (e) {
+      console.warn('[useAudioMix] Error al capturar música de fondo:', e)
+    }
   }, [ensureContext])
 
-  const buildRecordingStream = useCallback(async (videoStream, { micStream, musicEl, musicVolume, musicPlaying, dspSettings }) => {
+  const buildRecordingStream = useCallback(async (videoStream, {
+    micStream,
+    masterStream,
+    masterMuted = false,
+    pipStream,
+    pipMuted = true,
+    splitStream,
+    splitMuted = true,
+    tripleStream,
+    tripleMuted = true,
+    quadStream,
+    quadMuted = true,
+    musicEl,
+    musicVolume,
+    musicPlaying,
+    dspSettings,
+  }) => {
     const { ctx, dest } = ensureContext()
     if (ctx.state === 'suspended') await ctx.resume()
 
@@ -181,16 +320,40 @@ export function useAudioMix() {
       applyDspSettings(dspSettings)
     }
 
-    setMicStream(micStream)
+    syncAudioSources({
+      masterStream,
+      masterMuted,
+      pipStream,
+      pipMuted,
+      splitStream,
+      splitMuted,
+      tripleStream,
+      tripleMuted,
+      quadStream,
+      quadMuted,
+      extMicStream: micStream,
+      extMicMuted: false,
+    })
+
     setMusicMix({ musicEl, volume: musicVolume, playing: musicPlaying })
 
     const audioTracks = dest.stream.getAudioTracks()
     const tracks = [
       ...videoStream.getVideoTracks(),
-      ...(audioTracks.length ? audioTracks : (micStream?.getAudioTracks() || [])),
+      ...(audioTracks.length ? audioTracks : (micStream?.getAudioTracks() || masterStream?.getAudioTracks() || [])),
     ]
     return new MediaStream(tracks)
-  }, [ensureContext, applyDspSettings, setMicStream, setMusicMix])
+  }, [ensureContext, applyDspSettings, syncAudioSources, setMusicMix])
 
-  return { setMicStream, setMusicMix, buildRecordingStream, applyDspSettings, ensureContext }
+  return {
+    setMicStream,
+    setMusicMix,
+    syncAudioSources,
+    updateChannel,
+    setSpeakerMonitoring,
+    resumeContext,
+    buildRecordingStream,
+    applyDspSettings,
+    ensureContext,
+  }
 }

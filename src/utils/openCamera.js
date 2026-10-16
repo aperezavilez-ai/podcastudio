@@ -12,7 +12,7 @@ const HD_VIDEO = {
   aspectRatio: { ideal: 16 / 9 },
 }
 
-export async function openCameraStreamFacing(facingMode) {
+export async function openCameraStreamFacing(facingMode, withAudio = true) {
   const attempts = [
     { facingMode: { exact: facingMode }, ...UHD_4K_VIDEO },
     { facingMode: { ideal: facingMode }, width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } },
@@ -21,6 +21,21 @@ export async function openCameraStreamFacing(facingMode) {
     { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
     { facingMode },
   ]
+
+  if (withAudio) {
+    for (const video of attempts) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        })
+      } catch {}
+    }
+  }
 
   let lastError = null
   for (const video of attempts) {
@@ -33,7 +48,7 @@ export async function openCameraStreamFacing(facingMode) {
   throw lastError || new Error('No se pudo abrir la cámara')
 }
 
-export async function openCameraStream(deviceId) {
+export async function openCameraStream(deviceId, withAudio = true) {
   const videoAttempts = deviceId
     ? [
         { deviceId: { exact: deviceId }, ...UHD_4K_VIDEO },
@@ -53,6 +68,21 @@ export async function openCameraStream(deviceId) {
         { width: { ideal: 1280 }, height: { ideal: 720 } },
         true,
       ]
+
+  if (withAudio) {
+    for (const video of videoAttempts) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        })
+      } catch {}
+    }
+  }
 
   let lastError = null
   for (const video of videoAttempts) {

@@ -26,6 +26,7 @@ export default function RemoteCam() {
   const [torchOn, setTorchOn] = useState(false)
   const [torchSupported, setTorchSupported] = useState(false)
   const [videoPaused, setVideoPaused] = useState(false)
+  const [micMuted, setMicMuted] = useState(false)
 
   const videoRef = useRef(null)
   const streamRef = useRef(null)
@@ -34,6 +35,40 @@ export default function RemoteCam() {
   const iceQueueRef = useRef([])
   const wakeLockRef = useRef(null)
   const videoSenderRef = useRef(null)
+  const audioSenderRef = useRef(null)
+
+  // Responder a pings de descubrimiento para que el estudio detecte este celular automáticamente
+  useEffect(() => {
+    if (!supabase) return
+    const presenceChannel = supabase.channel('remotecam_presence', {
+      config: { broadcast: { self: false } },
+    })
+
+    const phoneId = 'phone_' + Math.random().toString(36).substring(2, 8)
+    const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent)
+    const isAndroid = /Android/i.test(navigator.userAgent)
+    const deviceName = isIos ? 'iPhone' : isAndroid ? 'Android' : 'Celular Móvil'
+
+    presenceChannel.on('broadcast', { event: 'ping-presence' }, () => {
+      presenceChannel.send({
+        type: 'broadcast',
+        event: 'pong-presence',
+        payload: {
+          id: phoneId,
+          deviceName: `${deviceName} (Cámara Wi-Fi)`,
+          facing: facingMode,
+          slot,
+          roomCode: room,
+          available: true,
+        },
+      }).catch(() => {})
+    })
+
+    presenceChannel.subscribe()
+    return () => {
+      presenceChannel.unsubscribe().catch(() => {})
+    }
+  }, [facingMode, room, slot])
 
   // Wake lock para que la pantalla del iPhone no se apague durante la grabación
   const requestWakeLock = useCallback(async () => {
@@ -79,10 +114,12 @@ export default function RemoteCam() {
     }
 
     videoSenderRef.current = null
+    audioSenderRef.current = null
     iceQueueRef.current = []
     setActive(false)
     setStatus('idle')
     setTorchOn(false)
+    setMicMuted(false)
   }, [releaseWakeLock, slot])
 
   // Iniciar la señalización WebRTC a través de Supabase
@@ -100,12 +137,15 @@ export default function RemoteCam() {
     pcRef.current = pc
     iceQueueRef.current = []
 
-    // Agregar tracks de video locales
-    const videoTrack = localStream.getVideoTracks()[0]
-    if (videoTrack) {
-      const sender = pc.addTrack(videoTrack, localStream)
-      videoSenderRef.current = sender
-    }
+    // Agregar tracks locales (video y audio para micrófono del celular)
+    localStream.getTracks().forEach((track) => {
+      const sender = pc.addTrack(track, localStream)
+      if (track.kind === 'video') {
+        videoSenderRef.current = sender
+      } else if (track.kind === 'audio') {
+        audioSenderRef.current = sender
+      }
+    })
 
     // 2. Suscribir al canal de señalización
     const channelName = `remotecam_${room}`
@@ -224,29 +264,40 @@ export default function RemoteCam() {
     })
   }, [room, slot])
 
-  // Iniciar la captura de cámara
+  // Iniciar la captura de cámara con audio del micrófono
   const startCamera = async (targetFacing = 'environment') => {
     setErrorMsg(null)
     try {
-      const constraints = {
-        video: {
-          facingMode: { ideal: targetFacing },
-          width: { ideal: 1920, max: 1920 },
-          height: { ideal: 1080, max: 1080 },
-          frameRate: { ideal: 30, max: 60 },
-        },
-        audio: false,
+      const audioConstraints = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
       }
 
       let stream = null
       try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints)
-      } catch {
-        // Fallback a cualquier resolución soportada
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: targetFacing } },
-          audio: false,
+          video: {
+            facingMode: { ideal: targetFacing },
+            width: { ideal: 1920, max: 1920 },
+            height: { ideal: 1080, max: 1080 },
+            frameRate: { ideal: 30, max: 60 },
+          },
+          audio: audioConstraints,
         })
+      } catch {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: targetFacing } },
+            audio: true,
+          })
+        } catch {
+          // Fallback a solo video si el navegador rechaza el audio
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: targetFacing } },
+            audio: false,
+          })
+        }
       }
 
       streamRef.current = stream
@@ -268,12 +319,12 @@ export default function RemoteCam() {
       await initSignaling(stream)
     } catch (err) {
       console.error('Error al acceder a la cámara:', err)
-      setErrorMsg('No se pudo acceder a la cámara. Por favor autoriza el permiso de cámara en tu navegador.')
+      setErrorMsg('No se pudo acceder a la cámara. Por favor autoriza el permiso de cámara y micrófono en tu navegador.')
       setStatus('error')
     }
   }
 
-  // Voltear entre cámara trasera y frontal
+  // Voltear entre cámara trasera y frontal (manteniendo el audio del micrófono activo)
   const handleFlipCamera = async () => {
     const nextFacing = facingMode === 'environment' ? 'user' : 'environment'
     setFacingMode(nextFacing)
@@ -297,6 +348,13 @@ export default function RemoteCam() {
       }
 
       if (oldTrack) oldTrack.stop()
+
+      // Conservar el track de audio existente
+      const existingAudio = streamRef.current?.getAudioTracks?.()?.[0]
+      if (existingAudio) {
+        newStream.addTrack(existingAudio)
+      }
+
       streamRef.current = newStream
 
       if (videoRef.current) {
@@ -304,7 +362,7 @@ export default function RemoteCam() {
         videoRef.current.play().catch(() => {})
       }
 
-      const caps = newTrack.getCapabilities ? newTrack.getCapabilities() : {}
+      const caps = newTrack?.getCapabilities ? newTrack.getCapabilities() : {}
       setTorchSupported(Boolean(caps.torch))
     } catch (err) {
       console.error('Error al cambiar de cámara:', err)
@@ -333,6 +391,15 @@ export default function RemoteCam() {
     if (track) {
       track.enabled = !track.enabled
       setVideoPaused(!track.enabled)
+    }
+  }
+
+  // Alternar silencio de micrófono en el celular
+  const handleToggleMic = () => {
+    const track = streamRef.current?.getAudioTracks?.()?.[0]
+    if (track) {
+      track.enabled = !track.enabled
+      setMicMuted(!track.enabled)
     }
   }
 
@@ -426,6 +493,17 @@ export default function RemoteCam() {
                   <i className="ti ti-flare" />
                 </button>
               )}
+
+              {/* Botón Micrófono Móvil */}
+              <button
+                type="button"
+                className={`${styles.controlBtn} ${micMuted ? styles.controlBtnActive : ''}`}
+                onClick={handleToggleMic}
+                title={micMuted ? 'Activar micrófono del celular' : 'Silenciar micrófono del celular'}
+                style={{ color: micMuted ? '#ef4444' : '#22c55e' }}
+              >
+                <i className={micMuted ? 'ti ti-microphone-off' : 'ti ti-microphone'} />
+              </button>
 
               {/* Botón Pausa de Video */}
               <button

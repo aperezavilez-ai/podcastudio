@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { getSlotLabel } from '../config/cameraSlots.js'
+import { scanWifiCameras } from '../utils/wifiCameraScanner.js'
 import styles from './CameraConnectModal.module.css'
 
 const PRESET_WIFI_STREAMS = [
@@ -36,6 +37,27 @@ export default function CameraConnectModal({
   const [wifiConnecting, setWifiConnecting] = useState(false)
   const [customLabel, setCustomLabel] = useState('')
   const [copied, setCopied] = useState(false)
+  const [isScanning, setIsScanning] = useState(false)
+  const [scanMessage, setScanMessage] = useState('')
+  const [discoveredCameras, setDiscoveredCameras] = useState([])
+  const [hasScanned, setHasScanned] = useState(false)
+
+  const handleScanWifi = async () => {
+    setIsScanning(true)
+    setHasScanned(true)
+    setScanMessage('Buscando cámaras y celulares en la red Wi-Fi...')
+    try {
+      const results = await scanWifiCameras({
+        onProgress: (msg) => setScanMessage(msg),
+      })
+      setDiscoveredCameras(results)
+    } catch (err) {
+      console.warn('Error en escaneo Wi-Fi:', err)
+    } finally {
+      setIsScanning(false)
+      setScanMessage('')
+    }
+  }
 
   useEffect(() => {
     if (open && onListenRemoteSlot) {
@@ -308,8 +330,89 @@ export default function CameraConnectModal({
           {/* TAB WIFI */}
           {activeTab === 'wifi' && (
             <>
+              {/* BANNER DE ESCÁNER AUTOMÁTICO */}
+              <div className={styles.scannerBanner}>
+                <div className={styles.scannerInfo}>
+                  <div className={styles.scannerTitle}>
+                    <i className="ti ti-radar" />
+                    <span>Búsqueda Automática en Red Wi-Fi</span>
+                  </div>
+                  <span className={styles.scannerSub}>
+                    {isScanning
+                      ? (scanMessage || 'Escaneando la red local en busca de celulares y cámaras...')
+                      : 'Detecta celulares iPhone/Android, cámaras DroidCam, GoPro y streams locales'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={styles.scanBtn}
+                  onClick={handleScanWifi}
+                  disabled={isScanning}
+                >
+                  {isScanning ? (
+                    <><i className="ti ti-loader" style={{ animation: 'spin 1s linear infinite' }} /> Buscando...</>
+                  ) : (
+                    <><i className="ti ti-search" /> Buscar Cámaras</>
+                  )}
+                </button>
+              </div>
+
+              {/* LISTA DE DISPOSITIVOS DETECTADOS */}
+              {discoveredCameras.length > 0 && (
+                <div className={styles.discoveredList}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#86efac', marginBottom: 2 }}>
+                    Cámaras y Celulares detectados en Wi-Fi ({discoveredCameras.length}):
+                  </div>
+                  {discoveredCameras.map((device) => {
+                    const isPhone = device.type === 'remote_phone'
+                    return (
+                      <div key={device.id} className={styles.discoveredCard}>
+                        <div className={styles.discoveredMeta}>
+                          <i className={`ti ${isPhone ? 'ti-device-mobile' : 'ti-video'} ${styles.discoveredIcon}`} />
+                          <div>
+                            <div className={styles.discoveredName}>{device.name}</div>
+                            <div className={styles.discoveredSub}>
+                              {isPhone ? 'Listo para transmitir en tiempo real' : device.url}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          className={styles.assignBtn}
+                          onClick={() => {
+                            if (isPhone) {
+                              setActiveTab('remote')
+                              if (onListenRemoteSlot) onListenRemoteSlot(targetSlot)
+                            } else {
+                              setWifiUrl(device.url)
+                              handleConnectWifi(device.url)
+                            }
+                          }}
+                        >
+                          <i className="ti ti-plug" /> Asignar a CAM {targetSlot + 1}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {hasScanned && discoveredCameras.length === 0 && !isScanning && (
+                <div style={{ padding: '10px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', marginBottom: 14, fontSize: 11, color: '#cbd5e1' }}>
+                  <div style={{ fontWeight: 700, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <i className="ti ti-info-circle" /> No se detectaron cámaras automáticas activas en este instante
+                  </div>
+                  <div>
+                    • <strong>Para conectar tu celular:</strong> Abre la pestaña <strong>Móvil / Remota QR</strong> y escanea el código con tu iPhone o Android (¡la forma más rápida, sin instalar nada!).
+                  </div>
+                  <div style={{ marginTop: 3 }}>
+                    • <strong>Si usas DroidCam o IP Webcam:</strong> Asegúrate de que la app esté abierta en tu teléfono en la misma red Wi-Fi e ingresa la URL mostrada abajo.
+                  </div>
+                </div>
+              )}
+
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>URL de transmisión (MJPEG / HLS / RTSP-HTTP):</label>
+                <label className={styles.formLabel}>URL de transmisión manual (MJPEG / HLS / RTSP-HTTP):</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     type="url"

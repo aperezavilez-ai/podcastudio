@@ -114,8 +114,12 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
           peerConnectionsRef.current[slotIndex] = newPc
           iceQueuesRef.current[slotIndex] = []
 
+          const accumulatedStream = new MediaStream()
           newPc.ontrack = (trackEvent) => {
-            const stream = trackEvent.streams[0] || new MediaStream([trackEvent.track])
+            const stream = trackEvent.streams[0] || accumulatedStream
+            if (!trackEvent.streams[0] && trackEvent.track) {
+              accumulatedStream.addTrack(trackEvent.track)
+            }
             setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
             if (onStreamConnected) {
               onStreamConnected(slotIndex, stream, `iPhone Remoto ${slotIndex + 1}`)
