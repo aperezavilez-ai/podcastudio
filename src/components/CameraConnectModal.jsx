@@ -12,6 +12,66 @@ const PRESET_WIFI_STREAMS = [
   { name: 'OBS / NDI HLS Stream Local', url: 'http://localhost:8080/hls/stream.m3u8' },
 ]
 
+function ModalVideoPreview({ stream, label }) {
+  const vRef = React.useRef(null)
+
+  React.useEffect(() => {
+    if (vRef.current && stream) {
+      vRef.current.setAttribute('playsinline', 'true')
+      vRef.current.setAttribute('webkit-playsinline', 'true')
+      vRef.current.muted = true
+      if (vRef.current.srcObject !== stream) {
+        vRef.current.srcObject = stream
+      }
+      vRef.current.play().catch(() => {})
+    }
+  }, [stream])
+
+  return (
+    <div style={{
+      width: '100%',
+      maxWidth: 380,
+      aspectRatio: '16/9',
+      backgroundColor: '#05070a',
+      borderRadius: 12,
+      overflow: 'hidden',
+      position: 'relative',
+      border: '1px solid rgba(255,255,255,0.18)',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+      margin: '12px auto',
+    }}>
+      <video
+        ref={vRef}
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        autoPlay
+        playsInline
+        webkit-playsinline="true"
+        muted
+        onLoadedMetadata={(e) => { e.target.play().catch(() => {}) }}
+      />
+      <div style={{
+        position: 'absolute',
+        top: 8,
+        left: 8,
+        background: 'rgba(22,101,52,0.85)',
+        border: '1px solid #4ade80',
+        color: '#86efac',
+        padding: '3px 8px',
+        borderRadius: 9999,
+        fontSize: 10,
+        fontWeight: 800,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5,
+        backdropFilter: 'blur(8px)',
+      }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 6px #4ade80' }} />
+        {label || 'SEÑAL EN VIVO'}
+      </div>
+    </div>
+  )
+}
+
 export default function CameraConnectModal({
   open,
   onClose,
@@ -478,11 +538,18 @@ export default function CameraConnectModal({
                     <i className="ti ti-broadcast" />
                     <span>¡Cámara iPhone Conectada en Vivo!</span>
                   </div>
+
+                  {/* VISOR EN VIVO DE LA CÁMARA REMOTA */}
+                  <ModalVideoPreview
+                    stream={streams[targetSlot]}
+                    label={`iPhone CAM ${targetSlot + 1}`}
+                  />
+
                   <div style={{ fontSize: 13, color: '#e2e8f0', fontWeight: 600 }}>
-                    Transmitiendo señal HD en tiempo real a CAM {targetSlot + 1}
+                    Transmitiendo señal HD y micrófono en tiempo real a CAM {targetSlot + 1}
                   </div>
                   <p style={{ fontSize: 12, color: '#94a3b8', margin: 0, lineHeight: 1.5 }}>
-                    Puedes voltear la cámara (trasera/frontal) o encender la linterna directamente desde la pantalla de tu teléfono.
+                    Verifica aquí el encuadre, enfoque y distancia. Puedes voltear la cámara (trasera/frontal) o encender la linterna directamente desde la pantalla de tu teléfono.
                   </p>
                   <button
                     type="button"

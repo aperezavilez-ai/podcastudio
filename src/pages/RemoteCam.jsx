@@ -358,6 +358,9 @@ export default function RemoteCam() {
       streamRef.current = newStream
 
       if (videoRef.current) {
+        videoRef.current.setAttribute('playsinline', 'true')
+        videoRef.current.setAttribute('webkit-playsinline', 'true')
+        videoRef.current.muted = true
         videoRef.current.srcObject = newStream
         videoRef.current.play().catch(() => {})
       }
@@ -400,8 +403,125 @@ export default function RemoteCam() {
     if (track) {
       track.enabled = !track.enabled
       setMicMuted(!track.enabled)
+    } else {
+      setMicMuted(prev => !prev)
     }
   }
+
+  // Callback ref para vincular el flujo de cámara al visor en cuanto monta el elemento <video>
+  const setVideoEl = useCallback((node) => {
+    videoRef.current = node
+    if (node && streamRef.current) {
+      node.setAttribute('playsinline', 'true')
+      node.setAttribute('webkit-playsinline', 'true')
+      node.muted = true
+      if (node.srcObject !== streamRef.current) {
+        node.srcObject = streamRef.current
+      }
+      const p = node.play()
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {})
+      }
+    }
+  }, [])
+
+  // Sincronizar visor si el estado cambia a activo
+  useEffect(() => {
+    if (active && videoRef.current && streamRef.current) {
+      const v = videoRef.current
+      v.setAttribute('playsinline', 'true')
+      v.setAttribute('webkit-playsinline', 'true')
+      v.muted = true
+      if (v.srcObject !== streamRef.current) {
+        v.srcObject = streamRef.current
+      }
+      v.play().catch(() => {})
+    }
+  }, [active])
+
+  // Reanudar cámara y WebRTC automáticamente cuando el usuario regresa tras minimizar
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && active) {
+        await requestWakeLock()
+
+        // 1. Reanudar reproducción del visor en pantalla
+        if (videoRef.current && streamRef.current) {
+          videoRef.current.play().catch(() => {})
+        }
+
+        // 2. Comprobar si el track de video fue congelado o cerrado por el sistema
+        const currentVideoTrack = streamRef.current?.getVideoTracks?.()?.[0]
+        const isTrackEnded = !currentVideoTrack || currentVideoTrack.readyState === 'ended'
+
+        if (isTrackEnded) {
+          console.log('[RemoteCam] Reactivando captura tras segundo plano...')
+          try {
+            const nextFacing = facingMode
+            const newStream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                facingMode: { ideal: nextFacing },
+                width: { ideal: 1920, max: 1920 },
+                height: { ideal: 1080, max: 1080 },
+                frameRate: { ideal: 30, max: 60 },
+              },
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              },
+            })
+
+            const newVideoTrack = newStream.getVideoTracks()[0]
+            const newAudioTrack = newStream.getAudioTracks()[0]
+
+            if (videoSenderRef.current && newVideoTrack) {
+              await videoSenderRef.current.replaceTrack(newVideoTrack)
+            }
+            if (audioSenderRef.current && newAudioTrack) {
+              await audioSenderRef.current.replaceTrack(newAudioTrack)
+            }
+
+            streamRef.current = newStream
+            if (videoRef.current) {
+              videoRef.current.srcObject = newStream
+              videoRef.current.play().catch(() => {})
+            }
+          } catch (e) {
+            console.warn('[RemoteCam] Error al reanudar cámara tras segundo plano:', e)
+          }
+        }
+
+        // 3. Si la conexión WebRTC cayó mientras estaba minimizado, enviar señal para renegociar
+        if (pcRef.current) {
+          const pcState = pcRef.current.connectionState
+          const iceState = pcRef.current.iceConnectionState
+          if (pcState === 'disconnected' || pcState === 'failed' || iceState === 'disconnected' || iceState === 'failed') {
+            console.log('[RemoteCam] Renegociando enlace WebRTC tras retorno...')
+            if (channelRef.current && streamRef.current) {
+              try {
+                await channelRef.current.send({
+                  type: 'broadcast',
+                  event: 'signal',
+                  payload: { type: 'phone-ready', slot, sender: 'phone' },
+                })
+              } catch {}
+            }
+          }
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('pageshow', handleVisibilityChange)
+    window.addEventListener('focus', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('pageshow', handleVisibilityChange)
+      window.removeEventListener('focus', handleVisibilityChange)
+    }
+  }, [active, facingMode, slot, requestWakeLock])
 
   // Cleanup al salir
   useEffect(() => {
@@ -448,11 +568,15 @@ export default function RemoteCam() {
       ) : (
         <div className={styles.cameraView}>
           <video
-            ref={videoRef}
+            ref={setVideoEl}
             className={styles.videoElement}
             autoPlay
             playsInline
+            webkit-playsinline="true"
             muted
+            onLoadedMetadata={(e) => {
+              e.target.play().catch(() => {})
+            }}
           />
 
           {/* TOP BAR / TALLY */}
@@ -499,10 +623,19 @@ export default function RemoteCam() {
                 type="button"
                 className={`${styles.controlBtn} ${micMuted ? styles.controlBtnActive : ''}`}
                 onClick={handleToggleMic}
-                title={micMuted ? 'Activar micrófono del celular' : 'Silenciar micrófono del celular'}
-                style={{ color: micMuted ? '#ef4444' : '#22c55e' }}
+                title={micMuted ? 'Micrófono Silenciado — Clic para transmitir audio' : 'Micrófono Transmitiendo — Clic para silenciar'}
+                style={{
+                  color: micMuted ? '#ef4444' : '#22c55e',
+                  border: micMuted ? '1px solid rgba(239,68,68,0.5)' : '1px solid rgba(34,197,94,0.4)',
+                  background: micMuted ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.15)',
+                  gap: 4,
+                  padding: '6px 12px',
+                }}
               >
                 <i className={micMuted ? 'ti ti-microphone-off' : 'ti ti-microphone'} />
+                <span style={{ fontSize: 10, fontWeight: 800 }}>
+                  {micMuted ? 'MUTE' : 'MIC ON'}
+                </span>
               </button>
 
               {/* Botón Pausa de Video */}

@@ -159,7 +159,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       connectRemoteStream(slot, stream, label)
     },
     onStreamDisconnected: (slot) => {
-      stopCamera(slot, true)
+      // No destruir la ranura de cámara ante minimizaciones breves del móvil;
+      // la conexión se restaura automáticamente en cuanto el teléfono vuelve a primer plano
     },
   })
   const {
