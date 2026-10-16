@@ -2,13 +2,40 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 6px 14px;
+  gap: 8px;
+  padding: 0 12px;
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  box-sizing: border-box;
   background: #090a0f;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   font-size: 11px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.slotTagMini {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted, #94a3b8);
+  white-space: nowrap;
+}
+
+.slotSelectMini {
+  background: #141722;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  max-width: 95px;
 }
 
 .tallySection {

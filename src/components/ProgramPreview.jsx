@@ -115,13 +115,18 @@ function SeamlessMasterVideo({
     const incomingBus = activeBus === 'A' ? 'B' : 'A'
     const incomingRef = incomingBus === 'B' ? videoBRef : videoARef
 
+    // Asignar el stream directamente al elemento de video para no esperar el ciclo de render de React
+    if (incomingRef.current && incomingRef.current.srcObject !== stream) {
+      safeAttachVideo(incomingRef.current, stream)
+    }
+
     if (incomingBus === 'B') {
       setStreamB(stream)
     } else {
       setStreamA(stream)
     }
 
-    const duration = transitionMode === 'cut' ? 40 : 360
+    const duration = transitionMode === 'cut' ? 30 : 340
 
     const executeTransition = () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current)
@@ -134,17 +139,24 @@ function SeamlessMasterVideo({
     }
 
     const node = incomingRef.current
-    if (node && node.readyState >= 2) {
-      executeTransition()
-    } else if (node) {
-      const handleReady = () => {
-        node.removeEventListener('canplay', handleReady)
-        node.removeEventListener('loadeddata', handleReady)
+    if (node) {
+      if (typeof node.requestVideoFrameCallback === 'function') {
+        node.requestVideoFrameCallback(() => {
+          executeTransition()
+        })
+        timeoutRef.current = setTimeout(executeTransition, 80)
+      } else if (node.readyState >= 2) {
         executeTransition()
+      } else {
+        const handleReady = () => {
+          node.removeEventListener('canplay', handleReady)
+          node.removeEventListener('loadeddata', handleReady)
+          executeTransition()
+        }
+        node.addEventListener('canplay', handleReady, { once: true })
+        node.addEventListener('loadeddata', handleReady, { once: true })
+        timeoutRef.current = setTimeout(executeTransition, 90)
       }
-      node.addEventListener('canplay', handleReady, { once: true })
-      node.addEventListener('loadeddata', handleReady, { once: true })
-      timeoutRef.current = setTimeout(executeTransition, 90)
     } else {
       timeoutRef.current = setTimeout(executeTransition, 50)
     }
@@ -241,9 +253,9 @@ function SeamlessMasterVideo({
       opacity: !isA ? 1 : 0,
       pointerEvents: !isA ? 'auto' : 'none',
     }
-  } else {
-    // Crossfade o Dip (Crossfade default profesional)
-    const dur = '350ms cubic-bezier(0.25, 1, 0.5, 1)'
+  } else if (transitionMode === 'dip') {
+    // Fundido a negro voluntario (Dip)
+    const dur = '320ms ease-in-out'
     const opacityA = isA ? (isTransitioning ? 0 : 1) : (isTransitioning ? 1 : 0)
     const opacityB = isA ? (isTransitioning ? 1 : 0) : (isTransitioning ? 0 : 1)
 
@@ -260,6 +272,40 @@ function SeamlessMasterVideo({
       opacity: opacityB,
       transition: isTransitioning ? `opacity ${dur}` : videoCropStyle.transition,
       pointerEvents: !isA ? 'auto' : 'none',
+    }
+  } else {
+    // Disolución profesional (Crossfade Broadcast puro)
+    // El bus saliente se mantiene 100% opaco debajo (zIndex 1) para que NUNCA trasluzca el fondo negro
+    // El bus entrante hace disolución de 0 a 1 encima (zIndex 2).
+    const dur = '320ms cubic-bezier(0.25, 1, 0.5, 1)'
+    if (isA) {
+      styleA = {
+        ...styleA,
+        zIndex: 1,
+        opacity: 1,
+        pointerEvents: isTransitioning ? 'none' : 'auto',
+      }
+      styleB = {
+        ...styleB,
+        zIndex: 2,
+        opacity: isTransitioning ? 1 : 0,
+        transition: isTransitioning ? `opacity ${dur}` : videoCropStyle.transition,
+        pointerEvents: isTransitioning ? 'auto' : 'none',
+      }
+    } else {
+      styleB = {
+        ...styleB,
+        zIndex: 1,
+        opacity: 1,
+        pointerEvents: isTransitioning ? 'none' : 'auto',
+      }
+      styleA = {
+        ...styleA,
+        zIndex: 2,
+        opacity: isTransitioning ? 1 : 0,
+        transition: isTransitioning ? `opacity ${dur}` : videoCropStyle.transition,
+        pointerEvents: isTransitioning ? 'auto' : 'none',
+      }
     }
   }
 
@@ -729,13 +775,11 @@ export default function ProgramPreview({
       {stream ? (
         <SeamlessMasterVideo
           stream={stream}
-          className={`${styles.video} ${layout === 'pip' ? styles.clickablePane : ''}`}
+          className={styles.video}
           style={masterStyle}
           filter={cssFilter}
           transitionMode={look?.transition || 'crossfade'}
           cameraKey={cameraKey}
-          onClick={layout === 'pip' ? onClosePip : undefined}
-          title={layout === 'pip' ? 'Haz clic en Master para ocultar el PiP y volver a pantalla completa' : undefined}
           mainVideoRef={videoRef}
         />
       ) : (

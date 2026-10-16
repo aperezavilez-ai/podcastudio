@@ -1003,12 +1003,41 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       setMasterCameraSlot(previewCamera)
       setCamSlot(previewCamera)
       setPreviewCamera(prevProgram)
+      return
     }
-  }, [previewCamera, streams, programCamera, setActiveCamera, setMasterCameraSlot, setCamSlot])
+    // Fallback: Si no hay cámara en Preview, conmuta a la siguiente cámara conectada
+    const connectedSlots = Array.from({ length: slotsCount })
+      .map((_, i) => i)
+      .filter(i => streams[i])
+    if (connectedSlots.length > 1) {
+      const currentIdx = connectedSlots.indexOf(programCamera)
+      const nextSlot = connectedSlots[(currentIdx + 1) % connectedSlots.length]
+      userPickedCameraRef.current = true
+      setActiveCamera(nextSlot)
+      setMasterCameraSlot(nextSlot)
+      setCamSlot(nextSlot)
+    }
+  }, [previewCamera, streams, programCamera, slotsCount, setActiveCamera, setMasterCameraSlot, setCamSlot])
 
   const handleAutoTransition = useCallback(() => {
-    handleCut()
-  }, [handleCut])
+    if (previewCamera !== null && streams[previewCamera] && previewCamera !== programCamera) {
+      handleCut()
+      return
+    }
+    // Si no hay cámara en Preview o estamos en modo normal:
+    // AUTO conmuta suavemente a la siguiente cámara conectada disponible
+    const connectedSlots = Array.from({ length: slotsCount })
+      .map((_, i) => i)
+      .filter(i => streams[i])
+    if (connectedSlots.length > 1) {
+      const currentIdx = connectedSlots.indexOf(programCamera)
+      const nextSlot = connectedSlots[(currentIdx + 1) % connectedSlots.length]
+      userPickedCameraRef.current = true
+      setActiveCamera(nextSlot)
+      setMasterCameraSlot(nextSlot)
+      setCamSlot(nextSlot)
+    }
+  }, [previewCamera, streams, programCamera, slotsCount, handleCut, setActiveCamera, setMasterCameraSlot, setCamSlot])
 
   const {
     cintillo, animPhase, animKey, showManual, showCustom, hide: hideCintillo,
@@ -1819,17 +1848,6 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   )}
                 </div>
 
-                {/* BOTÓN TOGGLE CUADRÍCULA DE ENCUADRE Y CENTRADO EN MASTER */}
-                <button
-                  type="button"
-                  className={`${styles.masterGridToggleBtn} ${showMasterGrid ? styles.masterGridToggleBtnActive : ''}`}
-                  onClick={toggleMasterGrid}
-                  title={showMasterGrid ? 'Desactivar cuadrícula y guías de encuadre' : 'Activar cuadrícula de centrado (Regla de Tercios + Margen Seguro)'}
-                >
-                  <i className="ti ti-border-all" />
-                  <span>{showMasterGrid ? 'Cuadrícula ON' : 'Cuadrícula'}</span>
-                </button>
-
                 {/* GUÍAS VISUALES DE CENTRADO (REGLA DE TERCIOS + ÁREA SEGURA + CRUZ CENTRAL) */}
                 {showMasterGrid && (
                   <div className={styles.masterGridOverlay} aria-hidden>
@@ -2293,50 +2311,6 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               {/* FORMAT SELECTOR + MIC MUTE + SOCIAL PRESETS */}
               <div className={styles.fmtSelector}>
                 <MicMuteButton muted={micMuted} onToggle={toggleMicMute} />
-                <div className={styles.socialPresets} role="group" aria-label="Selección de Redes Sociales simultáneas">
-                  <button
-                    type="button"
-                    className={`${styles.socialAllBtn} ${selectedNetworks.length === ALL_SOCIAL_NETWORKS.length ? styles.socialAllBtnActive : ''}`}
-                    onClick={toggleAllNetworks}
-                    title={selectedNetworks.length === ALL_SOCIAL_NETWORKS.length ? 'Deseleccionar todas (dejar 1)' : 'Seleccionar las 4 redes simultáneamente'}
-                  >
-                    <i className={selectedNetworks.length === ALL_SOCIAL_NETWORKS.length ? 'ti ti-checkbox' : 'ti ti-square'} />
-                    <span>Todas ({selectedNetworks.length}/4)</span>
-                  </button>
-                  {SOCIAL_FORMAT_PRESETS.map((p) => {
-                    const isSelected = selectedNetworks.includes(p.id)
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        className={`${styles.socialBtn} ${isSelected ? styles.socialBtnActive : ''}`}
-                        data-format={p.format}
-                        data-preset={p.id}
-                        title={`${p.label} (${p.ratio}): Haz clic para ${isSelected ? 'desactivar de la exportación' : 'activar'}`}
-                        onClick={() => {
-                          toggleNetwork(p.id)
-                          handleFormatChange(p.format, p.id)
-                        }}
-                      >
-                        <i
-                          className={isSelected ? 'ti ti-square-check-filled' : 'ti ti-square'}
-                          style={{ fontSize: 13, color: isSelected ? p.color : 'var(--text-muted)' }}
-                        />
-                        <i className={`${p.icon} ${styles.socialBtnIcon}`} style={{ color: isSelected ? p.color : 'var(--text-muted)' }} />
-                        <span className={styles.socialBtnLabel}>{p.label}</span>
-                        <span className={styles.socialBtnRatio}>{p.ratio}</span>
-                      </button>
-                    )
-                  })}
-                  <button
-                    type="button"
-                    className={styles.socialModalOpenBtn}
-                    onClick={() => setShowSocialModal(true)}
-                    title="Abrir panel avanzado de redes sociales y formatos"
-                  >
-                    <i className="ti ti-adjustments" />
-                  </button>
-                </div>
                 {/* BOTÓN DIRECTO TRANSMISIÓN EN VIVO */}
                 <button
                   type="button"
@@ -2345,22 +2319,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   title="Configurar transmisión en vivo (Facebook Live, YouTube, TikTok)"
                 >
                   <i className="ti ti-broadcast" style={{ color: isLive ? '#fff' : '#1877f2', fontSize: 13 }} />
-                  <span>{isLive ? `● EN VIVO (${formatLiveDuration(liveDuration)})` : '🔴 En Vivo'}</span>
-                </button>
-                {/* BOTÓN DIRECTO PACK REDES MULTI-FORMATO */}
-                <button
-                  type="button"
-                  className={styles.bottomPackBtn}
-                  onClick={() => {
-                    if (recordings.length > 0) {
-                      setMultiFormatRecording(recordings[recordings.length - 1])
-                    }
-                    setShowMultiFormatModal(true)
-                  }}
-                  title="Descargar pack multi-redes (16:9 Facebook/YT, 9:16 TikTok/Reels, 1:1 IG Feed)"
-                >
-                  <i className="ti ti-share" style={{ fontSize: 12, color: 'var(--accent)' }} />
-                  <span>Pack Redes</span>
+                  <span>{isLive ? `● EN VIVO (${formatLiveDuration(liveDuration)})` : '🔴 Transmitir'}</span>
                 </button>
               </div>
               </div>
@@ -3307,90 +3266,20 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
             </div>
           )}
 
-          {/* RECORD CONTROLS */}
+          {/* RECORD CONTROLS — Único botón principal para iniciar/detener */}
           <div className={styles.recControlsContainer}>
-            {recordings.length > 0 && !recording && (
-              <div className={styles.recSuccessBanner}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <i className="ti ti-circle-check-filled" style={{ color: '#10b981', fontSize: 16 }} />
-                  <strong style={{ fontSize: 11, color: '#fff' }}>¡Grabación lista para descargar o publicar!</strong>
-                </div>
-                <span style={{ fontSize: 9.5, color: 'var(--text-secondary)' }}>
-                  Duración: {formatDuration(recordings[recordings.length - 1].duration)} · Master HD
-                </span>
-              </div>
-            )}
-
-            {/* BOTÓN PRINCIPAL: GRABAR / DETENER */}
             <button
               type="button"
               className={`${styles.mainRecBtn} ${recording ? styles.mainRecBtnActive : ''}`}
               onClick={handleRecord}
             >
-              <i className={`ti ${recording ? 'ti-player-stop' : 'ti-circle-filled'}`} style={{ fontSize: 15 }} />
+              <i className={`ti ${recording ? 'ti-player-stop' : 'ti-circle-filled'}`} style={{ fontSize: 16 }} />
               <span>{recording ? 'DETENER GRABACIÓN' : 'INICIAR GRABACIÓN'}</span>
               {recording && (
                 <span className={styles.recTimerBadge}>
                   REC {formatDuration(duration)}
                 </span>
               )}
-            </button>
-
-            {/* BOTONES DE ACCIÓN (DESCARGAR & PACK REDES) */}
-            <div className={styles.recActionsRow}>
-              <button
-                type="button"
-                className={styles.recActionBtn}
-                onClick={() => { if (recordings.length > 0) downloadRecordingMp4(recordings[recordings.length - 1]) }}
-                disabled={recordings.length === 0 || converting}
-                title="Descargar última grabación master en MP4 universal (H.264 + Faststart)"
-              >
-                <i className={`ti ${converting ? 'ti-loader' : 'ti-download'}`} style={{ fontSize: 13, color: 'var(--text-secondary)' }} />
-                <span>{converting ? `Exportando MP4 (${convertProgress}%)...` : 'Descargar Master (MP4)'}</span>
-              </button>
-
-              {recordings.length > 0 && recordings[recordings.length - 1]?.hasCleanVoice && (
-                <button
-                  type="button"
-                  className={styles.recActionBtn}
-                  onClick={() => downloadCleanVoice(recordings[recordings.length - 1])}
-                  title="Descargar pista aislada de voz limpia (sin música ni efectos) para edición profesional"
-                  style={{ borderColor: 'rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.1)', color: '#34d399' }}
-                >
-                  <i className="ti ti-microphone" style={{ fontSize: 13, color: '#34d399' }} />
-                  <span>Voz Limpia (ISO)</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                className={`${styles.recActionBtn} ${styles.recPackBtn}`}
-                onClick={() => {
-                  if (recordings.length > 0) {
-                    setMultiFormatRecording(recordings[recordings.length - 1])
-                    setShowMultiFormatModal(true)
-                  }
-                }}
-                disabled={recordings.length === 0}
-                title="Descargar pack multi-redes (Facebook 16:9, YouTube 16:9, TikTok 9:16, Instagram 1:1)"
-              >
-                <i className="ti ti-package" style={{ fontSize: 13, color: 'var(--accent)' }} />
-                <span>Pack Redes ({selectedNetworks.length})</span>
-              </button>
-            </div>
-
-            {/* BOTÓN DESTACADO: PUBLICAR EN REDES SOCIALES */}
-            <button
-              type="button"
-              className={styles.recPublishBtn}
-              onClick={() => {
-                setTab('posts')
-                closeControlsPanel()
-              }}
-              title="Generar copys con IA y publicar directamente en Facebook, YouTube, TikTok e Instagram"
-            >
-              <i className="ti ti-share" style={{ fontSize: 14 }} />
-              <span>Publicar en Redes Sociales (Copys IA)</span>
             </button>
           </div>
           </div>{/* panelScrollInner */}

@@ -45,6 +45,8 @@ export default function SwitcherMasterBar({
     ? getSlotLabel(previewCamera, pvwMeta?.customLabel, previewCamera === masterCameraSlot)
     : null
 
+  const connectedCount = Object.values(streams || {}).filter(Boolean).length
+
   return (
     <div className={styles.switcherBar}>
       <div className={styles.tallySection}>
@@ -54,11 +56,11 @@ export default function SwitcherMasterBar({
           <span>PGM: {pgmLabel}</span>
         </div>
 
-        {/* PVW (Preview) en modo Studio Pro */}
-        {proSwitcherMode && (
+        {/* PVW (Preview) solo si hay una cámara diferente seleccionada para salir */}
+        {previewCamera !== null && previewCamera !== programCamera && (
           <div className={`${styles.tallyBox} ${styles.tallyPvw}`} title="Cámara en Previo (Próxima a salir)">
             <span className={styles.tallyDot} />
-            <span>PVW: {pvwLabel || 'Ninguna'}</span>
+            <span>PVW: {pvwLabel}</span>
           </div>
         )}
 
@@ -111,6 +113,134 @@ export default function SwitcherMasterBar({
           </button>
         </div>
 
+        {/* Asignación compacta de canales según el layout activo (no altera la altura del master) */}
+        {screenLayout === 'pip' && (
+          <div className={styles.layoutConfigBar} style={{ padding: '2px 6px', gap: 4 }}>
+            <span className={styles.slotTagMini} style={{ color: '#60a5fa' }}>PiP:</span>
+            <select
+              value={pipCameraSlot}
+              onChange={(e) => onSelectPipSlot(Number(e.target.value))}
+              className={styles.slotSelectMini}
+              title="Cámara en recuadro miniatura flotante"
+            >
+              {Array.from({ length: slotsCount })
+                .map((_, i) => i)
+                .filter((i) => i !== masterCameraSlot)
+                .map((i) => (
+                  <option key={i} value={i}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : ''}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
+
+        {screenLayout === 'split' && (
+          <div className={styles.layoutConfigBar} style={{ padding: '2px 6px', gap: 4 }}>
+            <span className={styles.slotTagMini} style={{ color: '#f59e0b' }}>2ª:</span>
+            <select
+              value={splitSecondarySlot}
+              onChange={(e) => onSelectSplitSecondarySlot(Number(e.target.value))}
+              className={styles.slotSelectMini}
+              title="Segunda cámara en pantalla dividida"
+            >
+              {Array.from({ length: slotsCount })
+                .map((_, i) => i)
+                .filter((i) => i !== masterCameraSlot)
+                .map((i) => (
+                  <option key={i} value={i}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : ''}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
+
+        {screenLayout === 'triple' && (
+          <div className={styles.layoutConfigBar} style={{ padding: '2px 6px', gap: 4 }}>
+            <span className={styles.slotTagMini} style={{ color: '#60a5fa' }}>2ª:</span>
+            <select
+              value={splitSecondarySlot}
+              onChange={(e) => onSelectSplitSecondarySlot(Number(e.target.value))}
+              className={styles.slotSelectMini}
+            >
+              {Array.from({ length: slotsCount })
+                .map((_, i) => i)
+                .filter((i) => i !== masterCameraSlot)
+                .map((i) => (
+                  <option key={i} value={i} disabled={i === tripleTertiarySlot}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : ''}
+                  </option>
+                ))}
+            </select>
+            <span className={styles.slotTagMini} style={{ color: '#a78bfa' }}>3ª:</span>
+            <select
+              value={tripleTertiarySlot}
+              onChange={(e) => onSelectTripleTertiarySlot(Number(e.target.value))}
+              className={styles.slotSelectMini}
+            >
+              {Array.from({ length: slotsCount })
+                .map((_, i) => i)
+                .filter((i) => i !== masterCameraSlot)
+                .map((i) => (
+                  <option key={i} value={i} disabled={i === splitSecondarySlot}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : ''}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
+
+        {screenLayout === 'quad' && (
+          <div className={styles.layoutConfigBar} style={{ padding: '2px 6px', gap: 4 }}>
+            <span className={styles.slotTagMini} style={{ color: '#d97706' }}>2ª:</span>
+            <select
+              value={splitSecondarySlot}
+              onChange={(e) => onSelectSplitSecondarySlot(Number(e.target.value))}
+              className={styles.slotSelectMini}
+            >
+              {Array.from({ length: slotsCount })
+                .map((_, i) => i)
+                .filter((i) => i !== masterCameraSlot)
+                .map((i) => (
+                  <option key={i} value={i} disabled={i === tripleTertiarySlot || i === quadQuaternarySlot}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : ''}
+                  </option>
+                ))}
+            </select>
+            <span className={styles.slotTagMini} style={{ color: '#a855f7' }}>3ª:</span>
+            <select
+              value={tripleTertiarySlot}
+              onChange={(e) => onSelectTripleTertiarySlot(Number(e.target.value))}
+              className={styles.slotSelectMini}
+            >
+              {Array.from({ length: slotsCount })
+                .map((_, i) => i)
+                .filter((i) => i !== masterCameraSlot)
+                .map((i) => (
+                  <option key={i} value={i} disabled={i === splitSecondarySlot || i === quadQuaternarySlot}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : ''}
+                  </option>
+                ))}
+            </select>
+            <span className={styles.slotTagMini} style={{ color: '#10b981' }}>4ª:</span>
+            <select
+              value={quadQuaternarySlot}
+              onChange={(e) => onSelectQuadQuaternarySlot(Number(e.target.value))}
+              className={styles.slotSelectMini}
+            >
+              {Array.from({ length: slotsCount })
+                .map((_, i) => i)
+                .filter((i) => i !== masterCameraSlot)
+                .map((i) => (
+                  <option key={i} value={i} disabled={i === splitSecondarySlot || i === tripleTertiarySlot}>
+                    {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : ''}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
+
         {/* Botón Activar / Desactivar Cintillos */}
         <button
           type="button"
@@ -132,165 +262,6 @@ export default function SwitcherMasterBar({
           <i className="ti ti-border-all" />
           <span>{showMasterGrid ? 'Cuadrícula ON' : 'Cuadrícula'}</span>
         </button>
-
-        {/* Asignación de canales según el layout activo */}
-        {screenLayout === 'pip' && (
-          <div className={styles.layoutConfigBar}>
-            <div className={styles.layoutMasterFixed} title="Cámara Master siempre de fondo principal">
-              <span className={styles.layoutMasterTag}>★ MASTER:</span>
-              <span className={styles.layoutMasterName}>{getSlotLabel(masterCameraSlot, cameraMeta[masterCameraSlot]?.customLabel, true)}</span>
-            </div>
-            <div className={styles.layoutSelectorItem}>
-              <span className={styles.layoutSelectorTag} style={{ color: '#60a5fa' }}>Recuadro PiP:</span>
-              <select
-                value={pipCameraSlot}
-                onChange={(e) => onSelectPipSlot(Number(e.target.value))}
-                className={styles.slotSelect}
-                title="Cámara en recuadro miniatura flotante"
-              >
-                {Array.from({ length: slotsCount })
-                  .map((_, i) => i)
-                  .filter((i) => i !== masterCameraSlot)
-                  .map((i) => (
-                    <option key={i} value={i}>
-                      {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : '(sin señal)'}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          </div>
-        )}
-
-        {screenLayout === 'split' && (
-          <div className={styles.layoutConfigBar}>
-            <div className={styles.layoutMasterFixed} title="Cámara Master siempre principal">
-              <span className={styles.layoutMasterTag}>★ MASTER:</span>
-              <span className={styles.layoutMasterName}>{getSlotLabel(masterCameraSlot, cameraMeta[masterCameraSlot]?.customLabel, true)}</span>
-            </div>
-            <div className={styles.layoutSelectorItem}>
-              <span className={styles.layoutSelectorTag} style={{ color: '#f59e0b' }}>2ª Cámara:</span>
-              <select
-                value={splitSecondarySlot}
-                onChange={(e) => onSelectSplitSecondarySlot(Number(e.target.value))}
-                className={styles.slotSelect}
-                title="Segunda cámara en pantalla dividida"
-              >
-                {Array.from({ length: slotsCount })
-                  .map((_, i) => i)
-                  .filter((i) => i !== masterCameraSlot)
-                  .map((i) => (
-                    <option key={i} value={i}>
-                      {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : '(sin señal)'}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          </div>
-        )}
-
-        {screenLayout === 'triple' && (
-          <div className={styles.layoutConfigBar}>
-            <div className={styles.layoutMasterFixed} title="Cámara Master siempre central grande">
-              <span className={styles.layoutMasterTag}>★ MASTER:</span>
-              <span className={styles.layoutMasterName}>{getSlotLabel(masterCameraSlot, cameraMeta[masterCameraSlot]?.customLabel, true)}</span>
-            </div>
-            <div className={styles.layoutSelectorItem}>
-              <span className={styles.layoutSelectorTag} style={{ color: '#60a5fa' }}>Arriba:</span>
-              <select
-                value={splitSecondarySlot}
-                onChange={(e) => onSelectSplitSecondarySlot(Number(e.target.value))}
-                className={styles.slotSelect}
-              >
-                {Array.from({ length: slotsCount })
-                  .map((_, i) => i)
-                  .filter((i) => i !== masterCameraSlot)
-                  .map((i) => (
-                    <option key={i} value={i} disabled={i === tripleTertiarySlot}>
-                      {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : '(sin señal)'}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div className={styles.layoutSelectorItem}>
-              <span className={styles.layoutSelectorTag} style={{ color: '#a78bfa' }}>Abajo:</span>
-              <select
-                value={tripleTertiarySlot}
-                onChange={(e) => onSelectTripleTertiarySlot(Number(e.target.value))}
-                className={styles.slotSelect}
-              >
-                {Array.from({ length: slotsCount })
-                  .map((_, i) => i)
-                  .filter((i) => i !== masterCameraSlot)
-                  .map((i) => (
-                    <option key={i} value={i} disabled={i === splitSecondarySlot}>
-                      {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : '(sin señal)'}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          </div>
-        )}
-
-        {/* Asignación en Cuádruple */}
-        {screenLayout === 'quad' && (
-          <div className={styles.layoutConfigBar}>
-            <div className={styles.layoutMasterFixed} title="Cámara Master (Cuadrante 1)">
-              <span className={styles.layoutMasterTag}>★ MASTER:</span>
-              <span className={styles.layoutMasterName}>{getSlotLabel(masterCameraSlot, cameraMeta[masterCameraSlot]?.customLabel, true)}</span>
-            </div>
-            <div className={styles.layoutSelectorItem}>
-              <span className={styles.layoutSelectorTag} style={{ color: '#d97706' }}>2ª:</span>
-              <select
-                value={splitSecondarySlot}
-                onChange={(e) => onSelectSplitSecondarySlot(Number(e.target.value))}
-                className={styles.slotSelect}
-              >
-                {Array.from({ length: slotsCount })
-                  .map((_, i) => i)
-                  .filter((i) => i !== masterCameraSlot)
-                  .map((i) => (
-                    <option key={i} value={i} disabled={i === tripleTertiarySlot || i === quadQuaternarySlot}>
-                      {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : '(sin señal)'}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div className={styles.layoutSelectorItem}>
-              <span className={styles.layoutSelectorTag} style={{ color: '#a855f7' }}>3ª:</span>
-              <select
-                value={tripleTertiarySlot}
-                onChange={(e) => onSelectTripleTertiarySlot(Number(e.target.value))}
-                className={styles.slotSelect}
-              >
-                {Array.from({ length: slotsCount })
-                  .map((_, i) => i)
-                  .filter((i) => i !== masterCameraSlot)
-                  .map((i) => (
-                    <option key={i} value={i} disabled={i === splitSecondarySlot || i === quadQuaternarySlot}>
-                      {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : '(sin señal)'}
-                    </option>
-                  ))}
-              </select>
-            </div>
-            <div className={styles.layoutSelectorItem}>
-              <span className={styles.layoutSelectorTag} style={{ color: '#10b981' }}>4ª:</span>
-              <select
-                value={quadQuaternarySlot}
-                onChange={(e) => onSelectQuadQuaternarySlot(Number(e.target.value))}
-                className={styles.slotSelect}
-              >
-                {Array.from({ length: slotsCount })
-                  .map((_, i) => i)
-                  .filter((i) => i !== masterCameraSlot)
-                  .map((i) => (
-                    <option key={i} value={i} disabled={i === splitSecondarySlot || i === tripleTertiarySlot}>
-                      {getSlotLabel(i, cameraMeta[i]?.customLabel, false)} {streams[i] ? '●' : '(sin señal)'}
-                    </option>
-                  ))}
-              </select>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className={styles.actionsSection}>
@@ -324,44 +295,29 @@ export default function SwitcherMasterBar({
           </select>
         </div>
 
-        {/* Controles CUT y AUTO en modo Studio Pro */}
-        {proSwitcherMode ? (
-          <>
-            <button
-              type="button"
-              className={styles.cutBtn}
-              onClick={onCut}
-              disabled={previewCamera === null || previewCamera === programCamera}
-              title="Corte Directo (Espacio)"
-            >
-              <i className="ti ti-switch-horizontal" />
-              <span>CUT</span>
-              <span className={styles.shortcutHint}>[Espacio]</span>
-            </button>
-
-            <button
-              type="button"
-              className={styles.autoBtn}
-              onClick={onAutoTransition}
-              disabled={previewCamera === null || previewCamera === programCamera}
-              title="Transición Suave (Enter)"
-            >
-              <i className="ti ti-arrows-exchange" />
-              <span>AUTO</span>
-              <span className={styles.shortcutHint}>[Enter]</span>
-            </button>
-          </>
-        ) : null}
-
-        {/* Toggle de Modo: Directo vs PGM/PVW */}
+        {/* Controles CUT y AUTO siempre disponibles y operativos */}
         <button
           type="button"
-          className={`${styles.modeToggleBtn} ${proSwitcherMode ? styles.modeToggleActive : ''}`}
-          onClick={onToggleProSwitcherMode}
-          title="Alternar entre Corte Directo al hacer clic y Modo PGM/PVW estilo ATEM"
+          className={styles.cutBtn}
+          onClick={onCut}
+          disabled={connectedCount < 2}
+          title="Corte Directo (Espacio) - Cambia inmediatamente a la siguiente cámara o cámara en previo"
         >
-          <i className="ti ti-layout-board-split" />
-          <span>{proSwitcherMode ? 'Modo PGM/PVW' : 'Corte Directo (1-click)'}</span>
+          <i className="ti ti-switch-horizontal" />
+          <span>CUT</span>
+          <span className={styles.shortcutHint}>[Espacio]</span>
+        </button>
+
+        <button
+          type="button"
+          className={styles.autoBtn}
+          onClick={onAutoTransition}
+          disabled={connectedCount < 2}
+          title="Transición Suave (Enter) - Conmuta con disolución/efecto entre cámaras"
+        >
+          <i className="ti ti-arrows-exchange" />
+          <span>AUTO</span>
+          <span className={styles.shortcutHint}>[Enter]</span>
         </button>
 
         {/* Botón Gestión y Conexión de Cámaras */}
