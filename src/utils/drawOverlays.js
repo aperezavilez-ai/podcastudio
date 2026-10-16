@@ -339,10 +339,14 @@ export function drawCintillo(ctx, w, h, overlay, motion = null) {
 }
 
 /**
- * Dibuja la mosca / watermark del podcast en el canvas
+ * Dibuja la mosca / watermark del podcast en el canvas.
+ * REGLA ESTRICTA: Solo se dibuja si el usuario subió una imagen de logotipo válida.
+ * Si no sube logo, la toma y la grabación salen 100% limpias, sin recuadros ni marcas de agua.
  */
 export function drawLogo(ctx, w, h, overlay) {
-  if (!overlay?.podcastName && !overlay?.logoImage?.complete) return
+  if (!overlay?.logoImage?.complete || !overlay.logoImage.naturalWidth || overlay.logoImage.naturalWidth <= 0) {
+    return
+  }
 
   const position = overlay.position || 'tr'
   const isVertical = h > w
@@ -350,44 +354,18 @@ export function drawLogo(ctx, w, h, overlay) {
 
   ctx.save()
 
-  if (overlay.logoImage?.complete && overlay.logoImage.naturalWidth > 0) {
-    const naturalW = overlay.logoImage.naturalWidth
-    const naturalH = overlay.logoImage.naturalHeight
-    const targetH = isVertical ? 46 : 56
-    const targetW = targetH * (naturalW / naturalH)
+  const naturalW = overlay.logoImage.naturalWidth
+  const naturalH = overlay.logoImage.naturalHeight
+  const targetH = isVertical ? 46 : 56
+  const targetW = targetH * (naturalW / naturalH)
 
-    const x = position === 'tl' ? m : (w - targetW - m)
-    const y = m
+  const x = position === 'tl' ? m : (w - targetW - m)
+  const y = m
 
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.75)'
-    ctx.shadowBlur = 12
-    ctx.shadowOffsetY = 4
-    ctx.drawImage(overlay.logoImage, x, y, targetW, targetH)
-    ctx.restore()
-    return
-  }
-
-  const name = overlay.podcastName || 'Podcast'
-  ctx.font = '600 18px "Segoe UI", system-ui, sans-serif'
-  const textW = ctx.measureText(name).width
-  const padX = 14
-  const boxW = textW + padX * 2
-  const boxH = 36
-  const { x, y } = getLogoPosition(position, w, h, boxW, boxH)
-
-  ctx.fillStyle = 'rgba(10, 14, 24, 0.65)'
-  roundRectPath(ctx, x, y, boxW, boxH, 8)
-  ctx.fill()
-
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)'
-  ctx.lineWidth = 1
-  roundRectPath(ctx, x, y, boxW, boxH, 8)
-  ctx.stroke()
-
-  ctx.fillStyle = '#ffffff'
-  ctx.textBaseline = 'middle'
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.6)'
-  ctx.shadowBlur = 4
-  ctx.fillText(name, x + padX, y + boxH / 2)
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.75)'
+  ctx.shadowBlur = 12
+  ctx.shadowOffsetY = 4
+  ctx.drawImage(overlay.logoImage, x, y, targetW, targetH)
   ctx.restore()
 }
+

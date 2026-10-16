@@ -298,11 +298,11 @@ export function useStudioCompositor({
           videoFrom: videoFrom && s.transitionStartMs ? videoFrom : null,
           transitionMode: s.transitionMode,
           transitionStartMs: s.transitionStartMs,
-          logoOverlay: {
+          logoOverlay: logoImageRef.current ? {
             podcastName: s.podcastName,
             position: s.logoPosition,
             logoImage: logoImageRef.current,
-          },
+          } : null,
           cintilloOverlay: c?.active ? {
             active: true,
             tag: c.tag,

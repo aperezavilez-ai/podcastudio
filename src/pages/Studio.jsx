@@ -2221,10 +2221,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', borderRadius: 7, pointerEvents: 'none' }}
                       cintillo={cintilloForSlot(i)}
                       cintilloPosition={cintilloForSlot(i)?.position || cintilloPositions[getRoleForSlot(i)]}
-                      logoOverlay={{
-                        podcastName: proj.name || 'Mi Podcast',
-                        position: proj.logoPosition || 'tr',
-                      }}
+                      logoOverlay={null}
                       crop={getDynamicCrop(i)}
                       directorCrop={switchMode === 'ai' ? getDirectorCrop(i) : null}
                     />

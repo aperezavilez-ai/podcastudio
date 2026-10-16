@@ -13,18 +13,14 @@ const POS_CLASS = {
   br: styles.posBr,
 }
 
-export default function LogoOverlay({ logoUrl, position = 'tr', podcastName, large = false }) {
-  if (!logoUrl && !podcastName) return null
+export default function LogoOverlay({ logoUrl, position = 'tr', large = false }) {
+  if (!logoUrl) return null
 
   const pos = POS_CLASS[position] || styles.posTr
 
   return (
     <div className={`${styles.wrap} ${pos} ${large ? styles.large : ''}`}>
-      {logoUrl ? (
-        <img src={logoUrl} alt="" className={styles.logoImg} draggable={false} />
-      ) : (
-        <span className={styles.nameOnly}>{podcastName}</span>
-      )}
+      <img src={logoUrl} alt="" className={styles.logoImg} draggable={false} />
     </div>
   )
 }
