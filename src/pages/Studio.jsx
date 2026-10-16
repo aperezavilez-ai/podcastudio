@@ -1442,10 +1442,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       setPreparingRecord(false)
       return
     }
+    let inputMicStream = null
     try {
       const masterCamStream = streams[masterCameraSlot]
       const cameraAudioTrack = masterCamStream?.getAudioTracks?.()?.[0]
-      const inputMicStream = getMicStream() || (cameraAudioTrack ? masterCamStream : null)
+      inputMicStream = getMicStream() || (cameraAudioTrack ? masterCamStream : null)
 
       const combined = await buildRecordingStream(videoStream, {
         micStream: inputMicStream,
