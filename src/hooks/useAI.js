@@ -83,7 +83,7 @@ IDs de pista musical: ${trackIds}
 
 Responde SOLO JSON válido sin backticks:
 {
-  "genre": "tech|business|interview|comedy|news|wellness|sports|culture|education|marketing|crime|general",
+  "genre": "rock|popelectro|reggae|lofi|corporate|synthwave|interview|comedy|news|wellness|crime|general",
   "musicTrackId": "id de la lista anterior",
   "musicVolume": 18-35,
   "cintillos": {

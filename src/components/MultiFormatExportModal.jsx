@@ -4,6 +4,7 @@ import {
   convertVideoToFormat,
   buildFormatFilename,
 } from '../utils/multiFormatExporter.js'
+import { fixWebmDuration } from '../utils/fixWebmDuration.js'
 import styles from './MultiFormatExportModal.module.css'
 
 export default function MultiFormatExportModal({
@@ -62,7 +63,17 @@ export default function MultiFormatExportModal({
     })
   }
 
+  const cancelRef = React.useRef(false)
+
+  const handleCancelExport = () => {
+    cancelRef.current = true
+    setConvertingKey(null)
+    setPackProgress(null)
+    setProgress(0)
+  }
+
   const handleDownloadSingle = async (preset) => {
+    cancelRef.current = false
     setConvertingKey(preset.key)
     setProgress(0)
     try {
@@ -78,6 +89,12 @@ export default function MultiFormatExportModal({
         console.warn('FFmpeg export fallback to canvas:', ffmpegErr)
         if (preset.baseFormat === '16:9' || preset.key === '16:9') {
           outputBlob = recording.blob
+          if (outputBlob && !outputBlob.type?.includes('mp4')) {
+            const durMs = Math.max(1000, Math.round((recording.duration || 1) * 1000))
+            try {
+              outputBlob = await fixWebmDuration(outputBlob, durMs)
+            } catch {}
+          }
         } else {
           outputBlob = await convertVideoToFormat(recording.blob, preset.key, {
             mode: cropMode,
@@ -87,9 +104,11 @@ export default function MultiFormatExportModal({
         }
       }
 
+      if (cancelRef.current) return
       if (!outputBlob) throw new Error('No se generó el video')
 
-      const filename = buildFormatFilename(recording.name, preset.key, 'mp4')
+      const actualExt = (outputBlob.type && outputBlob.type.includes('mp4')) ? 'mp4' : 'webm'
+      const filename = buildFormatFilename(recording.name, preset.key, actualExt)
       const url = URL.createObjectURL(outputBlob)
       const a = document.createElement('a')
       a.href = url
@@ -97,8 +116,10 @@ export default function MultiFormatExportModal({
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
-      console.error('Error al exportar formato:', err)
-      alert('Hubo un error al reencuadrar el video para ' + preset.label)
+      if (!cancelRef.current) {
+        console.error('Error al exportar formato:', err)
+        alert('Hubo un error al reencuadrar el video para ' + preset.label)
+      }
     } finally {
       setConvertingKey(null)
       setProgress(0)
@@ -109,9 +130,11 @@ export default function MultiFormatExportModal({
     const presetsToExport = SOCIAL_PRESETS_EXPORT.filter(p => selectedKeys.includes(p.key))
     if (presetsToExport.length === 0) return
 
+    cancelRef.current = false
     const { finalizeUniversalMp4 } = await import('../utils/exportVideo.js')
     const total = presetsToExport.length
     for (let i = 0; i < total; i++) {
+      if (cancelRef.current) break
       const preset = presetsToExport[i]
       setPackProgress({ current: i + 1, total, label: `${preset.label} (${preset.key})...` })
       setProgress(0)
@@ -128,6 +151,12 @@ export default function MultiFormatExportModal({
           console.warn('FFmpeg pack export fallback to canvas:', ffmpegErr)
           if (preset.baseFormat === '16:9' || preset.key === '16:9') {
             outputBlob = recording.blob
+            if (outputBlob && !outputBlob.type?.includes('mp4')) {
+              const durMs = Math.max(1000, Math.round((recording.duration || 1) * 1000))
+              try {
+                outputBlob = await fixWebmDuration(outputBlob, durMs)
+              } catch {}
+            }
           } else {
             outputBlob = await convertVideoToFormat(recording.blob, preset.key, {
               mode: cropMode,
@@ -137,8 +166,11 @@ export default function MultiFormatExportModal({
           }
         }
 
+        if (cancelRef.current) break
+
         if (outputBlob) {
-          const fn = buildFormatFilename(recording.name, preset.key, 'mp4')
+          const actualExt = (outputBlob.type && outputBlob.type.includes('mp4')) ? 'mp4' : 'webm'
+          const fn = buildFormatFilename(recording.name, preset.key, actualExt)
           const u = URL.createObjectURL(outputBlob)
           const a = document.createElement('a')
           a.href = u
@@ -146,7 +178,7 @@ export default function MultiFormatExportModal({
           a.click()
           URL.revokeObjectURL(u)
         }
-        await new Promise(r => setTimeout(r, 600))
+        await new Promise(r => setTimeout(r, 400))
       } catch (err) {
         console.error(`Error procesando ${preset.label}:`, err)
       }
@@ -159,8 +191,13 @@ export default function MultiFormatExportModal({
   const isBusy = convertingKey !== null || packProgress !== null
   const selectedCount = selectedKeys.length
 
+  const handleModalClose = () => {
+    if (isBusy) handleCancelExport()
+    onClose()
+  }
+
   return (
-    <div className={styles.overlay} onClick={isBusy ? undefined : onClose}>
+    <div className={styles.overlay} onClick={handleModalClose}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <div>
@@ -172,7 +209,7 @@ export default function MultiFormatExportModal({
               Tu sesión completa se adapta automáticamente a cada red social con calidad óptima y sin recortes indeseados.
             </p>
           </div>
-          <button type="button" className={styles.closeBtn} onClick={onClose} disabled={isBusy}>
+          <button type="button" className={styles.closeBtn} onClick={handleModalClose} title="Cerrar (Cancela descargas en curso si las hay)">
             <i className="ti ti-x" />
           </button>
         </div>
@@ -314,11 +351,33 @@ export default function MultiFormatExportModal({
         {/* Barra de progreso global */}
         {packProgress && (
           <div className={styles.packProgressWrap}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, marginBottom: 5 }}>
               <span>
                 <strong>Generando Pack ({packProgress.current}/{packProgress.total}):</strong> {packProgress.label}
               </span>
-              <span>{progress}%</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontWeight: 700, color: '#38bdf8' }}>{progress}%</span>
+                <button
+                  type="button"
+                  onClick={handleCancelExport}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid #ef4444',
+                    color: '#f87171',
+                    padding: '4px 9px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                  title="Detener y cancelar la descarga de inmediato"
+                >
+                  <i className="ti ti-square-x" /> Cancelar proceso
+                </button>
+              </div>
             </div>
             <div className={styles.progressBar}>
               <div
@@ -326,6 +385,45 @@ export default function MultiFormatExportModal({
                 style={{
                   width: `${Math.max(5, ((packProgress.current - 1) / packProgress.total) * 100 + (progress / packProgress.total))}%`,
                 }}
+              />
+            </div>
+          </div>
+        )}
+
+        {convertingKey && !packProgress && (
+          <div className={styles.packProgressWrap}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, marginBottom: 5 }}>
+              <span>
+                <strong>Reencuadrando formato:</strong> {convertingKey}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontWeight: 700, color: '#38bdf8' }}>{progress}%</span>
+                <button
+                  type="button"
+                  onClick={handleCancelExport}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    background: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid #ef4444',
+                    color: '#f87171',
+                    padding: '4px 9px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                  title="Detener y cancelar la descarga de inmediato"
+                >
+                  <i className="ti ti-square-x" /> Cancelar proceso
+                </button>
+              </div>
+            </div>
+            <div className={styles.progressBar}>
+              <div
+                className={styles.progressFill}
+                style={{ width: `${Math.max(5, progress)}%` }}
               />
             </div>
           </div>

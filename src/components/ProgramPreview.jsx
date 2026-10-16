@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { buildCanvasFilter } from '../utils/videoLook.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
+import { applyChromaKey } from '../hooks/useChromaKey.js'
 import SetBackground from './SetBackground.jsx'
 import styles from './ProgramPreview.module.css'
 
@@ -25,6 +26,81 @@ function LookOverlays({ look }) {
     <>
       {lut && <div className={`${styles.lut} ${lut}`} aria-hidden />}
       {vignette && <div className={styles.vignette} style={vignette} aria-hidden />}
+    </>
+  )
+}
+
+function ChromaMasterVideo({ stream, className, style, filter, chromaSettings, mainVideoRef }) {
+  const localVideoRef = useRef(null)
+  const canvasRef = useRef(null)
+
+  useEffect(() => {
+    const v = localVideoRef.current
+    if (v && stream) {
+      safeAttachVideo(v, stream)
+      if (mainVideoRef) mainVideoRef.current = v
+    }
+  }, [stream, mainVideoRef])
+
+  useEffect(() => {
+    const v = localVideoRef.current
+    const c = canvasRef.current
+    if (!v || !c || !chromaSettings?.enabled) return undefined
+    const ctx = c.getContext('2d', { willReadFrequently: true })
+
+    let animId
+    const tick = () => {
+      if (v.readyState >= 2 && v.videoWidth > 0) {
+        if (c.width !== v.videoWidth || c.height !== v.videoHeight) {
+          c.width = v.videoWidth
+          c.height = v.videoHeight
+        }
+        ctx.drawImage(v, 0, 0)
+        try {
+          const frame = ctx.getImageData(0, 0, c.width, c.height)
+          applyChromaKey(
+            frame,
+            chromaSettings.keyColor || '#00b140',
+            chromaSettings.similarity ?? 40,
+            chromaSettings.smoothness ?? 25,
+            chromaSettings.despill ?? 50
+          )
+          ctx.putImageData(frame, 0, 0)
+        } catch {}
+      }
+      animId = requestAnimationFrame(tick)
+    }
+    animId = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(animId)
+  }, [chromaSettings])
+
+  if (!chromaSettings?.enabled) {
+    return (
+      <video
+        ref={localVideoRef}
+        autoPlay
+        playsInline
+        muted
+        className={className}
+        style={{ ...style, filter }}
+      />
+    )
+  }
+
+  return (
+    <>
+      <video
+        ref={localVideoRef}
+        autoPlay
+        playsInline
+        muted
+        style={{ position: 'fixed', top: -9999, left: -9999, opacity: 0.01, pointerEvents: 'none' }}
+      />
+      <canvas
+        ref={canvasRef}
+        className={className}
+        style={{ ...style, filter, objectFit: 'contain' }}
+      />
     </>
   )
 }
@@ -55,6 +131,24 @@ function safeAttachVideo(videoEl, targetStream) {
   } else if (videoEl.srcObject) {
     videoEl.srcObject = null
   }
+}
+
+function StudentGalleryVideo({ stream }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    safeAttachVideo(ref.current, stream)
+  }, [stream])
+  return (
+    <video
+      ref={ref}
+      className={styles.studentVideo}
+      autoPlay
+      muted
+      playsInline
+      onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+      onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
+    />
+  )
 }
 
 /** Motor de video A/B con doble búfer: elimina al 100% el parpadeo en negro al conmutar cámaras y aplica transiciones fluidas a 60fps */
@@ -383,6 +477,13 @@ export default function ProgramPreview({
   onPromoteQuaternaryToMaster = null,
   onPromotePipToMaster = null,
   onOpenConnectModal = null,
+  allStreams = {},
+  cameraMeta = {},
+  slotsCount = 4,
+  onPromoteSlotToMaster = null,
+  onToggleMuteSlot = null,
+  isSlotAudioMuted = null,
+  onOpenSlotConnectModal = null,
 }) {
   const videoRef = useRef(null)
   const pipVideoRef = useRef(null)
@@ -510,24 +611,44 @@ export default function ProgramPreview({
   // SET VIRTUAL CON FONDO
   if (hasSet && virtualSet.cameraRect) {
     const { top, left, width, height } = virtualSet.cameraRect
+    const isChroma = Boolean(virtualSet.chromaSettings?.enabled)
     return (
       <div className={styles.preview}>
         <SetBackground templateId={virtualSet.templateId} customUrl={virtualSet.customUrl} />
-        <SeamlessMasterVideo
-          stream={stream}
-          className={styles.videoInset}
-          style={{
-            top: `${top}%`,
-            left: `${left}%`,
-            width: `${width}%`,
-            height: `${height}%`,
-            ...masterStyle,
-          }}
-          filter={cssFilter}
-          transitionMode={look?.transition || 'crossfade'}
-          cameraKey={cameraKey}
-          mainVideoRef={videoRef}
-        />
+        {isChroma ? (
+          <ChromaMasterVideo
+            stream={stream}
+            className={styles.videoInset}
+            style={{
+              top: `${top}%`,
+              left: `${left}%`,
+              width: `${width}%`,
+              height: `${height}%`,
+              ...masterStyle,
+              borderRadius: 0,
+              boxShadow: 'none',
+            }}
+            filter={cssFilter}
+            chromaSettings={virtualSet.chromaSettings}
+            mainVideoRef={videoRef}
+          />
+        ) : (
+          <SeamlessMasterVideo
+            stream={stream}
+            className={styles.videoInset}
+            style={{
+              top: `${top}%`,
+              left: `${left}%`,
+              width: `${width}%`,
+              height: `${height}%`,
+              ...masterStyle,
+            }}
+            filter={cssFilter}
+            transitionMode={look?.transition || 'crossfade'}
+            cameraKey={cameraKey}
+            mainVideoRef={videoRef}
+          />
+        )}
         <LookOverlays look={activeLook} />
       </div>
     )
@@ -808,6 +929,134 @@ export default function ProgramPreview({
           </div>
         </div>
         <LookOverlays look={activeLook} />
+      </div>
+    )
+  }
+
+  // MODO AULA VIRTUAL (Profesor arriba al centro + Galería de alumnos conectados alrededor)
+  if (layout === 'classroom') {
+    // Lista de todas las ranuras activas excepto el Master
+    const studentSlots = Array.from({ length: Math.max(slotsCount, 4) }, (_, i) => i)
+      .filter((slotIdx) => slotIdx !== masterCameraSlot)
+
+    const connectedStudentsCount = studentSlots.filter(s => Boolean(allStreams[s])).length
+
+    return (
+      <div className={styles.classroomContainer}>
+        {/* ESCENARIO PRINCIPAL: PROFESOR / MASTER (Arriba al centro) */}
+        <div className={styles.classroomStage}>
+          <div className={styles.classroomStageInner}>
+            <div className={styles.classroomTeacherBadge}>
+              <i className="ti ti-school" />
+              <span>{primaryLabel ? `PROFESOR: ${primaryLabel}` : 'PROFESOR / CLASE (MASTER)'}</span>
+            </div>
+
+            {stream ? (
+              <SeamlessMasterVideo
+                stream={stream}
+                className={styles.video}
+                style={masterStyle}
+                filter={cssFilter}
+                transitionMode={look?.transition || 'crossfade'}
+                cameraKey={cameraKey}
+                mainVideoRef={videoRef}
+              />
+            ) : (
+              <div className={styles.empty} onClick={onOpenConnectModal} style={{ cursor: 'pointer' }}>
+                <i className="ti ti-video-off" style={{ fontSize: 32 }} />
+                <span>Profesor / Master sin señal</span>
+                <span style={{ fontSize: 10, color: 'var(--accent, #e8612a)' }}>
+                  Clic para conectar cámara del profesor
+                </span>
+              </div>
+            )}
+            <LookOverlays look={activeLook} />
+          </div>
+        </div>
+
+        {/* GALERÍA DE ALUMNOS CONECTADOS (Alrededor / Abajo) */}
+        <div className={styles.classroomGallerySection}>
+          <div className={styles.classroomGalleryHeader}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="ti ti-users" style={{ color: '#38bdf8' }} />
+              <span>Alumnos en Clase Virtual ({connectedStudentsCount} conectados)</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10 }}>
+              <span style={{ color: '#64748b' }}>Clic en alumno para pasar a Master</span>
+              {onOpenSlotConnectModal && (
+                <button
+                  type="button"
+                  onClick={() => onOpenSlotConnectModal(studentSlots.find(s => !allStreams[s]) ?? studentSlots[0])}
+                  style={{
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid #38bdf8',
+                    color: '#38bdf8',
+                    borderRadius: 4,
+                    padding: '2px 8px',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <i className="ti ti-user-plus" /> + Invitar Alumno
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.classroomGalleryScroll}>
+            {studentSlots.map((slotIdx) => {
+              const studentStream = allStreams[slotIdx]
+              const meta = cameraMeta[slotIdx]
+              const label = meta?.customLabel || meta?.label || `Alumno CAM ${slotIdx + 1}`
+              const isMuted = isSlotAudioMuted ? isSlotAudioMuted(slotIdx) : true
+
+              return (
+                <div
+                  key={slotIdx}
+                  className={styles.studentCard}
+                  onClick={() => {
+                    if (studentStream && onPromoteSlotToMaster) {
+                      onPromoteSlotToMaster(slotIdx)
+                    } else if (onOpenSlotConnectModal) {
+                      onOpenSlotConnectModal(slotIdx)
+                    }
+                  }}
+                  title={studentStream ? `Haz clic para destacar a ${label} en la pantalla de Master` : `Conectar alumno en CAM ${slotIdx + 1}`}
+                >
+                  {studentStream ? (
+                    <>
+                      <StudentGalleryVideo stream={studentStream} />
+                      <div className={styles.studentNameTag}>
+                        <i className="ti ti-user" style={{ fontSize: 10, color: '#38bdf8' }} />
+                        <span>{label}</span>
+                      </div>
+                      <div
+                        className={`${styles.studentMicTag} ${isMuted ? styles.studentMicMuted : styles.studentMicActive}`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onToggleMuteSlot?.(slotIdx)
+                        }}
+                        title={isMuted ? 'Micrófono silenciado — Clic para activar' : 'Micrófono activo — Clic para silenciar'}
+                      >
+                        <i className={`ti ${isMuted ? 'ti-microphone-off' : 'ti-microphone'}`} />
+                      </div>
+                      <div className={styles.clickToMasterHint}>
+                        <i className="ti ti-arrow-up" /> A Master
+                      </div>
+                    </>
+                  ) : (
+                    <div className={styles.studentCardEmpty}>
+                      <i className="ti ti-user-plus" style={{ fontSize: 18, color: '#475569' }} />
+                      <span>CAM {slotIdx + 1}</span>
+                      <span style={{ fontSize: 9, color: '#38bdf8' }}>+ Conectar</span>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
       </div>
     )
   }

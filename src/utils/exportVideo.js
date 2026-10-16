@@ -2,23 +2,51 @@ let ffmpegInstance = null
 
 async function getFfmpeg() {
   if (ffmpegInstance) return ffmpegInstance
+  if (typeof window !== 'undefined' && !window.crossOriginIsolated) {
+    throw new Error('Ambiente sin SharedArrayBuffer; usando motor nativo de Canvas acelerado')
+  }
   const { FFmpeg } = await import('@ffmpeg/ffmpeg')
   const { toBlobURL } = await import('@ffmpeg/util')
   const ffmpeg = new FFmpeg()
-  const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm'
-  await ffmpeg.load({
-    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-  })
-  ffmpegInstance = ffmpeg
-  return ffmpeg
+
+  const cdnList = [
+    'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm',
+    'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm',
+  ]
+
+  let loaded = false
+  let lastErr = null
+
+  const loadWithTimeout = async () => {
+    for (const baseURL of cdnList) {
+      try {
+        await ffmpeg.load({
+          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        })
+        loaded = true
+        break
+      } catch (e) {
+        lastErr = e
+      }
+    }
+    if (!loaded) throw (lastErr || new Error('No se pudo cargar el motor FFmpeg'))
+    ffmpegInstance = ffmpeg
+    return ffmpeg
+  }
+
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Timeout cargando motor FFmpeg (usando Canvas)')), 3000)
+  )
+
+  return Promise.race([loadWithTimeout(), timeoutPromise])
 }
 
 /**
  * Genera un MP4 universal optimizado para todas las plataformas (Windows, Mac, iOS, Android, Redes Sociales).
  * Características broadcast profesionales:
- * 1. +faststart (moov atom al inicio): Arranque instantáneo (0ms) al abrir y miniaturas inmediatas en el explorador.
- * 2. -g 60 -keyint_min 30: Keyframes regulares cada 1-2s para adelantar, pausar y rebobinar de forma ultra fluida.
+ * 1. +faststart (moov atom al inicio): Arranque instantáneo (0ms) al abrir y miniaturas inmediatas en el explorador de Windows.
+ * 2. -force_key_frames expr:gte(t,n_forced*1): Keyframes regulares cada 1s y keyframe IDR inmediato en t=0 para adelantar y atrasar fluidamente sin pantalla blanca.
  * 3. AAC 48kHz estéreo a 192kbps: Preserva 100% de la pista de audio sin pérdida, desfase ni silencios.
  * 4. Adaptación nativa por GPU/WASM para 16:9, 9:16 (TikTok/Reels/Shorts) y 1:1 (Instagram Feed).
  *
@@ -55,12 +83,36 @@ export async function finalizeUniversalMp4(sourceBlob, options = {}) {
     await ffmpeg.deleteFile(outputFilename).catch(() => {})
   }
 
+  // Flags universales de entrada para sincronización perfecta y eliminación de desfase / pantalla blanca
+  const inputSyncFlags = [
+    '-fflags', '+genpts+discardcorrupt',
+    '-avoid_negative_ts', 'make_zero',
+  ]
+
+  // Configuración de codificación de video con keyframes regulares a 1 segundo para navegación ultra fluida
+  const videoEncodeArgs = [
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-pix_fmt', 'yuv420p',
+    '-g', '30',
+    '-keyint_min', '15',
+    '-force_key_frames', 'expr:gte(t,n_forced*1)',
+    '-sc_threshold', '0',
+    '-crf', '20',
+  ]
+
+  // Configuración de audio profesional a 192kbps
+  const audioEncodeArgs = [
+    '-c:a', 'aac',
+    '-b:a', '192k',
+    '-ar', '48000',
+  ]
+
   // Helper para ejecutar comando con fallback de audio
   const runWithAudioFallback = async (baseArgs) => {
     try {
       await ffmpeg.exec(baseArgs)
     } catch (err) {
-      // Si falla por falta de pista de audio en el origen, reintentar sin códec de audio
       const hasAudioArgs = baseArgs.includes('-c:a')
       if (hasAudioArgs) {
         console.warn('Reintentando FFmpeg sin pista de audio por compatibilidad:', err)
@@ -83,9 +135,9 @@ export async function finalizeUniversalMp4(sourceBlob, options = {}) {
     // CASO 1: Formato Original (Master 16:9)
     if (format === 'original') {
       if (isSourceMp4) {
-        // Intento rápido de remuxing en 1 segundo (genera índice stss y faststart sin recodificar si ya es AVC/AAC)
         try {
           await ffmpeg.exec([
+            ...inputSyncFlags,
             '-i', inputFilename,
             '-c', 'copy',
             '-movflags', '+faststart',
@@ -96,24 +148,15 @@ export async function finalizeUniversalMp4(sourceBlob, options = {}) {
             onProgress(100)
             return new Blob([fastData.buffer], { type: 'video/mp4' })
           }
-        } catch {
-          // Si el remux directo falla por timestamps, pasa a transcodificación completa optimizada
-        }
+        } catch {}
       }
 
-      // Transcodificación completa broadcast de alta velocidad
+      // Transcodificación completa broadcast con arranque instantáneo en t=0
       await runWithAudioFallback([
+        ...inputSyncFlags,
         '-i', inputFilename,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-pix_fmt', 'yuv420p',
-        '-g', '60',
-        '-keyint_min', '30',
-        '-sc_threshold', '0',
-        '-crf', '21',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-ar', '48000',
+        ...videoEncodeArgs,
+        ...audioEncodeArgs,
         '-movflags', '+faststart',
         outputFilename,
       ])
@@ -133,26 +176,19 @@ export async function finalizeUniversalMp4(sourceBlob, options = {}) {
           'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1',
         ]
       } else {
-        // smart-crop centrado a 1080x1920 con resolución horizontal par
+        // Smart-crop centrado a 1080x1920 con ancho y desplazamiento horizontal estrictamente pares para YUV420p
         filterArgs = [
           '-vf',
-          'crop=trunc(ih*9/16/2)*2:ih:(iw-ow)/2:0,scale=1080:1920:flags=lanczos,setsar=1',
+          'crop=w=trunc(ih*9/16/2)*2:h=trunc(ih/2)*2:x=trunc((iw-out_w)/4)*2:y=0,scale=1080:1920:flags=lanczos,setsar=1',
         ]
       }
 
       await runWithAudioFallback([
+        ...inputSyncFlags,
         '-i', inputFilename,
         ...filterArgs,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-pix_fmt', 'yuv420p',
-        '-g', '60',
-        '-keyint_min', '30',
-        '-sc_threshold', '0',
-        '-crf', '21',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-ar', '48000',
+        ...videoEncodeArgs,
+        ...audioEncodeArgs,
         '-movflags', '+faststart',
         outputFilename,
       ])
@@ -172,26 +208,19 @@ export async function finalizeUniversalMp4(sourceBlob, options = {}) {
           'scale=1080:1080:force_original_aspect_ratio=decrease,pad=1080:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1',
         ]
       } else {
-        // smart-crop centrado 1080x1080
+        // Smart-crop centrado 1080x1080 con dimensiones y coordenadas pares
         filterArgs = [
           '-vf',
-          'crop=ih:ih:(iw-ow)/2:0,scale=1080:1080:flags=lanczos,setsar=1',
+          'crop=w=trunc(ih/2)*2:h=trunc(ih/2)*2:x=trunc((iw-out_w)/4)*2:y=0,scale=1080:1080:flags=lanczos,setsar=1',
         ]
       }
 
       await runWithAudioFallback([
+        ...inputSyncFlags,
         '-i', inputFilename,
         ...filterArgs,
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-pix_fmt', 'yuv420p',
-        '-g', '60',
-        '-keyint_min', '30',
-        '-sc_threshold', '0',
-        '-crf', '21',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-ar', '48000',
+        ...videoEncodeArgs,
+        ...audioEncodeArgs,
         '-movflags', '+faststart',
         outputFilename,
       ])
@@ -200,18 +229,11 @@ export async function finalizeUniversalMp4(sourceBlob, options = {}) {
     // CASO 4: 16:9 Horizontal (YouTube, Facebook)
     else {
       await runWithAudioFallback([
+        ...inputSyncFlags,
         '-i', inputFilename,
         '-vf', 'scale=1920:1080:flags=lanczos,setsar=1',
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-pix_fmt', 'yuv420p',
-        '-g', '60',
-        '-keyint_min', '30',
-        '-sc_threshold', '0',
-        '-crf', '21',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-ar', '48000',
+        ...videoEncodeArgs,
+        ...audioEncodeArgs,
         '-movflags', '+faststart',
         outputFilename,
       ])

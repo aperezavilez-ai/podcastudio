@@ -63,6 +63,8 @@ import LiveStreamModal from '../components/LiveStreamModal.jsx'
 import CintilloEditorModal from '../components/CintilloEditorModal.jsx'
 import CameraCalibratorModal from '../components/CameraCalibratorModal.jsx'
 import { useRemoteCameraManager } from '../hooks/useRemoteCameraManager.js'
+import { useStudioBackground } from '../hooks/useStudioBackground.js'
+import VirtualSetPanel from '../components/VirtualSetPanel.jsx'
 import styles from './Studio.module.css'
 
 const APP_BUILD = typeof __APP_BUILD__ !== 'undefined' ? __APP_BUILD__ : 'dev'
@@ -148,7 +150,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     addCameraSlot, removeCameraSlot, renameCameraSlot,
     enumerateDevices, startCamera, initMobileCameras, switchMobilePrimaryFacing,
     autoConnectAll, connectNextCameraToSlot, stopCamera, connectWifiCamera, connectRemoteStream,
-    scanBluetoothCamera, connectBluetoothWifiStream, startPreferredMic, switchMic, selectedMicId, micLabel, getMicStream,
+    scanBluetoothCamera, connectBluetoothWifiStream, startPreferredMic, switchMic, selectedMicId, micLabel, getMicStream, micStream,
   } = useWebcam()
   const {
     getRoomCodeForSlot,
@@ -237,7 +239,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     if (userPickedCameraRef.current) return masterCameraSlot ?? activeCamera ?? 0
     return masterCameraSlot ?? pickPrimaryActiveSlot(streams, masterCameraSlot)
   }, [activeCamera, streams, masterCameraSlot])
-  const [switchMode, setSwitchMode] = useState('ai')
+  const [switchMode, setSwitchMode] = useState('off')
   const [switchInterval, setSwitchInterval] = useState(8)
   const [showCintForm, setShowCintForm] = useState(false)
   const [cintFormText, setCintFormText] = useState('')
@@ -451,7 +453,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     return localStorage.getItem('podcastudio_screen_layout') || 'full'
   })
 
-  // Estados de mute independiente para audio multi-cámara (entran silenciados por defecto para evitar ecos)
+  // Referencia para perfiles y calibraciones de ranuras
+  const setSlotProfileRef = useRef(null)
+
+  // Estados de mute independiente para audio multi-cámara (AISLADOS por defecto para evitar cruce de micrófonos)
   const [pipAudioMuted, setPipAudioMuted] = useState(true)
   const [splitAudioMuted, setSplitAudioMuted] = useState(true)
   const [tripleAudioMuted, setTripleAudioMuted] = useState(true)
@@ -462,19 +467,15 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     try {
       const saved = localStorage.getItem('podcastudio_speaker_monitoring')
       if (saved !== null) return saved === 'true'
-      return true
+      return false
     } catch {
-      return true
+      return false
     }
   })
 
   const handleSelectLayout = useCallback((layoutMode) => {
     setScreenLayoutState(layoutMode)
-    // Al entrar a una composición multi-cámara, las cámaras secundarias entran silenciadas por defecto
-    if (layoutMode === 'pip') setPipAudioMuted(true)
-    if (layoutMode === 'split') setSplitAudioMuted(true)
-    if (layoutMode === 'triple') { setSplitAudioMuted(true); setTripleAudioMuted(true) }
-    if (layoutMode === 'quad') { setSplitAudioMuted(true); setTripleAudioMuted(true); setQuadAudioMuted(true) }
+    // Al entrar a una composición multi-cámara, los micrófonos secundarios permanecen aislados a menos que se activen manualmente
     try { localStorage.setItem('podcastudio_screen_layout', layoutMode) } catch {}
   }, [])
   const setScreenLayout = handleSelectLayout
@@ -601,7 +602,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     userPickedCameraRef.current = true
     const prevMaster = masterCameraSlot
 
-    // Regla de estudio: Al hacer clic en la cámara Master o en cualquier cámara para pasar a Master,
+    // Regla de estudio: Al pasar a Master, la cámara activa automáticamente su micrófono
+    setSlotProfileRef.current?.(slot, { audioMuted: false })
+    setMicMuted(false)
+
+    // Al hacer clic en la cámara Master o en cualquier cámara para pasar a Master,
     // se limpian los PiPs / multicámaras y la toma vuelve a 1 sola cámara limpia en pantalla completa
     handleSelectLayout('full')
 
@@ -640,6 +645,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       setCamSlot(nextMaster)
     }
 
+    // Activar audio automáticamente para cámara en PiP
+    setPipAudioMuted(false)
+    setSlotProfileRef.current?.(slot, { audioMuted: false })
     setPipCameraSlot(slot)
     handleSelectLayout('pip')
   }, [screenLayout, pipCameraSlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot])
@@ -659,6 +667,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       setCamSlot(nextMaster)
     }
 
+    // Activar audio automáticamente para cámara en Split
+    setSplitAudioMuted(false)
+    setSlotProfileRef.current?.(slot, { audioMuted: false })
     setSplitSecondarySlot(slot)
     if (screenLayout !== 'triple' && screenLayout !== 'quad') {
       handleSelectLayout('split')
@@ -689,6 +700,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       setSplitSecondarySlot(availableSlots[0] ?? (slot === 0 ? 1 : 0))
     }
 
+    // Activar audio automáticamente para cámara en Triple
+    setTripleAudioMuted(false)
+    setSlotProfileRef.current?.(slot, { audioMuted: false })
     setTripleTertiarySlot(slot)
     if (screenLayout !== 'quad') {
       handleSelectLayout('triple')
@@ -723,6 +737,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       setTripleTertiarySlot(availableSlots[1] ?? availableSlots[0] ?? 2)
     }
 
+    // Activar audio automáticamente para cámara en Cuádruple
+    setQuadAudioMuted(false)
+    setSlotProfileRef.current?.(slot, { audioMuted: false })
     setQuadQuaternarySlot(slot)
     handleSelectLayout('quad')
   }, [screenLayout, splitSecondarySlot, tripleTertiarySlot, quadQuaternarySlot, masterCameraSlot, slotsCount, streams, handleSelectLayout, setMasterCameraSlot, setActiveCamera, setCamSlot, setSplitSecondarySlot, setTripleTertiarySlot, setQuadQuaternarySlot])
@@ -753,6 +770,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       look: false,
       publish: false,
       cintillos: false,
+      virtualSet: false,
       aiProducer: false,
       music: false,
       teleprompter: false,
@@ -782,6 +800,57 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       return next
     })
   }, [])
+
+  // Escenarios Virtuales & Croma Key
+  const {
+    templateId: virtualSetTemplateId,
+    customUrl: virtualSetCustomUrl,
+    cameraScale: virtualSetCameraScale,
+    hasVirtualSet,
+    cameraRect: virtualSetCameraRect,
+    setTemplateId: setVirtualSetTemplateId,
+    setCameraScale: setVirtualSetCameraScale,
+    setCustomUrl: setVirtualSetCustomUrl,
+    onCustomUpload: handleVirtualSetCustomUpload,
+    clearCustom: handleVirtualSetClearCustom,
+  } = useStudioBackground()
+
+  const [chromaEnabled, setChromaEnabled] = useState(() => {
+    try { return localStorage.getItem('podcastudio_chroma_enabled') === 'true' } catch { return false }
+  })
+  const [chromaColor, setChromaColor] = useState(() => {
+    try { return localStorage.getItem('podcastudio_chroma_color') || '#00b140' } catch { return '#00b140' }
+  })
+  const [chromaSimilarity, setChromaSimilarity] = useState(() => {
+    try { return parseInt(localStorage.getItem('podcastudio_chroma_similarity') || '40', 10) } catch { return 40 }
+  })
+  const [chromaSmoothness, setChromaSmoothness] = useState(() => {
+    try { return parseInt(localStorage.getItem('podcastudio_chroma_smoothness') || '25', 10) } catch { return 25 }
+  })
+  const [chromaDespill, setChromaDespill] = useState(() => {
+    try { return parseInt(localStorage.getItem('podcastudio_chroma_despill') || '50', 10) } catch { return 50 }
+  })
+
+  const handleChromaToggle = useCallback((enabled) => {
+    setChromaEnabled(enabled)
+    try { localStorage.setItem('podcastudio_chroma_enabled', String(enabled)) } catch {}
+  }, [])
+  const handleChromaColorChange = useCallback((color) => {
+    setChromaColor(color)
+    try { localStorage.setItem('podcastudio_chroma_color', color) } catch {}
+  }, [])
+  const handleChromaSimilarityChange = useCallback((sim) => {
+    setChromaSimilarity(sim)
+    try { localStorage.setItem('podcastudio_chroma_similarity', String(sim)) } catch {}
+  }, [])
+  const handleChromaSmoothnessChange = useCallback((smooth) => {
+    setChromaSmoothness(smooth)
+    try { localStorage.setItem('podcastudio_chroma_smoothness', String(smooth)) } catch {}
+  }, [])
+  const handleChromaDespillChange = useCallback((despill) => {
+    setChromaDespill(despill)
+    try { localStorage.setItem('podcastudio_chroma_despill', String(despill)) } catch {}
+  }, [])
   const canvasRef = useRef()
   const compositeStreamRef = useRef()
   const initRanRef = useRef(false)
@@ -793,7 +862,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       name: 'Mi Podcast', episodeTitle: 'Episodio', guestName: 'Invitado', guestRole: '',
       format: '16:9', cintillos: {},
       cintilloStyle: 'classic', cintilloPosition: 'bl',
-      subtitlesEnabled: false, subtitleLanguage: 'es-MX', directorMode: 'ai', autoCintillos: true,
+      subtitlesEnabled: false, subtitleLanguage: 'es-MX', directorMode: 'manual', autoCintillos: true,
     }),
     logoPosition: projectLogoPosition,
     logoUrl: projectLogoUrl,
@@ -1211,6 +1280,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     getEffectiveCrop: getDynamicCrop,
   } = useDynamicZoom({ activeCamera: programCamera, recording })
 
+  useEffect(() => {
+    setSlotProfileRef.current = setSlotProfile
+  }, [setSlotProfile])
+
   const [showCalibratorModal, setShowCalibratorModal] = useState(false)
   const [calibratorTargetSlot, setCalibratorTargetSlot] = useState(0)
 
@@ -1253,6 +1326,19 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     look,
     recording,
     recordDurationSec: duration,
+    background: hasVirtualSet ? {
+      hasVirtualSet: true,
+      templateId: virtualSetTemplateId,
+      customUrl: virtualSetCustomUrl,
+      cameraRect: virtualSetCameraRect,
+      chromaSettings: {
+        enabled: chromaEnabled,
+        keyColor: chromaColor,
+        similarity: chromaSimilarity,
+        smoothness: chromaSmoothness,
+        despill: chromaDespill,
+      },
+    } : null,
     compositorActive: recording || countdown !== null || preparingRecord,
   })
 
@@ -1288,20 +1374,32 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   }, [speakerMonitoring, setSpeakerMonitoring])
 
   const isSlotAudioMuted = useCallback((slotIndex) => {
-    const isMasterCam = slotIndex === programCamera || slotIndex === masterCameraSlot
-    if (isMasterCam) {
-      return micMuted || Boolean(cameraCrops[slotIndex]?.audioMuted)
+    // Si el usuario configuró explícitamente el mute de esta cámara en sus ajustes de ranura:
+    if (cameraCrops[slotIndex]?.audioMuted !== undefined) {
+      return Boolean(cameraCrops[slotIndex]?.audioMuted)
     }
-    if (screenLayout === 'pip' && pipCameraSlot === slotIndex) return pipAudioMuted
-    if ((screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') && splitSecondarySlot === slotIndex) return splitAudioMuted
-    if ((screenLayout === 'triple' || screenLayout === 'quad') && tripleTertiarySlot === slotIndex) return tripleAudioMuted
-    if (screenLayout === 'quad' && quadQuaternarySlot === slotIndex) return quadAudioMuted
-    return Boolean(cameraCrops[slotIndex]?.audioMuted ?? false)
+    // Por defecto, la cámara activa en Master entra con micrófono ACTIVO (false)
+    const isMaster = slotIndex === programCamera
+    if (isMaster) {
+      return false
+    }
+    // Roles secundarios en pantalla entran silenciados por defecto para aislar ruido
+    if (screenLayout === 'pip' && pipCameraSlot === slotIndex) {
+      return pipAudioMuted
+    }
+    if ((screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') && splitSecondarySlot === slotIndex) {
+      return splitAudioMuted
+    }
+    if ((screenLayout === 'triple' || screenLayout === 'quad') && tripleTertiarySlot === slotIndex) {
+      return tripleAudioMuted
+    }
+    if (screenLayout === 'quad' && quadQuaternarySlot === slotIndex) {
+      return quadAudioMuted
+    }
+    return true // Cámaras inactivas permanecen silenciadas
   }, [
-    programCamera,
-    masterCameraSlot,
-    micMuted,
     cameraCrops,
+    programCamera,
     screenLayout,
     pipCameraSlot,
     pipAudioMuted,
@@ -1315,18 +1413,14 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
   const handleToggleCameraAudio = useCallback((slotIndex) => {
     resumeContext()
-    if (!speakerMonitoring) {
-      setSpeakerMonitoringState(true)
-      try { localStorage.setItem('podcastudio_speaker_monitoring', 'true') } catch {}
-    }
 
-    const isMasterCam = slotIndex === programCamera || slotIndex === masterCameraSlot
-    const isCurrentlyMuted = isSlotAudioMuted(slotIndex)
-    const nextMuted = !isCurrentlyMuted
+    const currentlyMuted = isSlotAudioMuted(slotIndex)
+    const nextMuted = !currentlyMuted
 
-    if (isMasterCam) {
-      setMicMuted(nextMuted)
-    }
+    // Guardar mute específico para esta ranura
+    setSlotProfile(slotIndex, { audioMuted: nextMuted })
+
+    // Sincronizar estados si la ranura está asignada a un rol activo
     if (screenLayout === 'pip' && pipCameraSlot === slotIndex) {
       setPipAudioMuted(nextMuted)
     }
@@ -1339,14 +1433,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     if (screenLayout === 'quad' && quadQuaternarySlot === slotIndex) {
       setQuadAudioMuted(nextMuted)
     }
-
-    setSlotProfile(slotIndex, { audioMuted: nextMuted })
   }, [
     resumeContext,
     speakerMonitoring,
     isSlotAudioMuted,
-    programCamera,
-    masterCameraSlot,
     screenLayout,
     pipCameraSlot,
     splitSecondarySlot,
@@ -1358,26 +1448,29 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   // Sincronización continua de audio en tiempo real para monitoreo en bocinas y grabación
   useEffect(() => {
     const masterCamStream = streams[programCamera] || streams[masterCameraSlot] || null
-    const extMic = getMicStream()
+    const masterAudioTracks = masterCamStream?.getAudioTracks() || []
+    const hasMasterCamAudio = masterAudioTracks.length > 0 && masterAudioTracks[0].readyState === 'live'
+    const extMic = micStream || getMicStream()
 
     syncAudioSources({
       masterStream: masterCamStream,
-      masterMuted: micMuted || Boolean(cameraCrops[programCamera]?.audioMuted),
+      masterMuted: isSlotAudioMuted(programCamera),
       masterGain: cameraCrops[programCamera]?.audioGain ?? 1.0,
       pipStream: screenLayout === 'pip' ? streams[pipCameraSlot] : null,
-      pipMuted: pipAudioMuted || Boolean(cameraCrops[pipCameraSlot]?.audioMuted),
+      pipMuted: pipAudioMuted,
       pipGain: cameraCrops[pipCameraSlot]?.audioGain ?? 1.0,
-      splitStream: (screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') ? streams[splitSecondarySlot] : null,
-      splitMuted: splitAudioMuted || Boolean(cameraCrops[splitSecondarySlot]?.audioMuted),
+      splitStream: (screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad' || screenLayout === 'classroom') ? streams[splitSecondarySlot] : null,
+      splitMuted: splitAudioMuted,
       splitGain: cameraCrops[splitSecondarySlot]?.audioGain ?? 1.0,
-      tripleStream: (screenLayout === 'triple' || screenLayout === 'quad') ? streams[tripleTertiarySlot] : null,
-      tripleMuted: tripleAudioMuted || Boolean(cameraCrops[tripleTertiarySlot]?.audioMuted),
+      tripleStream: (screenLayout === 'triple' || screenLayout === 'quad' || screenLayout === 'classroom') ? streams[tripleTertiarySlot] : null,
+      tripleMuted: tripleAudioMuted,
       tripleGain: cameraCrops[tripleTertiarySlot]?.audioGain ?? 1.0,
-      quadStream: screenLayout === 'quad' ? streams[quadQuaternarySlot] : null,
-      quadMuted: quadAudioMuted || Boolean(cameraCrops[quadQuaternarySlot]?.audioMuted),
+      quadStream: (screenLayout === 'quad' || screenLayout === 'classroom') ? streams[quadQuaternarySlot] : null,
+      quadMuted: quadAudioMuted,
       quadGain: cameraCrops[quadQuaternarySlot]?.audioGain ?? 1.0,
       extMicStream: extMic,
-      extMicMuted: micMuted,
+      // Si la cámara Master ya provee su propio audio, aislamos el micrófono externo para evitar duplicación y eco
+      extMicMuted: micMuted || (hasMasterCamAudio && !isSlotAudioMuted(programCamera)),
     })
   }, [
     streams,
@@ -1393,9 +1486,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     quadQuaternarySlot,
     quadAudioMuted,
     micMuted,
+    micStream,
     getMicStream,
-    syncAudioSources,
     cameraCrops,
+    isSlotAudioMuted,
+    syncAudioSources,
   ])
 
   const handleDspChange = useCallback((newSettings) => {
@@ -1607,29 +1702,35 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     }
     setCountdown(null)
 
-    const videoStream = getProgramStream()
+    let videoStream = getProgramStream()
+    const masterCamStream = streams[programCamera] || streams[masterCameraSlot] || null
+    const hasLiveCompositorVideo = videoStream && videoStream.getVideoTracks().length > 0 && videoStream.getVideoTracks()[0].readyState === 'live'
+    if (!hasLiveCompositorVideo) {
+      console.warn('[Studio] Compositor stream sin video activo, usando masterCamStream como base de grabación')
+      videoStream = masterCamStream
+    }
     if (!videoStream) {
       setPreparingRecord(false)
       return
     }
+
     let inputMicStream = null
     try {
-      const masterCamStream = streams[programCamera] || streams[masterCameraSlot] || null
       const cameraAudioTrack = masterCamStream?.getAudioTracks?.()?.[0]
-      inputMicStream = getMicStream() || (cameraAudioTrack ? masterCamStream : null)
+      inputMicStream = (cameraAudioTrack && !isSlotAudioMuted(programCamera)) ? masterCamStream : (micStream || getMicStream())
 
       const combined = await buildRecordingStream(videoStream, {
-        micStream: getMicStream(),
+        micStream: micStream || getMicStream(),
         masterStream: masterCamStream,
-        masterMuted: micMuted || Boolean(cameraCrops[programCamera]?.audioMuted),
+        masterMuted: isSlotAudioMuted(programCamera),
         pipStream: screenLayout === 'pip' ? streams[pipCameraSlot] : null,
-        pipMuted: pipAudioMuted || Boolean(cameraCrops[pipCameraSlot]?.audioMuted),
-        splitStream: (screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') ? streams[splitSecondarySlot] : null,
-        splitMuted: splitAudioMuted || Boolean(cameraCrops[splitSecondarySlot]?.audioMuted),
-        tripleStream: (screenLayout === 'triple' || screenLayout === 'quad') ? streams[tripleTertiarySlot] : null,
-        tripleMuted: tripleAudioMuted || Boolean(cameraCrops[tripleTertiarySlot]?.audioMuted),
-        quadStream: screenLayout === 'quad' ? streams[quadQuaternarySlot] : null,
-        quadMuted: quadAudioMuted || Boolean(cameraCrops[quadQuaternarySlot]?.audioMuted),
+        pipMuted: pipAudioMuted,
+        splitStream: (screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad' || screenLayout === 'classroom') ? streams[splitSecondarySlot] : null,
+        splitMuted: splitAudioMuted,
+        tripleStream: (screenLayout === 'triple' || screenLayout === 'quad' || screenLayout === 'classroom') ? streams[tripleTertiarySlot] : null,
+        tripleMuted: tripleAudioMuted,
+        quadStream: (screenLayout === 'quad' || screenLayout === 'classroom') ? streams[quadQuaternarySlot] : null,
+        quadMuted: quadAudioMuted,
         musicEl: getAudioElement(),
         musicVolume: musicVol,
         musicPlaying,
@@ -1808,10 +1909,57 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
           <div className={styles.brand} onClick={() => navigate('/')} style={{ cursor: 'pointer' }} title="Ir al Inicio">Podcast<span>Studio</span></div>
         </div>
         <div className={styles.topCenter}>
-          <div className={styles.projectTag}>
-            <i className="ti ti-folder" style={{ fontSize: 11 }} />
-            {proj.name || 'Sin título'} {proj.episodeTitle ? `— ${proj.episodeTitle}` : ''}
+          {/* SELECTOR DE CALIDAD DE GRABACIÓN MASTER (4K UHD, 1080p, 720p) */}
+          <div className={styles.topQualityGroup} title="Calidad de Grabación Master">
+            <span className={styles.topQualityLabel}>Calidad:</span>
+            {[
+              { id: '4k', label: '4K UHD', title: '4K Ultra HD (3840x2160 @ 35 Mbps) - Máxima nitidez' },
+              { id: '1080p', label: '1080p', title: 'Full HD (1920x1080 @ 12 Mbps) - Estándar broadcast recomendado' },
+              { id: '720p', label: '720p', title: 'HD (1280x720 @ 6 Mbps) - Ligero para streaming' },
+            ].map(q => (
+              <button
+                key={q.id}
+                type="button"
+                className={`${styles.topQualityBtn} ${recordQuality === q.id ? styles.topQualityBtnActive : ''}`}
+                onClick={() => handleSelectRecordQuality(q.id)}
+                title={q.title}
+              >
+                {q.label}
+              </button>
+            ))}
           </div>
+
+          {/* SELECTOR DE MODO DE CAMBIO DE CÁMARA (Manual / Auto tiempo / Director IA) */}
+          <div className={styles.topSwitcherGroup}>
+            <i className="ti ti-switch-horizontal" style={{ fontSize: 11, color: 'var(--text-muted)' }} />
+            <select
+              className={styles.topSwitchModeSelect}
+              value={switchMode}
+              onChange={e => setSwitchMode(e.target.value)}
+              title="Modo de cambio de cámara"
+            >
+              <option value="off">Manual</option>
+              <option value="timer">Auto tiempo</option>
+              {planLimits.aiDirector && <option value="ai">Director IA</option>}
+            </select>
+            {switchMode !== 'off' && (
+              <div className={styles.topSwitchIntervalWrap}>
+                <input
+                  type="range"
+                  min={4}
+                  max={20}
+                  value={switchInterval}
+                  onChange={e => setSwitchInterval(+e.target.value)}
+                  className={styles.topSwitchInterval}
+                  title={switchMode === 'ai'
+                    ? `Corte mín. ${switchInterval}s entre CAM 1/CAM 3`
+                    : `Cada ${switchInterval}s`}
+                />
+                <span className={styles.topSwitchIntervalVal}>{switchInterval}s</span>
+              </div>
+            )}
+          </div>
+
           {recording && (
             <div className={styles.recPill}>
               <div className={styles.recDot} />
@@ -1922,6 +2070,18 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
           >
             <i className="ti ti-video" />
             <span className={styles.slBtnLabel}>Cámaras</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles.slBtn} ${screenLayout === 'classroom' && tab === 'studio' ? styles.slBtnActive : ''}`}
+            onClick={() => {
+              setTab('studio')
+              handleSelectLayout(screenLayout === 'classroom' ? 'full' : 'classroom')
+            }}
+            title="Modo Aula Virtual: Profesor al centro arriba + Alumnos conectados alrededor"
+          >
+            <i className="ti ti-school" style={{ color: screenLayout === 'classroom' ? '#fff' : '#10b981' }} />
+            <span className={styles.slBtnLabel}>Aula</span>
           </button>
           <button
             type="button"
@@ -2054,6 +2214,20 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     stream={streams[programCamera] || null}
                     cameraKey={programCamera}
                     look={look}
+                    virtualSet={hasVirtualSet ? {
+                      enabled: true,
+                      hasVirtualSet: true,
+                      templateId: virtualSetTemplateId,
+                      customUrl: virtualSetCustomUrl,
+                      cameraRect: virtualSetCameraRect,
+                      chromaSettings: {
+                        enabled: chromaEnabled,
+                        keyColor: chromaColor,
+                        similarity: chromaSimilarity,
+                        smoothness: chromaSmoothness,
+                        despill: chromaDespill,
+                      },
+                    } : null}
                     directorCrop={effectiveCrop}
                     crops={cameraCrops}
                     masterCameraSlot={masterCameraSlot}
@@ -2078,6 +2252,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                     onPromotePipToMaster={() => handlePromoteToMaster(pipCameraSlot)}
                     onClosePip={() => handleSelectLayout('full')}
                     onOpenConnectModal={() => handleOpenConnectModal(programCamera)}
+                    allStreams={streams}
+                    cameraMeta={cameraMeta}
+                    slotsCount={slotsCount}
+                    onPromoteSlotToMaster={(slot) => handlePromoteToMaster(slot)}
+                    onToggleMuteSlot={(slot) => handleToggleCameraAudio(slot)}
+                    isSlotAudioMuted={isSlotAudioMuted}
+                    onOpenSlotConnectModal={(slot) => handleOpenConnectModal(slot)}
                   />
                 ) : (
                   <div className={styles.noSignalViewport} onClick={() => handleOpenConnectModal(programCamera)} style={{ cursor: 'pointer' }}>
@@ -2272,7 +2453,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               switchMode={switchMode}
               onToggleAiSwitchMode={() => setSwitchMode(m => m === 'ai' ? 'off' : 'ai')}
               directorStatus={directorStatus}
-              transitionMode={look?.transition || 'crossfade'}
+              transitionMode={look?.transition || 'cut'}
               onSelectTransitionMode={(mode) => setLookField('transition', mode)}
             />
 
@@ -2496,84 +2677,22 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   <span>+ CAM</span>
                 </button>
               )}
+              </div>
 
-              </div>
-              <div className={styles.camStripTools}>
-              {/* SELECTOR DE CALIDAD DE GRABACIÓN MASTER (4K UHD, 1080p, 720p) */}
-              <div className={styles.recordQualityGroup} title="Calidad de Grabación Master">
-                <span className={styles.recordQualityLabel}>Calidad:</span>
-                {[
-                  { id: '4k', label: '4K UHD', title: '4K Ultra HD (3840x2160 @ 35 Mbps) - Máxima nitidez para cámaras 4K' },
-                  { id: '1080p', label: '1080p', title: 'Full HD (1920x1080 @ 12 Mbps) - Estándar broadcast recomendado' },
-                  { id: '720p', label: '720p', title: 'HD (1280x720 @ 6 Mbps) - Ligero para streaming' },
-                ].map(q => (
-                  <button
-                    key={q.id}
-                    type="button"
-                    className={`${styles.qualityBtn} ${recordQuality === q.id ? styles.qualityBtnActive : ''}`}
-                    onClick={() => handleSelectRecordQuality(q.id)}
-                    title={q.title}
-                  >
-                    {q.label}
-                  </button>
-                ))}
-              </div>
               {isTouchDevice() && (
-                <button
-                  type="button"
-                  className={styles.flipCamBtn}
-                  onClick={() => switchMobilePrimaryFacing()}
-                  disabled={autoConnecting}
-                  title={mobilePrimaryFacing === 'environment' ? 'Cambiar a cámara frontal' : 'Cambiar a cámara trasera'}
-                >
-                  <i className={`ti ${mobilePrimaryFacing === 'environment' ? 'ti-camera-selfie' : 'ti-camera'}`} />
-                  {mobilePrimaryFacing === 'environment' ? 'Frontal' : 'Trasera'}
-                </button>
+                <div className={styles.camStripTools}>
+                  <button
+                    type="button"
+                    className={styles.flipCamBtn}
+                    onClick={() => switchMobilePrimaryFacing()}
+                    disabled={autoConnecting}
+                    title={mobilePrimaryFacing === 'environment' ? 'Cambiar a cámara frontal' : 'Cambiar a cámara trasera'}
+                  >
+                    <i className={`ti ${mobilePrimaryFacing === 'environment' ? 'ti-camera-selfie' : 'ti-camera'}`} />
+                    {mobilePrimaryFacing === 'environment' ? 'Frontal' : 'Trasera'}
+                  </button>
+                </div>
               )}
-              <div className={styles.switcherControls}>
-                <i className="ti ti-switch-horizontal" style={{ fontSize: 11, color: 'var(--text-muted)' }} />
-                <select
-                  className={styles.switchModeSelect}
-                  value={switchMode}
-                  onChange={e => setSwitchMode(e.target.value)}
-                  title="Modo de cambio de cámara"
-                >
-                  <option value="off">Manual</option>
-                  <option value="timer">Auto tiempo</option>
-                  {planLimits.aiDirector && <option value="ai">Director IA</option>}
-                </select>
-                {switchMode !== 'off' && (
-                  <>
-                    <input
-                      type="range"
-                      min={4}
-                      max={20}
-                      value={switchInterval}
-                      onChange={e => setSwitchInterval(+e.target.value)}
-                      className={styles.switchInterval}
-                      title={switchMode === 'ai'
-                        ? `Corte mín. ${switchInterval}s entre CAM 1/CAM 3 · zoom rostro 10s en laterales`
-                        : `Cada ${switchInterval}s`}
-                    />
-                    <span className={styles.switchIntervalVal}>{switchInterval}s</span>
-                  </>
-                )}
-              </div>
-              {/* FORMAT SELECTOR + MIC MUTE + SOCIAL PRESETS */}
-              <div className={styles.fmtSelector}>
-                <MicMuteButton muted={micMuted} onToggle={toggleMicMute} />
-                {/* BOTÓN DIRECTO TRANSMISIÓN EN VIVO */}
-                <button
-                  type="button"
-                  className={`${styles.bottomLiveBtn} ${isLive ? styles.bottomLiveBtnActive : ''}`}
-                  onClick={() => setShowLiveModal(true)}
-                  title="Configurar transmisión en vivo (Facebook Live, YouTube, TikTok)"
-                >
-                  <i className="ti ti-broadcast" style={{ color: isLive ? '#fff' : '#1877f2', fontSize: 13 }} />
-                  <span>{isLive ? `● EN VIVO (${formatLiveDuration(liveDuration)})` : '🔴 Transmitir'}</span>
-                </button>
-              </div>
-              </div>
             </div>
             </div>{/* stageStack */}
           </div>
@@ -3447,6 +3566,45 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
             )}
           </div>
 
+          {/* ESCENARIOS VIRTUALES & CROMAKEY */}
+          <div className={styles.prSection}>
+            <button
+              type="button"
+              className={`${styles.sectionToggle} ${openSections.virtualSet ? styles.sectionToggleActive : ''}`}
+              onClick={() => toggleSection('virtualSet')}
+            >
+              <i className="ti ti-background" style={{ color: chromaEnabled || hasVirtualSet ? '#10b981' : undefined }} />
+              <span className={styles.sectionToggleTitle}>Escenarios Virtuales & Croma</span>
+              <span className={`${styles.sectionToggleBadge} ${chromaEnabled ? styles.badgeActiveGreen : ''}`}>
+                {chromaEnabled ? '● CROMA ON' : (hasVirtualSet ? 'Set activo' : 'Desactivado')}
+              </span>
+              <i className={`ti ti-chevron-${openSections.virtualSet ? 'up' : 'down'} ${styles.sectionChevron}`} />
+            </button>
+            {openSections.virtualSet && (
+              <div className={styles.sectionBody}>
+                <VirtualSetPanel
+                  templateId={virtualSetTemplateId}
+                  customUrl={virtualSetCustomUrl}
+                  cameraScale={virtualSetCameraScale}
+                  chromaEnabled={chromaEnabled}
+                  chromaColor={chromaColor}
+                  chromaSimilarity={chromaSimilarity}
+                  chromaSmoothness={chromaSmoothness}
+                  chromaDespill={chromaDespill}
+                  onTemplateChange={setVirtualSetTemplateId}
+                  onCustomUpload={handleVirtualSetCustomUpload}
+                  onClearCustom={handleVirtualSetClearCustom}
+                  onCameraScaleChange={setVirtualSetCameraScale}
+                  onChromaToggle={handleChromaToggle}
+                  onChromaColorChange={handleChromaColorChange}
+                  onChromaSimilarityChange={handleChromaSimilarityChange}
+                  onChromaSmoothnessChange={handleChromaSmoothnessChange}
+                  onChromaDespillChange={handleChromaDespillChange}
+                />
+              </div>
+            )}
+          </div>
+
           {aiConfigured && (
             <div className={styles.prSection}>
               <button
@@ -3548,8 +3706,9 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
             </div>
           )}
 
-          {/* RECORD CONTROLS — Único botón principal para iniciar/detener */}
+          {/* RECORD CONTROLS & MASTER BUTTONS */}
           <div className={styles.recControlsContainer}>
+            {/* 1. INICIAR / DETENER GRABACIÓN */}
             <button
               type="button"
               className={`${styles.mainRecBtn} ${recording ? styles.mainRecBtnActive : ''}`}
@@ -3562,6 +3721,36 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   REC {formatDuration(duration)}
                 </span>
               )}
+            </button>
+
+            {/* 2. TRANSMITIR EN VIVO (DEBAJO DE GRABACIÓN) */}
+            <button
+              type="button"
+              className={`${styles.panelLiveBtn} ${isLive ? styles.panelLiveBtnActive : ''}`}
+              onClick={() => setShowLiveModal(true)}
+              title="Transmitir en vivo a Facebook Live, YouTube y TikTok"
+            >
+              <i className="ti ti-broadcast" style={{ fontSize: 15 }} />
+              <span>{isLive ? `● EMITIENDO EN VIVO (${formatLiveDuration(liveDuration)})` : 'TRANSMITIR EN VIVO'}</span>
+            </button>
+
+            {/* 3. MICRÓFONO (DEBAJO DE TRANSMISIÓN) */}
+            <button
+              type="button"
+              className={`${styles.panelMicBtn} ${micMuted ? styles.panelMicBtnMuted : styles.panelMicBtnActive}`}
+              onClick={toggleMicMute}
+              title={micMuted ? 'Micrófono silenciado — Clic para activar' : 'Micrófono en vivo — Clic para silenciar'}
+            >
+              <div className={styles.panelMicBtnLeft}>
+                <i className={`ti ${micMuted ? 'ti-microphone-off' : 'ti-microphone'}`} style={{ fontSize: 15 }} />
+                <span>{micMuted ? 'MICRÓFONO: SILENCIADO' : 'MICRÓFONO: EN VIVO'}</span>
+              </div>
+              <div className={styles.panelMicLevelWrap} title={`Nivel de captación: ${micLevel}%`}>
+                <div
+                  className={styles.panelMicLevelBar}
+                  style={{ width: `${micMuted ? 0 : Math.min(100, micLevel * 1.5)}%` }}
+                />
+              </div>
             </button>
           </div>
           </div>{/* panelScrollInner */}

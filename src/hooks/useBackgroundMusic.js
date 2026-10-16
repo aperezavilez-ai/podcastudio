@@ -98,13 +98,18 @@ export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } 
     }
 
     const onError = () => {
+      if (track?.fallbackUrl && audio.src !== track.fallbackUrl && !audio.src.endsWith(track.fallbackUrl)) {
+        console.warn('[useBackgroundMusic] Fallo pista local, reintentando con fallback:', track.fallbackUrl)
+        audio.src = track.fallbackUrl
+        return
+      }
       setLoading(false)
       setError('No se pudo cargar la pista')
       setPlaying(false)
     }
 
     audio.addEventListener('canplay', onCanPlay, { once: true })
-    audio.addEventListener('error', onError, { once: true })
+    audio.addEventListener('error', onError)
 
     return () => {
       audio.removeEventListener('canplay', onCanPlay)

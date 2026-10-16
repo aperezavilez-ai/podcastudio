@@ -1,34 +1,124 @@
-// Pistas musicales libres de derechos de emisión (Kevin MacLeod / Incompetech — Broadcast Studio Standard)
+// Pistas musicales libres de derechos de emisión (Broadcast Studio Standard)
 export const MUSIC_GENRES = {
-  tech: 'Tecnología',
-  business: 'Negocios',
-  interview: 'Entrevista',
-  comedy: 'Comedia',
-  news: 'Noticias',
-  wellness: 'Bienestar',
-  sports: 'Deportes',
-  culture: 'Cultura',
-  education: 'Educación',
-  marketing: 'Marketing',
-  crime: 'True crime',
-  general: 'General',
+  rock: 'Rock Alternativo Enérgico',
+  popelectro: 'Pop Electrónico Moderno',
+  reggae: 'Reggae Relajado',
+  lofi: 'Lo-Fi Chillhop',
+  corporate: 'Corporate / Tech Inspiring',
+  synthwave: 'Synthwave / Cyberpunk',
 }
 
 export const MUSIC_TRACKS = [
-  { id: 'interview-01', name: 'Lobby Time', sub: 'Lofi Chillhop / Entrevista', genre: 'interview', mood: 'warm', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Lobby%20Time.mp3' },
-  { id: 'tech-01', name: 'Deliberate Thought', sub: 'Tech Modern / Innovación', genre: 'tech', mood: 'focus', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Deliberate%20Thought.mp3' },
-  { id: 'general-01', name: 'Chill Wave', sub: 'Groove Suave / Fondo Estudio', genre: 'general', mood: 'calm', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Chill.mp3' },
-  { id: 'business-01', name: 'Local Forecast', sub: 'Bossa & Lounge Corporativo', genre: 'business', mood: 'professional', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Local%20Forecast%20-%20Elevator.mp3' },
-  { id: 'comedy-01', name: 'Carefree', sub: 'Alegre / Dinámico', genre: 'comedy', mood: 'playful', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Carefree.mp3' },
-  { id: 'comedy-02', name: 'Sneaky Snitch', sub: 'Comedia Clásica / Bromas', genre: 'comedy', mood: 'funny', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Sneaky%20Snitch.mp3' },
-  { id: 'interview-02', name: 'Airport Lounge', sub: 'Lounge Sofisticado / Charla', genre: 'interview', mood: 'sophisticated', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Airport%20Lounge.mp3' },
-  { id: 'marketing-01', name: 'Groove Grove', sub: 'Funk & Beat Moderno', genre: 'marketing', mood: 'catchy', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Groove%20Grove.mp3' },
-  { id: 'news-01', name: 'Daily Beetle', sub: 'Noticiero Matutino', genre: 'news', mood: 'urgent', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Daily%20Beetle.mp3' },
-  { id: 'culture-01', name: 'Modern Jazz Samba', sub: 'Jazz Latino Acústico', genre: 'culture', mood: 'organic', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Modern%20Jazz%20Samba.mp3' },
-  { id: 'wellness-01', name: 'Cool Vibes', sub: 'Deep Jazz / Nocturno', genre: 'wellness', mood: 'peaceful', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Cool%20Vibes.mp3' },
-  { id: 'culture-02', name: 'Bossa Antigua', sub: 'Bossa Nova Acústica', genre: 'culture', mood: 'warm', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Bossa%20Antigua.mp3' },
-  { id: 'crime-01', name: 'Covert Affair', sub: 'Misterio & Suspenso', genre: 'crime', mood: 'mystery', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Covert%20Affair.mp3' },
-  { id: 'education-01', name: 'Mining by Moonlight', sub: 'Reflexivo & Crecimiento', genre: 'education', mood: 'hopeful', url: 'https://incompetech.com/music/royalty-free/mp3-royaltyfree/Mining%20by%20Moonlight.mp3' },
+  // 1. Rock Alternativo Enérgico
+  {
+    id: 'rock-01',
+    name: 'On Parole (High Energy)',
+    sub: 'Rock Alternativo Enérgico · Riffs de guitarra eléctrica, batería contundente y bajo profundo',
+    genre: 'rock',
+    mood: 'energetic',
+    url: '/music/rock-energetic.mp3',
+    fallbackUrl: 'https://assets.mixkit.co/music/1188/1188.mp3',
+  },
+  {
+    id: 'rock-02',
+    name: 'Cat Walk (Alt Rock Beats)',
+    sub: 'Rock Alternativo · Alta energía para transiciones dinámicas de cámara',
+    genre: 'rock',
+    mood: 'dynamic',
+    url: '/music/rock-alt-motivation.mp3',
+    fallbackUrl: 'https://assets.mixkit.co/music/519/519.mp3',
+  },
+
+  // 2. Pop Electrónico Moderno
+  {
+    id: 'popelectro-01',
+    name: 'Pop Upbeat Delight',
+    sub: 'Pop Electrónico Moderno · Sintetizadores brillantes, percusión digital y melodías pegadizas',
+    genre: 'popelectro',
+    mood: 'upbeat',
+    url: '/music/pop-electronic.mp3',
+    fallbackUrl: 'https://assets.mixkit.co/music/729/729.mp3',
+  },
+
+  // 3. Reggae Relajado
+  {
+    id: 'reggae-01',
+    name: 'My Last Mojito',
+    sub: 'Reggae Relajado · Ritmo tradicional, guitarra en contratiempo (skank) y bajo cálido',
+    genre: 'reggae',
+    mood: 'relaxed',
+    url: '/music/reggae-relaxed.mp3',
+    fallbackUrl: 'https://assets.mixkit.co/music/814/814.mp3',
+  },
+  {
+    id: 'reggae-02',
+    name: 'Jamaican Positive Flow',
+    sub: 'Reggae Caribeño · Batería suave, percusión caribeña y ambiente fluido',
+    genre: 'reggae',
+    mood: 'positive',
+    url: '/music/reggae-jamaican.mp3',
+    fallbackUrl: 'https://assets.mixkit.co/music/241/241.mp3',
+  },
+
+  // 4. Lo-Fi Chillhop
+  {
+    id: 'lofi-01',
+    name: 'Sleepy Cat Chillhop',
+    sub: 'Lo-Fi Chillhop · Textura de vinilo, piano suave y bajos profundos para concentración',
+    genre: 'lofi',
+    mood: 'focus',
+    url: '/music/lofi-chillhop.mp3',
+    fallbackUrl: 'https://assets.mixkit.co/music/135/135.mp3',
+  },
+  {
+    id: 'lofi-02',
+    name: 'Sweet September',
+    sub: 'Lo-Fi Chillhop · Beats relajados para escenas de diseño o codificación',
+    genre: 'lofi',
+    mood: 'calm',
+    url: '/music/lofi-sweet-september.mp3',
+    fallbackUrl: 'https://assets.mixkit.co/music/282/282.mp3',
+  },
+
+  // 5. Corporate / Tech Inspiring
+  {
+    id: 'corporate-01',
+    name: 'Driving Ambition (Tech SaaS)',
+    sub: 'Corporate Inspiring · Piano acústico limpio, cuerdas de fondo y percusión ascendente',
+    genre: 'corporate',
+    mood: 'inspiring',
+    url: '/music/corporate-inspiring.mp3',
+    fallbackUrl: 'https://assets.mixkit.co/music/32/32.mp3',
+  },
+  {
+    id: 'corporate-02',
+    name: 'Close Up Success Metrics',
+    sub: 'Tech Corporate · Tono motivacional para métricas de éxito y lanzamientos',
+    genre: 'corporate',
+    mood: 'motivational',
+    url: '/music/corporate-close-up.mp3',
+    fallbackUrl: 'https://assets.mixkit.co/music/1167/1167.mp3',
+  },
+
+  // 6. Synthwave / Cyberpunk
+  {
+    id: 'synthwave-01',
+    name: 'Sun in Your Eyes (Cyber Pulse)',
+    sub: 'Synthwave / Cyberpunk · Electrónica retro-futurista, bajos arpegiados y cajas 80s',
+    genre: 'synthwave',
+    mood: 'cyberpunk',
+    url: '/music/synthwave-cyberpunk.mp3',
+    fallbackUrl: 'https://assets.mixkit.co/music/131/131.mp3',
+  },
+  {
+    id: 'synthwave-02',
+    name: 'Better Times (AI Tech Wave)',
+    sub: 'Synthwave Futurista · Resalta características de inteligencia artificial y código avanzado',
+    genre: 'synthwave',
+    mood: 'futuristic',
+    url: '/music/synthwave-better-times.mp3',
+    fallbackUrl: 'https://assets.mixkit.co/music/173/173.mp3',
+  },
 ]
 
 /** URL de preview Mixkit verificada */

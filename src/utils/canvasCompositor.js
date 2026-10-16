@@ -202,6 +202,7 @@ export function drawCompositorFrame(ctx, w, h, {
   secondaryVideo = null,
   tertiaryVideo = null,
   quaternaryVideo = null,
+  allVideos = null,
 }) {
   const useVirtualSet = background?.hasVirtualSet && background?.cameraRect
 
@@ -226,13 +227,13 @@ export function drawCompositorFrame(ctx, w, h, {
   const drawMainVideo = (v, crop) => {
     if (!v || v.readyState < 2 || !v.videoWidth) return
     if (useVirtualSet) {
-      drawVideoInset(ctx, v, w, h, background.cameraRect, crop, look)
+      drawVideoInset(ctx, v, w, h, background.cameraRect, crop, look, background?.chromaSettings)
     } else {
       drawVideoLayer(ctx, v, w, h, crop, look)
     }
   }
 
-  if (videoFrom && videoFrom !== video && progress < 1 && !useVirtualSet) {
+  if (videoFrom && videoFrom !== video && progress < 1 && !useVirtualSet && transitionMode !== 'cut') {
     drawCameraTransition(ctx, w, h, {
       videoFrom,
       videoTo: video,
@@ -439,6 +440,116 @@ export function drawCompositorFrame(ctx, w, h, {
       ctx.fillRect(halfW + 12, halfH + 12, halfW, halfH)
     }
     ctx.restore()
+  } else if (layout === 'classroom') {
+    // Modo Aula Virtual: Master centrado arriba (Profesor/Presentación) y tira de alumnos abajo
+    const isVertical = h > w
+    const masterH = Math.round(isVertical ? h * 0.62 : h * 0.70)
+    const masterW = isVertical ? w : Math.round(w * 0.82)
+    const masterX = Math.round((w - masterW) / 2)
+    const masterY = 0
+
+    // Fondo del aula
+    ctx.fillStyle = '#0a0a0f'
+    ctx.fillRect(0, 0, w, h)
+
+    // Master / Profesor
+    ctx.save()
+    ctx.beginPath()
+    if (ctx.roundRect) {
+      ctx.roundRect(masterX, masterY, masterW, masterH, [0, 0, 16, 16])
+    } else {
+      ctx.rect(masterX, masterY, masterW, masterH)
+    }
+    ctx.clip()
+    if (video && video.readyState >= 2 && video.videoWidth) {
+      drawVideoCover(ctx, video, masterX, masterY, masterW, masterH, directorCrop)
+    } else {
+      ctx.fillStyle = '#12121a'
+      ctx.fillRect(masterX, masterY, masterW, masterH)
+    }
+    ctx.restore()
+
+    // Borde elegante para Master
+    ctx.save()
+    ctx.strokeStyle = '#e8612a'
+    ctx.lineWidth = 2
+    if (ctx.roundRect) {
+      ctx.beginPath()
+      ctx.roundRect(masterX, masterY, masterW, masterH, [0, 0, 16, 16])
+      ctx.stroke()
+    }
+    ctx.restore()
+
+    // Etiqueta Profesor / Master
+    ctx.save()
+    ctx.fillStyle = 'rgba(0,0,0,0.75)'
+    const tagH = 26
+    const tagW = 140
+    if (ctx.roundRect) {
+      ctx.beginPath()
+      ctx.roundRect(masterX + 16, masterY + 16, tagW, tagH, 6)
+      ctx.fill()
+    } else {
+      ctx.fillRect(masterX + 16, masterY + 16, tagW, tagH)
+    }
+    ctx.fillStyle = '#f3f4f6'
+    ctx.font = 'bold 12px Inter, sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('🎓 MASTER / AULA', masterX + 16 + (tagW / 2), masterY + 16 + (tagH / 2))
+    ctx.restore()
+
+    // Tira de Alumnos / Cámaras secundarias abajo
+    const stripY = masterH + 10
+    const stripH = h - stripY - 10
+    const rawStudents = (allVideos ? Object.values(allVideos) : [secondaryVideo, tertiaryVideo, quaternaryVideo])
+      .filter(v => v && v !== video && v.readyState >= 2 && v.videoWidth)
+    
+    const studentList = rawStudents.length > 0 ? rawStudents : [secondaryVideo, tertiaryVideo, quaternaryVideo].filter(Boolean)
+    const count = Math.max(studentList.length, 1)
+    const maxVisible = 6
+    const visibleCount = Math.min(count, maxVisible)
+    const gap = 8
+    const totalGaps = (visibleCount + 1) * gap
+    const cardW = Math.min(Math.round((w - totalGaps) / visibleCount), Math.round(stripH * 1.5))
+    const totalRowW = visibleCount * cardW + (visibleCount - 1) * gap
+    const startX = Math.max(gap, Math.round((w - totalRowW) / 2))
+
+    for (let i = 0; i < visibleCount; i++) {
+      const sv = studentList[i]
+      const cx = startX + i * (cardW + gap)
+      ctx.save()
+      ctx.beginPath()
+      if (ctx.roundRect) {
+        ctx.roundRect(cx, stripY, cardW, stripH, 8)
+      } else {
+        ctx.rect(cx, stripY, cardW, stripH)
+      }
+      ctx.clip()
+      if (sv && sv.readyState >= 2 && sv.videoWidth) {
+        drawVideoCover(ctx, sv, cx, stripY, cardW, stripH, null)
+      } else {
+        ctx.fillStyle = '#161622'
+        ctx.fillRect(cx, stripY, cardW, stripH)
+        ctx.fillStyle = '#6b7280'
+        ctx.font = '11px Inter, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(`Alumno ${i + 1}`, cx + cardW / 2, stripY + stripH / 2)
+      }
+      ctx.restore()
+
+      // Borde del alumno
+      ctx.save()
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+      ctx.lineWidth = 1.5
+      if (ctx.roundRect) {
+        ctx.beginPath()
+        ctx.roundRect(cx, stripY, cardW, stripH, 8)
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
   } else {
     if (video && video.readyState >= 2 && video.videoWidth) {
       drawMainVideo(video, directorCrop)

@@ -2,7 +2,7 @@ import React from 'react'
 import styles from './DynamicZoomControl.module.css'
 import { ZOOM_PRESETS } from '../hooks/useDynamicZoom.js'
 
-export default function DynamicZoomControl({
+function DynamicZoomControl({
   activeCamera = 0,
   crop = null,
   zoom = null,
@@ -66,7 +66,7 @@ export default function DynamicZoomControl({
             }}
             title={p.label}
           >
-            {p.id === 'wide' ? '1.0x' : p.id === 'medium' ? '1.35x' : p.id === 'closeup' ? '1.75x' : '2.2x'}
+            {p.id === 'wide' ? '1.0x' : p.id === 'medium' ? '1.35x' : p.id === 'closeup' ? '1.75x' : p.id === 'tight' ? '2.2x' : p.id === 'far' ? '3.5x' : p.id === 'tele' ? '5.0x' : p.id === 'ultra' ? '8.0x' : `${p.zoom}x`}
           </button>
         ))}
       </div>
@@ -75,7 +75,7 @@ export default function DynamicZoomControl({
         <input
           type="range"
           min="1"
-          max="3"
+          max="8"
           step="0.05"
           value={currentZoom}
           onChange={(e) => {
@@ -147,3 +147,5 @@ export default function DynamicZoomControl({
     </div>
   )
 }
+
+export default React.memo(DynamicZoomControl)

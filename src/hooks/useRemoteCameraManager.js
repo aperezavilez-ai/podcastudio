@@ -128,9 +128,13 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
             try { peerConnectionsRef.current[slotIndex].close() } catch {}
           }
 
+          const callerLabel = payload.guestName
+            ? (payload.sessionRole === 'student' ? `Alumno: ${payload.guestName}` : payload.guestName)
+            : (payload.sessionRole === 'student' ? `Alumno CAM ${slotIndex + 1}` : `iPhone Remoto ${slotIndex + 1}`)
+
           const newPc = new RTCPeerConnection(RTC_CONFIG)
           peerConnectionsRef.current[slotIndex] = newPc
-          iceQueuesRef.current[slotIndex] = []
+          // No borrar iceQueuesRef aquí para no perder candidatos que llegaron antes de la oferta
           const trackMap = new Map()
           activeTracksRef.current[slotIndex] = trackMap
 
@@ -143,13 +147,21 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
             const compoundStream = new MediaStream(liveTracks)
             setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
             if (onStreamConnected) {
-              onStreamConnected(slotIndex, compoundStream, `iPhone Remoto ${slotIndex + 1}`)
+              onStreamConnected(slotIndex, compoundStream, callerLabel)
             }
           }
 
           newPc.ontrack = (trackEvent) => {
             const track = trackEvent.track
             if (!track) return
+
+            // Configurar el receiver para latencia ultra baja interactiva y perfecta sincronía labial
+            try {
+              const receiver = trackEvent.receiver
+              if (receiver && 'playoutDelayHint' in receiver) {
+                receiver.playoutDelayHint = 0
+              }
+            } catch {}
 
             trackMap.set(track.id, track)
 
@@ -199,22 +211,30 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
             }
           }
 
+          newPc.oniceconnectionstatechange = () => {
+            const ice = newPc.iceConnectionState
+            if (ice === 'connected' || ice === 'completed') {
+              setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
+              dispatchStreamUpdate()
+            }
+          }
+
           await newPc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
 
-          // Aplicar candidatos ICE encolados que llegaron antes del SDP
-          const queue = iceQueuesRef.current[slotIndex] || []
-          while (queue.length > 0) {
-            const cand = queue.shift()
-            try { await newPc.addIceCandidate(cand) } catch (err) { console.warn('ICE add error:', err) }
+          // Aplicar todos los candidatos ICE encolados que llegaron antes o durante el SDP
+          const initialQueue = iceQueuesRef.current[slotIndex] || []
+          iceQueuesRef.current[slotIndex] = []
+          for (const cand of initialQueue) {
+            try { await newPc.addIceCandidate(cand) } catch (err) { console.warn('[RemoteCamManager] ICE add error:', err) }
           }
 
           const answer = await newPc.createAnswer()
           await newPc.setLocalDescription(answer)
 
-          // Drenar candidatos adicionales
+          // Drenar candidatos adicionales recibidos mientras se generaba answer
           const postQueue = iceQueuesRef.current[slotIndex] || []
-          while (postQueue.length > 0) {
-            const cand = postQueue.shift()
+          iceQueuesRef.current[slotIndex] = []
+          for (const cand of postQueue) {
             try { await newPc.addIceCandidate(cand) } catch {}
           }
 

@@ -22,6 +22,7 @@ export function useAudioMix() {
   const ctxRef = useRef(null)
   const destRef = useRef(null)
   const masterSumGainRef = useRef(null)
+  const monitorSumGainRef = useRef(null)
   const monitorGainRef = useRef(null)
   const musicSourceRef = useRef(null)
   const musicGainRef = useRef(null)
@@ -37,18 +38,25 @@ export function useAudioMix() {
     mic: { source: null, gain: null, stream: null },
   })
 
-  // DSP Audio Nodes
+  // DSP Audio Nodes & Filters
   const lowCutFilterRef = useRef(null)
+  const lowCut2FilterRef = useRef(null)
+  const humNotchFilterRef = useRef(null)
   const deHissFilterRef = useRef(null)
+  const lowPassFilterRef = useRef(null)
   const eqLowRef = useRef(null)
   const eqMidRef = useRef(null)
   const eqHighRef = useRef(null)
+  const noiseGateGainRef = useRef(null)
+  const gateAnalyserRef = useRef(null)
+  const gateRafRef = useRef(null)
   const compressorRef = useRef(null)
   const dspSettingsRef = useRef(DEFAULT_DSP_SETTINGS)
-  const speakerEnabledRef = useRef(true) // Monitoreo en bocinas activo por defecto
+  const speakerEnabledRef = useRef(false) // Desactivado por defecto para evitar acople/chillido en bocinas
   const speakerVolumeRef = useRef(1.0)
 
   useEffect(() => () => {
+    if (gateRafRef.current) cancelAnimationFrame(gateRafRef.current)
     ctxRef.current?.close().catch(() => {})
   }, [])
 
@@ -72,63 +80,126 @@ export function useAudioMix() {
         window.addEventListener('pointerdown', unlockAudio, { once: true, passive: true })
       }
 
-      // DSP Chain Nodes
-      // 1. Filtro pasa-altos 80Hz (elimina retumbos, golpes en escritorio y ruido eléctrico de 50/60Hz)
-      const lowCut = ctx.createBiquadFilter()
-      lowCut.type = 'highpass'
-      lowCut.frequency.value = dspSettingsRef.current.lowCut ? 80 : 10
-      lowCutFilterRef.current = lowCut
+      // CADENA DSP BROADCAST PROFESIONAL:
+      // 1. Doble filtro pasa-altos en cascada a 95Hz (24dB/octava):
+      //    Elimina por completo el "zumbido de aire", ráfagas de aire acondicionado,
+      //    golpes en la mesa y retumbos graves sin perjudicar la calidez de la voz humana.
+      const lowCut1 = ctx.createBiquadFilter()
+      lowCut1.type = 'highpass'
+      lowCut1.frequency.value = dspSettingsRef.current.lowCut ? 95 : 10
+      lowCut1.Q.value = 0.707
+      lowCutFilterRef.current = lowCut1
 
-      // 2. Eliminador de siseo / his (corte suave a partir de 7500Hz)
+      const lowCut2 = ctx.createBiquadFilter()
+      lowCut2.type = 'highpass'
+      lowCut2.frequency.value = dspSettingsRef.current.lowCut ? 95 : 10
+      lowCut2.Q.value = 0.707
+      lowCut2FilterRef.current = lowCut2
+
+      // 2. Filtro Notch de 60Hz: Elimina zumbidos eléctricos de corriente alterna (hum eléctrico / bucles de masa)
+      const humNotch = ctx.createBiquadFilter()
+      humNotch.type = 'notch'
+      humNotch.frequency.value = 60
+      humNotch.Q.value = 6.0
+      humNotchFilterRef.current = humNotch
+
+      // 3. Eliminador profundo de siseo / hiss (High-Shelf a 6800Hz, -12dB)
       const deHiss = ctx.createBiquadFilter()
       deHiss.type = 'highshelf'
-      deHiss.frequency.value = 7500
-      deHiss.gain.value = dspSettingsRef.current.deHiss ? -9 : 0
+      deHiss.frequency.value = 6800
+      deHiss.gain.value = dspSettingsRef.current.deHiss ? -12 : 0
       deHissFilterRef.current = deHiss
 
-      // 3. EQ Bajos (Graves / Calidez de la voz - 200Hz)
+      // 4. Filtro pasa-bajos a 12500Hz: descarta frecuencias ultrasónicas y chillidos residuales de previos móviles
+      const lowPass = ctx.createBiquadFilter()
+      lowPass.type = 'lowpass'
+      lowPass.frequency.value = 12500
+      lowPassFilterRef.current = lowPass
+
+      // 5. EQ Bajos (Graves agradables / Cuerpo de la voz - 200Hz)
       const eqLow = ctx.createBiquadFilter()
       eqLow.type = 'lowshelf'
       eqLow.frequency.value = 200
       eqLow.gain.value = dspSettingsRef.current.eqBass
       eqLowRef.current = eqLow
 
-      // 4. EQ Medios (Presencia e inteligibilidad vocal - 1500Hz)
+      // 6. EQ Medios (Presencia e inteligibilidad vocal - 1600Hz)
       const eqMid = ctx.createBiquadFilter()
       eqMid.type = 'peaking'
-      eqMid.frequency.value = 1500
+      eqMid.frequency.value = 1600
       eqMid.Q.value = 1.1
       eqMid.gain.value = dspSettingsRef.current.eqMid
       eqMidRef.current = eqMid
 
-      // 5. EQ Agudos (Claridad y brillo vocal - 5500Hz)
+      // 7. EQ Agudos (Claridad vocal sin asperezas - 5000Hz)
       const eqHigh = ctx.createBiquadFilter()
       eqHigh.type = 'highshelf'
-      eqHigh.frequency.value = 5500
+      eqHigh.frequency.value = 5000
       eqHigh.gain.value = dspSettingsRef.current.eqTreble
       eqHighRef.current = eqHigh
 
-      // 6. Compresor de voz Broadcast (evita saturación y nivela volumen de voz)
+      // 8. Compuerta Inteligente de Ruido (Automated Soft Noise Gate)
+      //    Atenúa -22dB el ruido de fondo, his y zumbido de aire cuando la persona no está hablando
+      const noiseGateGain = ctx.createGain()
+      noiseGateGain.gain.value = 1.0
+      noiseGateGainRef.current = noiseGateGain
+
+      const gateAnalyser = ctx.createAnalyser()
+      gateAnalyser.fftSize = 512
+      gateAnalyser.smoothingTimeConstant = 0.2
+      gateAnalyserRef.current = gateAnalyser
+
+      // Monitor de nivel RMS para compuerta suave continua
+      const gateData = new Uint8Array(gateAnalyser.frequencyBinCount)
+      let lastCheck = 0
+      const runGateLoop = (timestamp) => {
+        if (!ctxRef.current) return
+        if (timestamp - lastCheck > 25) {
+          lastCheck = timestamp
+          if (dspSettingsRef.current.noiseReduction && noiseGateGainRef.current) {
+            gateAnalyser.getByteFrequencyData(gateData)
+            let sum = 0
+            for (let i = 0; i < gateData.length; i++) {
+              sum += gateData[i]
+            }
+            const avg = sum / gateData.length // 0 a 255
+            const now = ctx.currentTime
+            // Umbral de habla sensible: si el promedio supera 2.8, está hablando -> compuerta 100% abierta
+            // Si está en silencio/pausa vocal, atenuación suave a 0.40 (-8dB) que limpia siseo/aire sin cortar palabras
+            const targetGate = avg > 2.8 ? 1.0 : 0.40
+            noiseGateGainRef.current.gain.setTargetAtTime(targetGate, now, targetGate === 1.0 ? 0.003 : 0.12)
+          }
+        }
+        gateRafRef.current = requestAnimationFrame(runGateLoop)
+      }
+      gateRafRef.current = requestAnimationFrame(runGateLoop)
+
+      // 9. Compresor de voz Broadcast (evita saturación y nivela volumen de voz)
       const compressor = ctx.createDynamicsCompressor()
-      compressor.threshold.value = dspSettingsRef.current.compressor ? -24 : 0
-      compressor.knee.value = 12
+      compressor.threshold.value = dspSettingsRef.current.compressor ? -22 : 0
+      compressor.knee.value = 10
       compressor.ratio.value = dspSettingsRef.current.compressor ? 4 : 1
       compressor.attack.value = 0.003
-      compressor.release.value = 0.25
+      compressor.release.value = 0.20
       compressorRef.current = compressor
 
-      // 7. Ganancia maestra de micrófonos procesados
+      // 10. Ganancia maestra de micrófonos procesados
       const micGain = ctx.createGain()
-      micGain.gain.value = dspSettingsRef.current.micGain
+      micGain.gain.value = dspSettingsRef.current.micGain ?? 1.2
       micGainRef.current = micGain
 
       // Conexión en cadena DSP:
-      // lowCut -> deHiss -> eqLow -> eqMid -> eqHigh -> compressor -> micGain
-      lowCut.connect(deHiss)
-      deHiss.connect(eqLow)
+      // lowCut1 -> lowCut2 -> humNotch -> deHiss -> lowPass -> eqLow -> eqMid -> eqHigh -> gateAnalyser -> noiseGateGain -> compressor -> micGain
+      lowCut1.connect(lowCut2)
+      lowCut2.connect(humNotch)
+      humNotch.connect(deHiss)
+      deHiss.connect(lowPass)
+      lowPass.connect(eqLow)
       eqLow.connect(eqMid)
       eqMid.connect(eqHigh)
-      eqHigh.connect(compressor)
+      eqHigh.connect(gateAnalyser)
+      gateAnalyser.connect(noiseGateGain)
+      noiseGateGain.connect(compressor)
       compressor.connect(micGain)
 
       // Nodo Sumador Maestro
@@ -144,14 +215,22 @@ export function useAudioMix() {
       musicGainRef.current = musicGain
       musicGain.connect(masterSum)
 
-      // 1. Destino para Grabación en alta calidad
+      // 1. Destino para Grabación en alta calidad (mezcla maestra completa con todos los micros y música)
       masterSum.connect(destRef.current)
 
-      // 2. Destino para SALIDA DE AUDIO A BOCINAS / ALTAVOCES DE LA PC (Monitoreo en vivo)
+      // 2. Bus MIX-MINUS para SALIDA DE AUDIO A BOCINAS / ALTAVOCES DE LA PC (Monitoreo en vivo)
+      //    Regla de oro de ingeniería de audio: Las bocinas de la computadora reproducen
+      //    la música y los participantes/alumnos remotos, pero NUNCA el micrófono local
+      //    del presentador que está frente a esas mismas bocinas, erradicando al 100% el chillido/acople acústico.
+      const monitorSum = ctx.createGain()
+      monitorSum.gain.value = 1.0
+      monitorSumGainRef.current = monitorSum
+      musicGain.connect(monitorSum)
+
       const monitorGain = ctx.createGain()
       monitorGain.gain.value = speakerEnabledRef.current ? speakerVolumeRef.current : 0
       monitorGainRef.current = monitorGain
-      masterSum.connect(monitorGain)
+      monitorSum.connect(monitorGain)
       monitorGain.connect(ctx.destination)
     }
     return { ctx: ctxRef.current, dest: destRef.current }
@@ -166,10 +245,16 @@ export function useAudioMix() {
     const now = ctx.currentTime
 
     if (lowCutFilterRef.current) {
-      lowCutFilterRef.current.frequency.setTargetAtTime(s.lowCut ? 80 : 10, now, 0.05)
+      lowCutFilterRef.current.frequency.setTargetAtTime(s.lowCut ? 95 : 10, now, 0.05)
+    }
+    if (lowCut2FilterRef.current) {
+      lowCut2FilterRef.current.frequency.setTargetAtTime(s.lowCut ? 95 : 10, now, 0.05)
     }
     if (deHissFilterRef.current) {
-      deHissFilterRef.current.gain.setTargetAtTime(s.deHiss ? -9 : 0, now, 0.05)
+      deHissFilterRef.current.gain.setTargetAtTime(s.deHiss ? -12 : 0, now, 0.05)
+    }
+    if (lowPassFilterRef.current) {
+      lowPassFilterRef.current.frequency.setTargetAtTime(s.deHiss ? 12500 : 20000, now, 0.05)
     }
     if (eqLowRef.current) {
       eqLowRef.current.gain.setTargetAtTime(s.eqBass, now, 0.05)
@@ -181,11 +266,11 @@ export function useAudioMix() {
       eqHighRef.current.gain.setTargetAtTime(s.eqTreble, now, 0.05)
     }
     if (compressorRef.current) {
-      compressorRef.current.threshold.setTargetAtTime(s.compressor ? -24 : 0, now, 0.05)
+      compressorRef.current.threshold.setTargetAtTime(s.compressor ? -22 : 0, now, 0.05)
       compressorRef.current.ratio.setTargetAtTime(s.compressor ? 4 : 1, now, 0.05)
     }
     if (micGainRef.current) {
-      micGainRef.current.gain.setTargetAtTime(s.micGain ?? 1, now, 0.05)
+      micGainRef.current.gain.setTargetAtTime(s.micGain ?? 1.2, now, 0.05)
     }
   }, [])
 
@@ -215,6 +300,12 @@ export function useAudioMix() {
     if (!ch.gain) {
       const g = ctx.createGain()
       g.connect(lowCutFilterRef.current)
+      // Conectar fuentes remotas/participantes a la salida de bocinas Mix-Minus
+      // REGLA ACÚSTICA CRÍTICA: 'master' y 'mic' son el presentador local frente a la PC;
+      // NUNCA deben enviarse a las bocinas para erradicar al 100% el acople/chillido acústico.
+      if (channelKey !== 'mic' && channelKey !== 'master' && monitorSumGainRef.current) {
+        try { g.connect(monitorSumGainRef.current) } catch {}
+      }
       ch.gain = g
     }
 
@@ -229,12 +320,14 @@ export function useAudioMix() {
         ch.stream = stream
 
         // En Chromium/Safari: los MediaStreams de WebRTC requieren un elemento de audio
-        // activo para que el motor WebRTC decodifique los paquetes de audio entrantes
+        // activo para que el motor WebRTC decodifique los paquetes de audio entrantes.
+        // Lo mantenemos en muted=true para que decodifique sin duplicar salida en bocinas.
         if (!ch.audioHelper && typeof Audio !== 'undefined') {
           const a = new Audio()
           a.autoplay = true
           a.playsInline = true
-          a.volume = 0.0001
+          a.muted = true
+          a.volume = 0
           ch.audioHelper = a
         }
         if (ch.audioHelper) {
@@ -258,26 +351,28 @@ export function useAudioMix() {
     masterMuted = false,
     masterGain = 1.0,
     pipStream = null,
-    pipMuted = true,
+    pipMuted = false,
     pipGain = 1.0,
     splitStream = null,
-    splitMuted = true,
+    splitMuted = false,
     splitGain = 1.0,
     tripleStream = null,
-    tripleMuted = true,
+    tripleMuted = false,
     tripleGain = 1.0,
     quadStream = null,
-    quadMuted = true,
+    quadMuted = false,
     quadGain = 1.0,
     extMicStream = null,
     extMicMuted = false,
   }) => {
-    updateChannel('master', masterStream, masterMuted, masterGain)
-    updateChannel('pip', pipStream, pipMuted, pipGain)
-    updateChannel('split', splitStream, splitMuted, splitGain)
-    updateChannel('triple', tripleStream, tripleMuted, tripleGain)
-    updateChannel('quad', quadStream, quadMuted, quadGain)
-    updateChannel('mic', extMicStream, extMicMuted)
+    // Cámaras remotas y móviles reciben preamplificador 1.8x para nivelar su volumen broadcast
+    updateChannel('master', masterStream, masterMuted, masterGain * 1.8)
+    updateChannel('pip', pipStream, pipMuted, pipGain * 1.8)
+    updateChannel('split', splitStream, splitMuted, splitGain * 1.8)
+    updateChannel('triple', tripleStream, tripleMuted, tripleGain * 1.8)
+    updateChannel('quad', quadStream, quadMuted, quadGain * 1.8)
+    // Micrófono de PC / USB recibe preamplificador 1.8x para captación clara
+    updateChannel('mic', extMicStream, extMicMuted, 1.8)
   }, [updateChannel])
 
   // Salida de audio a bocinas / altavoces de la PC
@@ -357,6 +452,9 @@ export function useAudioMix() {
       applyDspSettings(dspSettings)
     }
 
+    const masterHasLiveAudio = Boolean(masterStream?.getAudioTracks?.()?.some(t => t.readyState === 'live'))
+    const shouldMuteExtMic = masterHasLiveAudio && !masterMuted
+
     syncAudioSources({
       masterStream,
       masterMuted,
@@ -369,7 +467,7 @@ export function useAudioMix() {
       quadStream,
       quadMuted,
       extMicStream: micStream,
-      extMicMuted: false,
+      extMicMuted: shouldMuteExtMic,
     })
 
     setMusicMix({ musicEl, volume: musicVolume, playing: musicPlaying })

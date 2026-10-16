@@ -2,7 +2,7 @@ import React from 'react'
 import { getSlotLabel } from '../config/cameraSlots.js'
 import styles from './SwitcherMasterBar.module.css'
 
-export default function SwitcherMasterBar({
+function SwitcherMasterBar({
   programCamera = 0,
   previewCamera = null,
   cameraMeta = {},
@@ -34,7 +34,7 @@ export default function SwitcherMasterBar({
   switchMode = 'off',
   onToggleAiSwitchMode = () => {},
   directorStatus = '',
-  transitionMode = 'crossfade',
+  transitionMode = 'cut',
   onSelectTransitionMode = () => {},
   pipAudioMuted = true,
   onTogglePipAudio = () => {},
@@ -120,6 +120,21 @@ export default function SwitcherMasterBar({
           >
             <i className="ti ti-grid-dots" />
             <span>4</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles.layoutBtn} ${screenLayout === 'classroom' ? styles.layoutBtnActive : ''}`}
+            onClick={() => onSelectLayout('classroom')}
+            title="Aula Virtual: Profesor en Master (arriba al centro) + Todos los alumnos alrededor"
+            style={{
+              background: screenLayout === 'classroom' ? '#e8612a' : 'transparent',
+              color: screenLayout === 'classroom' ? '#fff' : 'inherit',
+              borderColor: screenLayout === 'classroom' ? '#e8612a' : undefined,
+              gap: 4,
+            }}
+          >
+            <i className="ti ti-school" />
+            <span>Aula</span>
           </button>
         </div>
 
@@ -367,10 +382,10 @@ export default function SwitcherMasterBar({
             onChange={(e) => onSelectTransitionMode(e.target.value)}
             title="Efecto de transición entre cámaras"
           >
+            <option value="cut">Corte limpio (Cut)</option>
             <option value="crossfade">Disolución (Suave)</option>
             <option value="push">Barrido (Push)</option>
             <option value="dip">Fundido a negro (Dip)</option>
-            <option value="cut">Corte limpio (Cut)</option>
           </select>
         </div>
 
@@ -413,3 +428,5 @@ export default function SwitcherMasterBar({
     </div>
   )
 }
+
+export default React.memo(SwitcherMasterBar)

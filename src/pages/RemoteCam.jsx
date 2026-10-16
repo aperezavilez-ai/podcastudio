@@ -35,6 +35,8 @@ export default function RemoteCam() {
   const [searchParams] = useSearchParams()
   const slot = searchParams.get('slot') || '1'
   const room = searchParams.get('room') || `pcd_cam_${slot}`
+  const guestName = searchParams.get('name') || ''
+  const sessionRole = searchParams.get('role') || 'guest'
 
   const [active, setActive] = useState(false)
   const [status, setStatus] = useState('idle') // idle | connecting | connected | error
@@ -53,6 +55,8 @@ export default function RemoteCam() {
   const wakeLockRef = useRef(null)
   const videoSenderRef = useRef(null)
   const audioSenderRef = useRef(null)
+  const offerSentRef = useRef(false)
+  const isOfferingRef = useRef(false)
 
   // Responder a pings de descubrimiento para que el estudio detecte este celular automáticamente
   useEffect(() => {
@@ -64,7 +68,10 @@ export default function RemoteCam() {
     const phoneId = 'phone_' + Math.random().toString(36).substring(2, 8)
     const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent)
     const isAndroid = /Android/i.test(navigator.userAgent)
-    const deviceName = isIos ? 'iPhone' : isAndroid ? 'Android' : 'Celular Móvil'
+    const deviceType = isIos ? 'iPhone' : isAndroid ? 'Android' : 'Celular Móvil'
+    const deviceName = guestName.trim()
+      ? `${guestName.trim()} (${deviceType})`
+      : `${deviceType} (Cámara Wi-Fi)`
 
     presenceChannel.on('broadcast', { event: 'ping-presence' }, () => {
       presenceChannel.send({
@@ -72,10 +79,12 @@ export default function RemoteCam() {
         event: 'pong-presence',
         payload: {
           id: phoneId,
-          deviceName: `${deviceName} (Cámara Wi-Fi)`,
+          deviceName,
           facing: facingMode,
           slot,
           roomCode: room,
+          guestName: guestName.trim() || undefined,
+          sessionRole,
           available: true,
         },
       }).catch(() => {})
@@ -132,6 +141,8 @@ export default function RemoteCam() {
 
     videoSenderRef.current = null
     audioSenderRef.current = null
+    offerSentRef.current = false
+    isOfferingRef.current = false
     iceQueueRef.current = []
     setActive(false)
     setStatus('idle')
@@ -154,13 +165,32 @@ export default function RemoteCam() {
     pcRef.current = pc
     iceQueueRef.current = []
 
-    // Agregar tracks locales (video y audio para micrófono del celular)
+    // Agregar tracks locales (video y audio para micrófono del celular con parámetros de alta tasa de bits)
     localStream.getTracks().forEach((track) => {
       const sender = pc.addTrack(track, localStream)
       if (track.kind === 'video') {
         videoSenderRef.current = sender
+        try {
+          const params = sender.getParameters() || {}
+          if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
+          params.encodings[0].maxBitrate = 3500000 // 3.5 Mbps Full HD broadcast
+          params.encodings[0].priority = 'high'
+          params.encodings[0].networkPriority = 'high'
+          if ('degradationPreference' in params) {
+            params.degradationPreference = 'maintain-framerate'
+          }
+          sender.setParameters(params).catch(() => {})
+        } catch {}
       } else if (track.kind === 'audio') {
         audioSenderRef.current = sender
+        try {
+          const params = sender.getParameters() || {}
+          if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
+          params.encodings[0].maxBitrate = 192000 // 192 kbps estéreo / voz limpia
+          params.encodings[0].priority = 'high'
+          params.encodings[0].networkPriority = 'high'
+          sender.setParameters(params).catch(() => {})
+        } catch {}
       }
     })
 
@@ -188,6 +218,7 @@ export default function RemoteCam() {
 
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState
+      console.log('[RemoteCam] Connection state:', s)
       if (s === 'connected') {
         setStatus('connected')
       } else if (s === 'disconnected' || s === 'failed') {
@@ -197,12 +228,27 @@ export default function RemoteCam() {
       }
     }
 
+    pc.oniceconnectionstatechange = () => {
+      const ice = pc.iceConnectionState
+      console.log('[RemoteCam] ICE connection state:', ice)
+      if (ice === 'connected' || ice === 'completed') {
+        setStatus('connected')
+      } else if (ice === 'failed') {
+        console.warn('[RemoteCam] ICE connection falló, intentando reconexión...')
+        setStatus('connecting')
+        offerSentRef.current = false
+        sendOffer()
+      }
+    }
+
     // Función auxiliar para crear y enviar oferta SDP sin duplicados ni colisiones
     const sendOffer = async () => {
+      if (isOfferingRef.current || offerSentRef.current) return
+      isOfferingRef.current = true
       try {
         if (!pc || pc.signalingState === 'closed') return
-        if (pc.signalingState === 'have-local-offer') {
-          console.log('[RemoteCam] Ya existe una oferta en proceso hacia el estudio.')
+        if (pc.signalingState !== 'stable') {
+          console.log('[RemoteCam] Signaling state no es stable:', pc.signalingState)
           return
         }
         const offer = await pc.createOffer({
@@ -218,10 +264,16 @@ export default function RemoteCam() {
             sdp: offer,
             sender: 'phone',
             slot,
+            guestName: guestName.trim() || undefined,
+            sessionRole,
           },
         })
+        offerSentRef.current = true
+        console.log('[RemoteCam] Oferta WebRTC enviada al estudio exitosamente')
       } catch (err) {
         console.error('Error enviando offer WebRTC:', err)
+      } finally {
+        isOfferingRef.current = false
       }
     }
 
@@ -232,7 +284,9 @@ export default function RemoteCam() {
 
       if (payload.type === 'studio-ready') {
         // El estudio está listo para recibir nuestro feed
-        await sendOffer()
+        if (!offerSentRef.current) {
+          await sendOffer()
+        }
         return
       }
 
@@ -245,8 +299,8 @@ export default function RemoteCam() {
 
           // Aplicar candidatos encolados
           const queue = iceQueueRef.current || []
-          while (queue.length > 0) {
-            const cand = queue.shift()
+          iceQueueRef.current = []
+          for (const cand of queue) {
             try { await pc.addIceCandidate(cand) } catch (e) { console.warn('ICE add error:', e) }
           }
         } catch (err) {
@@ -271,10 +325,12 @@ export default function RemoteCam() {
 
       if (payload.type === 'studio-disconnect') {
         setStatus('connecting')
+        offerSentRef.current = false
       }
     })
 
     channel.subscribe(async (subStatus) => {
+      console.log('[RemoteCam] Estado de suscripción canal:', subStatus)
       if (subStatus === 'SUBSCRIBED') {
         // Notificar al estudio que el teléfono está listo
         await channel.send({
@@ -282,17 +338,24 @@ export default function RemoteCam() {
           event: 'signal',
           payload: { type: 'phone-ready', slot, sender: 'phone' },
         })
-        // Enviar la oferta inicial tras breve espera para que el canal se propague
+        // Enviar la oferta inicial tras breve espera si el estudio no respondió antes
         setTimeout(() => {
-          sendOffer()
-        }, 300)
+          if (!offerSentRef.current) {
+            sendOffer()
+          }
+        }, 500)
+      } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
+        console.warn('[RemoteCam] Error en canal de señalización:', subStatus)
+        setErrorMsg('Error en el canal de comunicación con el estudio. Recarga la página para reintentar.')
       }
     })
-  }, [room, slot])
+  }, [room, slot, guestName, sessionRole])
 
   // Iniciar la captura de cámara con audio del micrófono
   const startCamera = async (targetFacing = 'environment') => {
     setErrorMsg(null)
+    offerSentRef.current = false
+    isOfferingRef.current = false
     try {
       const audioConstraints = {
         echoCancellation: true,
@@ -307,14 +370,19 @@ export default function RemoteCam() {
             facingMode: { ideal: targetFacing },
             width: { ideal: 1920, max: 1920 },
             height: { ideal: 1080, max: 1080 },
-            frameRate: { ideal: 30, max: 60 },
+            frameRate: { ideal: 30, max: 30 },
           },
           audio: audioConstraints,
         })
       } catch {
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: targetFacing } },
+            video: {
+              facingMode: { ideal: targetFacing },
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
+              frameRate: { ideal: 30, max: 30 },
+            },
             audio: true,
           })
         } catch {
@@ -579,10 +647,21 @@ export default function RemoteCam() {
             <i className="ti ti-device-mobile" />
           </div>
 
-          <span className={styles.slotBadgeLarge}>CANAL CAM {slot}</span>
-          <h1 className={styles.title}>Cámara Móvil Inalámbrica</h1>
+          <span className={styles.slotBadgeLarge}>
+            {sessionRole === 'student' ? 'AULA VIRTUAL' : sessionRole === 'cohost' ? 'CO-PRESENTADOR' : 'INVITADO EN VIVO'} • CANAL CAM {slot}
+          </span>
+          <h1 className={styles.title}>
+            {guestName ? `¡Hola, ${guestName}!` : 'Cámara Móvil Inalámbrica'}
+          </h1>
           <p className={styles.desc}>
-            Conecta la cámara de tu iPhone en tiempo real con el estudio sin necesidad de instalar ninguna aplicación.
+            {guestName
+              ? (sessionRole === 'student'
+                  ? 'Bienvenido/a a tu clase virtual. Conéctate con video HD y audio en vivo con tu profesor y compañeros sin instalar nada.'
+                  : sessionRole === 'cohost'
+                  ? 'Bienvenido/a al estudio. Conéctate con audio y video en vivo como co-presentador de la transmisión.'
+                  : 'Bienvenido/a a la transmisión. Conéctate con audio y video en tiempo real directamente con el estudio.')
+              : 'Conecta la cámara de tu smartphone en tiempo real con el estudio sin necesidad de instalar ninguna aplicación.'
+            }
           </p>
 
           <div style={{ display: 'flex', gap: 10, margin: '8px 0 16px', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -655,7 +734,9 @@ export default function RemoteCam() {
             <div className={`${styles.tallyPill} ${status === 'connected' ? styles.tallyLive : styles.tallyConnecting}`}>
               <div className={status === 'connected' ? styles.dotLive : styles.dotConnecting} />
               <span>
-                {status === 'connected' ? `AL AIRE • CAM ${slot}` : 'CONECTANDO CON ESTUDIO...'}
+                {status === 'connected'
+                  ? (guestName ? `AL AIRE • ${guestName} (CAM ${slot})` : `AL AIRE • CAM ${slot}`)
+                  : 'CONECTANDO CON ESTUDIO...'}
               </span>
             </div>
 

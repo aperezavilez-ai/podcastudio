@@ -110,11 +110,12 @@ export function useStudioCompositor({
   const prevCam = prevCameraRef.current
   const currentCam = activeCamera ?? 0
   if (prevCam !== currentCam) {
-    const mode = look?.transition || 'crossfade'
-    transitionFromRef.current = prevCam
+    const mode = look?.transition || 'cut'
     if (mode !== 'cut') {
+      transitionFromRef.current = prevCam
       transitionStartRef.current = performance.now()
     } else {
+      transitionFromRef.current = currentCam
       transitionStartRef.current = null
     }
     prevCameraRef.current = currentCam
@@ -140,7 +141,7 @@ export function useStudioCompositor({
     recordStartMs: recordStartRef.current,
     recordDurationSec,
     transitionStartMs: transitionStartRef.current,
-    transitionMode: look?.transition || 'crossfade',
+    transitionMode: look?.transition || 'cut',
     fromCamera: transitionFromRef.current,
     cintilloMotionEnabled: look?.cintilloMotion !== false,
     background,
@@ -155,11 +156,26 @@ export function useStudioCompositor({
     keepAliveRef.current.forEach((off) => off())
     keepAliveRef.current = []
 
+    let shelf = null
+    if (typeof document !== 'undefined') {
+      shelf = document.getElementById('podcastudio-compositor-shelf')
+      if (!shelf) {
+        shelf = document.createElement('div')
+        shelf.id = 'podcastudio-compositor-shelf'
+        shelf.setAttribute('aria-hidden', 'true')
+        shelf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:320px;height:180px;opacity:0.01;pointer-events:none;overflow:hidden;z-index:-9999;'
+        document.body.appendChild(shelf)
+      }
+    }
+
     const videos = videosRef.current
     Object.keys(videos).forEach((key) => {
       const slot = Number(key)
       if (!streams[slot]) {
-        videos[slot]?.pause()
+        try {
+          videos[slot]?.pause()
+          videos[slot]?.remove()
+        } catch {}
         delete videos[slot]
       }
     })
@@ -174,6 +190,8 @@ export function useStudioCompositor({
         v.autoplay = true
         v.setAttribute('playsinline', '')
         v.setAttribute('webkit-playsinline', '')
+        v.style.cssText = 'width:320px;height:180px;'
+        if (shelf) shelf.appendChild(v)
         videos[i] = v
       }
       if (videos[i].srcObject !== stream) {
@@ -252,9 +270,11 @@ export function useStudioCompositor({
     }
   }, [format, recording])
 
+  const hasStreams = Boolean(streams && Object.values(streams).some(Boolean))
+
   useEffect(() => {
     const canvas = canvasRef.current
-    if (!canvas || !compositorActive) {
+    if (!canvas || (!compositorActive && !hasStreams)) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       rafRef.current = null
       return undefined
@@ -334,6 +354,7 @@ export function useStudioCompositor({
           secondaryVideo: s.secondaryCamera !== null ? videosRef.current[s.secondaryCamera] : null,
           tertiaryVideo: s.tertiaryCamera !== null ? videosRef.current[s.tertiaryCamera] : null,
           quaternaryVideo: s.quaternaryCamera !== null ? videosRef.current[s.quaternaryCamera] : null,
+          allVideos: videosRef.current,
         })
       } catch {
         ctx.fillStyle = '#07070a'
@@ -348,9 +369,23 @@ export function useStudioCompositor({
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       rafRef.current = null
     }
-  }, [compositorActive])
+  }, [compositorActive, hasStreams])
 
-  const getProgramStream = useCallback(() => outputStreamRef.current, [])
+  const getProgramStream = useCallback(() => {
+    const existing = outputStreamRef.current
+    const vt = existing?.getVideoTracks()?.[0]
+    if (existing && vt && vt.readyState === 'live') {
+      return existing
+    }
+    if (canvasRef.current && typeof canvasRef.current.captureStream === 'function') {
+      try {
+        const fresh = canvasRef.current.captureStream(30)
+        outputStreamRef.current = fresh
+        return fresh
+      } catch {}
+    }
+    return existing
+  }, [])
   const getDisplayCanvas = useCallback(() => canvasRef.current, [])
 
   return { getProgramStream, getDisplayCanvas, canvasRef }

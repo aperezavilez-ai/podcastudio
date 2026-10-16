@@ -1,4 +1,8 @@
 import { buildCanvasFilter } from './videoLook.js'
+import { applyChromaKey } from '../hooks/useChromaKey.js'
+
+let offscreenCanvas = null
+let offscreenCtx = null
 
 /** Fondos simplificados para el compositor de grabación (aprox. a los sets CSS). */
 const SETS = {
@@ -45,6 +49,31 @@ const SETS = {
     base: ['#141418', '#222228', '#141418'],
     accent: { y: 0, h: 1, color: 'rgba(30,30,40,0.92)', split: 0.42 },
   },
+  'newsroom-prime': {
+    base: ['#0f172a', '#1e293b', '#0f172a'],
+    accent: { y: 0.08, h: 0.14, color: '#3b82f6' },
+    footer: { y: 0.86, h: 0.14, color: 'rgba(30,58,138,0.85)' },
+  },
+  'late-night': {
+    base: ['#050814', '#0d1527', '#03050a'],
+    accent: { y: 0, h: 0.45, color: 'rgba(56,189,248,0.18)' },
+    footer: { y: 0.78, h: 0.22, color: '#1a1006' },
+  },
+  'music-acoustic': {
+    base: ['#23150d', '#3a2214', '#150a04'],
+    accent: { y: 0.05, h: 0.28, color: 'rgba(245,158,11,0.25)' },
+    footer: { y: 0.75, h: 0.25, color: '#1a0e07' },
+  },
+  'music-concert': {
+    base: ['#090514', '#1b0c36', '#05020a'],
+    accent: { y: 0, h: 0.35, color: 'rgba(236,72,153,0.32)' },
+    footer: { y: 0.82, h: 0.18, color: '#0f0520' },
+  },
+  'music-studio': {
+    base: ['#1c1612', '#2f231b', '#120d09'],
+    accent: { y: 0.15, h: 0.22, color: 'rgba(217,119,6,0.22)' },
+    footer: { y: 0.8, h: 0.2, color: '#18110b' },
+  },
   'minimal-dark': {
     base: ['#101014', '#1c1c22', '#101014'],
   },
@@ -84,7 +113,7 @@ export function drawSetBackground(ctx, w, h, templateId) {
   }
 }
 
-export function drawVideoInset(ctx, video, w, h, rectPct, directorCrop, look) {
+export function drawVideoInset(ctx, video, w, h, rectPct, directorCrop, look, chromaSettings = null) {
   if (!video || video.readyState < 2 || !video.videoWidth) return
 
   const x = (rectPct.left / 100) * w
@@ -93,16 +122,45 @@ export function drawVideoInset(ctx, video, w, h, rectPct, directorCrop, look) {
   const rh = (rectPct.height / 100) * h
 
   ctx.save()
-  ctx.beginPath()
-  if (ctx.roundRect) {
-    ctx.roundRect(x, y, rw, rh, Math.min(rw, rh) * 0.02)
-  } else {
-    ctx.rect(x, y, rw, rh)
+  if (!chromaSettings?.enabled) {
+    ctx.beginPath()
+    if (ctx.roundRect) {
+      ctx.roundRect(x, y, rw, rh, Math.min(rw, rh) * 0.02)
+    } else {
+      ctx.rect(x, y, rw, rh)
+    }
+    ctx.clip()
   }
-  ctx.clip()
 
   const filter = buildCanvasFilter(look)
   if (filter && filter !== 'none') ctx.filter = filter
+
+  let sourceDrawable = video
+  if (chromaSettings?.enabled && typeof document !== 'undefined') {
+    if (!offscreenCanvas) {
+      offscreenCanvas = document.createElement('canvas')
+      offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true })
+    }
+    const vw = video.videoWidth
+    const vh = video.videoHeight
+    if (offscreenCanvas.width !== vw || offscreenCanvas.height !== vh) {
+      offscreenCanvas.width = vw
+      offscreenCanvas.height = vh
+    }
+    offscreenCtx.drawImage(video, 0, 0)
+    try {
+      const frame = offscreenCtx.getImageData(0, 0, vw, vh)
+      applyChromaKey(
+        frame,
+        chromaSettings.keyColor || '#00b140',
+        chromaSettings.similarity ?? 40,
+        chromaSettings.smoothness ?? 25,
+        chromaSettings.despill ?? 50
+      )
+      offscreenCtx.putImageData(frame, 0, 0)
+      sourceDrawable = offscreenCanvas
+    } catch {}
+  }
 
   if (directorCrop?.zoom > 1.02) {
     const zoom = directorCrop.zoom
@@ -117,14 +175,14 @@ export function drawVideoInset(ctx, video, w, h, rectPct, directorCrop, look) {
     const dh = cropH * scale
     const dx = x + (rw - dw) / 2
     const dy = y + (rh - dh) / 2
-    ctx.drawImage(video, sx, sy, cropW, cropH, dx, dy, dw, dh)
+    ctx.drawImage(sourceDrawable, sx, sy, cropW, cropH, dx, dy, dw, dh)
   } else {
     const scale = Math.max(rw / video.videoWidth, rh / video.videoHeight)
     const dw = video.videoWidth * scale
     const dh = video.videoHeight * scale
     const dx = x + (rw - dw) / 2
     const dy = y + (rh - dh) / 2
-    ctx.drawImage(video, dx, dy, dw, dh)
+    ctx.drawImage(sourceDrawable, dx, dy, dw, dh)
   }
 
   ctx.filter = 'none'

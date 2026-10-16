@@ -180,6 +180,7 @@ export function useWebcam() {
   const [activeCamera, setActiveCamera] = useState(null)
   const [error, setError] = useState(null)
   const [micLevel, setMicLevel] = useState(0)
+  const [micStream, setMicStreamState] = useState(null)
   const [selectedMicId, setSelectedMicId] = useState(null)
   const [micLabel, setMicLabel] = useState('')
   const [bluetoothSupported, setBluetoothSupported] = useState(false)
@@ -463,6 +464,7 @@ export function useWebcam() {
     attachStream(slotIndex, stream, {
       type: 'remote',
       label: label || `iPhone / Móvil ${slotIndex + 1}`,
+      customLabel: label || undefined,
       deviceId: 'remote-webrtc',
     })
     return stream
@@ -743,6 +745,7 @@ export function useWebcam() {
     rafRef.current = null
     if (micRef.current) micRef.current.getTracks().forEach(t => t.stop())
     micRef.current = null
+    setMicStreamState(null)
     if (audioCtxRef.current?.state !== 'closed') {
       audioCtxRef.current?.close().catch(() => {})
     }
@@ -790,12 +793,16 @@ export function useWebcam() {
       const label = track?.label || devices.microphones.find(m => m.deviceId === activeId)?.label || ''
 
       micRef.current = stream
+      setMicStreamState(stream)
       setSelectedMicId(activeId)
       setMicLabel(label)
       selectedMicIdRef.current = activeId
       if (activeId) localStorage.setItem('podcastudio_mic_id', activeId)
 
       const ctx = new AudioContext()
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {})
+      }
       audioCtxRef.current = ctx
       const src = ctx.createMediaStreamSource(stream)
       const analyser = ctx.createAnalyser()
@@ -803,13 +810,27 @@ export function useWebcam() {
       src.connect(analyser)
       analyserRef.current = analyser
       const buf = new Uint8Array(analyser.frequencyBinCount)
-      const tick = () => {
+
+      let lastLevelTime = 0
+      let lastReportedLevel = 0
+      const tick = (ts) => {
+        if (!analyserRef.current) return
         analyser.getByteFrequencyData(buf)
         const avg = buf.reduce((a, b) => a + b, 0) / buf.length
-        setMicLevel(Math.round((avg / 255) * 100))
+        const currentLevel = Math.round((avg / 255) * 100)
+
+        const now = ts || performance.now()
+        // Throttled a 130ms y delta >= 5 para evitar saturar el ciclo de renderizado y dar respuesta instantánea a los botones
+        const isSharpSilence = currentLevel === 0 && lastReportedLevel > 0
+        const isSignificantChange = Math.abs(currentLevel - lastReportedLevel) >= 5
+        if ((now - lastLevelTime >= 130 && isSignificantChange) || isSharpSilence) {
+          lastLevelTime = now
+          lastReportedLevel = currentLevel
+          setMicLevel(currentLevel)
+        }
         rafRef.current = requestAnimationFrame(tick)
       }
-      tick()
+      tick(performance.now())
       setError(null)
       return stream
     } catch {
@@ -919,5 +940,6 @@ export function useWebcam() {
     switchMic,
     stopMic,
     getMicStream,
+    micStream,
   }
 }

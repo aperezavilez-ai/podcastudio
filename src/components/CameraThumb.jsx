@@ -3,7 +3,7 @@ import { drawVideoCover, COMPOSITOR_W, COMPOSITOR_H } from '../utils/canvasCompo
 import { drawCintillo, drawLogo } from '../utils/drawOverlays.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 
-export default function CameraThumb({
+function CameraThumb({
   stream,
   className,
   style,
@@ -138,3 +138,5 @@ export default function CameraThumb({
     />
   )
 }
+
+export default React.memo(CameraThumb)

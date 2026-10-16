@@ -5,6 +5,9 @@ export const ZOOM_PRESETS = [
   { id: 'medium', label: '1.35x Plano Medio', zoom: 1.35, focusX: 0.5, focusY: 0.42 },
   { id: 'closeup', label: '1.75x Primer Plano', zoom: 1.75, focusX: 0.5, focusY: 0.38 },
   { id: 'tight', label: '2.2x Detalle', zoom: 2.2, focusX: 0.5, focusY: 0.36 },
+  { id: 'far', label: '3.5x Distante', zoom: 3.5, focusX: 0.5, focusY: 0.35 },
+  { id: 'tele', label: '5.0x Teleobjetivo', zoom: 5.0, focusX: 0.5, focusY: 0.35 },
+  { id: 'ultra', label: '8.0x Retirada Ultra', zoom: 8.0, focusX: 0.5, focusY: 0.35 },
 ]
 
 const DEFAULT_CROP = {
@@ -57,8 +60,8 @@ export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
         [slot]: {
           ...current,
           ...profile,
-          zoom: clamp(Number(profile.zoom ?? current.zoom) || 1.0, 1.0, 3.0),
-          targetZoom: clamp(Number(profile.zoom ?? current.zoom) || 1.0, 1.0, 3.0),
+          zoom: clamp(Number(profile.zoom ?? current.zoom) || 1.0, 1.0, 8.0),
+          targetZoom: clamp(Number(profile.zoom ?? current.zoom) || 1.0, 1.0, 8.0),
           focusX: clamp(Number(profile.focusX ?? current.focusX) ?? 0.5, 0.1, 0.9),
           focusY: clamp(Number(profile.focusY ?? current.focusY) ?? 0.42, 0.1, 0.9),
         },
@@ -75,7 +78,7 @@ export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
     } else if (typeof slotOrZoom !== 'number') {
       zoomVal = Number(slotOrZoom) || 1.0
     }
-    const cleanZoom = clamp(Number(zoomVal) || 1.0, 1.0, 3.0)
+    const cleanZoom = clamp(Number(zoomVal) || 1.0, 1.0, 8.0)
     setCrops(prev => {
       const current = prev[targetSlot] || DEFAULT_CROP
       return {

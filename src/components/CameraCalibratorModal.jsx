@@ -517,7 +517,7 @@ export default function CameraCalibratorModal({
                 <input
                   type="range"
                   min="1"
-                  max="3"
+                  max="8"
                   step="0.05"
                   value={zoom}
                   onChange={(e) => handleZoomSlider(parseFloat(e.target.value))}

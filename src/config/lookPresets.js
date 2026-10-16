@@ -173,7 +173,7 @@ export const DEFAULT_LOOK = {
   sharpness: 8,
   lutId: 'kodak-2383',
   temporalVignette: true,
-  transition: 'crossfade',
+  transition: 'cut',
   cintilloMotion: true,
 }
 

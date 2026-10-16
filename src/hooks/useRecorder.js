@@ -8,6 +8,8 @@ import {
   purgeVaultSession,
 } from '../utils/recordingStorage.js'
 
+import { fixWebmDuration } from '../utils/fixWebmDuration.js'
+
 function isMp4Recording(mimeType) {
   return mimeType?.includes('mp4')
 }
@@ -126,9 +128,17 @@ export function useRecorder() {
         }
       }
 
-      mr.onstop = () => {
+      mr.onstop = async () => {
         finalizeVaultSession(sessionId, durationRef.current)
-        const blob = new Blob(chunksRef.current, { type: mimeType })
+        let blob = new Blob(chunksRef.current, { type: mimeType })
+        if (!isMp4Recording(mimeType)) {
+          const durationMs = Math.max(1000, Math.round((durationRef.current || 1) * 1000))
+          try {
+            blob = await fixWebmDuration(blob, durationMs)
+          } catch (e) {
+            console.warn('[useRecorder] No se pudo inyectar duración EBML:', e)
+          }
+        }
         const url = URL.createObjectURL(blob)
 
         let cleanVoiceBlob = null

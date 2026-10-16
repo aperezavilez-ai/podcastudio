@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { getSlotLabel } from '../config/cameraSlots.js'
 import { scanWifiCameras } from '../utils/wifiCameraScanner.js'
+import { CANONICAL_SITE_URL, isLocalDevHost } from '../lib/site.js'
 import styles from './CameraConnectModal.module.css'
 
 const PRESET_WIFI_STREAMS = [
@@ -102,6 +103,8 @@ export default function CameraConnectModal({
   const [scanMessage, setScanMessage] = useState('')
   const [discoveredCameras, setDiscoveredCameras] = useState([])
   const [hasScanned, setHasScanned] = useState(false)
+  const [guestName, setGuestName] = useState('')
+  const [guestRole, setGuestRole] = useState('guest')
 
   const handleScanWifi = async () => {
     setIsScanning(true)
@@ -164,9 +167,30 @@ export default function CameraConnectModal({
     return `pcd_cam_${targetSlot + 1}`
   }, [getRoomCodeForSlot, targetSlot])
 
-  const remoteUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/remote-cam?slot=${targetSlot + 1}&room=${roomCode}`
-    : `https://podcastudio.mx/remote-cam?slot=${targetSlot + 1}&room=${roomCode}`
+  const isLocalDev = typeof window !== 'undefined' && isLocalDevHost(window.location.hostname)
+  const [useCloudDomain, setUseCloudDomain] = useState(() => isLocalDev)
+
+  const remoteUrl = useMemo(() => {
+    let base = typeof window !== 'undefined'
+      ? `${window.location.origin}/remote-cam`
+      : `${CANONICAL_SITE_URL}/remote-cam`
+
+    if (useCloudDomain || (isLocalDev && useCloudDomain)) {
+      base = `${CANONICAL_SITE_URL}/remote-cam`
+    }
+
+    const params = new URLSearchParams({
+      slot: String(targetSlot + 1),
+      room: roomCode,
+    })
+    if (guestName.trim()) {
+      params.set('name', guestName.trim())
+    }
+    if (guestRole && guestRole !== 'guest') {
+      params.set('role', guestRole)
+    }
+    return `${base}?${params.toString()}`
+  }, [targetSlot, roomCode, guestName, guestRole, useCloudDomain, isLocalDev])
 
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(remoteUrl)}`
 
@@ -193,11 +217,49 @@ export default function CameraConnectModal({
     }
   }
 
+  const [copiedInvite, setCopiedInvite] = useState(false)
+
   const handleCopyLink = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(remoteUrl)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    }
+  }
+
+  const roleNameMap = {
+    guest: 'Invitado Especial',
+    student: 'Alumno / Clase Virtual',
+    cohost: 'Co-presentador',
+  }
+  const roleLabel = roleNameMap[guestRole] || 'Invitado'
+
+  const invitationText = `🎙️ Invitación para unirte en vivo a PodcastStudio (${roleLabel} - CAM ${targetSlot + 1})
+
+${guestName.trim() ? `Hola ${guestName.trim()}, ` : 'Hola, '}te invito a conectarte en vivo con tu cámara y micrófono como ${guestRole === 'student' ? 'alumno a la clase virtual' : guestRole === 'cohost' ? 'co-presentador' : 'invitado'}:
+
+👉 Enlace de acceso directo:
+${remoteUrl}
+
+Instrucciones:
+1. Abre el enlace en tu celular o computadora (Safari en iPhone, Chrome en Android/PC).
+2. Permite el acceso a tu cámara y micrófono cuando te lo solicite el navegador.
+3. Presiona "Activar Cámara y Conectar".
+¡Listo! Tu video y voz entrarán en vivo al estudio.`
+
+  const emailSubject = encodeURIComponent(
+    guestRole === 'student'
+      ? `Invitación a Clase Virtual - ${guestName.trim() || 'Alumno'} (CAM ${targetSlot + 1})`
+      : `Invitación a sesión en vivo PodcastStudio - CAM ${targetSlot + 1}${guestName.trim() ? ` (${guestName.trim()})` : ''}`
+  )
+  const emailBody = encodeURIComponent(invitationText)
+  const mailtoUrl = `mailto:?subject=${emailSubject}&body=${emailBody}`
+
+  const handleCopyInvite = () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(invitationText)
+      setCopiedInvite(true)
+      setTimeout(() => setCopiedInvite(false), 2000)
     }
   }
 
@@ -565,6 +627,115 @@ export default function CameraConnectModal({
                 </div>
               ) : (
                 <>
+                  {/* PERSONALIZACIÓN DE INVITACIÓN (AULA VIRTUAL / INVITADO / CO-HOST) */}
+                  <div style={{
+                    marginBottom: 16,
+                    padding: '12px 14px',
+                    borderRadius: 10,
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    textAlign: 'left',
+                  }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <i className="ti ti-user-plus" style={{ color: '#38bdf8' }} />
+                      Personalizar Invitación (Para Alumnos, Clases Virtuales o Invitados)
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 10 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+                          Nombre de la persona (opcional):
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ej: Dra. Sofía / Juan Pérez"
+                          value={guestName}
+                          onChange={(e) => setGuestName(e.target.value)}
+                          className={styles.formInput}
+                          style={{ fontSize: 12, padding: '7px 10px' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+                          Rol en la sesión:
+                        </label>
+                        <select
+                          value={guestRole}
+                          onChange={(e) => setGuestRole(e.target.value)}
+                          className={styles.formInput}
+                          style={{ fontSize: 12, padding: '7px 10px', background: '#0f172a', color: '#f8fafc', cursor: 'pointer' }}
+                        >
+                          <option value="guest">Invitado</option>
+                          <option value="student">Alumno / Clase</option>
+                          <option value="cohost">Co-presentador</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#64748b', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <i className="ti ti-info-circle" style={{ color: '#38bdf8' }} />
+                      El enlace se personalizará y cuando se conecte, CAM {targetSlot + 1} se etiquetará automáticamente.
+                    </div>
+                  </div>
+
+                  {isLocalDev && (
+                    <div style={{
+                      marginBottom: 14,
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      background: 'rgba(234, 179, 8, 0.08)',
+                      border: '1px solid rgba(234, 179, 8, 0.25)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: 8,
+                      fontSize: 11,
+                      color: '#fef08a',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <i className="ti ti-world" style={{ fontSize: 13, color: '#facc15' }} />
+                        <span>
+                          {useCloudDomain
+                            ? 'Enlace HTTPS listo para celular (podcastudio.mx)'
+                            : 'Enlace de red local (localhost:3000)'}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setUseCloudDomain(true)}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: useCloudDomain ? '#eab308' : 'rgba(255,255,255,0.06)',
+                            color: useCloudDomain ? '#000' : '#cbd5e1',
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          🌐 Celular / 4G (Recomendado)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUseCloudDomain(false)}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: 6,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: !useCloudDomain ? '#38bdf8' : 'rgba(255,255,255,0.06)',
+                            color: !useCloudDomain ? '#000' : '#cbd5e1',
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          💻 PC Local
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className={styles.qrWrap}>
                     <img src={qrSrc} alt="Escanear con smartphone" className={styles.qrImage} />
                   </div>
@@ -574,10 +745,28 @@ export default function CameraConnectModal({
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                     <button type="button" className={styles.copyUrlBtn} onClick={handleCopyLink}>
                       <i className={copied ? 'ti ti-check' : 'ti ti-copy'} />
-                      {copied ? '¡Enlace copiado!' : 'Copiar enlace directo de cámara'}
+                      {copied ? '¡Enlace copiado!' : 'Copiar enlace directo'}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.copyUrlBtn}
+                      onClick={handleCopyInvite}
+                      style={{ background: 'rgba(59, 130, 246, 0.15)', borderColor: '#3b82f6', color: '#93c5fd' }}
+                      title="Copiar mensaje con instrucciones completas para pegar en correo, chat o aula virtual"
+                    >
+                      <i className={copiedInvite ? 'ti ti-check' : 'ti ti-clipboard-text'} />
+                      {copiedInvite ? '¡Invitación copiada!' : 'Copiar texto para invitar'}
                     </button>
                     <a
-                      href={`https://wa.me/?text=${encodeURIComponent(`Hola! Conéctate como cámara remota en vivo para PodcastStudio en CAM ${targetSlot + 1}: ${remoteUrl}`)}`}
+                      href={mailtoUrl}
+                      className={styles.copyUrlBtn}
+                      style={{ textDecoration: 'none', background: '#1e3a8a', color: '#fff', borderColor: '#3b82f6', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      title="Abrir tu gestor de correo con la invitación redactada y el enlace directo"
+                    >
+                      <i className="ti ti-mail" style={{ fontSize: 16 }} /> Enviar por Correo
+                    </a>
+                    <a
+                      href={`https://wa.me/?text=${encodeURIComponent(`Hola${guestName.trim() ? ` ${guestName.trim()}` : ''}! Conéctate como ${guestRole === 'student' ? 'alumno a la clase virtual' : guestRole === 'cohost' ? 'co-presentador' : 'invitado en vivo'} en PodcastStudio (CAM ${targetSlot + 1}): ${remoteUrl}`)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={styles.copyUrlBtn}

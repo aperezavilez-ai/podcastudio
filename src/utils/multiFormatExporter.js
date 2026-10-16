@@ -6,6 +6,8 @@
  * 3. 1:1 (Instagram Feed / LinkedIn) -> 1080x1080
  */
 
+import { fixWebmDuration } from './fixWebmDuration.js'
+
 export const SOCIAL_PRESETS_EXPORT = [
   {
     id: 'facebook',
@@ -115,19 +117,22 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
     video.crossOrigin = 'anonymous'
     video.playsInline = true
     video.preload = 'auto'
-    video.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;'
+    // Elemento visible en DOM fuera de pantalla para que Chromium decodifique 100% de los fotogramas
+    video.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:640px;height:360px;opacity:0.01;pointer-events:none;z-index:-9999;'
     document.body.appendChild(video)
     const blobUrl = sourceMedia instanceof Blob ? URL.createObjectURL(sourceMedia) : sourceMedia
     video.src = blobUrl
 
     let recorder = null
     let animId = null
+    let intervalId = null
     let isTerminated = false
     let audioCtx = null
 
     const cleanup = () => {
       isTerminated = true
       if (animId) cancelAnimationFrame(animId)
+      if (intervalId) clearInterval(intervalId)
       try { video.pause() } catch {}
       video.src = ''
       video.remove()
@@ -141,6 +146,7 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
 
     video.onloadedmetadata = async () => {
       try {
+        const duration = await resolveVideoDuration(video, hintDuration)
         const is4K = (options.quality === '4k') || (video.videoWidth >= 2500)
         const finalW = is4K ? (targetFormat === '9:16' ? 2160 : targetFormat === '1:1' ? 2160 : 3840) : targetW
         const finalH = is4K ? (targetFormat === '9:16' ? 3840 : targetFormat === '1:1' ? 2160 : 2160) : targetH
@@ -173,7 +179,6 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
             const src = audioCtx.createMediaElementSource(video)
             const dest = audioCtx.createMediaStreamDestination()
             src.connect(dest)
-            // No conectar a audioCtx.destination para no reproducir ruido exterior al exportar
             dest.stream.getAudioTracks().forEach(t => combinedStream.addTrack(t))
           } catch (e) {
             console.warn('Audio capture fallback warning:', e)
@@ -200,10 +205,26 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
           if (e.data && e.data.size > 0) chunks.push(e.data)
         }
 
-        recorder.onstop = () => {
-          const finalBlob = new Blob(chunks, { type: mimeType })
+        if (options.abortSignal) {
+          options.abortSignal.addEventListener('abort', () => {
+            finishRecording()
+            cleanup()
+            reject(new Error('Exportación cancelada'))
+          })
+        }
+
+        recorder.onstop = async () => {
+          let rawBlob = new Blob(chunks, { type: mimeType })
+          if (!mimeType.includes('mp4')) {
+            const durMs = Math.max(1000, Math.round((duration || hintDuration || 1) * 1000))
+            try {
+              rawBlob = await fixWebmDuration(rawBlob, durMs)
+            } catch (e) {
+              console.warn('[multiFormatExporter] fixWebmDuration warning:', e)
+            }
+          }
           cleanup()
-          resolve(finalBlob)
+          resolve(rawBlob)
         }
 
         const finishRecording = () => {
@@ -217,10 +238,15 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
 
         video.onended = finishRecording
 
-        recorder.start(250)
-        await video.play()
+        // Dibujar primer frame en el lienzo antes de arrancar para evitar pantalla blanca inicial
+        try {
+          await video.play()
+        } catch {
+          video.muted = true
+          await video.play().catch(() => {})
+        }
 
-        const renderFrame = () => {
+        const drawFrame = () => {
           if (isTerminated) return
 
           if (video.ended || (duration > 0 && video.currentTime >= duration - 0.08)) {
@@ -266,22 +292,30 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
             let sHeight = vh
 
             if (srcRatio > targetRatio) {
-              // Video origen más ancho (ej. 16:9 a 9:16 o 1:1) -> recorta los lados y centra el sujeto
               sWidth = vh * targetRatio
               sx = (vw - sWidth) / 2
             } else {
-              // Video origen más alto -> recorta arriba y abajo
               sHeight = vw / targetRatio
               sy = (vh - sHeight) / 2
             }
 
             ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, finalW, finalH)
           }
-
-          animId = requestAnimationFrame(renderFrame)
         }
 
-        animId = requestAnimationFrame(renderFrame)
+        drawFrame()
+        recorder.start(100)
+
+        const renderLoop = () => {
+          if (isTerminated) return
+          drawFrame()
+          animId = requestAnimationFrame(renderLoop)
+        }
+
+        animId = requestAnimationFrame(renderLoop)
+        intervalId = setInterval(() => {
+          if (!isTerminated) drawFrame()
+        }, 33)
       } catch (err) {
         cleanup()
         reject(err)

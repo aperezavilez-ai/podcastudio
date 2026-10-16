@@ -266,3 +266,108 @@
   border: 1px solid rgba(255,255,255,.06);
   border-radius: 2px;
 }
+
+/* Newsroom Global */
+.newsroom-prime .layerBase {
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 40%, #1e293b 0%, #0a0f1d 85%);
+}
+.newsroom-prime .layerAccent {
+  top: 0; left: 0; right: 0; height: 20%;
+  background: linear-gradient(180deg, rgba(59,130,246,0.3) 0%, transparent 100%);
+  border-bottom: 2px solid rgba(59,130,246,0.5);
+}
+.newsroom-prime .layerFrame {
+  bottom: 0; left: 0; right: 0; height: 16%;
+  background: linear-gradient(0deg, rgba(30,58,138,0.9) 0%, transparent 100%);
+}
+.newsroom-prime .layerDecor {
+  top: 25%; left: 10%; right: 10%; height: 45%;
+  background: repeating-linear-gradient(90deg, rgba(59,130,246,0.06), rgba(59,130,246,0.06) 24px, transparent 24px, transparent 48px);
+  border: 1px solid rgba(59,130,246,0.2);
+  border-radius: 8px;
+}
+
+/* Late Night Skyline */
+.late-night .layerBase {
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 20%, #0d1527 0%, #020408 80%);
+}
+.late-night .layerAccent {
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent 40px, rgba(56,189,248,0.06) 40px, rgba(56,189,248,0.06) 42px);
+}
+.late-night .layerFrame {
+  bottom: 0; left: 0; right: 0; height: 28%;
+  background: linear-gradient(0deg, #181108 0%, #2a1a0c 40%, transparent 100%);
+  border-top: 2px solid rgba(245,158,11,0.3);
+}
+.late-night .layerDecor {
+  top: 15%; right: 12%; width: 220px; height: 180px;
+  background: radial-gradient(circle, rgba(245,158,11,0.18) 0%, transparent 70%);
+  border-radius: 50%;
+}
+
+/* Live Acoustic Session */
+.music-acoustic .layerBase {
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 30%, #3a2214 0%, #120a05 85%);
+}
+.music-acoustic .layerAccent {
+  top: 0; left: 0; right: 0; height: 35%;
+  background: radial-gradient(ellipse at 25% 0%, rgba(245,158,11,0.35) 0%, transparent 60%),
+              radial-gradient(ellipse at 75% 0%, rgba(245,158,11,0.35) 0%, transparent 60%);
+}
+.music-acoustic .layerFrame {
+  bottom: 0; left: 0; right: 0; height: 25%;
+  background: linear-gradient(0deg, rgba(15,8,4,0.95) 0%, transparent 100%);
+}
+.music-acoustic .layerDecor {
+  top: 0; left: 15%; right: 15%; height: 28%;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent 60px, rgba(245,158,11,0.4) 60px, rgba(245,158,11,0.4) 62px);
+}
+
+/* Concierto Rock / Neón */
+.music-concert .layerBase {
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 60%, #1b0c36 0%, #05020a 85%);
+}
+.music-concert .layerAccent {
+  top: 0; left: 0; right: 0; height: 50%;
+  background: 
+    conic-gradient(from 140deg at 20% 0%, rgba(236,72,153,0.35), transparent 45deg),
+    conic-gradient(from 180deg at 80% 0%, rgba(59,130,246,0.35), transparent 45deg);
+}
+.music-concert .layerFrame {
+  bottom: 0; left: 0; right: 0; height: 22%;
+  background: linear-gradient(0deg, #05020a 0%, rgba(15,5,32,0.85) 100%);
+  border-top: 2px solid rgba(236,72,153,0.4);
+}
+.music-concert .layerDecor {
+  top: 0; left: 0; right: 0; height: 14%;
+  background: repeating-linear-gradient(90deg, rgba(255,255,255,0.15) 0, rgba(255,255,255,0.15) 8px, transparent 8px, transparent 24px);
+  border-bottom: 2px solid rgba(255,255,255,0.25);
+}
+
+/* Estudio Analógico */
+.music-studio .layerBase {
+  inset: 0;
+  background: linear-gradient(135deg, #1c1612 0%, #2f231b 50%, #120d09 100%);
+}
+.music-studio .layerAccent {
+  inset: 10% 8% 25% 8%;
+  background: repeating-linear-gradient(90deg, rgba(217,119,6,0.08) 0, rgba(217,119,6,0.08) 18px, transparent 18px, transparent 36px);
+  border: 1px solid rgba(217,119,6,0.25);
+  border-radius: 6px;
+}
+.music-studio .layerFrame {
+  bottom: 0; left: 0; right: 0; height: 22%;
+  background: linear-gradient(0deg, #0d0906 0%, #1c140d 100%);
+  border-top: 1px solid rgba(217,119,6,0.3);
+}
+.music-studio .layerDecor {
+  top: 15%; right: 12%; width: 60px; height: 60px;
+  background: radial-gradient(circle, rgba(245,158,11,0.3) 0%, transparent 70%);
+  border-radius: 50%;
+}
+
