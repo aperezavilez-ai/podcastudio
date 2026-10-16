@@ -605,10 +605,41 @@ export function useWebcam() {
   }, [setSlotsCount])
 
   const removeCameraSlot = useCallback((slotIndex) => {
+    // 1. Detener cámara en el slot especificado
     stopCamera(slotIndex, true)
     saveSlotConfig(slotIndex, null)
+
+    // 2. Compactar ranuras si se eliminó una ranura intermedia
+    setStreams(prev => {
+      const next = {}
+      let target = 0
+      for (let i = 0; i < slotsCount; i++) {
+        if (i === slotIndex) continue
+        if (prev[i]) next[target] = prev[i]
+        target++
+      }
+      streamsRef.current = next
+      return next
+    })
+
+    setCameraMeta(prev => {
+      const next = {}
+      let target = 0
+      for (let i = 0; i < slotsCount; i++) {
+        if (i === slotIndex) continue
+        if (prev[i]) {
+          next[target] = prev[i]
+          saveSlotConfig(target, prev[i])
+        }
+        target++
+      }
+      saveSlotConfig(slotsCount - 1, null)
+      cameraMetaRef.current = next
+      return next
+    })
+
     setSlotsCount(prev => Math.max(1, prev - 1))
-  }, [stopCamera, setSlotsCount])
+  }, [stopCamera, setSlotsCount, slotsCount])
 
   const connectNextCameraToSlot = useCallback(async (slotIndex) => {
     const { cameras } = await enumerateDevices(false)

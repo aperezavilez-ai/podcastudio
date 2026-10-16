@@ -2292,6 +2292,20 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       >
                         <i className="ti ti-settings" />
                       </button>
+                      {slotsCount > 1 && (
+                        <button
+                          type="button"
+                          className={styles.camConfigBtn}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeCameraSlot(i)
+                          }}
+                          title={`Eliminar ranura CAM ${i + 1}`}
+                          style={{ color: '#ef4444' }}
+                        >
+                          <i className="ti ti-trash" style={{ fontSize: 11 }} />
+                        </button>
+                      )}
                       {isLivePgm && (
                         <div className={styles.camTallyBadge}>PGM</div>
                       )}
@@ -2391,6 +2405,25 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                 >
                   <i className="ti ti-plus" />
                   <span>+ CAM</span>
+                </button>
+              )}
+              {slotsCount > 1 && (
+                <button
+                  type="button"
+                  className={styles.addCamStripBtn}
+                  onClick={() => {
+                    removeCameraSlot(slotsCount - 1)
+                  }}
+                  title={`Eliminar última cámara (CAM ${slotsCount})`}
+                  style={{
+                    borderStyle: 'dashed',
+                    borderColor: 'rgba(239, 68, 68, 0.4)',
+                    background: 'rgba(239, 68, 68, 0.08)',
+                    color: '#f87171',
+                  }}
+                >
+                  <i className="ti ti-minus" />
+                  <span>- CAM</span>
                 </button>
               )}
               </div>
@@ -3473,6 +3506,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         initialSlot={connectModalSlot}
         slotsCount={slotsCount}
         onAddSlot={addCameraSlot}
+        onRemoveSlot={removeCameraSlot}
         devices={devices}
         cameraMeta={cameraMeta}
         streams={streams}

@@ -10,6 +10,23 @@ const RTC_CONFIG = {
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun3.l.google.com:19302' },
     { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.services.mozilla.com' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelay',
+      credential: 'openrelay',
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelay',
+      credential: 'openrelay',
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelay',
+      credential: 'openrelay',
+    },
   ],
   iceCandidatePoolSize: 10,
 }
@@ -658,20 +675,21 @@ export default function RemoteCam() {
                 title={facingMode === 'environment' ? 'Girar a cámara frontal' : 'Girar a cámara trasera'}
               >
                 <svg
-                  width="20"
-                  height="20"
+                  width="22"
+                  height="22"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2.2"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden="true"
+                  style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}
                 >
-                  <path d="M20 10c0-4.4-3.6-8-8-8s-8 3.6-8 8c0 1.5.4 2.9 1.1 4.1L3 16l4 .5.5-4-1.6 1.4C5.3 12.8 5 11.5 5 10c0-3.9 3.1-7 7-7s7 3.1 7 7c0 3.1-2 5.7-4.8 6.6l.6 1.9C18.4 17.3 20 13.9 20 10z" />
-                  <circle cx="12" cy="10" r="3" />
+                  <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+                  <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
                 </svg>
-                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>
+                <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.5 }}>
                   {facingMode === 'environment' ? 'GIRAR' : 'TRASERA'}
                 </span>
               </button>

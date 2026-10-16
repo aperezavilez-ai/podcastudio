@@ -78,6 +78,7 @@ export default function CameraConnectModal({
   initialSlot = 0,
   slotsCount = 4,
   onAddSlot,
+  onRemoveSlot,
   devices = { cameras: [] },
   cameraMeta = {},
   streams = {},
@@ -254,6 +255,22 @@ export default function CameraConnectModal({
                 title="Añadir nuevo slot (hasta 15)"
               >
                 <i className="ti ti-plus" style={{ fontSize: 9 }} />
+              </button>
+            )}
+            {slotsCount > 1 && onRemoveSlot && (
+              <button
+                type="button"
+                className={styles.slotPill}
+                style={{ borderStyle: 'dashed', borderColor: 'rgba(239, 68, 68, 0.45)', color: '#f87171' }}
+                onClick={() => {
+                  onRemoveSlot(slotsCount - 1)
+                  if (targetSlot >= slotsCount - 1) {
+                    setTargetSlot(Math.max(0, slotsCount - 2))
+                  }
+                }}
+                title="Eliminar última ranura"
+              >
+                <i className="ti ti-minus" style={{ fontSize: 9 }} />
               </button>
             )}
           </div>
