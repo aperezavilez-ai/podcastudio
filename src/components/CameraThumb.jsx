@@ -32,7 +32,19 @@ export default function CameraThumb({
 
     const video = videoRef.current
     if (video.srcObject !== stream) video.srcObject = stream
-    video.play().catch(() => {})
+    const tryPlay = () => { video.play().catch(() => {}) }
+    tryPlay()
+
+    video.addEventListener('canplay', tryPlay)
+    video.addEventListener('loadeddata', tryPlay)
+    video.addEventListener('loadedmetadata', tryPlay)
+
+    // Despertar el reproductor si el track de WebRTC se desmutea al recibir el primer keyframe
+    const videoTracks = stream?.getVideoTracks?.() || []
+    videoTracks.forEach(t => {
+      t.addEventListener('unmute', tryPlay)
+    })
+
     const unbindKeepAlive = bindVideoKeepAlive(video)
 
     const canvas = canvasRef.current

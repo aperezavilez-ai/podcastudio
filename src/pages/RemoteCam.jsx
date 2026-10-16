@@ -180,9 +180,14 @@ export default function RemoteCam() {
       }
     }
 
-    // Función auxiliar para crear y enviar oferta SDP
+    // Función auxiliar para crear y enviar oferta SDP sin duplicados ni colisiones
     const sendOffer = async () => {
       try {
+        if (!pc || pc.signalingState === 'closed') return
+        if (pc.signalingState === 'have-local-offer') {
+          console.log('[RemoteCam] Ya existe una oferta en proceso hacia el estudio.')
+          return
+        }
         const offer = await pc.createOffer({
           offerToReceiveVideo: false,
           offerToReceiveAudio: false,
@@ -216,7 +221,9 @@ export default function RemoteCam() {
 
       if (payload.type === 'answer') {
         try {
-          await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
+          if (pc.signalingState === 'have-local-offer') {
+            await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
+          }
           setStatus('connected')
 
           // Aplicar candidatos encolados
@@ -252,14 +259,16 @@ export default function RemoteCam() {
 
     channel.subscribe(async (subStatus) => {
       if (subStatus === 'SUBSCRIBED') {
-        // Notificar que el teléfono está listo
+        // Notificar al estudio que el teléfono está listo
         await channel.send({
           type: 'broadcast',
           event: 'signal',
           payload: { type: 'phone-ready', slot, sender: 'phone' },
         })
-        // Enviar la oferta inicial
-        await sendOffer()
+        // Enviar la oferta inicial tras breve espera para que el canal se propague
+        setTimeout(() => {
+          sendOffer()
+        }, 300)
       }
     })
   }, [room, slot])
@@ -331,20 +340,30 @@ export default function RemoteCam() {
     setTorchOn(false)
 
     try {
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: nextFacing },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-        audio: false,
-      })
+      let newStream = null
+      try {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { exact: nextFacing },
+            width: { ideal: 1920, max: 1920 },
+            height: { ideal: 1080, max: 1080 },
+          },
+          audio: false,
+        })
+      } catch {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: nextFacing } },
+          audio: false,
+        })
+      }
 
       const newTrack = newStream.getVideoTracks()[0]
       const oldTrack = streamRef.current?.getVideoTracks?.()?.[0]
 
-      if (videoSenderRef.current && newTrack) {
-        await videoSenderRef.current.replaceTrack(newTrack)
+      // Encontrar el sender de video en la conexión WebRTC
+      const sender = videoSenderRef.current || pcRef.current?.getSenders?.()?.find(s => s.track?.kind === 'video' || s.kind === 'video')
+      if (sender && newTrack) {
+        await sender.replaceTrack(newTrack)
       }
 
       if (oldTrack) oldTrack.stop()
@@ -549,13 +568,48 @@ export default function RemoteCam() {
             Conecta la cámara de tu iPhone en tiempo real con el estudio sin necesidad de instalar ninguna aplicación.
           </p>
 
+          <div style={{ display: 'flex', gap: 10, margin: '8px 0 16px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setFacingMode('environment')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 700,
+                border: facingMode === 'environment' ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.15)',
+                background: facingMode === 'environment' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.05)',
+                color: facingMode === 'environment' ? '#38bdf8' : '#94a3b8',
+                cursor: 'pointer',
+              }}
+            >
+              📷 Trasera (HD)
+            </button>
+            <button
+              type="button"
+              onClick={() => setFacingMode('user')}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 700,
+                border: facingMode === 'user' ? '1px solid #38bdf8' : '1px solid rgba(255,255,255,0.15)',
+                background: facingMode === 'user' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.05)',
+                color: facingMode === 'user' ? '#38bdf8' : '#94a3b8',
+                cursor: 'pointer',
+              }}
+            >
+              🤳 Frontal
+            </button>
+          </div>
+
           <button
             type="button"
             className={styles.startBtn}
             onClick={() => startCamera(facingMode)}
           >
             <i className="ti ti-camera" />
-            <span>Activar Cámara y Conectar</span>
+            <span>Activar {facingMode === 'environment' ? 'Cámara Trasera' : 'Cámara Frontal'} y Conectar</span>
           </button>
 
           {errorMsg && (
@@ -596,14 +650,30 @@ export default function RemoteCam() {
           {/* BOTTOM FLOATING CONTROLS */}
           <div className={styles.bottomOverlay}>
             <div className={styles.actionPill}>
-              {/* Botón Voltear Cámara */}
+              {/* Botón Voltear Cámara (Frontal / Trasera) */}
               <button
                 type="button"
-                className={styles.controlBtn}
+                className={styles.flipBtn}
                 onClick={handleFlipCamera}
-                title="Cambiar entre cámara trasera y frontal"
+                title={facingMode === 'environment' ? 'Girar a cámara frontal' : 'Girar a cámara trasera'}
               >
-                <i className="ti ti-switch-camera" />
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M20 10c0-4.4-3.6-8-8-8s-8 3.6-8 8c0 1.5.4 2.9 1.1 4.1L3 16l4 .5.5-4-1.6 1.4C5.3 12.8 5 11.5 5 10c0-3.9 3.1-7 7-7s7 3.1 7 7c0 3.1-2 5.7-4.8 6.6l.6 1.9C18.4 17.3 20 13.9 20 10z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.5 }}>
+                  {facingMode === 'environment' ? 'GIRAR' : 'TRASERA'}
+                </span>
               </button>
 
               {/* Botón Torch / Linterna */}

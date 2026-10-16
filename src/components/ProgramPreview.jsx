@@ -39,8 +39,19 @@ function safeAttachVideo(videoEl, targetStream) {
     if (videoEl.srcObject !== targetStream) {
       videoEl.srcObject = targetStream
     }
-    const p = videoEl.play()
-    if (p && typeof p.catch === 'function') p.catch(() => {})
+    const tryPlay = () => {
+      const p = videoEl.play()
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    }
+    tryPlay()
+    videoEl.addEventListener('canplay', tryPlay, { once: true })
+    videoEl.addEventListener('loadeddata', tryPlay, { once: true })
+    videoEl.addEventListener('loadedmetadata', tryPlay, { once: true })
+
+    const videoTracks = targetStream?.getVideoTracks?.() || []
+    videoTracks.forEach(t => {
+      t.addEventListener('unmute', tryPlay, { once: true })
+    })
   } else if (videoEl.srcObject) {
     videoEl.srcObject = null
   }

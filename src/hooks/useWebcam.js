@@ -442,7 +442,23 @@ export function useWebcam() {
 
   const connectRemoteStream = useCallback((slotIndex, stream, label) => {
     userDisabledSlotsRef.current.delete(slotIndex)
-    stopCamera(slotIndex)
+
+    // Detener únicamente flujos previos que NO correspondan a esta misma conexión WebRTC
+    const prevStream = streamsRef.current[slotIndex]
+    if (prevStream && prevStream !== stream) {
+      const prevTracks = prevStream.getTracks?.() || []
+      const newTracks = stream?.getTracks?.() || []
+      const sharesTrack = prevTracks.some(pt => newTracks.some(nt => nt.id === pt.id))
+      if (!sharesTrack) {
+        try {
+          prevTracks.forEach(t => t.stop())
+        } catch {}
+      }
+    }
+
+    setSlotCleanup(slotIndex, null)
+    delete cleanupRef.current[slotIndex]
+
     applyStreamQualityHints(stream)
     attachStream(slotIndex, stream, {
       type: 'remote',
@@ -450,7 +466,7 @@ export function useWebcam() {
       deviceId: 'remote-webrtc',
     })
     return stream
-  }, [attachStream, stopCamera])
+  }, [attachStream, setSlotCleanup])
 
   const renameCameraSlot = useCallback((slotIndex, label) => {
     setCameraMeta(prev => {

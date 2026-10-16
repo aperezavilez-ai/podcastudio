@@ -163,6 +163,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       // la conexión se restaura automáticamente en cuanto el teléfono vuelve a primer plano
     },
   })
+
+  // Escuchar conexiones remotas de iPhone / cámaras móviles para todos los slots activos
+  useEffect(() => {
+    for (let slot = 0; slot < Math.min(slotsCount, 8); slot++) {
+      listenRemoteSlot(slot)
+    }
+  }, [slotsCount, listenRemoteSlot])
   const {
     recording, duration, recordings, converting, convertProgress,
     recoveredSession, restoreRecoveredSession, dismissRecoveredSession,
@@ -454,9 +461,10 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const [speakerMonitoring, setSpeakerMonitoringState] = useState(() => {
     try {
       const saved = localStorage.getItem('podcastudio_speaker_monitoring')
-      return saved === 'true'
+      if (saved !== null) return saved === 'true'
+      return true
     } catch {
-      return false
+      return true
     }
   })
 

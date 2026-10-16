@@ -237,6 +237,27 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
+.flipBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 46px;
+  padding: 0 12px;
+  border-radius: 23px;
+  background: rgba(56, 189, 248, 0.18);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  color: #38bdf8;
+  cursor: pointer;
+  transition: transform 0.12s ease, background-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.flipBtn:active {
+  transform: scale(0.92);
+  background: rgba(56, 189, 248, 0.35);
+}
+
 .controlBtn {
   width: 46px;
   height: 46px;

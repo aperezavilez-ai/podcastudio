@@ -31,6 +31,7 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
   const channelsRef = useRef({}) // { [slotIndex]: supabaseChannel }
   const peerConnectionsRef = useRef({}) // { [slotIndex]: RTCPeerConnection }
   const iceQueuesRef = useRef({}) // { [slotIndex]: [] }
+  const activeTracksRef = useRef({}) // { [slotIndex]: Map<trackId, track> }
   const sessionPrefixRef = useRef(getStudioSessionPrefix())
 
   const getRoomCodeForSlot = useCallback((slotIndex) => {
@@ -46,6 +47,7 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
       delete peerConnectionsRef.current[slotIndex]
     }
     delete iceQueuesRef.current[slotIndex]
+    delete activeTracksRef.current[slotIndex]
 
     // 2. Notificar por canal si sigue abierto
     if (channelsRef.current[slotIndex]) {
@@ -76,6 +78,7 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
 
     setRemoteStatus(prev => ({ ...prev, [slotIndex]: prev[slotIndex] === 'connected' ? 'connected' : 'waiting' }))
     iceQueuesRef.current[slotIndex] = []
+    activeTracksRef.current[slotIndex] = new Map()
 
     const channel = supabase.channel(channelName, {
       config: { broadcast: { self: false } },
@@ -87,8 +90,6 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
 
       // Descartar mensajes enviados por el propio estudio
       if (payload.sender === 'studio') return
-
-      const pc = peerConnectionsRef.current[slotIndex]
 
       if (payload.type === 'phone-ready' || payload.type === 'request-offer') {
         // El teléfono está listo para transmitir
@@ -113,17 +114,46 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
           const newPc = new RTCPeerConnection(RTC_CONFIG)
           peerConnectionsRef.current[slotIndex] = newPc
           iceQueuesRef.current[slotIndex] = []
+          const trackMap = new Map()
+          activeTracksRef.current[slotIndex] = trackMap
 
-          const accumulatedStream = new MediaStream()
-          newPc.ontrack = (trackEvent) => {
-            const stream = trackEvent.streams[0] || accumulatedStream
-            if (!trackEvent.streams[0] && trackEvent.track) {
-              accumulatedStream.addTrack(trackEvent.track)
-            }
+          // Función para emitir el stream consolidado con todos los tracks recibidos (video y audio)
+          const dispatchStreamUpdate = () => {
+            const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended')
+            if (liveTracks.length === 0) return
+
+            // Crear un MediaStream con los tracks activos para que React detecte la actualización
+            const compoundStream = new MediaStream(liveTracks)
             setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
             if (onStreamConnected) {
-              onStreamConnected(slotIndex, stream, `iPhone Remoto ${slotIndex + 1}`)
+              onStreamConnected(slotIndex, compoundStream, `iPhone Remoto ${slotIndex + 1}`)
             }
+          }
+
+          newPc.ontrack = (trackEvent) => {
+            const track = trackEvent.track
+            if (!track) return
+
+            trackMap.set(track.id, track)
+
+            track.onunmute = () => {
+              dispatchStreamUpdate()
+            }
+
+            track.onended = () => {
+              trackMap.delete(track.id)
+              dispatchStreamUpdate()
+            }
+
+            // Si el track viene dentro de un MediaStream ya agrupado por el navegador
+            if (trackEvent.streams && trackEvent.streams[0]) {
+              trackEvent.streams[0].getTracks().forEach(t => {
+                trackMap.set(t.id, t)
+                t.onunmute = () => dispatchStreamUpdate()
+              })
+            }
+
+            dispatchStreamUpdate()
           }
 
           newPc.onicecandidate = (iceEvent) => {
@@ -144,6 +174,7 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
             const state = newPc.connectionState
             if (state === 'connected') {
               setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
+              dispatchStreamUpdate()
             } else if (state === 'disconnected' || state === 'failed') {
               setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'waiting' }))
             } else if (state === 'closed') {
@@ -153,7 +184,7 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
 
           await newPc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
 
-          // Aplicar candidatos ICE encolados
+          // Aplicar candidatos ICE encolados que llegaron antes del SDP
           const queue = iceQueuesRef.current[slotIndex] || []
           while (queue.length > 0) {
             const cand = queue.shift()
@@ -162,6 +193,13 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
 
           const answer = await newPc.createAnswer()
           await newPc.setLocalDescription(answer)
+
+          // Drenar candidatos adicionales
+          const postQueue = iceQueuesRef.current[slotIndex] || []
+          while (postQueue.length > 0) {
+            const cand = postQueue.shift()
+            try { await newPc.addIceCandidate(cand) } catch {}
+          }
 
           await channel.send({
             type: 'broadcast',
@@ -179,10 +217,11 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
       }
 
       if (payload.type === 'candidate' && payload.candidate) {
+        const currentPc = peerConnectionsRef.current[slotIndex]
         const iceCandidate = new RTCIceCandidate(payload.candidate)
-        if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+        if (currentPc && currentPc.remoteDescription && currentPc.remoteDescription.type) {
           try {
-            await pc.addIceCandidate(iceCandidate)
+            await currentPc.addIceCandidate(iceCandidate)
           } catch (err) {
             console.warn('[RemoteCamManager] Error agregando ICE candidate:', err)
           }

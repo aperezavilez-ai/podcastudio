@@ -45,7 +45,7 @@ export function useAudioMix() {
   const eqHighRef = useRef(null)
   const compressorRef = useRef(null)
   const dspSettingsRef = useRef(DEFAULT_DSP_SETTINGS)
-  const speakerEnabledRef = useRef(false)
+  const speakerEnabledRef = useRef(true) // Monitoreo en bocinas activo por defecto
   const speakerVolumeRef = useRef(1.0)
 
   useEffect(() => () => {
@@ -59,6 +59,18 @@ export function useAudioMix() {
       ctxRef.current = new AudioCtx({ latencyHint: 'interactive' })
       const ctx = ctxRef.current
       destRef.current = ctx.createMediaStreamDestination()
+
+      const unlockAudio = () => {
+        if (ctx && ctx.state === 'suspended') {
+          ctx.resume().catch(() => {})
+        }
+      }
+      if (typeof window !== 'undefined') {
+        window.addEventListener('click', unlockAudio, { once: true, passive: true })
+        window.addEventListener('keydown', unlockAudio, { once: true, passive: true })
+        window.addEventListener('touchstart', unlockAudio, { once: true, passive: true })
+        window.addEventListener('pointerdown', unlockAudio, { once: true, passive: true })
+      }
 
       // DSP Chain Nodes
       // 1. Filtro pasa-altos 80Hz (elimina retumbos, golpes en escritorio y ruido eléctrico de 50/60Hz)
