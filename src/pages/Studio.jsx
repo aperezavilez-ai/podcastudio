@@ -1223,8 +1223,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     // El zoom NUNCA debe moverse solo: solo se aplica el zoom configurado por el usuario
     const dyn = typeof getDynamicCrop === 'function' ? getDynamicCrop(programCamera) : null
     if (dyn) return dyn
-    return null
-  }, [getDynamicCrop, programCamera, zoomState, activeZoom])
+    return cameraCrops[programCamera] || null
+  }, [getDynamicCrop, programCamera, zoomState, activeZoom, cameraCrops])
 
   const { getProgramStream } = useStudioCompositor({
     streams,
@@ -1287,6 +1287,74 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     setSpeakerMonitoring({ enabled: speakerMonitoring, volume: 1.0 })
   }, [speakerMonitoring, setSpeakerMonitoring])
 
+  const isSlotAudioMuted = useCallback((slotIndex) => {
+    const isMasterCam = slotIndex === programCamera || slotIndex === masterCameraSlot
+    if (isMasterCam) {
+      return micMuted || Boolean(cameraCrops[slotIndex]?.audioMuted)
+    }
+    if (screenLayout === 'pip' && pipCameraSlot === slotIndex) return pipAudioMuted
+    if ((screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') && splitSecondarySlot === slotIndex) return splitAudioMuted
+    if ((screenLayout === 'triple' || screenLayout === 'quad') && tripleTertiarySlot === slotIndex) return tripleAudioMuted
+    if (screenLayout === 'quad' && quadQuaternarySlot === slotIndex) return quadAudioMuted
+    return Boolean(cameraCrops[slotIndex]?.audioMuted ?? false)
+  }, [
+    programCamera,
+    masterCameraSlot,
+    micMuted,
+    cameraCrops,
+    screenLayout,
+    pipCameraSlot,
+    pipAudioMuted,
+    splitSecondarySlot,
+    splitAudioMuted,
+    tripleTertiarySlot,
+    tripleAudioMuted,
+    quadQuaternarySlot,
+    quadAudioMuted,
+  ])
+
+  const handleToggleCameraAudio = useCallback((slotIndex) => {
+    resumeContext()
+    if (!speakerMonitoring) {
+      setSpeakerMonitoringState(true)
+      try { localStorage.setItem('podcastudio_speaker_monitoring', 'true') } catch {}
+    }
+
+    const isMasterCam = slotIndex === programCamera || slotIndex === masterCameraSlot
+    const isCurrentlyMuted = isSlotAudioMuted(slotIndex)
+    const nextMuted = !isCurrentlyMuted
+
+    if (isMasterCam) {
+      setMicMuted(nextMuted)
+    }
+    if (screenLayout === 'pip' && pipCameraSlot === slotIndex) {
+      setPipAudioMuted(nextMuted)
+    }
+    if ((screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') && splitSecondarySlot === slotIndex) {
+      setSplitAudioMuted(nextMuted)
+    }
+    if ((screenLayout === 'triple' || screenLayout === 'quad') && tripleTertiarySlot === slotIndex) {
+      setTripleAudioMuted(nextMuted)
+    }
+    if (screenLayout === 'quad' && quadQuaternarySlot === slotIndex) {
+      setQuadAudioMuted(nextMuted)
+    }
+
+    setSlotProfile(slotIndex, { audioMuted: nextMuted })
+  }, [
+    resumeContext,
+    speakerMonitoring,
+    isSlotAudioMuted,
+    programCamera,
+    masterCameraSlot,
+    screenLayout,
+    pipCameraSlot,
+    splitSecondarySlot,
+    tripleTertiarySlot,
+    quadQuaternarySlot,
+    setSlotProfile,
+  ])
+
   // Sincronización continua de audio en tiempo real para monitoreo en bocinas y grabación
   useEffect(() => {
     const masterCamStream = streams[programCamera] || streams[masterCameraSlot] || null
@@ -1294,15 +1362,20 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
 
     syncAudioSources({
       masterStream: masterCamStream,
-      masterMuted: micMuted,
+      masterMuted: micMuted || Boolean(cameraCrops[programCamera]?.audioMuted),
+      masterGain: cameraCrops[programCamera]?.audioGain ?? 1.0,
       pipStream: screenLayout === 'pip' ? streams[pipCameraSlot] : null,
-      pipMuted: pipAudioMuted,
+      pipMuted: pipAudioMuted || Boolean(cameraCrops[pipCameraSlot]?.audioMuted),
+      pipGain: cameraCrops[pipCameraSlot]?.audioGain ?? 1.0,
       splitStream: (screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') ? streams[splitSecondarySlot] : null,
-      splitMuted: splitAudioMuted,
+      splitMuted: splitAudioMuted || Boolean(cameraCrops[splitSecondarySlot]?.audioMuted),
+      splitGain: cameraCrops[splitSecondarySlot]?.audioGain ?? 1.0,
       tripleStream: (screenLayout === 'triple' || screenLayout === 'quad') ? streams[tripleTertiarySlot] : null,
-      tripleMuted: tripleAudioMuted,
+      tripleMuted: tripleAudioMuted || Boolean(cameraCrops[tripleTertiarySlot]?.audioMuted),
+      tripleGain: cameraCrops[tripleTertiarySlot]?.audioGain ?? 1.0,
       quadStream: screenLayout === 'quad' ? streams[quadQuaternarySlot] : null,
-      quadMuted: quadAudioMuted,
+      quadMuted: quadAudioMuted || Boolean(cameraCrops[quadQuaternarySlot]?.audioMuted),
+      quadGain: cameraCrops[quadQuaternarySlot]?.audioGain ?? 1.0,
       extMicStream: extMic,
       extMicMuted: micMuted,
     })
@@ -1322,6 +1395,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     micMuted,
     getMicStream,
     syncAudioSources,
+    cameraCrops,
   ])
 
   const handleDspChange = useCallback((newSettings) => {
@@ -1547,15 +1621,15 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       const combined = await buildRecordingStream(videoStream, {
         micStream: getMicStream(),
         masterStream: masterCamStream,
-        masterMuted: micMuted,
+        masterMuted: micMuted || Boolean(cameraCrops[programCamera]?.audioMuted),
         pipStream: screenLayout === 'pip' ? streams[pipCameraSlot] : null,
-        pipMuted: pipAudioMuted,
+        pipMuted: pipAudioMuted || Boolean(cameraCrops[pipCameraSlot]?.audioMuted),
         splitStream: (screenLayout === 'split' || screenLayout === 'triple' || screenLayout === 'quad') ? streams[splitSecondarySlot] : null,
-        splitMuted: splitAudioMuted,
+        splitMuted: splitAudioMuted || Boolean(cameraCrops[splitSecondarySlot]?.audioMuted),
         tripleStream: (screenLayout === 'triple' || screenLayout === 'quad') ? streams[tripleTertiarySlot] : null,
-        tripleMuted: tripleAudioMuted,
+        tripleMuted: tripleAudioMuted || Boolean(cameraCrops[tripleTertiarySlot]?.audioMuted),
         quadStream: screenLayout === 'quad' ? streams[quadQuaternarySlot] : null,
-        quadMuted: quadAudioMuted,
+        quadMuted: quadAudioMuted || Boolean(cameraCrops[quadQuaternarySlot]?.audioMuted),
         musicEl: getAudioElement(),
         musicVolume: musicVol,
         musicPlaying,
@@ -2314,15 +2388,30 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       )}
                     </div>
 
-                    {/* Marcador de audio en la cámara */}
+                    {/* Botón interactivo de audio / mute en la cámara */}
                     {streams[i] && (
-                      <div
-                        className={`${styles.camAudioMeterIcon} ${(isLivePgm && !micMuted && micLevel > 10) || streams[i]?.getAudioTracks()?.length > 0 ? styles.camAudioMeterIconActive : ''}`}
-                        title={isLivePgm ? `Transmitiendo audio de Programa (Nivel: ${micLevel}%)` : streams[i]?.getAudioTracks()?.length > 0 ? 'Entrada de audio detectada en esta cámara' : 'Cámara activa'}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleToggleCameraAudio(i)
+                        }}
+                        className={`${styles.camAudioMeterIcon} ${
+                          isSlotAudioMuted(i)
+                            ? styles.camAudioMeterIconMuted
+                            : (streams[i]?.getAudioTracks()?.length > 0 || isLivePgm)
+                              ? styles.camAudioMeterIconActive
+                              : ''
+                        }`}
+                        title={
+                          isSlotAudioMuted(i)
+                            ? `CAM ${i + 1}: Micrófono SILENCIADO — Clic para ACTIVAR audio y escuchar`
+                            : `CAM ${i + 1}: Micrófono ACTIVO — Clic para SILENCIAR audio`
+                        }
                       >
-                        <i className={`ti ${isLivePgm && micMuted ? 'ti-microphone-off' : 'ti-microphone'}`} />
-                        {isLivePgm && !micMuted && micLevel > 12 && <span className={styles.camAudioPulse} />}
-                      </div>
+                        <i className={`ti ${isSlotAudioMuted(i) ? 'ti-microphone-off' : 'ti-microphone'}`} />
+                        {!isSlotAudioMuted(i) && (micLevel > 10 || isLivePgm) && <span className={styles.camAudioPulse} />}
+                      </button>
                     )}
 
                     <div className={styles.camActionPills}>
@@ -2407,25 +2496,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   <span>+ CAM</span>
                 </button>
               )}
-              {slotsCount > 1 && (
-                <button
-                  type="button"
-                  className={styles.addCamStripBtn}
-                  onClick={() => {
-                    removeCameraSlot(slotsCount - 1)
-                  }}
-                  title={`Eliminar última cámara (CAM ${slotsCount})`}
-                  style={{
-                    borderStyle: 'dashed',
-                    borderColor: 'rgba(239, 68, 68, 0.4)',
-                    background: 'rgba(239, 68, 68, 0.08)',
-                    color: '#f87171',
-                  }}
-                >
-                  <i className="ti ti-minus" />
-                  <span>- CAM</span>
-                </button>
-              )}
+
               </div>
               <div className={styles.camStripTools}>
               {/* SELECTOR DE CALIDAD DE GRABACIÓN MASTER (4K UHD, 1080p, 720p) */}

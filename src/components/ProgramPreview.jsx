@@ -436,29 +436,61 @@ export default function ProgramPreview({
     }
   }, [secondaryStream, tertiaryStream, quaternaryStream, pipStream, cameraKey, layout])
 
+  const effectiveMasterCrop = directorCrop || (masterCameraSlot !== null ? crops[masterCameraSlot] : null)
+
   const cssFilter = useMemo(() => {
-    const f = buildCanvasFilter(look)
-    if (f && f !== 'none') return f
-    if (directorCrop?.filter && directorCrop.filter !== 'none') return directorCrop.filter
+    // 1. Si la cámara activa tiene su propia calibración de color o filtro individual, se aplica prioritariamente
+    if (effectiveMasterCrop?.filter && effectiveMasterCrop.filter !== 'none') {
+      return effectiveMasterCrop.filter
+    }
+    // 2. Si el estudio tiene un Look global modificado, aplicarlo
+    const isLookMod = Boolean(
+      look && (
+        (look.brightness !== undefined && look.brightness !== 100) ||
+        (look.contrast !== undefined && look.contrast !== 100) ||
+        (look.saturation !== undefined && look.saturation !== 100) ||
+        (look.warmth !== undefined && look.warmth !== 0) ||
+        (look.tint !== undefined && look.tint !== 0) ||
+        (look.sharpness !== undefined && look.sharpness !== 0)
+      )
+    )
+    if (isLookMod) {
+      const f = buildCanvasFilter(look)
+      if (f && f !== 'none') return f
+    }
     return undefined
-  }, [look, directorCrop?.filter])
+  }, [look, effectiveMasterCrop?.filter])
+
+  const activeLutId = (effectiveMasterCrop?.lutId && effectiveMasterCrop.lutId !== 'none')
+    ? effectiveMasterCrop.lutId
+    : look?.lutId
+
+  const activeLook = useMemo(() => {
+    return { ...look, lutId: activeLutId }
+  }, [look, activeLutId])
 
   function getCropStyle(crop, isPushIn = false) {
-    const z = crop?.zoom > 1.02 ? crop.zoom : 1
-    const fx = (crop?.focusX ?? 0.5) * 100
-    const fy = (crop?.focusY ?? 0.42) * 100
+    const rawZoom = Number(crop?.zoom) || 1.0
+    const fx = typeof crop?.focusX === 'number' ? crop.focusX : 0.5
+    const fy = typeof crop?.focusY === 'number' ? crop.focusY : 0.42
+    // Si el usuario reencuadró la toma (focusX o focusY desplazados) pero el zoom quedó en 1x,
+    // aplicar un zoom mínimo suave (1.15x) para que el encuadre/reencuadre sea visible en pantalla
+    const hasPan = Math.abs(fx - 0.5) > 0.02 || Math.abs(fy - 0.42) > 0.03
+    const z = rawZoom > 1.02 ? rawZoom : (hasPan ? 1.15 : 1)
+    const filter = (crop?.filter && crop.filter !== 'none') ? crop.filter : undefined
+
     return {
       objectFit: 'cover',
-      objectPosition: `${fx}% ${fy}%`,
+      objectPosition: `${Math.round(fx * 100)}% ${Math.round(fy * 100)}%`,
       transform: z > 1 ? `scale(${z})` : undefined,
-      transformOrigin: `${fx}% ${fy}%`,
+      transformOrigin: `${Math.round(fx * 100)}% ${Math.round(fy * 100)}%`,
+      filter,
       transition: isPushIn
         ? 'transform 7s cubic-bezier(0.2, 0.7, 0.2, 1), transform-origin 1.2s ease-out'
         : 'transform 0.4s cubic-bezier(0.25, 1, 0.5, 1), transform-origin 0.4s cubic-bezier(0.25, 1, 0.5, 1)',
     }
   }
 
-  const effectiveMasterCrop = directorCrop || (masterCameraSlot !== null ? crops[masterCameraSlot] : null)
   const masterStyle = getCropStyle(effectiveMasterCrop, effectiveMasterCrop?.pushIn)
   const secondaryStyle = getCropStyle(secondarySlot !== null ? crops[secondarySlot] : null)
   const tertiaryStyle = getCropStyle(tertiarySlot !== null ? crops[tertiarySlot] : null)
@@ -496,7 +528,7 @@ export default function ProgramPreview({
           cameraKey={cameraKey}
           mainVideoRef={videoRef}
         />
-        <LookOverlays look={look} />
+        <LookOverlays look={activeLook} />
       </div>
     )
   }
@@ -558,7 +590,7 @@ export default function ProgramPreview({
             {secondaryLabel && <div className={styles.splitBadge}>{secondaryLabel}</div>}
           </div>
         </div>
-        <LookOverlays look={look} />
+        <LookOverlays look={activeLook} />
       </div>
     )
   }
@@ -650,7 +682,7 @@ export default function ProgramPreview({
             </div>
           </div>
         </div>
-        <LookOverlays look={look} />
+        <LookOverlays look={activeLook} />
       </div>
     )
   }
@@ -775,7 +807,7 @@ export default function ProgramPreview({
             {quaternaryLabel && <div className={styles.splitBadge}>{quaternaryLabel}</div>}
           </div>
         </div>
-        <LookOverlays look={look} />
+        <LookOverlays look={activeLook} />
       </div>
     )
   }
@@ -850,7 +882,7 @@ export default function ProgramPreview({
         </div>
       )}
 
-      <LookOverlays look={look} />
+      <LookOverlays look={activeLook} />
     </div>
   )
 }

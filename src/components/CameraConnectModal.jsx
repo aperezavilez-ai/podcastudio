@@ -257,22 +257,7 @@ export default function CameraConnectModal({
                 <i className="ti ti-plus" style={{ fontSize: 9 }} />
               </button>
             )}
-            {slotsCount > 1 && onRemoveSlot && (
-              <button
-                type="button"
-                className={styles.slotPill}
-                style={{ borderStyle: 'dashed', borderColor: 'rgba(239, 68, 68, 0.45)', color: '#f87171' }}
-                onClick={() => {
-                  onRemoveSlot(slotsCount - 1)
-                  if (targetSlot >= slotsCount - 1) {
-                    setTargetSlot(Math.max(0, slotsCount - 2))
-                  }
-                }}
-                title="Eliminar última ranura"
-              >
-                <i className="ti ti-minus" style={{ fontSize: 9 }} />
-              </button>
-            )}
+
           </div>
         </div>
 
@@ -592,15 +577,35 @@ export default function CameraConnectModal({
                       {copied ? '¡Enlace copiado!' : 'Copiar enlace directo de cámara'}
                     </button>
                     <a
+                      href={`https://wa.me/?text=${encodeURIComponent(`Hola! Conéctate como cámara remota en vivo para PodcastStudio en CAM ${targetSlot + 1}: ${remoteUrl}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.copyUrlBtn}
+                      style={{ textDecoration: 'none', background: '#166534', color: '#fff', borderColor: '#22c55e', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      title="Enviar por WhatsApp a otra persona o celular"
+                    >
+                      <i className="ti ti-brand-whatsapp" style={{ fontSize: 16 }} /> Enviar por WhatsApp
+                    </a>
+                    <a
                       href={remoteUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={styles.copyUrlBtn}
-                      style={{ textDecoration: 'none' }}
+                      style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
                       title="Abrir en otra pestaña para probar en este navegador"
                     >
                       <i className="ti ti-external-link" /> Probar en navegador
                     </a>
+                  </div>
+
+                  <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, background: 'rgba(34, 197, 94, 0.08)', border: '1px solid rgba(34, 197, 94, 0.25)', fontSize: 11, color: '#86efac', lineHeight: 1.45, textAlign: 'left' }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#4ade80' }}>
+                      <i className="ti ti-world" style={{ fontSize: 13 }} />
+                      ¿El celular está en otra ubicación o con datos móviles (4G/5G)?
+                    </div>
+                    <div>
+                      <strong>¡Funciona a cualquier distancia!</strong> No necesitan estar en la misma red Wi-Fi. Solo copia el enlace o envíaselo por WhatsApp. La otra persona abre el link en su navegador (Safari en iPhone o Chrome en Android), pulsa <em>"Activar Cámara y Conectar"</em> y listo: su video HD y micrófono entrarán de inmediato en CAM {targetSlot + 1}.
+                    </div>
                   </div>
                 </>
               )}

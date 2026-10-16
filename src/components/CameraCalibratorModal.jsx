@@ -3,6 +3,35 @@ import styles from './CameraCalibratorModal.module.css'
 import { ZOOM_PRESETS } from '../hooks/useDynamicZoom.js'
 import { buildCanvasFilter } from '../utils/videoLook.js'
 import { getSlotLabel } from '../config/cameraSlots.js'
+import { bindVideoKeepAlive } from '../utils/videoStream.js'
+
+function safeAttachVideo(videoEl, targetStream) {
+  if (!videoEl) return
+  videoEl.setAttribute('playsinline', '')
+  videoEl.setAttribute('webkit-playsinline', '')
+  videoEl.muted = true
+
+  if (targetStream) {
+    if (videoEl.srcObject !== targetStream) {
+      videoEl.srcObject = targetStream
+    }
+    const tryPlay = () => {
+      const p = videoEl.play()
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    }
+    tryPlay()
+    videoEl.addEventListener('canplay', tryPlay)
+    videoEl.addEventListener('loadeddata', tryPlay)
+    videoEl.addEventListener('loadedmetadata', tryPlay)
+
+    const videoTracks = targetStream?.getVideoTracks?.() || []
+    videoTracks.forEach(t => {
+      t.addEventListener('unmute', tryPlay)
+    })
+  } else if (videoEl.srcObject) {
+    videoEl.srcObject = null
+  }
+}
 
 const CALIBRATION_LOOK_PRESETS = [
   { id: 'original', name: 'Original', brightness: 100, contrast: 100, saturation: 100, warmth: 0, tint: 0, lutId: 'none' },
@@ -88,15 +117,24 @@ export default function CameraCalibratorModal({
   // Elemento de video en vivo
   const videoRef = useRef(null)
   const stream = streams[selectedSlot]
+  const [saveToast, setSaveToast] = useState('')
+
+  const setVideoNode = useCallback((node) => {
+    videoRef.current = node
+    if (node && stream) {
+      safeAttachVideo(node, stream)
+    }
+  }, [stream])
 
   useEffect(() => {
-    if (!videoRef.current) return
-    if (stream && videoRef.current.srcObject !== stream) {
-      videoRef.current.srcObject = stream
-      videoRef.current.play().catch(() => {})
-    } else if (!stream) {
+    if (!isOpen) return
+    if (videoRef.current && stream) {
+      safeAttachVideo(videoRef.current, stream)
+    } else if (videoRef.current && !stream) {
       videoRef.current.srcObject = null
     }
+
+    const unbind = bindVideoKeepAlive(videoRef.current)
 
     const track = stream?.getVideoTracks?.()[0]
     if (track && typeof track.getSettings === 'function') {
@@ -107,7 +145,9 @@ export default function CameraCalibratorModal({
         if (s.focusMode) setFocusMode(s.focusMode)
       } catch {}
     }
-  }, [stream, selectedSlot])
+
+    return () => unbind?.()
+  }, [isOpen, stream, selectedSlot])
 
   const handleToggleHardwareMode = useCallback(async (modeKey, targetValue) => {
     const track = stream?.getVideoTracks?.()[0]
@@ -217,8 +257,21 @@ export default function CameraCalibratorModal({
   }
 
   const handleNudge = (dx, dy) => {
+    if (zoom <= 1.02) {
+      setZoom(1.15)
+      setActivePreset('custom')
+    }
     setFocusX(prev => Math.max(0.1, Math.min(0.9, parseFloat((prev + dx).toFixed(2)))))
     setFocusY(prev => Math.max(0.1, Math.min(0.9, parseFloat((prev + dy).toFixed(2)))))
+  }
+
+  const handlePanSlider = (axis, val) => {
+    if (zoom <= 1.02) {
+      setZoom(1.15)
+      setActivePreset('custom')
+    }
+    if (axis === 'x') setFocusX(val)
+    if (axis === 'y') setFocusY(val)
   }
 
   const handleSelectLookPreset = (p) => {
@@ -265,10 +318,15 @@ export default function CameraCalibratorModal({
   })
 
   const handleSave = () => {
+    const prof = buildProfile()
     if (onSaveSlotProfile) {
-      onSaveSlotProfile(selectedSlot, buildProfile())
+      onSaveSlotProfile(selectedSlot, prof)
     }
-    onClose()
+    setSaveToast(`¡Calibración guardada en CAM ${selectedSlot + 1}!`)
+    setTimeout(() => {
+      setSaveToast('')
+      onClose()
+    }, 450)
   }
 
   const handlePromoteAndClose = () => {
@@ -347,15 +405,19 @@ export default function CameraCalibratorModal({
             <div className={styles.previewFrame}>
               {stream ? (
                 <video
-                  ref={videoRef}
+                  ref={setVideoNode}
                   className={styles.videoElement}
                   autoPlay
                   muted
                   playsInline
+                  onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
+                  onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                   style={{
                     filter: computedFilter,
-                    transform: zoom > 1 ? `scale(${zoom})` : undefined,
-                    transformOrigin: `${focusX * 100}% ${focusY * 100}%`,
+                    transform: (zoom > 1.02 || Math.abs(focusX - 0.5) > 0.02 || Math.abs(focusY - 0.42) > 0.03)
+                      ? `scale(${Math.max(zoom, (Math.abs(focusX - 0.5) > 0.02 || Math.abs(focusY - 0.42) > 0.03) ? 1.15 : 1)})`
+                      : undefined,
+                    transformOrigin: `${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}%`,
                   }}
                 />
               ) : (
@@ -519,7 +581,7 @@ export default function CameraCalibratorModal({
                       max="0.9"
                       step="0.02"
                       value={focusX}
-                      onChange={(e) => setFocusX(parseFloat(e.target.value))}
+                      onChange={(e) => handlePanSlider('x', parseFloat(e.target.value))}
                       className={styles.slider}
                     />
                     <span className={styles.sliderValue}>{Math.round(focusX * 100)}%</span>
@@ -532,7 +594,7 @@ export default function CameraCalibratorModal({
                       max="0.9"
                       step="0.02"
                       value={focusY}
-                      onChange={(e) => setFocusY(parseFloat(e.target.value))}
+                      onChange={(e) => handlePanSlider('y', parseFloat(e.target.value))}
                       className={styles.slider}
                     />
                     <span className={styles.sliderValue}>{Math.round(focusY * 100)}%</span>
@@ -734,10 +796,17 @@ export default function CameraCalibratorModal({
 
         {/* FOOTER ACTIONS */}
         <div className={styles.footer}>
-          <button type="button" className={styles.resetBtn} onClick={handleReset} title="Restablecer valores predeterminados">
-            <i className="ti ti-rotate" />
-            Restablecer
-          </button>
+          {saveToast ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#4ade80', fontWeight: 600, fontSize: 13, background: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.3)', padding: '6px 14px', borderRadius: 8 }}>
+              <i className="ti ti-check" style={{ fontSize: 16 }} />
+              <span>{saveToast}</span>
+            </div>
+          ) : (
+            <button type="button" className={styles.resetBtn} onClick={handleReset} title="Restablecer valores predeterminados">
+              <i className="ti ti-rotate" />
+              Restablecer
+            </button>
+          )}
 
           <div className={styles.actionGroup}>
             <button

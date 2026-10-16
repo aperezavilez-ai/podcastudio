@@ -202,6 +202,12 @@ export function useAudioMix() {
         try { ch.source.disconnect() } catch {}
         ch.source = null
       }
+      if (ch.audioHelper) {
+        try {
+          ch.audioHelper.pause()
+          ch.audioHelper.srcObject = null
+        } catch {}
+      }
       ch.stream = null
       return
     }
@@ -221,6 +227,20 @@ export function useAudioMix() {
         src.connect(ch.gain)
         ch.source = src
         ch.stream = stream
+
+        // En Chromium/Safari: los MediaStreams de WebRTC requieren un elemento de audio
+        // activo para que el motor WebRTC decodifique los paquetes de audio entrantes
+        if (!ch.audioHelper && typeof Audio !== 'undefined') {
+          const a = new Audio()
+          a.autoplay = true
+          a.playsInline = true
+          a.volume = 0.0001
+          ch.audioHelper = a
+        }
+        if (ch.audioHelper) {
+          ch.audioHelper.srcObject = stream
+          ch.audioHelper.play().catch(() => {})
+        }
       } catch (err) {
         console.warn(`[useAudioMix] Error conectando canal ${channelKey}:`, err)
       }
@@ -236,22 +256,27 @@ export function useAudioMix() {
   const syncAudioSources = useCallback(({
     masterStream = null,
     masterMuted = false,
+    masterGain = 1.0,
     pipStream = null,
     pipMuted = true,
+    pipGain = 1.0,
     splitStream = null,
     splitMuted = true,
+    splitGain = 1.0,
     tripleStream = null,
     tripleMuted = true,
+    tripleGain = 1.0,
     quadStream = null,
     quadMuted = true,
+    quadGain = 1.0,
     extMicStream = null,
     extMicMuted = false,
   }) => {
-    updateChannel('master', masterStream, masterMuted)
-    updateChannel('pip', pipStream, pipMuted)
-    updateChannel('split', splitStream, splitMuted)
-    updateChannel('triple', tripleStream, tripleMuted)
-    updateChannel('quad', quadStream, quadMuted)
+    updateChannel('master', masterStream, masterMuted, masterGain)
+    updateChannel('pip', pipStream, pipMuted, pipGain)
+    updateChannel('split', splitStream, splitMuted, splitGain)
+    updateChannel('triple', tripleStream, tripleMuted, tripleGain)
+    updateChannel('quad', quadStream, quadMuted, quadGain)
     updateChannel('mic', extMicStream, extMicMuted)
   }, [updateChannel])
 
