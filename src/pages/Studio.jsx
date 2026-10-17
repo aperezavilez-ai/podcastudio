@@ -805,11 +805,24 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const {
     templateId: virtualSetTemplateId,
     customUrl: virtualSetCustomUrl,
-    cameraScale: virtualSetCameraScale,
     hasVirtualSet,
-    cameraRect: virtualSetCameraRect,
+    presenterScale: virtualSetPresenterScale,
+    presenterX: virtualSetPresenterX,
+    presenterY: virtualSetPresenterY,
+    cropLeft: virtualSetCropLeft,
+    cropRight: virtualSetCropRight,
+    cropTop: virtualSetCropTop,
+    cropBottom: virtualSetCropBottom,
+    showDesk: virtualSetShowDesk,
     setTemplateId: setVirtualSetTemplateId,
-    setCameraScale: setVirtualSetCameraScale,
+    setPresenterScale: setVirtualSetPresenterScale,
+    setPresenterX: setVirtualSetPresenterX,
+    setPresenterY: setVirtualSetPresenterY,
+    setCropLeft: setVirtualSetCropLeft,
+    setCropRight: setVirtualSetCropRight,
+    setCropTop: setVirtualSetCropTop,
+    setCropBottom: setVirtualSetCropBottom,
+    setShowDesk: setVirtualSetShowDesk,
     setCustomUrl: setVirtualSetCustomUrl,
     onCustomUpload: handleVirtualSetCustomUpload,
     clearCustom: handleVirtualSetClearCustom,
@@ -1330,13 +1343,26 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       hasVirtualSet: true,
       templateId: virtualSetTemplateId,
       customUrl: virtualSetCustomUrl,
-      cameraRect: virtualSetCameraRect,
+      presenterScale: virtualSetPresenterScale,
+      presenterX: virtualSetPresenterX,
+      presenterY: virtualSetPresenterY,
+      cropLeft: virtualSetCropLeft,
+      cropRight: virtualSetCropRight,
+      cropTop: virtualSetCropTop,
+      cropBottom: virtualSetCropBottom,
+      showDesk: virtualSetShowDesk,
       chromaSettings: {
         enabled: chromaEnabled,
         keyColor: chromaColor,
         similarity: chromaSimilarity,
         smoothness: chromaSmoothness,
         despill: chromaDespill,
+        crop: {
+          left: virtualSetCropLeft,
+          right: virtualSetCropRight,
+          top: virtualSetCropTop,
+          bottom: virtualSetCropBottom,
+        },
       },
     } : null,
     compositorActive: recording || countdown !== null || preparingRecord,
@@ -2219,13 +2245,26 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       hasVirtualSet: true,
                       templateId: virtualSetTemplateId,
                       customUrl: virtualSetCustomUrl,
-                      cameraRect: virtualSetCameraRect,
+                      presenterScale: virtualSetPresenterScale,
+                      presenterX: virtualSetPresenterX,
+                      presenterY: virtualSetPresenterY,
+                      cropLeft: virtualSetCropLeft,
+                      cropRight: virtualSetCropRight,
+                      cropTop: virtualSetCropTop,
+                      cropBottom: virtualSetCropBottom,
+                      showDesk: virtualSetShowDesk,
                       chromaSettings: {
                         enabled: chromaEnabled,
                         keyColor: chromaColor,
                         similarity: chromaSimilarity,
                         smoothness: chromaSmoothness,
                         despill: chromaDespill,
+                        crop: {
+                          left: virtualSetCropLeft,
+                          right: virtualSetCropRight,
+                          top: virtualSetCropTop,
+                          bottom: virtualSetCropBottom,
+                        },
                       },
                     } : null}
                     directorCrop={effectiveCrop}
@@ -3585,21 +3624,35 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                 <VirtualSetPanel
                   templateId={virtualSetTemplateId}
                   customUrl={virtualSetCustomUrl}
-                  cameraScale={virtualSetCameraScale}
                   chromaEnabled={chromaEnabled}
                   chromaColor={chromaColor}
                   chromaSimilarity={chromaSimilarity}
                   chromaSmoothness={chromaSmoothness}
                   chromaDespill={chromaDespill}
+                  presenterScale={virtualSetPresenterScale}
+                  presenterX={virtualSetPresenterX}
+                  presenterY={virtualSetPresenterY}
+                  cropLeft={virtualSetCropLeft}
+                  cropRight={virtualSetCropRight}
+                  cropTop={virtualSetCropTop}
+                  cropBottom={virtualSetCropBottom}
+                  showDesk={virtualSetShowDesk}
                   onTemplateChange={setVirtualSetTemplateId}
                   onCustomUpload={handleVirtualSetCustomUpload}
                   onClearCustom={handleVirtualSetClearCustom}
-                  onCameraScaleChange={setVirtualSetCameraScale}
                   onChromaToggle={handleChromaToggle}
                   onChromaColorChange={handleChromaColorChange}
                   onChromaSimilarityChange={handleChromaSimilarityChange}
                   onChromaSmoothnessChange={handleChromaSmoothnessChange}
                   onChromaDespillChange={handleChromaDespillChange}
+                  onPresenterScaleChange={setVirtualSetPresenterScale}
+                  onPresenterXChange={setVirtualSetPresenterX}
+                  onPresenterYChange={setVirtualSetPresenterY}
+                  onCropLeftChange={setVirtualSetCropLeft}
+                  onCropRightChange={setVirtualSetCropRight}
+                  onCropTopChange={setVirtualSetCropTop}
+                  onCropBottomChange={setVirtualSetCropBottom}
+                  onShowDeskChange={setVirtualSetShowDesk}
                 />
               </div>
             )}

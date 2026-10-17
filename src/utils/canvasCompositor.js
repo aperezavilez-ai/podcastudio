@@ -7,7 +7,7 @@ import {
   getTransitionProgress,
   TRANSITION_DURATION_MS,
 } from './videoLook.js'
-import { drawSetBackground, drawVideoInset } from './drawSetBackground.js'
+import { drawSetBackground, drawSetForegroundDesk, drawVideoInset } from './drawSetBackground.js'
 
 const W = 1920
 const H = 1080
@@ -204,7 +204,7 @@ export function drawCompositorFrame(ctx, w, h, {
   quaternaryVideo = null,
   allVideos = null,
 }) {
-  const useVirtualSet = background?.hasVirtualSet && background?.cameraRect
+  const useVirtualSet = Boolean(background?.hasVirtualSet || (background?.templateId && background.templateId !== 'none') || background?.customImage || background?.customUrl)
 
   if (useVirtualSet) {
     if (background.customImage) {
@@ -227,7 +227,10 @@ export function drawCompositorFrame(ctx, w, h, {
   const drawMainVideo = (v, crop) => {
     if (!v || v.readyState < 2 || !v.videoWidth) return
     if (useVirtualSet) {
-      drawVideoInset(ctx, v, w, h, background.cameraRect, crop, look, background?.chromaSettings)
+      drawVideoInset(ctx, v, w, h, background, crop, look, background?.chromaSettings)
+      if (background?.chromaSettings?.enabled) {
+        drawSetForegroundDesk(ctx, w, h, background.templateId, background.showDesk !== false)
+      }
     } else {
       drawVideoLayer(ctx, v, w, h, crop, look)
     }

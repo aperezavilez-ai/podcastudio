@@ -7,6 +7,29 @@
 
 .preview { border-radius: 6px; }
 
+.realisticBg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+  pointer-events: none;
+}
+
+.deskOverlayLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.deskOverlayImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .customBg {
   width: 100%;
   height: 100%;

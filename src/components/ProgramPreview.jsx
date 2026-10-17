@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { buildCanvasFilter } from '../utils/videoLook.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 import { applyChromaKey } from '../hooks/useChromaKey.js'
-import SetBackground from './SetBackground.jsx'
+import SetBackground, { SetForegroundDesk } from './SetBackground.jsx'
 import styles from './ProgramPreview.module.css'
 
 function lutClass(lutId) {
@@ -63,7 +63,8 @@ function ChromaMasterVideo({ stream, className, style, filter, chromaSettings, m
             chromaSettings.keyColor || '#00b140',
             chromaSettings.similarity ?? 40,
             chromaSettings.smoothness ?? 25,
-            chromaSettings.despill ?? 50
+            chromaSettings.despill ?? 50,
+            chromaSettings.crop || { left: 0, right: 0, top: 0, bottom: 0 }
           )
           ctx.putImageData(frame, 0, 0)
         } catch {}
@@ -609,29 +610,47 @@ export default function ProgramPreview({
   }
 
   // SET VIRTUAL CON FONDO
-  if (hasSet && virtualSet.cameraRect) {
-    const { top, left, width, height } = virtualSet.cameraRect
+  if (hasSet) {
     const isChroma = Boolean(virtualSet.chromaSettings?.enabled)
+    const pScale = (virtualSet.presenterScale ?? 100) / 100
+    const pX = virtualSet.presenterX ?? 50
+    const pY = virtualSet.presenterY ?? 55
+    const showDesk = virtualSet.showDesk !== false
+    const { top = 12, left = 15, width = 70, height = 76 } = virtualSet.cameraRect || {}
+
     return (
       <div className={styles.preview}>
+        {/* Capa 1: Fondo de escenario 3D realista */}
         <SetBackground templateId={virtualSet.templateId} customUrl={virtualSet.customUrl} />
+
+        {/* Capa 2: Presentador con Croma Key (silueta limpia integrada) o cámara recuadro */}
         {isChroma ? (
-          <ChromaMasterVideo
-            stream={stream}
-            className={styles.videoInset}
+          <div
             style={{
-              top: `${top}%`,
-              left: `${left}%`,
-              width: `${width}%`,
-              height: `${height}%`,
-              ...masterStyle,
-              borderRadius: 0,
-              boxShadow: 'none',
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              overflow: 'hidden',
             }}
-            filter={cssFilter}
-            chromaSettings={virtualSet.chromaSettings}
-            mainVideoRef={videoRef}
-          />
+          >
+            <ChromaMasterVideo
+              stream={stream}
+              className={styles.videoChromaSilhouette}
+              style={{
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                transformOrigin: '50% 85%',
+                transform: `translate(${(pX - 50) * 1.5}%, ${(pY - 50) * 1.5}%) scale(${pScale})`,
+                filter: cssFilter,
+              }}
+              chromaSettings={virtualSet.chromaSettings}
+              mainVideoRef={videoRef}
+            />
+          </div>
         ) : (
           <SeamlessMasterVideo
             stream={stream}
@@ -649,6 +668,15 @@ export default function ProgramPreview({
             mainVideoRef={videoRef}
           />
         )}
+
+        {/* Capa 3: Escritorio frontal 3D (para que el presentador quede sentado DETRÁS del escritorio) */}
+        {isChroma && (
+          <SetForegroundDesk
+            templateId={virtualSet.templateId}
+            showDesk={showDesk}
+          />
+        )}
+
         <LookOverlays look={activeLook} />
       </div>
     )

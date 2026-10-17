@@ -1,8 +1,23 @@
 import { buildCanvasFilter } from './videoLook.js'
 import { applyChromaKey } from '../hooks/useChromaKey.js'
+import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 
 let offscreenCanvas = null
 let offscreenCtx = null
+
+const imageCache = new Map()
+
+function getCachedImage(src) {
+  if (!src) return null
+  if (imageCache.has(src)) return imageCache.get(src)
+  if (typeof Image !== 'undefined') {
+    const img = new Image()
+    img.src = src
+    imageCache.set(src, img)
+    return img
+  }
+  return null
+}
 
 /** Fondos simplificados para el compositor de grabación (aprox. a los sets CSS). */
 const SETS = {
@@ -87,6 +102,22 @@ function fillGradient(ctx, w, h, colors) {
 }
 
 export function drawSetBackground(ctx, w, h, templateId) {
+  if (!templateId || templateId === 'none') {
+    ctx.fillStyle = '#0a0a0e'
+    ctx.fillRect(0, 0, w, h)
+    return
+  }
+
+  // Si existe imagen realista 3D para la plantilla, dibujarla en el canvas
+  const tmpl = getBackgroundTemplate(templateId)
+  if (tmpl?.image) {
+    const img = getCachedImage(tmpl.image)
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.drawImage(img, 0, 0, w, h)
+      return
+    }
+  }
+
   const spec = SETS[templateId]
   if (!spec) {
     ctx.fillStyle = '#0a0a0e'
@@ -113,30 +144,31 @@ export function drawSetBackground(ctx, w, h, templateId) {
   }
 }
 
-export function drawVideoInset(ctx, video, w, h, rectPct, directorCrop, look, chromaSettings = null) {
+/** Dibuja la capa frontal de escritorio / podium PNG para que el presentador quede detrás */
+export function drawSetForegroundDesk(ctx, w, h, templateId, showDesk = true) {
+  if (!showDesk || !templateId || templateId === 'none') return
+  const tmpl = getBackgroundTemplate(templateId)
+  if (!tmpl?.desk) return
+  const deskImg = getCachedImage(tmpl.desk)
+  if (deskImg && deskImg.complete && deskImg.naturalWidth > 0) {
+    ctx.drawImage(deskImg, 0, 0, w, h)
+  }
+}
+
+export function drawVideoInset(ctx, video, w, h, backgroundOrRect, directorCrop, look, chromaSettings = null) {
   if (!video || video.readyState < 2 || !video.videoWidth) return
 
-  const x = (rectPct.left / 100) * w
-  const y = (rectPct.top / 100) * h
-  const rw = (rectPct.width / 100) * w
-  const rh = (rectPct.height / 100) * h
+  const rectPct = backgroundOrRect?.cameraRect || backgroundOrRect || { left: 15, top: 12, width: 70, height: 76 }
+  const actualChroma = chromaSettings || backgroundOrRect?.chromaSettings
+  const isChroma = Boolean(actualChroma?.enabled)
 
   ctx.save()
-  if (!chromaSettings?.enabled) {
-    ctx.beginPath()
-    if (ctx.roundRect) {
-      ctx.roundRect(x, y, rw, rh, Math.min(rw, rh) * 0.02)
-    } else {
-      ctx.rect(x, y, rw, rh)
-    }
-    ctx.clip()
-  }
 
   const filter = buildCanvasFilter(look)
   if (filter && filter !== 'none') ctx.filter = filter
 
   let sourceDrawable = video
-  if (chromaSettings?.enabled && typeof document !== 'undefined') {
+  if (isChroma && typeof document !== 'undefined') {
     if (!offscreenCanvas) {
       offscreenCanvas = document.createElement('canvas')
       offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true })
@@ -152,15 +184,45 @@ export function drawVideoInset(ctx, video, w, h, rectPct, directorCrop, look, ch
       const frame = offscreenCtx.getImageData(0, 0, vw, vh)
       applyChromaKey(
         frame,
-        chromaSettings.keyColor || '#00b140',
-        chromaSettings.similarity ?? 40,
-        chromaSettings.smoothness ?? 25,
-        chromaSettings.despill ?? 50
+        actualChroma.keyColor || '#00b140',
+        actualChroma.similarity ?? 40,
+        actualChroma.smoothness ?? 25,
+        actualChroma.despill ?? 50,
+        actualChroma.crop || { left: 0, right: 0, top: 0, bottom: 0 }
       )
       offscreenCtx.putImageData(frame, 0, 0)
       sourceDrawable = offscreenCanvas
     } catch {}
+
+    // Modo Chroma: Silueta integrada y posicionable libremente sin marcos ni recuadros
+    const pScale = ((backgroundOrRect?.presenterScale ?? 100) / 100)
+    const pX = (backgroundOrRect?.presenterX ?? 50) / 100
+    const pY = (backgroundOrRect?.presenterY ?? 55) / 100
+
+    const baseScale = Math.min(w / vw, h / vh) * pScale
+    const dw = vw * baseScale
+    const dh = vh * baseScale
+    const dx = (pX * w) - (dw / 2)
+    const dy = (pY * h) - (dh * 0.85)
+
+    ctx.drawImage(sourceDrawable, dx, dy, dw, dh)
+    ctx.filter = 'none'
+    ctx.restore()
+    return
   }
+
+  const x = (rectPct.left / 100) * w
+  const y = (rectPct.top / 100) * h
+  const rw = (rectPct.width / 100) * w
+  const rh = (rectPct.height / 100) * h
+
+  ctx.beginPath()
+  if (ctx.roundRect) {
+    ctx.roundRect(x, y, rw, rh, Math.min(rw, rh) * 0.02)
+  } else {
+    ctx.rect(x, y, rw, rh)
+  }
+  ctx.clip()
 
   if (directorCrop?.zoom > 1.02) {
     const zoom = directorCrop.zoom
@@ -188,3 +250,4 @@ export function drawVideoInset(ctx, video, w, h, rectPct, directorCrop, look, ch
   ctx.filter = 'none'
   ctx.restore()
 }
+

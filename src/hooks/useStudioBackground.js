@@ -1,55 +1,116 @@
-import { useState, useCallback } from 'react'
-import { getBackgroundCameraRect } from '../config/backgroundTemplates.js'
+import { useState, useCallback, useEffect } from 'react'
+import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 
 const KEYS = {
   template: 'podcastudio_bg_template',
   custom: 'podcastudio_bg_custom',
   scale: 'podcastudio_bg_scale',
+  posX: 'podcastudio_bg_pos_x',
+  posY: 'podcastudio_bg_pos_y',
+  cropLeft: 'podcastudio_bg_crop_left',
+  cropRight: 'podcastudio_bg_crop_right',
+  cropTop: 'podcastudio_bg_crop_top',
+  cropBottom: 'podcastudio_bg_crop_bottom',
+  showDesk: 'podcastudio_bg_show_desk',
 }
 
-function loadTemplate() {
+function loadNum(key, fallback) {
   try {
-    return localStorage.getItem(KEYS.template) || 'none'
+    const val = localStorage.getItem(key)
+    const n = val !== null ? parseFloat(val) : NaN
+    return !isNaN(n) ? n : fallback
   } catch {
-    return 'none'
+    return fallback
   }
 }
 
-function loadScale() {
+function loadBool(key, fallback) {
   try {
-    return parseInt(localStorage.getItem(KEYS.scale) || '100', 10)
+    const val = localStorage.getItem(key)
+    return val !== null ? val === 'true' : fallback
   } catch {
-    return 100
-  }
-}
-
-function loadCustom() {
-  try {
-    return localStorage.getItem(KEYS.custom) || null
-  } catch {
-    return null
+    return fallback
   }
 }
 
 export function useStudioBackground() {
-  const [templateId, setTemplateIdState] = useState(loadTemplate)
-  const [customUrl, setCustomUrlState] = useState(loadCustom)
-  const [cameraScale, setCameraScaleState] = useState(loadScale)
+  const [templateId, setTemplateIdState] = useState(() => {
+    try { return localStorage.getItem(KEYS.template) || 'none' } catch { return 'none' }
+  })
+  const [customUrl, setCustomUrlState] = useState(() => {
+    try { return localStorage.getItem(KEYS.custom) || null } catch { return null }
+  })
+
+  // Controles interactivos de posición, escala y recorte de grabación
+  const [presenterScale, setPresenterScaleState] = useState(() => loadNum(KEYS.scale, 100))
+  const [presenterX, setPresenterXState] = useState(() => loadNum(KEYS.posX, 50))
+  const [presenterY, setPresenterYState] = useState(() => loadNum(KEYS.posY, 55))
+
+  const [cropLeft, setCropLeftState] = useState(() => loadNum(KEYS.cropLeft, 0))
+  const [cropRight, setCropRightState] = useState(() => loadNum(KEYS.cropRight, 0))
+  const [cropTop, setCropTopState] = useState(() => loadNum(KEYS.cropTop, 0))
+  const [cropBottom, setCropBottomState] = useState(() => loadNum(KEYS.cropBottom, 0))
+
+  const [showDesk, setShowDeskState] = useState(() => loadBool(KEYS.showDesk, true))
 
   const setTemplateId = useCallback((id) => {
     setTemplateIdState(id)
-    localStorage.setItem(KEYS.template, id)
+    try { localStorage.setItem(KEYS.template, id) } catch {}
+    // Cargar posición recomendada por defecto del escenario si es la primera vez
+    const tmpl = getBackgroundTemplate(id)
+    if (tmpl?.defaultPresenter) {
+      setPresenterXState(tmpl.defaultPresenter.x)
+      setPresenterYState(tmpl.defaultPresenter.y)
+      setPresenterScaleState(tmpl.defaultPresenter.scale)
+    }
   }, [])
 
-  const setCameraScale = useCallback((scale) => {
-    setCameraScaleState(scale)
-    localStorage.setItem(KEYS.scale, String(scale))
+  const setPresenterScale = useCallback((scale) => {
+    setPresenterScaleState(scale)
+    try { localStorage.setItem(KEYS.scale, String(scale)) } catch {}
+  }, [])
+
+  const setPresenterX = useCallback((x) => {
+    setPresenterXState(x)
+    try { localStorage.setItem(KEYS.posX, String(x)) } catch {}
+  }, [])
+
+  const setPresenterY = useCallback((y) => {
+    setPresenterYState(y)
+    try { localStorage.setItem(KEYS.posY, String(y)) } catch {}
+  }, [])
+
+  const setCropLeft = useCallback((v) => {
+    setCropLeftState(v)
+    try { localStorage.setItem(KEYS.cropLeft, String(v)) } catch {}
+  }, [])
+
+  const setCropRight = useCallback((v) => {
+    setCropRightState(v)
+    try { localStorage.setItem(KEYS.cropRight, String(v)) } catch {}
+  }, [])
+
+  const setCropTop = useCallback((v) => {
+    setCropTopState(v)
+    try { localStorage.setItem(KEYS.cropTop, String(v)) } catch {}
+  }, [])
+
+  const setCropBottom = useCallback((v) => {
+    setCropBottomState(v)
+    try { localStorage.setItem(KEYS.cropBottom, String(v)) } catch {}
+  }, [])
+
+  const setShowDesk = useCallback((v) => {
+    setShowDeskState(v)
+    try { localStorage.setItem(KEYS.showDesk, String(v)) } catch {}
   }, [])
 
   const setCustomUrl = useCallback((url) => {
     setCustomUrlState(url)
-    if (url) localStorage.setItem(KEYS.custom, url)
-    else localStorage.removeItem(KEYS.custom)
+    try {
+      if (url) localStorage.setItem(KEYS.custom, url)
+      else localStorage.removeItem(KEYS.custom)
+    } catch {}
   }, [])
 
   const onCustomUpload = useCallback((e) => {
@@ -64,17 +125,31 @@ export function useStudioBackground() {
 
   const clearCustom = useCallback(() => setCustomUrl(null), [setCustomUrl])
 
-  const hasVirtualSet = templateId !== 'none' || !!customUrl
-  const cameraRect = getBackgroundCameraRect(templateId, cameraScale)
+  const currentTemplate = getBackgroundTemplate(templateId)
+  const hasVirtualSet = templateId !== 'none' || Boolean(customUrl)
 
   return {
     templateId,
+    currentTemplate,
     customUrl,
-    cameraScale,
     hasVirtualSet,
-    cameraRect,
+    presenterScale,
+    presenterX,
+    presenterY,
+    cropLeft,
+    cropRight,
+    cropTop,
+    cropBottom,
+    showDesk,
     setTemplateId,
-    setCameraScale,
+    setPresenterScale,
+    setPresenterX,
+    setPresenterY,
+    setCropLeft,
+    setCropRight,
+    setCropTop,
+    setCropBottom,
+    setShowDesk,
     setCustomUrl,
     onCustomUpload,
     clearCustom,
