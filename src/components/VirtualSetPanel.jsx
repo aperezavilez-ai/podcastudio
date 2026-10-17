@@ -20,10 +20,17 @@ export default function VirtualSetPanel({
   cropTop = 0,
   cropBottom = 0,
   showDesk = true,
+  deskHeightOffset = 0,
   edgeSmoothness = 30,
+  aiSensitivity = 38,
+  antiFlicker = 70,
   presenterWarmth = 8,
   presenterBrightness = 102,
   presenterContrast = 104,
+  presenterSharpness = 14,
+  presenterSaturation = 104,
+  presenterBacklight = 20,
+  liveMotionEnabled = true,
   onTemplateChange,
   onCutoutModeChange,
   onCustomUpload,
@@ -41,10 +48,17 @@ export default function VirtualSetPanel({
   onCropTopChange,
   onCropBottomChange,
   onShowDeskChange,
+  onDeskHeightOffsetChange,
   onEdgeSmoothnessChange,
+  onAiSensitivityChange,
+  onAntiFlickerChange,
   onPresenterWarmthChange,
   onPresenterBrightnessChange,
   onPresenterContrastChange,
+  onPresenterSharpnessChange,
+  onPresenterSaturationChange,
+  onPresenterBacklightChange,
+  onLiveMotionToggle,
   onApplyPresetPosition,
 }) {
   const [selectedCat, setSelectedCat] = useState('all')
@@ -75,7 +89,7 @@ export default function VirtualSetPanel({
           </span>
           <span className={styles.masterSubText}>
             {chromaEnabled
-              ? (cutoutMode === 'ai' ? '● IA Neural: Habitación borrada en vivo' : '● Croma Key: Pantalla verde/azul activa')
+              ? (cutoutMode === 'ai' ? '● IA Neural: Habitación borrada en vivo (Anti-Flicker)' : '● Croma Key: Pantalla verde/azul activa')
               : 'Cámara completa sin recorte'}
           </span>
         </div>
@@ -123,6 +137,16 @@ export default function VirtualSetPanel({
       {/* 1. SELECCIÓN DE ESCENARIOS */}
       {activeTab === 'sets' && (
         <div className={styles.tabContent}>
+          {/* Toggle de Escenario Vivo / Video Loops */}
+          <label className={styles.deskToggleRow} style={{ marginBottom: 8 }} title="Activa o pausa el movimiento continuo de pantallas LED, focos y atmósfera de estudio">
+            <input
+              type="checkbox"
+              checked={liveMotionEnabled}
+              onChange={e => onLiveMotionToggle?.(e.target.checked)}
+            />
+            <span>🎬 Escenario Vivo (Movimiento y atmósfera de estudio en bucle)</span>
+          </label>
+
           {/* Categorías */}
           <div className={styles.catBar}>
             {BACKGROUND_CATEGORIES.map(cat => (
@@ -174,18 +198,18 @@ export default function VirtualSetPanel({
               type="button"
               className={styles.customBtn}
               onClick={() => fileRef.current?.click()}
-              title="Subir cualquier imagen JPG o PNG en alta resolución (1080p o 4K)"
+              title="Subir cualquier imagen o video MP4 en alta resolución (1080p o 4K)"
             >
               <i className="ti ti-photo-up" />
-              {customUrl ? 'Cambiar imagen subida' : 'Subir escenario propio'}
+              {customUrl ? 'Cambiar fondo subido' : 'Subir fondo o video propio'}
             </button>
-            <input ref={fileRef} type="file" accept="image/*" hidden onChange={onCustomUpload} />
+            <input ref={fileRef} type="file" accept="image/*,video/mp4,video/webm" hidden onChange={onCustomUpload} />
             {customUrl && (
               <button
                 type="button"
                 className={styles.clearBtn}
                 onClick={onClearCustom}
-                title="Quitar imagen personalizada"
+                title="Quitar imagen o video personalizado"
               >
                 <i className="ti ti-trash" />
               </button>
@@ -211,7 +235,7 @@ export default function VirtualSetPanel({
               <i className={`ti ti-sparkles ${styles.modeIcon}`} />
               <div className={styles.modeTextCol}>
                 <span className={styles.modeTitle}>🧠 Recorte IA (Sin tela verde)</span>
-                <span className={styles.modeDesc}>Red neuronal MediaPipe: detecta tu silueta y borra la habitación real en vivo.</span>
+                <span className={styles.modeDesc}>Red neuronal MediaPipe con filtro temporal anti-flicker: silueta limpia en tiempo real.</span>
               </div>
             </button>
 
@@ -239,6 +263,36 @@ export default function VirtualSetPanel({
               </div>
             </button>
           </div>
+
+          {cutoutMode === 'ai' && (
+            <>
+              <div className={styles.sliderRow}>
+                <span className={styles.sliderLabel}>Sensibilidad IA (Captura Ropa y Cabello)</span>
+                <input
+                  type="range"
+                  min={20}
+                  max={70}
+                  value={aiSensitivity}
+                  onChange={e => onAiSensitivityChange?.(+e.target.value)}
+                  title="Baja el valor si la IA borra tu ropa negra o silla; súbelo para recortar más fondo"
+                />
+                <span className={styles.val}>{aiSensitivity}%</span>
+              </div>
+
+              <div className={styles.sliderRow}>
+                <span className={styles.sliderLabel}>Estabilizador Anti-Parpadeo (Jitter Filter)</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={90}
+                  value={antiFlicker}
+                  onChange={e => onAntiFlickerChange?.(+e.target.value)}
+                  title="Elimina el ruido y saltos entre cuadros congelando los bordes de la toma"
+                />
+                <span className={styles.val}>{antiFlicker}%</span>
+              </div>
+            </>
+          )}
 
           <div className={styles.sliderRow}>
             <span className={styles.sliderLabel}>Suavizado de Silueta (Feathering)</span>
@@ -359,14 +413,31 @@ export default function VirtualSetPanel({
           </div>
 
           {activeTemplate?.hasDesk && (
-            <label className={styles.deskToggleRow} title="Muestra la mesa 3D en primer plano para que tus brazos y pecho queden naturalmente detrás de ella">
-              <input
-                type="checkbox"
-                checked={showDesk}
-                onChange={e => onShowDeskChange?.(e.target.checked)}
-              />
-              <span>Sentar tras el escritorio (Mesa al frente)</span>
-            </label>
+            <>
+              <label className={styles.deskToggleRow} title="Muestra la mesa 3D en primer plano para que tus brazos y pecho queden naturalmente detrás de ella">
+                <input
+                  type="checkbox"
+                  checked={showDesk}
+                  onChange={e => onShowDeskChange?.(e.target.checked)}
+                />
+                <span>Sentar tras el escritorio (Mesa al frente)</span>
+              </label>
+
+              {showDesk && (
+                <div className={styles.sliderRow}>
+                  <span className={styles.sliderLabel}>Ajuste Fino Altura Mesa</span>
+                  <input
+                    type="range"
+                    min={-30}
+                    max={30}
+                    value={deskHeightOffset}
+                    onChange={e => onDeskHeightOffsetChange?.(+e.target.value)}
+                    title="Sube o baja el escritorio para adaptarlo a la altura exacta de tus codos"
+                  />
+                  <span className={styles.val}>{deskHeightOffset > 0 ? `+${deskHeightOffset}px` : `${deskHeightOffset}px`}</span>
+                </div>
+              )}
+            </>
           )}
 
           <div className={styles.sliderRow}>
@@ -516,6 +587,44 @@ export default function VirtualSetPanel({
               title="Ajusta el balance de color de tu piel para que coincida con las luces del set"
             />
             <span className={styles.val}>{presenterWarmth > 0 ? `+${presenterWarmth}` : presenterWarmth}</span>
+          </div>
+
+          <div className={styles.sliderRow}>
+            <span className={styles.sliderLabel}>Luz de Contra (Rim Light)</span>
+            <input
+              type="range"
+              min={0}
+              max={60}
+              value={presenterBacklight}
+              onChange={e => onPresenterBacklightChange?.(+e.target.value)}
+              title="Halo luminoso de estudio que separa al presentador del fondo y lo funde en la iluminación 3D"
+            />
+            <span className={styles.val}>{presenterBacklight}%</span>
+          </div>
+
+          <div className={styles.sliderRow}>
+            <span className={styles.sliderLabel}>Nitidez de Cámara (Sharpness)</span>
+            <input
+              type="range"
+              min={0}
+              max={40}
+              value={presenterSharpness}
+              onChange={e => onPresenterSharpnessChange?.(+e.target.value)}
+              title="Realce de micro-contraste broadcast para que la cámara no se vea borrosa"
+            />
+            <span className={styles.val}>{presenterSharpness}%</span>
+          </div>
+
+          <div className={styles.sliderRow}>
+            <span className={styles.sliderLabel}>Saturación de Color</span>
+            <input
+              type="range"
+              min={70}
+              max={140}
+              value={presenterSaturation}
+              onChange={e => onPresenterSaturationChange?.(+e.target.value)}
+            />
+            <span className={styles.val}>{presenterSaturation}%</span>
           </div>
 
           <div className={styles.sliderRow}>

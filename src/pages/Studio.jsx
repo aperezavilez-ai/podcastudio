@@ -815,10 +815,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     cropTop: virtualSetCropTop,
     cropBottom: virtualSetCropBottom,
     showDesk: virtualSetShowDesk,
+    deskHeightOffset: virtualSetDeskHeightOffset,
     edgeSmoothness: virtualSetEdgeSmoothness,
+    aiSensitivity: virtualSetAiSensitivity,
+    antiFlicker: virtualSetAntiFlicker,
     presenterWarmth: virtualSetPresenterWarmth,
     presenterBrightness: virtualSetPresenterBrightness,
     presenterContrast: virtualSetPresenterContrast,
+    presenterSharpness: virtualSetPresenterSharpness,
+    presenterSaturation: virtualSetPresenterSaturation,
+    presenterBacklight: virtualSetPresenterBacklight,
+    liveMotionEnabled: virtualSetLiveMotionEnabled,
     setTemplateId: setVirtualSetTemplateId,
     setCutoutMode: setVirtualSetCutoutMode,
     setPresenterScale: setVirtualSetPresenterScale,
@@ -829,10 +836,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     setCropTop: setVirtualSetCropTop,
     setCropBottom: setVirtualSetCropBottom,
     setShowDesk: setVirtualSetShowDesk,
+    setDeskHeightOffset: setVirtualSetDeskHeightOffset,
     setEdgeSmoothness: setVirtualSetEdgeSmoothness,
+    setAiSensitivity: setVirtualSetAiSensitivity,
+    setAntiFlicker: setVirtualSetAntiFlicker,
     setPresenterWarmth: setVirtualSetPresenterWarmth,
     setPresenterBrightness: setVirtualSetPresenterBrightness,
     setPresenterContrast: setVirtualSetPresenterContrast,
+    setPresenterSharpness: setVirtualSetPresenterSharpness,
+    setPresenterSaturation: setVirtualSetPresenterSaturation,
+    setPresenterBacklight: setVirtualSetPresenterBacklight,
+    setLiveMotionEnabled: setVirtualSetLiveMotionEnabled,
     applyPresetPosition: handleVirtualSetApplyPreset,
     setCustomUrl: setVirtualSetCustomUrl,
     onCustomUpload: handleVirtualSetCustomUpload,
@@ -2269,13 +2283,20 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       cropTop: virtualSetCropTop,
                       cropBottom: virtualSetCropBottom,
                       showDesk: virtualSetShowDesk,
+                      deskHeightOffset: virtualSetDeskHeightOffset,
                       presenterWarmth: virtualSetPresenterWarmth,
                       presenterBrightness: virtualSetPresenterBrightness,
                       presenterContrast: virtualSetPresenterContrast,
+                      presenterSharpness: virtualSetPresenterSharpness,
+                      presenterSaturation: virtualSetPresenterSaturation,
+                      presenterBacklight: virtualSetPresenterBacklight,
+                      liveMotionEnabled: virtualSetLiveMotionEnabled,
                       chromaSettings: {
                         enabled: chromaEnabled,
                         mode: virtualSetCutoutMode || 'ai',
                         edgeSmoothness: virtualSetEdgeSmoothness,
+                        aiSensitivity: virtualSetAiSensitivity,
+                        antiFlicker: virtualSetAntiFlicker,
                         keyColor: chromaColor,
                         similarity: chromaSimilarity,
                         smoothness: chromaSmoothness,
@@ -3659,10 +3680,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   cropTop={virtualSetCropTop}
                   cropBottom={virtualSetCropBottom}
                   showDesk={virtualSetShowDesk}
+                  deskHeightOffset={virtualSetDeskHeightOffset}
                   edgeSmoothness={virtualSetEdgeSmoothness}
+                  aiSensitivity={virtualSetAiSensitivity}
+                  antiFlicker={virtualSetAntiFlicker}
                   presenterWarmth={virtualSetPresenterWarmth}
                   presenterBrightness={virtualSetPresenterBrightness}
                   presenterContrast={virtualSetPresenterContrast}
+                  presenterSharpness={virtualSetPresenterSharpness}
+                  presenterSaturation={virtualSetPresenterSaturation}
+                  presenterBacklight={virtualSetPresenterBacklight}
+                  liveMotionEnabled={virtualSetLiveMotionEnabled}
                   onTemplateChange={setVirtualSetTemplateId}
                   onCutoutModeChange={setVirtualSetCutoutMode}
                   onCustomUpload={handleVirtualSetCustomUpload}
@@ -3680,10 +3708,17 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   onCropTopChange={setVirtualSetCropTop}
                   onCropBottomChange={setVirtualSetCropBottom}
                   onShowDeskChange={setVirtualSetShowDesk}
+                  onDeskHeightOffsetChange={setVirtualSetDeskHeightOffset}
                   onEdgeSmoothnessChange={setVirtualSetEdgeSmoothness}
+                  onAiSensitivityChange={setVirtualSetAiSensitivity}
+                  onAntiFlickerChange={setVirtualSetAntiFlicker}
                   onPresenterWarmthChange={setVirtualSetPresenterWarmth}
                   onPresenterBrightnessChange={setVirtualSetPresenterBrightness}
                   onPresenterContrastChange={setVirtualSetPresenterContrast}
+                  onPresenterSharpnessChange={setVirtualSetPresenterSharpness}
+                  onPresenterSaturationChange={setVirtualSetPresenterSaturation}
+                  onPresenterBacklightChange={setVirtualSetPresenterBacklight}
+                  onLiveMotionToggle={setVirtualSetLiveMotionEnabled}
                   onApplyPresetPosition={handleVirtualSetApplyPreset}
                 />
               </div>

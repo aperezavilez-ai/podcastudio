@@ -59,6 +59,8 @@ function ChromaMasterVideo({ stream, className, style, filter, chromaSettings, m
     const mode = chromaSettings.mode || 'ai'
     const crop = chromaSettings.crop || { left: 0, right: 0, top: 0, bottom: 0 }
     const smoothness = (chromaSettings.edgeSmoothness ?? 30) / 100
+    const threshold = (chromaSettings.aiSensitivity ?? 38) / 100
+    const temporalSmoothing = (chromaSettings.antiFlicker ?? 70) / 100
 
     let animId
     const tick = () => {
@@ -71,9 +73,15 @@ function ChromaMasterVideo({ stream, className, style, filter, chromaSettings, m
         ctx.drawImage(v, 0, 0)
 
         if (mode === 'ai' || mode === 'hybrid') {
-          // Recorte neuronal inteligente sin tela verde
-          const mask = segmentPersonFromVideo(v, { smoothness })
+          // Recorte neuronal inteligente sin tela verde con filtro anti-flicker
+          const mask = segmentPersonFromVideo(v, {
+            threshold,
+            smoothness,
+            temporalSmoothing,
+          })
           if (mask) {
+            ctx.imageSmoothingEnabled = true
+            ctx.imageSmoothingQuality = 'high'
             ctx.globalCompositeOperation = 'destination-in'
             ctx.drawImage(mask, 0, 0, c.width, c.height)
             ctx.globalCompositeOperation = 'source-over'
@@ -668,12 +676,17 @@ export default function ProgramPreview({
     const pX = virtualSet.presenterX ?? 50
     const pY = virtualSet.presenterY ?? 55
     const showDesk = virtualSet.showDesk !== false
+    const deskOffset = virtualSet.deskHeightOffset ?? 0
+    const motionEnabled = virtualSet.liveMotionEnabled !== false
     const { top = 12, left = 15, width = 70, height = 76 } = virtualSet.cameraRect || {}
 
     // Filtros de iluminación e integración ambiental (Lighting Match)
     const warmth = virtualSet.presenterWarmth ?? 0
     const brightness = virtualSet.presenterBrightness ?? 100
     const contrast = virtualSet.presenterContrast ?? 100
+    const sharpness = virtualSet.presenterSharpness ?? 0
+    const saturation = virtualSet.presenterSaturation ?? 100
+    const backlight = virtualSet.presenterBacklight ?? 0
 
     let lightingFilter = ''
     if (warmth > 0) {
@@ -683,13 +696,24 @@ export default function ProgramPreview({
     }
     if (brightness !== 100) lightingFilter += ` brightness(${brightness}%)`
     if (contrast !== 100) lightingFilter += ` contrast(${contrast}%)`
+    if (saturation !== 100) lightingFilter += ` saturate(${saturation}%)`
+    if (sharpness > 0) lightingFilter += ` contrast(${100 + Math.round(sharpness * 0.35)}%)`
+    if (backlight > 0) {
+      const rimAlpha = Math.min(0.85, (backlight / 100) * 0.75)
+      const rimColor = warmth >= 0 ? `rgba(255, 215, 170, ${rimAlpha})` : `rgba(160, 215, 255, ${rimAlpha})`
+      lightingFilter += ` drop-shadow(0 0 ${Math.max(2, Math.round(backlight * 0.15))}px ${rimColor})`
+    }
 
     const combinedFilter = [cssFilter, lightingFilter].filter(Boolean).join(' ')
 
     return (
       <div className={styles.preview}>
         {/* Capa 1: Fondo de escenario 3D realista con atmósfera viva */}
-        <SetBackground templateId={virtualSet.templateId} customUrl={virtualSet.customUrl} />
+        <SetBackground
+          templateId={virtualSet.templateId}
+          customUrl={virtualSet.customUrl}
+          motionEnabled={motionEnabled}
+        />
 
         {/* Capa 2: Presentador con Croma Key o IA (silueta limpia integrada) o cámara recuadro */}
         {isChroma ? (
@@ -699,6 +723,8 @@ export default function ProgramPreview({
               inset: 0,
               pointerEvents: 'none',
               overflow: 'hidden',
+              WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black calc(100% - 24px), transparent 100%)',
+              maskImage: 'linear-gradient(to bottom, black 0%, black calc(100% - 24px), transparent 100%)',
             }}
           >
             <ChromaMasterVideo
@@ -742,6 +768,7 @@ export default function ProgramPreview({
           <SetForegroundDesk
             templateId={virtualSet.templateId}
             showDesk={showDesk}
+            deskOffset={deskOffset}
           />
         )}
 

@@ -17,6 +17,13 @@ const KEYS = {
   warmth: 'podcastudio_bg_warmth',
   brightness: 'podcastudio_bg_brightness',
   contrast: 'podcastudio_bg_contrast',
+  sharpness: 'podcastudio_bg_sharpness',
+  saturation: 'podcastudio_bg_saturation',
+  backlight: 'podcastudio_bg_backlight',
+  aiSensitivity: 'podcastudio_bg_ai_sensitivity',
+  antiFlicker: 'podcastudio_bg_anti_flicker',
+  deskOffset: 'podcastudio_bg_desk_offset',
+  liveMotion: 'podcastudio_bg_live_motion',
 }
 
 function loadNum(key, fallback) {
@@ -66,12 +73,23 @@ export function useStudioBackground() {
   const [cropBottom, setCropBottomState] = useState(() => loadNum(KEYS.cropBottom, 0))
 
   const [showDesk, setShowDeskState] = useState(() => loadBool(KEYS.showDesk, true))
+  const [deskHeightOffset, setDeskHeightOffsetState] = useState(() => loadNum(KEYS.deskOffset, 0))
 
   // Calibración de silueta e integración con iluminación de estudio
   const [edgeSmoothness, setEdgeSmoothnessState] = useState(() => loadNum(KEYS.edgeSmooth, 30))
+  const [aiSensitivity, setAiSensitivityState] = useState(() => loadNum(KEYS.aiSensitivity, 38))
+  const [antiFlicker, setAntiFlickerState] = useState(() => loadNum(KEYS.antiFlicker, 70))
+
+  // Calibración visual y luz de contra (Broadcast Lighting Match)
   const [presenterWarmth, setPresenterWarmthState] = useState(() => loadNum(KEYS.warmth, 8))
   const [presenterBrightness, setPresenterBrightnessState] = useState(() => loadNum(KEYS.brightness, 102))
   const [presenterContrast, setPresenterContrastState] = useState(() => loadNum(KEYS.contrast, 104))
+  const [presenterSharpness, setPresenterSharpnessState] = useState(() => loadNum(KEYS.sharpness, 14))
+  const [presenterSaturation, setPresenterSaturationState] = useState(() => loadNum(KEYS.saturation, 104))
+  const [presenterBacklight, setPresenterBacklightState] = useState(() => loadNum(KEYS.backlight, 20))
+
+  // Escenario vivo (video loops y efectos animados)
+  const [liveMotionEnabled, setLiveMotionEnabledState] = useState(() => loadBool(KEYS.liveMotion, true))
 
   const setTemplateId = useCallback((id) => {
     setTemplateIdState(id)
@@ -129,9 +147,24 @@ export function useStudioBackground() {
     try { localStorage.setItem(KEYS.showDesk, String(v)) } catch {}
   }, [])
 
+  const setDeskHeightOffset = useCallback((v) => {
+    setDeskHeightOffsetState(v)
+    try { localStorage.setItem(KEYS.deskOffset, String(v)) } catch {}
+  }, [])
+
   const setEdgeSmoothness = useCallback((v) => {
     setEdgeSmoothnessState(v)
     try { localStorage.setItem(KEYS.edgeSmooth, String(v)) } catch {}
+  }, [])
+
+  const setAiSensitivity = useCallback((v) => {
+    setAiSensitivityState(v)
+    try { localStorage.setItem(KEYS.aiSensitivity, String(v)) } catch {}
+  }, [])
+
+  const setAntiFlicker = useCallback((v) => {
+    setAntiFlickerState(v)
+    try { localStorage.setItem(KEYS.antiFlicker, String(v)) } catch {}
   }, [])
 
   const setPresenterWarmth = useCallback((v) => {
@@ -149,12 +182,33 @@ export function useStudioBackground() {
     try { localStorage.setItem(KEYS.contrast, String(v)) } catch {}
   }, [])
 
+  const setPresenterSharpness = useCallback((v) => {
+    setPresenterSharpnessState(v)
+    try { localStorage.setItem(KEYS.sharpness, String(v)) } catch {}
+  }, [])
+
+  const setPresenterSaturation = useCallback((v) => {
+    setPresenterSaturationState(v)
+    try { localStorage.setItem(KEYS.saturation, String(v)) } catch {}
+  }, [])
+
+  const setPresenterBacklight = useCallback((v) => {
+    setPresenterBacklightState(v)
+    try { localStorage.setItem(KEYS.backlight, String(v)) } catch {}
+  }, [])
+
+  const setLiveMotionEnabled = useCallback((v) => {
+    setLiveMotionEnabledState(v)
+    try { localStorage.setItem(KEYS.liveMotion, String(v)) } catch {}
+  }, [])
+
   const applyPresetPosition = useCallback((preset) => {
     if (preset === 'anchor_desk') {
       setPresenterX(50)
       setPresenterY(55)
       setPresenterScale(92)
       setShowDesk(true)
+      setDeskHeightOffset(0)
     } else if (preset === 'close_up') {
       setPresenterX(50)
       setPresenterY(46)
@@ -168,7 +222,7 @@ export function useStudioBackground() {
       setPresenterY(55)
       setPresenterScale(88)
     }
-  }, [setPresenterX, setPresenterY, setPresenterScale, setShowDesk])
+  }, [setPresenterX, setPresenterY, setPresenterScale, setShowDesk, setDeskHeightOffset])
 
   const setCustomUrl = useCallback((url) => {
     setCustomUrlState(url)
@@ -207,10 +261,17 @@ export function useStudioBackground() {
     cropTop,
     cropBottom,
     showDesk,
+    deskHeightOffset,
     edgeSmoothness,
+    aiSensitivity,
+    antiFlicker,
     presenterWarmth,
     presenterBrightness,
     presenterContrast,
+    presenterSharpness,
+    presenterSaturation,
+    presenterBacklight,
+    liveMotionEnabled,
     setTemplateId,
     setCutoutMode,
     setPresenterScale,
@@ -221,10 +282,17 @@ export function useStudioBackground() {
     setCropTop,
     setCropBottom,
     setShowDesk,
+    setDeskHeightOffset,
     setEdgeSmoothness,
+    setAiSensitivity,
+    setAntiFlicker,
     setPresenterWarmth,
     setPresenterBrightness,
     setPresenterContrast,
+    setPresenterSharpness,
+    setPresenterSaturation,
+    setPresenterBacklight,
+    setLiveMotionEnabled,
     applyPresetPosition,
     setCustomUrl,
     onCustomUpload,

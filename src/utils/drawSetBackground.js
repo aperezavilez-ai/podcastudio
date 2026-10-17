@@ -146,13 +146,13 @@ export function drawSetBackground(ctx, w, h, templateId) {
 }
 
 /** Dibuja la capa frontal de escritorio / podium PNG para que el presentador quede detrás */
-export function drawSetForegroundDesk(ctx, w, h, templateId, showDesk = true) {
+export function drawSetForegroundDesk(ctx, w, h, templateId, showDesk = true, deskOffset = 0) {
   if (!showDesk || !templateId || templateId === 'none') return
   const tmpl = getBackgroundTemplate(templateId)
   if (!tmpl?.desk) return
   const deskImg = getCachedImage(tmpl.desk)
   if (deskImg && deskImg.complete && deskImg.naturalWidth > 0) {
-    ctx.drawImage(deskImg, 0, 0, w, h)
+    ctx.drawImage(deskImg, 0, deskOffset, w, h)
   }
 }
 
@@ -185,10 +185,18 @@ export function drawVideoInset(ctx, video, w, h, backgroundOrRect, directorCrop,
     const mode = actualChroma.mode || 'ai'
     const crop = actualChroma.crop || { left: 0, right: 0, top: 0, bottom: 0 }
     const smoothness = (actualChroma.edgeSmoothness ?? 30) / 100
+    const threshold = (actualChroma.aiSensitivity ?? 38) / 100
+    const temporalSmoothing = (actualChroma.antiFlicker ?? 70) / 100
 
     if (mode === 'ai' || mode === 'hybrid') {
-      const mask = segmentPersonFromVideo(video, { smoothness })
+      const mask = segmentPersonFromVideo(video, {
+        threshold,
+        smoothness,
+        temporalSmoothing,
+      })
       if (mask) {
+        offscreenCtx.imageSmoothingEnabled = true
+        offscreenCtx.imageSmoothingQuality = 'high'
         offscreenCtx.globalCompositeOperation = 'destination-in'
         offscreenCtx.drawImage(mask, 0, 0, vw, vh)
         offscreenCtx.globalCompositeOperation = 'source-over'
