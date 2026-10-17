@@ -286,6 +286,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const appBuild = `${new Date().toISOString().slice(0, 10)}-v2-${Date.now().toString(36)}`
   return {
+    base: './',
     define: {
       __APP_BUILD__: JSON.stringify(appBuild),
     },

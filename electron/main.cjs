@@ -28,6 +28,7 @@ function createWindow() {
     minWidth: 1100,
     minHeight: 700,
     title: 'PODCASTUDIO Broadcast Studio',
+    icon: path.join(__dirname, 'icon.png'),
     backgroundColor: '#07070a',
     autoHideMenuBar: true,
     webPreferences: {
