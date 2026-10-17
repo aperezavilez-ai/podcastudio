@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { buildCanvasFilter } from '../utils/videoLook.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 import { applyChromaKey } from '../hooks/useChromaKey.js'
+import { getSegmentationEngine, segmentPersonFromVideo } from '../utils/aiSegmentation.js'
 import SetBackground, { SetForegroundDesk } from './SetBackground.jsx'
 import styles from './ProgramPreview.module.css'
 
@@ -42,11 +43,22 @@ function ChromaMasterVideo({ stream, className, style, filter, chromaSettings, m
     }
   }, [stream, mainVideoRef])
 
+  // Pre-cargar modelo de segmentación neuronal por IA al montar
+  useEffect(() => {
+    if (chromaSettings?.enabled) {
+      getSegmentationEngine().catch(() => {})
+    }
+  }, [chromaSettings?.enabled])
+
   useEffect(() => {
     const v = localVideoRef.current
     const c = canvasRef.current
     if (!v || !c || !chromaSettings?.enabled) return undefined
     const ctx = c.getContext('2d', { willReadFrequently: true })
+
+    const mode = chromaSettings.mode || 'ai'
+    const crop = chromaSettings.crop || { left: 0, right: 0, top: 0, bottom: 0 }
+    const smoothness = (chromaSettings.edgeSmoothness ?? 30) / 100
 
     let animId
     const tick = () => {
@@ -55,19 +67,59 @@ function ChromaMasterVideo({ stream, className, style, filter, chromaSettings, m
           c.width = v.videoWidth
           c.height = v.videoHeight
         }
+
         ctx.drawImage(v, 0, 0)
-        try {
-          const frame = ctx.getImageData(0, 0, c.width, c.height)
-          applyChromaKey(
-            frame,
-            chromaSettings.keyColor || '#00b140',
-            chromaSettings.similarity ?? 40,
-            chromaSettings.smoothness ?? 25,
-            chromaSettings.despill ?? 50,
-            chromaSettings.crop || { left: 0, right: 0, top: 0, bottom: 0 }
-          )
-          ctx.putImageData(frame, 0, 0)
-        } catch {}
+
+        if (mode === 'ai' || mode === 'hybrid') {
+          // Recorte neuronal inteligente sin tela verde
+          const mask = segmentPersonFromVideo(v, { smoothness })
+          if (mask) {
+            ctx.globalCompositeOperation = 'destination-in'
+            ctx.drawImage(mask, 0, 0, c.width, c.height)
+            ctx.globalCompositeOperation = 'source-over'
+          }
+
+          if (mode === 'hybrid') {
+            try {
+              const frame = ctx.getImageData(0, 0, c.width, c.height)
+              applyChromaKey(
+                frame,
+                chromaSettings.keyColor || '#00b140',
+                chromaSettings.similarity ?? 40,
+                chromaSettings.smoothness ?? 25,
+                chromaSettings.despill ?? 50,
+                crop
+              )
+              ctx.putImageData(frame, 0, 0)
+            } catch {}
+          }
+        } else {
+          // Modo croma tradicional por color verde/azul
+          try {
+            const frame = ctx.getImageData(0, 0, c.width, c.height)
+            applyChromaKey(
+              frame,
+              chromaSettings.keyColor || '#00b140',
+              chromaSettings.similarity ?? 40,
+              chromaSettings.smoothness ?? 25,
+              chromaSettings.despill ?? 50,
+              crop
+            )
+            ctx.putImageData(frame, 0, 0)
+          } catch {}
+        }
+
+        // Si hay recorte de habitación (crop), limpiar márgenes
+        if (crop.left > 0 || crop.right > 0 || crop.top > 0 || crop.bottom > 0) {
+          const cl = (crop.left / 100) * c.width
+          const cr = (crop.right / 100) * c.width
+          const ct = (crop.top / 100) * c.height
+          const cb = (crop.bottom / 100) * c.height
+          if (cl > 0) ctx.clearRect(0, 0, cl, c.height)
+          if (cr > 0) ctx.clearRect(c.width - cr, 0, cr, c.height)
+          if (ct > 0) ctx.clearRect(0, 0, c.width, ct)
+          if (cb > 0) ctx.clearRect(0, c.height - cb, c.width, cb)
+        }
       }
       animId = requestAnimationFrame(tick)
     }
@@ -612,26 +664,39 @@ export default function ProgramPreview({
   // SET VIRTUAL CON FONDO
   if (hasSet) {
     const isChroma = Boolean(virtualSet.chromaSettings?.enabled)
-    const pScale = (virtualSet.presenterScale ?? 100) / 100
+    const pScale = (virtualSet.presenterScale ?? 92) / 100
     const pX = virtualSet.presenterX ?? 50
     const pY = virtualSet.presenterY ?? 55
     const showDesk = virtualSet.showDesk !== false
     const { top = 12, left = 15, width = 70, height = 76 } = virtualSet.cameraRect || {}
 
+    // Filtros de iluminación e integración ambiental (Lighting Match)
+    const warmth = virtualSet.presenterWarmth ?? 0
+    const brightness = virtualSet.presenterBrightness ?? 100
+    const contrast = virtualSet.presenterContrast ?? 100
+
+    let lightingFilter = ''
+    if (warmth > 0) {
+      lightingFilter += ` sepia(${Math.round(warmth * 0.42)}%) saturate(${100 + Math.round(warmth * 0.2)}%)`
+    } else if (warmth < 0) {
+      lightingFilter += ` hue-rotate(${Math.round(warmth * 0.5)}deg) saturate(${100 + Math.abs(warmth * 0.15)}%)`
+    }
+    if (brightness !== 100) lightingFilter += ` brightness(${brightness}%)`
+    if (contrast !== 100) lightingFilter += ` contrast(${contrast}%)`
+
+    const combinedFilter = [cssFilter, lightingFilter].filter(Boolean).join(' ')
+
     return (
       <div className={styles.preview}>
-        {/* Capa 1: Fondo de escenario 3D realista */}
+        {/* Capa 1: Fondo de escenario 3D realista con atmósfera viva */}
         <SetBackground templateId={virtualSet.templateId} customUrl={virtualSet.customUrl} />
 
-        {/* Capa 2: Presentador con Croma Key (silueta limpia integrada) o cámara recuadro */}
+        {/* Capa 2: Presentador con Croma Key o IA (silueta limpia integrada) o cámara recuadro */}
         {isChroma ? (
           <div
             style={{
               position: 'absolute',
               inset: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               pointerEvents: 'none',
               overflow: 'hidden',
             }}
@@ -640,12 +705,15 @@ export default function ProgramPreview({
               stream={stream}
               className={styles.videoChromaSilhouette}
               style={{
+                position: 'absolute',
+                top: `${pY}%`,
+                left: `${pX}%`,
                 width: '100%',
                 height: '100%',
                 objectFit: 'contain',
-                transformOrigin: '50% 85%',
-                transform: `translate(${(pX - 50) * 1.5}%, ${(pY - 50) * 1.5}%) scale(${pScale})`,
-                filter: cssFilter,
+                transform: `translate(-50%, -78%) scale(${pScale})`,
+                transformOrigin: '50% 78%',
+                filter: combinedFilter || undefined,
               }}
               chromaSettings={virtualSet.chromaSettings}
               mainVideoRef={videoRef}
@@ -681,6 +749,7 @@ export default function ProgramPreview({
       </div>
     )
   }
+
 
   // MODO SPLIT (50/50 Lado a lado - Cuadratura 16:9 completa sin recortes)
   if (layout === 'split') {

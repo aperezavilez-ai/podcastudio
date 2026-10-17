@@ -18,12 +18,26 @@ export default function SetBackground({ templateId, customUrl, preview = false }
   return (
     <div className={`${styles.set} ${preview ? styles.preview : ''}`}>
       {template.image ? (
-        <img
-          src={template.image}
-          alt={template.name}
-          className={styles.realisticBg}
-          loading="eager"
-        />
+        <>
+          <img
+            src={template.image}
+            alt={template.name}
+            className={styles.realisticBg}
+            loading="eager"
+          />
+          {!preview && (
+            <div className={styles.ambientMotionLayer} aria-hidden>
+              <div className={styles.studioLightGlow} />
+              <div className={styles.studioLightRight} />
+              {(template.id === 'talkshow-late' || template.id === 'news-prime') && (
+                <div className={styles.citySkylineShimmer} />
+              )}
+              {(template.category === 'noticias' || template.category === 'tech') && (
+                <div className={styles.screenScanlines} />
+              )}
+            </div>
+          )}
+        </>
       ) : (
         <div className={`${styles.layerBase} ${styles[templateId] || ''}`} />
       )}

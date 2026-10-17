@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 
 const KEYS = {
@@ -12,6 +12,11 @@ const KEYS = {
   cropTop: 'podcastudio_bg_crop_top',
   cropBottom: 'podcastudio_bg_crop_bottom',
   showDesk: 'podcastudio_bg_show_desk',
+  cutoutMode: 'podcastudio_bg_cutout_mode', // 'ai' (sin tela verde) | 'chroma' (pantalla verde/azul) | 'hybrid'
+  edgeSmooth: 'podcastudio_bg_edge_smooth',
+  warmth: 'podcastudio_bg_warmth',
+  brightness: 'podcastudio_bg_brightness',
+  contrast: 'podcastudio_bg_contrast',
 }
 
 function loadNum(key, fallback) {
@@ -33,16 +38,25 @@ function loadBool(key, fallback) {
   }
 }
 
+function loadStr(key, fallback) {
+  try {
+    return localStorage.getItem(key) || fallback
+  } catch {
+    return fallback
+  }
+}
+
 export function useStudioBackground() {
-  const [templateId, setTemplateIdState] = useState(() => {
-    try { return localStorage.getItem(KEYS.template) || 'none' } catch { return 'none' }
-  })
+  const [templateId, setTemplateIdState] = useState(() => loadStr(KEYS.template, 'none'))
   const [customUrl, setCustomUrlState] = useState(() => {
     try { return localStorage.getItem(KEYS.custom) || null } catch { return null }
   })
 
+  // Modo de recorte: 'ai' (Segmentación neuronal sin tela verde por defecto) o 'chroma' (física)
+  const [cutoutMode, setCutoutModeState] = useState(() => loadStr(KEYS.cutoutMode, 'ai'))
+
   // Controles interactivos de posición, escala y recorte de grabación
-  const [presenterScale, setPresenterScaleState] = useState(() => loadNum(KEYS.scale, 100))
+  const [presenterScale, setPresenterScaleState] = useState(() => loadNum(KEYS.scale, 92))
   const [presenterX, setPresenterXState] = useState(() => loadNum(KEYS.posX, 50))
   const [presenterY, setPresenterYState] = useState(() => loadNum(KEYS.posY, 55))
 
@@ -53,16 +67,26 @@ export function useStudioBackground() {
 
   const [showDesk, setShowDeskState] = useState(() => loadBool(KEYS.showDesk, true))
 
+  // Calibración de silueta e integración con iluminación de estudio
+  const [edgeSmoothness, setEdgeSmoothnessState] = useState(() => loadNum(KEYS.edgeSmooth, 30))
+  const [presenterWarmth, setPresenterWarmthState] = useState(() => loadNum(KEYS.warmth, 8))
+  const [presenterBrightness, setPresenterBrightnessState] = useState(() => loadNum(KEYS.brightness, 102))
+  const [presenterContrast, setPresenterContrastState] = useState(() => loadNum(KEYS.contrast, 104))
+
   const setTemplateId = useCallback((id) => {
     setTemplateIdState(id)
     try { localStorage.setItem(KEYS.template, id) } catch {}
-    // Cargar posición recomendada por defecto del escenario si es la primera vez
     const tmpl = getBackgroundTemplate(id)
     if (tmpl?.defaultPresenter) {
       setPresenterXState(tmpl.defaultPresenter.x)
       setPresenterYState(tmpl.defaultPresenter.y)
       setPresenterScaleState(tmpl.defaultPresenter.scale)
     }
+  }, [])
+
+  const setCutoutMode = useCallback((mode) => {
+    setCutoutModeState(mode)
+    try { localStorage.setItem(KEYS.cutoutMode, mode) } catch {}
   }, [])
 
   const setPresenterScale = useCallback((scale) => {
@@ -105,6 +129,47 @@ export function useStudioBackground() {
     try { localStorage.setItem(KEYS.showDesk, String(v)) } catch {}
   }, [])
 
+  const setEdgeSmoothness = useCallback((v) => {
+    setEdgeSmoothnessState(v)
+    try { localStorage.setItem(KEYS.edgeSmooth, String(v)) } catch {}
+  }, [])
+
+  const setPresenterWarmth = useCallback((v) => {
+    setPresenterWarmthState(v)
+    try { localStorage.setItem(KEYS.warmth, String(v)) } catch {}
+  }, [])
+
+  const setPresenterBrightness = useCallback((v) => {
+    setPresenterBrightnessState(v)
+    try { localStorage.setItem(KEYS.brightness, String(v)) } catch {}
+  }, [])
+
+  const setPresenterContrast = useCallback((v) => {
+    setPresenterContrastState(v)
+    try { localStorage.setItem(KEYS.contrast, String(v)) } catch {}
+  }, [])
+
+  const applyPresetPosition = useCallback((preset) => {
+    if (preset === 'anchor_desk') {
+      setPresenterX(50)
+      setPresenterY(55)
+      setPresenterScale(92)
+      setShowDesk(true)
+    } else if (preset === 'close_up') {
+      setPresenterX(50)
+      setPresenterY(46)
+      setPresenterScale(128)
+    } else if (preset === 'wide_stage') {
+      setPresenterX(50)
+      setPresenterY(62)
+      setPresenterScale(78)
+    } else if (preset === 'guest_side') {
+      setPresenterX(68)
+      setPresenterY(55)
+      setPresenterScale(88)
+    }
+  }, [setPresenterX, setPresenterY, setPresenterScale, setShowDesk])
+
   const setCustomUrl = useCallback((url) => {
     setCustomUrlState(url)
     try {
@@ -133,6 +198,7 @@ export function useStudioBackground() {
     currentTemplate,
     customUrl,
     hasVirtualSet,
+    cutoutMode,
     presenterScale,
     presenterX,
     presenterY,
@@ -141,7 +207,12 @@ export function useStudioBackground() {
     cropTop,
     cropBottom,
     showDesk,
+    edgeSmoothness,
+    presenterWarmth,
+    presenterBrightness,
+    presenterContrast,
     setTemplateId,
+    setCutoutMode,
     setPresenterScale,
     setPresenterX,
     setPresenterY,
@@ -150,6 +221,11 @@ export function useStudioBackground() {
     setCropTop,
     setCropBottom,
     setShowDesk,
+    setEdgeSmoothness,
+    setPresenterWarmth,
+    setPresenterBrightness,
+    setPresenterContrast,
+    applyPresetPosition,
     setCustomUrl,
     onCustomUpload,
     clearCustom,

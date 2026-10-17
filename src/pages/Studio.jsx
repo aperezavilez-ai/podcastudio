@@ -806,6 +806,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     templateId: virtualSetTemplateId,
     customUrl: virtualSetCustomUrl,
     hasVirtualSet,
+    cutoutMode: virtualSetCutoutMode,
     presenterScale: virtualSetPresenterScale,
     presenterX: virtualSetPresenterX,
     presenterY: virtualSetPresenterY,
@@ -814,7 +815,12 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     cropTop: virtualSetCropTop,
     cropBottom: virtualSetCropBottom,
     showDesk: virtualSetShowDesk,
+    edgeSmoothness: virtualSetEdgeSmoothness,
+    presenterWarmth: virtualSetPresenterWarmth,
+    presenterBrightness: virtualSetPresenterBrightness,
+    presenterContrast: virtualSetPresenterContrast,
     setTemplateId: setVirtualSetTemplateId,
+    setCutoutMode: setVirtualSetCutoutMode,
     setPresenterScale: setVirtualSetPresenterScale,
     setPresenterX: setVirtualSetPresenterX,
     setPresenterY: setVirtualSetPresenterY,
@@ -823,6 +829,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     setCropTop: setVirtualSetCropTop,
     setCropBottom: setVirtualSetCropBottom,
     setShowDesk: setVirtualSetShowDesk,
+    setEdgeSmoothness: setVirtualSetEdgeSmoothness,
+    setPresenterWarmth: setVirtualSetPresenterWarmth,
+    setPresenterBrightness: setVirtualSetPresenterBrightness,
+    setPresenterContrast: setVirtualSetPresenterContrast,
+    applyPresetPosition: handleVirtualSetApplyPreset,
     setCustomUrl: setVirtualSetCustomUrl,
     onCustomUpload: handleVirtualSetCustomUpload,
     clearCustom: handleVirtualSetClearCustom,
@@ -1351,8 +1362,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       cropTop: virtualSetCropTop,
       cropBottom: virtualSetCropBottom,
       showDesk: virtualSetShowDesk,
+      presenterWarmth: virtualSetPresenterWarmth,
+      presenterBrightness: virtualSetPresenterBrightness,
+      presenterContrast: virtualSetPresenterContrast,
       chromaSettings: {
         enabled: chromaEnabled,
+        mode: virtualSetCutoutMode || 'ai',
+        edgeSmoothness: virtualSetEdgeSmoothness,
         keyColor: chromaColor,
         similarity: chromaSimilarity,
         smoothness: chromaSmoothness,
@@ -2253,8 +2269,13 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       cropTop: virtualSetCropTop,
                       cropBottom: virtualSetCropBottom,
                       showDesk: virtualSetShowDesk,
+                      presenterWarmth: virtualSetPresenterWarmth,
+                      presenterBrightness: virtualSetPresenterBrightness,
+                      presenterContrast: virtualSetPresenterContrast,
                       chromaSettings: {
                         enabled: chromaEnabled,
+                        mode: virtualSetCutoutMode || 'ai',
+                        edgeSmoothness: virtualSetEdgeSmoothness,
                         keyColor: chromaColor,
                         similarity: chromaSimilarity,
                         smoothness: chromaSmoothness,
@@ -3625,6 +3646,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   templateId={virtualSetTemplateId}
                   customUrl={virtualSetCustomUrl}
                   chromaEnabled={chromaEnabled}
+                  cutoutMode={virtualSetCutoutMode}
                   chromaColor={chromaColor}
                   chromaSimilarity={chromaSimilarity}
                   chromaSmoothness={chromaSmoothness}
@@ -3637,7 +3659,12 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   cropTop={virtualSetCropTop}
                   cropBottom={virtualSetCropBottom}
                   showDesk={virtualSetShowDesk}
+                  edgeSmoothness={virtualSetEdgeSmoothness}
+                  presenterWarmth={virtualSetPresenterWarmth}
+                  presenterBrightness={virtualSetPresenterBrightness}
+                  presenterContrast={virtualSetPresenterContrast}
                   onTemplateChange={setVirtualSetTemplateId}
+                  onCutoutModeChange={setVirtualSetCutoutMode}
                   onCustomUpload={handleVirtualSetCustomUpload}
                   onClearCustom={handleVirtualSetClearCustom}
                   onChromaToggle={handleChromaToggle}
@@ -3653,6 +3680,11 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   onCropTopChange={setVirtualSetCropTop}
                   onCropBottomChange={setVirtualSetCropBottom}
                   onShowDeskChange={setVirtualSetShowDesk}
+                  onEdgeSmoothnessChange={setVirtualSetEdgeSmoothness}
+                  onPresenterWarmthChange={setVirtualSetPresenterWarmth}
+                  onPresenterBrightnessChange={setVirtualSetPresenterBrightness}
+                  onPresenterContrastChange={setVirtualSetPresenterContrast}
+                  onApplyPresetPosition={handleVirtualSetApplyPreset}
                 />
               </div>
             )}
