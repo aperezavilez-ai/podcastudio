@@ -669,12 +669,13 @@ export default function ProgramPreview({
     )
   }
 
-  // SET VIRTUAL CON FONDO
+  // SET VIRTUAL CON FONDO (Arquitectura Broadcast Multicapa)
   if (hasSet) {
     const isChroma = Boolean(virtualSet.chromaSettings?.enabled)
-    const pScale = (virtualSet.presenterScale ?? 92) / 100
+    const cameraAngle = virtualSet.cameraAngle || 'mid'
+    const pScale = (virtualSet.presenterScale ?? 105) / 100
     const pX = virtualSet.presenterX ?? 50
-    const pY = virtualSet.presenterY ?? 55
+    const pY = virtualSet.presenterY ?? 66
     const showDesk = virtualSet.showDesk !== false
     const deskOffset = virtualSet.deskHeightOffset ?? 0
     const motionEnabled = virtualSet.liveMotionEnabled !== false
@@ -713,6 +714,7 @@ export default function ProgramPreview({
           templateId={virtualSet.templateId}
           customUrl={virtualSet.customUrl}
           motionEnabled={motionEnabled}
+          cameraAngle={cameraAngle}
         />
 
         {/* Capa 2: Presentador con Croma Key o IA (silueta limpia integrada) o cámara recuadro */}
@@ -723,8 +725,9 @@ export default function ProgramPreview({
               inset: 0,
               pointerEvents: 'none',
               overflow: 'hidden',
-              WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black calc(100% - 24px), transparent 100%)',
-              maskImage: 'linear-gradient(to bottom, black 0%, black calc(100% - 24px), transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, black 0%, black calc(100% - 16px), transparent 100%)',
+              maskImage: 'linear-gradient(to bottom, black 0%, black calc(100% - 16px), transparent 100%)',
+              zIndex: 5,
             }}
           >
             <ChromaMasterVideo
@@ -737,8 +740,8 @@ export default function ProgramPreview({
                 width: '100%',
                 height: '100%',
                 objectFit: 'contain',
-                transform: `translate(-50%, -78%) scale(${pScale})`,
-                transformOrigin: '50% 78%',
+                transform: `translate(-50%, -66%) scale(${pScale})`,
+                transformOrigin: '50% 66%',
                 filter: combinedFilter || undefined,
               }}
               chromaSettings={virtualSet.chromaSettings}
@@ -769,6 +772,7 @@ export default function ProgramPreview({
             templateId={virtualSet.templateId}
             showDesk={showDesk}
             deskOffset={deskOffset}
+            cameraAngle={cameraAngle}
           />
         )}
 

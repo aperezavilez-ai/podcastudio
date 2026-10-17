@@ -210,7 +210,7 @@ export function drawCompositorFrame(ctx, w, h, {
     if (background.customImage) {
       ctx.drawImage(background.customImage, 0, 0, w, h)
     } else if (background.templateId && background.templateId !== 'none') {
-      drawSetBackground(ctx, w, h, background.templateId)
+      drawSetBackground(ctx, w, h, background.templateId, background.cameraAngle || 'mid')
     } else {
       ctx.fillStyle = '#07070a'
       ctx.fillRect(0, 0, w, h)
@@ -229,7 +229,15 @@ export function drawCompositorFrame(ctx, w, h, {
     if (useVirtualSet) {
       drawVideoInset(ctx, v, w, h, background, crop, look, background?.chromaSettings)
       if (background?.chromaSettings?.enabled) {
-        drawSetForegroundDesk(ctx, w, h, background.templateId, background.showDesk !== false)
+        drawSetForegroundDesk(
+          ctx,
+          w,
+          h,
+          background.templateId,
+          background.showDesk !== false,
+          background.deskOffset || 0,
+          background.cameraAngle || 'mid'
+        )
       }
     } else {
       drawVideoLayer(ctx, v, w, h, crop, look)

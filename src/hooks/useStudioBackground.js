@@ -4,6 +4,7 @@ import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
 const KEYS = {
   template: 'podcastudio_bg_template',
   custom: 'podcastudio_bg_custom',
+  cameraAngle: 'podcastudio_bg_camera_angle', // 'mid' (Toma Conductor TV) | 'screen' (Conductor + Pantalla) | 'wide' (Plano General)
   scale: 'podcastudio_bg_scale',
   posX: 'podcastudio_bg_pos_x',
   posY: 'podcastudio_bg_pos_y',
@@ -59,13 +60,16 @@ export function useStudioBackground() {
     try { return localStorage.getItem(KEYS.custom) || null } catch { return null }
   })
 
+  // Ángulo de Cámara Broadcast (Estilo vMix): 'mid' (Toma Conductor) por defecto
+  const [cameraAngle, setCameraAngleState] = useState(() => loadStr(KEYS.cameraAngle, 'mid'))
+
   // Modo de recorte: 'ai' (Segmentación neuronal sin tela verde por defecto) o 'chroma' (física)
   const [cutoutMode, setCutoutModeState] = useState(() => loadStr(KEYS.cutoutMode, 'ai'))
 
-  // Controles interactivos de posición, escala y recorte de grabación
-  const [presenterScale, setPresenterScaleState] = useState(() => loadNum(KEYS.scale, 92))
+  // Controles interactivos de posición, escala y recorte de grabación (calibrados para Mid-Shot por defecto)
+  const [presenterScale, setPresenterScaleState] = useState(() => loadNum(KEYS.scale, 105))
   const [presenterX, setPresenterXState] = useState(() => loadNum(KEYS.posX, 50))
-  const [presenterY, setPresenterYState] = useState(() => loadNum(KEYS.posY, 55))
+  const [presenterY, setPresenterYState] = useState(() => loadNum(KEYS.posY, 66))
 
   const [cropLeft, setCropLeftState] = useState(() => loadNum(KEYS.cropLeft, 0))
   const [cropRight, setCropRightState] = useState(() => loadNum(KEYS.cropRight, 0))
@@ -94,12 +98,6 @@ export function useStudioBackground() {
   const setTemplateId = useCallback((id) => {
     setTemplateIdState(id)
     try { localStorage.setItem(KEYS.template, id) } catch {}
-    const tmpl = getBackgroundTemplate(id)
-    if (tmpl?.defaultPresenter) {
-      setPresenterXState(tmpl.defaultPresenter.x)
-      setPresenterYState(tmpl.defaultPresenter.y)
-      setPresenterScaleState(tmpl.defaultPresenter.scale)
-    }
   }, [])
 
   const setCutoutMode = useCallback((mode) => {
@@ -202,27 +200,43 @@ export function useStudioBackground() {
     try { localStorage.setItem(KEYS.liveMotion, String(v)) } catch {}
   }, [])
 
-  const applyPresetPosition = useCallback((preset) => {
-    if (preset === 'anchor_desk') {
+  const setCameraAngle = useCallback((angle) => {
+    setCameraAngleState(angle)
+    try { localStorage.setItem(KEYS.cameraAngle, angle) } catch {}
+    if (angle === 'mid') {
       setPresenterX(50)
-      setPresenterY(55)
-      setPresenterScale(92)
+      setPresenterY(66)
+      setPresenterScale(105)
       setShowDesk(true)
       setDeskHeightOffset(0)
-    } else if (preset === 'close_up') {
+    } else if (angle === 'screen') {
+      setPresenterX(72)
+      setPresenterY(66)
+      setPresenterScale(95)
+      setShowDesk(true)
+      setDeskHeightOffset(0)
+    } else if (angle === 'wide') {
       setPresenterX(50)
-      setPresenterY(46)
-      setPresenterScale(128)
-    } else if (preset === 'wide_stage') {
-      setPresenterX(50)
-      setPresenterY(62)
-      setPresenterScale(78)
-    } else if (preset === 'guest_side') {
-      setPresenterX(68)
-      setPresenterY(55)
-      setPresenterScale(88)
+      setPresenterY(74)
+      setPresenterScale(75)
+      setShowDesk(true)
+      setDeskHeightOffset(0)
     }
   }, [setPresenterX, setPresenterY, setPresenterScale, setShowDesk, setDeskHeightOffset])
+
+  const applyPresetPosition = useCallback((preset) => {
+    if (preset === 'anchor_desk' || preset === 'mid') {
+      setCameraAngle('mid')
+    } else if (preset === 'screen' || preset === 'guest_side') {
+      setCameraAngle('screen')
+    } else if (preset === 'wide_stage' || preset === 'wide') {
+      setCameraAngle('wide')
+    } else if (preset === 'close_up') {
+      setPresenterX(50)
+      setPresenterY(52)
+      setPresenterScale(135)
+    }
+  }, [setCameraAngle, setPresenterX, setPresenterY, setPresenterScale])
 
   const setCustomUrl = useCallback((url) => {
     setCustomUrlState(url)
@@ -252,6 +266,7 @@ export function useStudioBackground() {
     currentTemplate,
     customUrl,
     hasVirtualSet,
+    cameraAngle,
     cutoutMode,
     presenterScale,
     presenterX,
@@ -273,6 +288,7 @@ export function useStudioBackground() {
     presenterBacklight,
     liveMotionEnabled,
     setTemplateId,
+    setCameraAngle,
     setCutoutMode,
     setPresenterScale,
     setPresenterX,

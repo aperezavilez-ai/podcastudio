@@ -102,19 +102,30 @@ function fillGradient(ctx, w, h, colors) {
   ctx.fillRect(0, 0, w, h)
 }
 
-export function drawSetBackground(ctx, w, h, templateId) {
+export function drawSetBackground(ctx, w, h, templateId, cameraAngle = 'mid') {
   if (!templateId || templateId === 'none') {
     ctx.fillStyle = '#0a0a0e'
     ctx.fillRect(0, 0, w, h)
     return
   }
 
-  // Si existe imagen realista 3D para la plantilla, dibujarla en el canvas
+  // Si existe imagen realista 3D para la plantilla, dibujarla en el canvas con el encuadre vMix
   const tmpl = getBackgroundTemplate(templateId)
   if (tmpl?.image) {
     const img = getCachedImage(tmpl.image)
     if (img && img.complete && img.naturalWidth > 0) {
+      ctx.save()
+      if (cameraAngle === 'mid') {
+        ctx.translate(w / 2, h / 2)
+        ctx.scale(1.22, 1.22)
+        ctx.translate(-w / 2, -h / 2 + (h * 0.025))
+      } else if (cameraAngle === 'screen') {
+        ctx.translate(w * 0.4, h / 2)
+        ctx.scale(1.18, 1.18)
+        ctx.translate(-w * 0.4 + (w * 0.06), -h / 2)
+      }
       ctx.drawImage(img, 0, 0, w, h)
+      ctx.restore()
       return
     }
   }
@@ -146,13 +157,26 @@ export function drawSetBackground(ctx, w, h, templateId) {
 }
 
 /** Dibuja la capa frontal de escritorio / podium PNG para que el presentador quede detrás */
-export function drawSetForegroundDesk(ctx, w, h, templateId, showDesk = true, deskOffset = 0) {
+export function drawSetForegroundDesk(ctx, w, h, templateId, showDesk = true, deskOffset = 0, cameraAngle = 'mid') {
   if (!showDesk || !templateId || templateId === 'none') return
   const tmpl = getBackgroundTemplate(templateId)
   if (!tmpl?.desk) return
   const deskImg = getCachedImage(tmpl.desk)
   if (deskImg && deskImg.complete && deskImg.naturalWidth > 0) {
-    ctx.drawImage(deskImg, 0, deskOffset, w, h)
+    ctx.save()
+    if (cameraAngle === 'mid') {
+      ctx.translate(w / 2, h)
+      ctx.scale(1.22, 1.22)
+      ctx.translate(-w / 2, -h + deskOffset + 4)
+    } else if (cameraAngle === 'screen') {
+      ctx.translate(w * 0.4, h)
+      ctx.scale(1.18, 1.18)
+      ctx.translate(-w * 0.4 + (w * 0.06), -h + deskOffset + 2)
+    } else if (deskOffset) {
+      ctx.translate(0, deskOffset)
+    }
+    ctx.drawImage(deskImg, 0, 0, w, h)
+    ctx.restore()
   }
 }
 
@@ -245,16 +269,16 @@ export function drawVideoInset(ctx, video, w, h, backgroundOrRect, directorCrop,
 
     sourceDrawable = offscreenCanvas
 
-    // Modo Chroma / IA: Silueta integrada y posicionable libremente sin marcos ni recuadros
-    const pScale = ((backgroundOrRect?.presenterScale ?? 92) / 100)
+    // Modo Chroma / IA: Silueta integrada y posicionable libremente sin marcos ni recuadros (anclaje broadcast profundo)
+    const pScale = ((backgroundOrRect?.presenterScale ?? 105) / 100)
     const pX = (backgroundOrRect?.presenterX ?? 50) / 100
-    const pY = (backgroundOrRect?.presenterY ?? 55) / 100
+    const pY = (backgroundOrRect?.presenterY ?? 66) / 100
 
     const baseScale = Math.min(w / vw, h / vh) * pScale
     const dw = vw * baseScale
     const dh = vh * baseScale
     const dx = (pX * w) - (dw / 2)
-    const dy = (pY * h) - (dh * 0.78)
+    const dy = (pY * h) - (dh * 0.66)
 
     // Filtros de iluminación e integración ambiental (Lighting Match)
     const warmth = backgroundOrRect?.presenterWarmth ?? 0

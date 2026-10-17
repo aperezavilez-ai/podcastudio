@@ -807,6 +807,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     customUrl: virtualSetCustomUrl,
     hasVirtualSet,
     cutoutMode: virtualSetCutoutMode,
+    cameraAngle: virtualSetCameraAngle,
     presenterScale: virtualSetPresenterScale,
     presenterX: virtualSetPresenterX,
     presenterY: virtualSetPresenterY,
@@ -827,6 +828,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     presenterBacklight: virtualSetPresenterBacklight,
     liveMotionEnabled: virtualSetLiveMotionEnabled,
     setTemplateId: setVirtualSetTemplateId,
+    setCameraAngle: setVirtualSetCameraAngle,
     setCutoutMode: setVirtualSetCutoutMode,
     setPresenterScale: setVirtualSetPresenterScale,
     setPresenterX: setVirtualSetPresenterX,
@@ -2275,6 +2277,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       hasVirtualSet: true,
                       templateId: virtualSetTemplateId,
                       customUrl: virtualSetCustomUrl,
+                      cameraAngle: virtualSetCameraAngle,
                       presenterScale: virtualSetPresenterScale,
                       presenterX: virtualSetPresenterX,
                       presenterY: virtualSetPresenterY,
@@ -3666,6 +3669,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                 <VirtualSetPanel
                   templateId={virtualSetTemplateId}
                   customUrl={virtualSetCustomUrl}
+                  cameraAngle={virtualSetCameraAngle}
+                  onCameraAngleChange={setVirtualSetCameraAngle}
                   chromaEnabled={chromaEnabled}
                   cutoutMode={virtualSetCutoutMode}
                   chromaColor={chromaColor}

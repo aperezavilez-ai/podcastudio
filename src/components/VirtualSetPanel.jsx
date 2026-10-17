@@ -6,15 +6,16 @@ import styles from './VirtualSetPanel.module.css'
 export default function VirtualSetPanel({
   templateId = 'none',
   customUrl = null,
+  cameraAngle = 'mid',
   chromaEnabled = false,
   cutoutMode = 'ai',
   chromaColor = '#00b140',
   chromaSimilarity = 40,
   chromaSmoothness = 25,
   chromaDespill = 50,
-  presenterScale = 92,
+  presenterScale = 105,
   presenterX = 50,
-  presenterY = 55,
+  presenterY = 66,
   cropLeft = 0,
   cropRight = 0,
   cropTop = 0,
@@ -32,6 +33,7 @@ export default function VirtualSetPanel({
   presenterBacklight = 20,
   liveMotionEnabled = true,
   onTemplateChange,
+  onCameraAngleChange,
   onCutoutModeChange,
   onCustomUpload,
   onClearCustom,
@@ -215,6 +217,25 @@ export default function VirtualSetPanel({
               </button>
             )}
           </div>
+
+          {/* Tarjeta informativa de compatibilidad con videos 3D de Pixabay */}
+          <div className={styles.pixabayTipCard}>
+            <div className={styles.pixabayTipHeader}>
+              <i className="ti ti-video" />
+              <span>Sets 3D en Movimiento Compatibles</span>
+            </div>
+            <p className={styles.pixabayTipText}>
+              Puedes descargar bucles de video 3D gratuitos (MP4) desde <strong>Pixabay Videos</strong> o <strong>VirtualStudioSets</strong> y subirlos con el botón de arriba. Se acoplan automáticamente con tu escritorio frontal 3D.
+            </p>
+            <a
+              href="https://pixabay.com/videos/search/virtual%20studio/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.pixabayLinkBtn}
+            >
+              <i className="ti ti-external-link" /> Ver galería de sets virtuales en Pixabay
+            </a>
+          </div>
         </div>
       )}
 
@@ -373,18 +394,34 @@ export default function VirtualSetPanel({
       {activeTab === 'adjust' && (
         <div className={styles.tabContent}>
           <div className={styles.sectionHeader}>
-            <i className="ti ti-layout-grid" style={{ color: '#38bdf8' }} />
-            <span>Calibración Rápida de Posición</span>
+            <i className="ti ti-camera" style={{ color: '#38bdf8' }} />
+            <span>Ángulo de Cámara Broadcast (Estilo vMix)</span>
           </div>
 
           <div className={styles.presetGrid}>
             <button
               type="button"
-              className={styles.presetBtn}
-              onClick={() => onApplyPresetPosition?.('anchor_desk')}
-              title="Alinea al conductor exactamente detrás del escritorio"
+              className={`${styles.presetBtn} ${cameraAngle === 'mid' ? styles.presetBtnActive : ''}`}
+              onClick={() => onCameraAngleChange?.('mid')}
+              title="Toma Conductor televisión: escritorio al frente cubriendo el torso, cámara enfocada a la mesa"
             >
-              🎙️ Conductor
+              🎙️ Conductor (Mid)
+            </button>
+            <button
+              type="button"
+              className={`${styles.presetBtn} ${cameraAngle === 'screen' ? styles.presetBtnActive : ''}`}
+              onClick={() => onCameraAngleChange?.('screen')}
+              title="Toma Conductor + Pantalla: espacio lateral para noticias o presentaciones"
+            >
+              📺 Conductor + Pantalla
+            </button>
+            <button
+              type="button"
+              className={`${styles.presetBtn} ${cameraAngle === 'wide' ? styles.presetBtnActive : ''}`}
+              onClick={() => onCameraAngleChange?.('wide')}
+              title="Plano General: vista amplia del estudio de piso a techo"
+            >
+              🌐 Plano General
             </button>
             <button
               type="button"
@@ -393,22 +430,6 @@ export default function VirtualSetPanel({
               title="Primer plano cerrado con zoom"
             >
               🔍 Primer Plano
-            </button>
-            <button
-              type="button"
-              className={styles.presetBtn}
-              onClick={() => onApplyPresetPosition?.('wide_stage')}
-              title="Plano general abierto de pie"
-            >
-              🧍 Plano Abierto
-            </button>
-            <button
-              type="button"
-              className={styles.presetBtn}
-              onClick={() => onApplyPresetPosition?.('guest_side')}
-              title="Posición lateral para invitado"
-            >
-              👥 Invitado
             </button>
           </div>
 
