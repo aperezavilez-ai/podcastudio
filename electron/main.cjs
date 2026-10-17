@@ -1,11 +1,11 @@
 const { app, BrowserWindow, session, ipcMain } = require('electron')
 const path = require('path')
+const http = require('http')
+const fs = require('fs')
 
 // ============================================================================
 // ACELERACIÓN POR HARDWARE Y OPTIMIZACIÓN BROADCAST GPU
 // ============================================================================
-// Habilita rasterización directa por GPU, códecs de video acelerados por hardware
-// y evita que Chromium congele o desacelere el renderizado cuando la app está en segundo plano.
 app.commandLine.appendSwitch('enable-gpu-rasterization')
 app.commandLine.appendSwitch('enable-zero-copy')
 app.commandLine.appendSwitch('ignore-gpu-blocklist')
@@ -20,14 +20,91 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('high-dpi-support', '1')
 
 let mainWindow = null
+let localServer = null
 
-function createWindow() {
+function createStaticServer(distPath) {
+  const mimeTypes = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.woff2': 'font/woff2',
+    '.woff': 'font/woff',
+    '.ttf': 'font/ttf',
+    '.wasm': 'application/wasm',
+  }
+
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      try {
+        const decodedUrl = decodeURIComponent(req.url.split('?')[0])
+        let filePath = path.join(distPath, decodedUrl === '/' ? 'index.html' : decodedUrl)
+
+        // Fallback SPA para React Router
+        if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+          filePath = path.join(distPath, 'index.html')
+        }
+
+        const stat = fs.statSync(filePath)
+        const ext = path.extname(filePath).toLowerCase()
+        const contentType = mimeTypes[ext] || 'application/octet-stream'
+
+        // Soporte Range Requests para streaming fluido de video de sets (.mp4/.webm)
+        const range = req.headers.range
+        if (range && (ext === '.mp4' || ext === '.webm')) {
+          const parts = range.replace(/bytes=/, '').split('-')
+          const start = parseInt(parts[0], 10)
+          const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1
+          const chunksize = end - start + 1
+          const file = fs.createReadStream(filePath, { start, end })
+
+          res.writeHead(206, {
+            'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': chunksize,
+            'Content-Type': contentType,
+            'Cross-Origin-Opener-Policy': 'same-origin',
+            'Cross-Origin-Embedder-Policy': 'credentialless',
+          })
+          file.pipe(res)
+          return
+        }
+
+        res.writeHead(200, {
+          'Content-Length': stat.size,
+          'Content-Type': contentType,
+          'Cross-Origin-Opener-Policy': 'same-origin',
+          'Cross-Origin-Embedder-Policy': 'credentialless',
+        })
+        fs.createReadStream(filePath).pipe(res)
+      } catch (err) {
+        res.writeHead(500)
+        res.end('Error: ' + (err.message || 'Server error'))
+      }
+    })
+
+    server.listen(0, '127.0.0.1', () => {
+      const port = server.address().port
+      resolve({ port, server })
+    })
+    server.on('error', reject)
+  })
+}
+
+async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1500,
     height: 940,
     minWidth: 1100,
     minHeight: 700,
-    title: 'PODCASTUDIO Broadcast Studio',
+    title: 'PodcastStudio — Estudio profesional de podcast',
     icon: path.join(__dirname, 'icon.png'),
     backgroundColor: '#07070a',
     autoHideMenuBar: true,
@@ -35,12 +112,12 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
-      backgroundThrottling: false, // Esencial: evita caídas de FPS al enfocar otra ventana
+      backgroundThrottling: false,
       webgl: true,
     },
   })
 
-  // Permisos directos de hardware para cámaras y micrófonos sin avisos emergentes
+  // Permisos directos de hardware para cámaras y micrófonos sin avisos
   const ses = session.defaultSession
   ses.setPermissionCheckHandler((webContents, permission) => {
     return ['media', 'camera', 'microphone', 'display-capture', 'notifications'].includes(permission)
@@ -49,17 +126,35 @@ function createWindow() {
     callback(['media', 'camera', 'microphone', 'display-capture', 'notifications'].includes(permission))
   })
 
-  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:3000'
+  // Atajo F12 para abrir DevTools si se requiere inspeccionar
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
+      mainWindow.webContents.toggleDevTools()
+    }
+  })
+
+  const isDev = process.env.NODE_ENV === 'development' && !app.isPackaged
 
   if (isDev) {
+    const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:3000'
     mainWindow.loadURL(devServerUrl)
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+    try {
+      const distPath = path.join(__dirname, '../dist')
+      const { port, server } = await createStaticServer(distPath)
+      localServer = server
+      mainWindow.loadURL(`http://127.0.0.1:${port}`)
+    } catch (err) {
+      mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+    }
   }
 
   mainWindow.on('closed', () => {
     mainWindow = null
+    if (localServer) {
+      localServer.close()
+      localServer = null
+    }
   })
 }
 
@@ -74,6 +169,10 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  if (localServer) {
+    localServer.close()
+    localServer = null
+  }
   if (process.platform !== 'darwin') {
     app.quit()
   }
