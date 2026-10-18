@@ -168,15 +168,15 @@ export default function CameraConnectModal({
   }, [getRoomCodeForSlot, targetSlot])
 
   const isLocalDev = typeof window !== 'undefined' && isLocalDevHost(window.location.hostname)
-  const [useCloudDomain, setUseCloudDomain] = useState(() => isLocalDev)
+  const [useCloudDomain, setUseCloudDomain] = useState(() => true)
 
   const remoteUrl = useMemo(() => {
-    let base = typeof window !== 'undefined'
-      ? `${window.location.origin}/remote-cam`
-      : `${CANONICAL_SITE_URL}/remote-cam`
+    // Para celulares o invitados externos, siempre usar el dominio HTTPS público
+    let base = 'https://www.podcastudio.mx/remote-cam'
 
-    if (useCloudDomain || (isLocalDev && useCloudDomain)) {
-      base = `${CANONICAL_SITE_URL}/remote-cam`
+    // Solo si explícitamente se selecciona modo local en desarrollo
+    if (!useCloudDomain && isLocalDev && typeof window !== 'undefined') {
+      base = `${window.location.origin}/remote-cam`
     }
 
     const params = new URLSearchParams({
@@ -217,11 +217,44 @@ export default function CameraConnectModal({
     }
   }
 
+  const copyTextToClipboard = async (text) => {
+    if (!text) return false
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+        return true
+      }
+    } catch {}
+    try {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+      return true
+    } catch {}
+    return false
+  }
+
+  const openExternalLink = (url) => {
+    if (!url) return
+    if (typeof window !== 'undefined' && window.electronAPI?.openExternal) {
+      window.electronAPI.openExternal(url)
+      return
+    }
+    if (typeof window !== 'undefined') {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   const [copiedInvite, setCopiedInvite] = useState(false)
 
-  const handleCopyLink = () => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(remoteUrl)
+  const handleCopyLink = async () => {
+    const ok = await copyTextToClipboard(remoteUrl)
+    if (ok) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }
@@ -255,9 +288,9 @@ Instrucciones:
   const emailBody = encodeURIComponent(invitationText)
   const mailtoUrl = `mailto:?subject=${emailSubject}&body=${emailBody}`
 
-  const handleCopyInvite = () => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(invitationText)
+  const handleCopyInvite = async () => {
+    const ok = await copyTextToClipboard(invitationText)
+    if (ok) {
       setCopiedInvite(true)
       setTimeout(() => setCopiedInvite(false), 2000)
     }
@@ -757,34 +790,33 @@ Instrucciones:
                       <i className={copiedInvite ? 'ti ti-check' : 'ti ti-clipboard-text'} />
                       {copiedInvite ? '¡Invitación copiada!' : 'Copiar texto para invitar'}
                     </button>
-                    <a
-                      href={mailtoUrl}
+                    <button
+                      type="button"
+                      onClick={() => openExternalLink(mailtoUrl)}
                       className={styles.copyUrlBtn}
-                      style={{ textDecoration: 'none', background: '#1e3a8a', color: '#fff', borderColor: '#3b82f6', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      style={{ textDecoration: 'none', background: '#1e3a8a', color: '#fff', borderColor: '#3b82f6', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
                       title="Abrir tu gestor de correo con la invitación redactada y el enlace directo"
                     >
                       <i className="ti ti-mail" style={{ fontSize: 16 }} /> Enviar por Correo
-                    </a>
-                    <a
-                      href={`https://wa.me/?text=${encodeURIComponent(`Hola${guestName.trim() ? ` ${guestName.trim()}` : ''}! Conéctate como ${guestRole === 'student' ? 'alumno a la clase virtual' : guestRole === 'cohost' ? 'co-presentador' : 'invitado en vivo'} en PodcastStudio (CAM ${targetSlot + 1}): ${remoteUrl}`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openExternalLink(`https://wa.me/?text=${encodeURIComponent(`Hola${guestName.trim() ? ` ${guestName.trim()}` : ''}! Conéctate como ${guestRole === 'student' ? 'alumno a la clase virtual' : guestRole === 'cohost' ? 'co-presentador' : 'invitado en vivo'} en PodcastStudio (CAM ${targetSlot + 1}): ${remoteUrl}`)}`)}
                       className={styles.copyUrlBtn}
-                      style={{ textDecoration: 'none', background: '#166534', color: '#fff', borderColor: '#22c55e', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      style={{ textDecoration: 'none', background: '#166534', color: '#fff', borderColor: '#22c55e', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
                       title="Enviar por WhatsApp a otra persona o celular"
                     >
                       <i className="ti ti-brand-whatsapp" style={{ fontSize: 16 }} /> Enviar por WhatsApp
-                    </a>
-                    <a
-                      href={remoteUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openExternalLink(remoteUrl)}
                       className={styles.copyUrlBtn}
-                      style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                      title="Abrir en otra pestaña para probar en este navegador"
+                      style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                      title="Abrir en el navegador predeterminado para probar"
                     >
                       <i className="ti ti-external-link" /> Probar en navegador
-                    </a>
+                    </button>
                   </div>
 
                   <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 8, background: 'rgba(34, 197, 94, 0.08)', border: '1px solid rgba(34, 197, 94, 0.25)', fontSize: 11, color: '#86efac', lineHeight: 1.45, textAlign: 'left' }}>

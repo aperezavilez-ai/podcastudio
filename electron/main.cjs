@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, ipcMain } = require('electron')
+const { app, BrowserWindow, session, ipcMain, shell } = require('electron')
 const path = require('path')
 const http = require('http')
 const fs = require('fs')
@@ -44,6 +44,17 @@ function createStaticServer(distPath) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       try {
+        // Cabeceras CORS universales para streaming de video y WebRTC
+        res.setHeader('Access-Control-Allow-Origin', '*')
+        res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+        res.setHeader('Access-Control-Allow-Headers', '*')
+
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204)
+          res.end()
+          return
+        }
+
         const decodedUrl = decodeURIComponent(req.url.split('?')[0])
         let filePath = path.join(distPath, decodedUrl === '/' ? 'index.html' : decodedUrl)
 
@@ -70,6 +81,7 @@ function createStaticServer(distPath) {
             'Accept-Ranges': 'bytes',
             'Content-Length': chunksize,
             'Content-Type': contentType,
+            'Access-Control-Allow-Origin': '*',
             'Cross-Origin-Opener-Policy': 'same-origin',
             'Cross-Origin-Embedder-Policy': 'credentialless',
           })
@@ -80,6 +92,7 @@ function createStaticServer(distPath) {
         res.writeHead(200, {
           'Content-Length': stat.size,
           'Content-Type': contentType,
+          'Access-Control-Allow-Origin': '*',
           'Cross-Origin-Opener-Policy': 'same-origin',
           'Cross-Origin-Embedder-Policy': 'credentialless',
         })
@@ -133,6 +146,19 @@ async function createWindow() {
     }
   })
 
+  // Abrir enlaces externos (WhatsApp, mailto, etc.) en el navegador predeterminado del sistema
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith('mailto:') || url.startsWith('https://wa.me') || url.includes('podcastudio.mx') || !url.includes('127.0.0.1')) {
+      event.preventDefault()
+      shell.openExternal(url)
+    }
+  })
+
   const isDev = process.env.NODE_ENV === 'development' && !app.isPackaged
 
   if (isDev) {
@@ -157,6 +183,13 @@ async function createWindow() {
     }
   })
 }
+
+// IPC para abrir enlaces externos desde cualquier componente de React
+ipcMain.on('open-external', (event, url) => {
+  if (url && typeof url === 'string') {
+    shell.openExternal(url)
+  }
+})
 
 app.whenReady().then(() => {
   createWindow()

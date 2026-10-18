@@ -25,13 +25,28 @@ function getCachedVideo(src) {
   if (!src || typeof document === 'undefined') return null
   if (videoCache.has(src)) return videoCache.get(src)
   const video = document.createElement('video')
-  video.src = src
-  video.loop = true
   video.muted = true
+  video.defaultMuted = true
+  video.autoplay = true
+  video.loop = true
   video.playsInline = true
-  video.crossOrigin = 'anonymous'
   video.preload = 'auto'
-  video.play().catch(() => {})
+  video.crossOrigin = 'anonymous'
+  video.style.position = 'fixed'
+  video.style.top = '-9999px'
+  video.style.left = '-9999px'
+  video.style.width = '160px'
+  video.style.height = '90px'
+  video.style.opacity = '0.001'
+  video.style.pointerEvents = 'none'
+  document.body.appendChild(video)
+  video.src = src
+  video.load()
+  const tryPlay = () => {
+    video.play().catch(() => {})
+  }
+  tryPlay()
+  video.addEventListener('canplay', tryPlay)
   videoCache.set(src, video)
   return video
 }
@@ -48,20 +63,25 @@ export function drawSetBackground(ctx, w, h, templateId, cameraAngle = 'mid', pr
   // Prioridad: Video Loop Broadcast en tiempo real (100% realista con movimiento)
   if (preferVideo && tmpl?.video) {
     const vid = getCachedVideo(tmpl.video)
-    if (vid && vid.readyState >= 2 && vid.videoWidth) {
-      ctx.save()
-      if (cameraAngle === 'mid') {
-        ctx.translate(w / 2, h / 2)
-        ctx.scale(1.22, 1.22)
-        ctx.translate(-w / 2, -h / 2 + (h * 0.025))
-      } else if (cameraAngle === 'screen') {
-        ctx.translate(w * 0.4, h / 2)
-        ctx.scale(1.18, 1.18)
-        ctx.translate(-w * 0.4 + (w * 0.06), -h / 2)
+    if (vid) {
+      if (vid.paused) {
+        vid.play().catch(() => {})
       }
-      ctx.drawImage(vid, 0, 0, w, h)
-      ctx.restore()
-      return
+      if (vid.videoWidth > 0) {
+        ctx.save()
+        if (cameraAngle === 'mid') {
+          ctx.translate(w / 2, h / 2)
+          ctx.scale(1.22, 1.22)
+          ctx.translate(-w / 2, -h / 2 + (h * 0.025))
+        } else if (cameraAngle === 'screen') {
+          ctx.translate(w * 0.4, h / 2)
+          ctx.scale(1.18, 1.18)
+          ctx.translate(-w * 0.4 + (w * 0.06), -h / 2)
+        }
+        ctx.drawImage(vid, 0, 0, w, h)
+        ctx.restore()
+        return
+      }
     }
   }
 

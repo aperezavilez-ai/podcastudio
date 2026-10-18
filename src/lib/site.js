@@ -1,6 +1,8 @@
-/** URL pública de la app. Usar VITE_SITE_URL en Vercel cuando el dominio propio tenga DNS activo. */
+export const PUBLIC_REMOTE_URL = 'https://www.podcastudio.mx'
+
+const envSiteUrl = import.meta.env.VITE_SITE_URL
 export const CANONICAL_SITE_URL = (
-  import.meta.env.VITE_SITE_URL || 'https://www.podcastudio.mx'
+  (envSiteUrl && envSiteUrl.startsWith('https://')) ? envSiteUrl : PUBLIC_REMOTE_URL
 ).replace(/\/$/, '')
 
 export function getCanonicalHost() {
