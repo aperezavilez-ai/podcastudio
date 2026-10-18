@@ -210,7 +210,7 @@ export function drawCompositorFrame(ctx, w, h, {
     if (background.customImage) {
       ctx.drawImage(background.customImage, 0, 0, w, h)
     } else if (background.templateId && background.templateId !== 'none') {
-      drawSetBackground(ctx, w, h, background.templateId, background.cameraAngle || 'mid')
+      drawSetBackground(ctx, w, h, background.templateId, background.cameraAngle || 'mid', background.liveMotionEnabled !== false)
     } else {
       ctx.fillStyle = '#07070a'
       ctx.fillRect(0, 0, w, h)

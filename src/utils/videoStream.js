@@ -28,14 +28,15 @@ export function applyStreamQualityHints(stream) {
   if (!track) return
 
   try {
-    track.contentHint = 'detail'
+    // 'motion' le indica al navegador priorizar fluidez de movimiento y cero búfer de retraso
+    track.contentHint = 'motion'
   } catch { /* noop */ }
 
   try {
     track.applyConstraints({
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-      frameRate: { ideal: 30 },
+      width: { ideal: 1920, max: 1920 },
+      height: { ideal: 1080, max: 1080 },
+      frameRate: { ideal: 30, max: 60 },
     })
   } catch { /* noop */ }
 }

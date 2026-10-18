@@ -33,8 +33,8 @@ export default function SetBackground({
 
   const template = getBackgroundTemplate(templateId)
 
-  // Si tiene video loop en vivo y motionEnabled
-  const hasLiveVideo = Boolean(template.video && motionEnabled && !preview)
+  // Si tiene video loop en vivo (reproducir tanto en vivo como en miniaturas/previews)
+  const hasLiveVideo = Boolean(template.video && (preview || motionEnabled))
 
   // Encuadre de cámara broadcast estilo vMix:
   // 'mid': La cámara enfoca al conductor en el escritorio (zoom suave al área de conducción)
@@ -91,7 +91,7 @@ export default function SetBackground({
           <div className={styles.ambientMotionLayer} aria-hidden>
             <div className={styles.studioLightGlow} />
             <div className={styles.studioLightRight} />
-            {(template.id === 'talkshow-late' || template.id === 'news-prime') && (
+            {(template.id === 'interview-studio-warm' || template.id === 'news-city-skyline') && (
               <div className={styles.citySkylineShimmer} />
             )}
             {(template.category === 'noticias' || template.category === 'tech') && (

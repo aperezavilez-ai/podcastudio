@@ -205,6 +205,37 @@ export default function AudioDspPanel({ settings, onChange }) {
           </div>
         </div>
       </div>
+
+      {/* COMPENSADOR DE SINCRONÍA LABIAL (LIP-SYNC DELAY) */}
+      <div className={styles.section} style={{ marginTop: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#f1f5f9' }}>
+            <i className="ti ti-clock-play" style={{ color: '#e8612a' }} />
+            <span>Sincronía Labial (Lip-Sync)</span>
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#e8612a' }}>
+            {settings.lipSyncDelayMs ? `+${settings.lipSyncDelayMs} ms` : '0 ms (En Vivo)'}
+          </span>
+        </div>
+        <p className={styles.hint} style={{ margin: '0 0 8px 0', fontSize: 11 }}>
+          Compensa cualquier retraso milimétrico entre el audio del micrófono y la imagen de cámara USB/celular.
+        </p>
+        <input
+          type="range"
+          min={0}
+          max={400}
+          step={10}
+          value={settings.lipSyncDelayMs ?? 0}
+          onChange={(e) => upd('lipSyncDelayMs', +e.target.value)}
+          style={{
+            width: '100%',
+            accentColor: '#e8612a',
+            height: 6,
+            borderRadius: 3,
+            cursor: 'pointer',
+          }}
+        />
+      </div>
     </div>
   )
 }

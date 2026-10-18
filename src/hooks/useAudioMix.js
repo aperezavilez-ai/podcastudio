@@ -51,6 +51,7 @@ export function useAudioMix() {
   const gateAnalyserRef = useRef(null)
   const gateRafRef = useRef(null)
   const compressorRef = useRef(null)
+  const lipSyncDelayRef = useRef(null)
   const dspSettingsRef = useRef(DEFAULT_DSP_SETTINGS)
   const speakerEnabledRef = useRef(false) // Desactivado por defecto para evitar acople/chillido en bocinas
   const speakerVolumeRef = useRef(1.0)
@@ -215,8 +216,14 @@ export function useAudioMix() {
       musicGainRef.current = musicGain
       musicGain.connect(masterSum)
 
-      // 1. Destino para Grabación en alta calidad (mezcla maestra completa con todos los micros y música)
-      masterSum.connect(destRef.current)
+      // 1. Compensador de Latencia Lip-Sync para sincronía labial perfecta
+      const lipSyncDelay = ctx.createDelay(1.0)
+      lipSyncDelay.delayTime.value = (dspSettingsRef.current.lipSyncDelayMs || 0) / 1000
+      lipSyncDelayRef.current = lipSyncDelay
+
+      // Destino para Grabación / Streaming (con sincronía labial compensada)
+      masterSum.connect(lipSyncDelay)
+      lipSyncDelay.connect(destRef.current)
 
       // 2. Bus MIX-MINUS para SALIDA DE AUDIO A BOCINAS / ALTAVOCES DE LA PC (Monitoreo en vivo)
       //    Regla de oro de ingeniería de audio: Las bocinas de la computadora reproducen
@@ -271,6 +278,10 @@ export function useAudioMix() {
     }
     if (micGainRef.current) {
       micGainRef.current.gain.setTargetAtTime(s.micGain ?? 1.2, now, 0.05)
+    }
+    if (lipSyncDelayRef.current && s.lipSyncDelayMs !== undefined) {
+      const sec = Math.max(0, Math.min(0.5, (s.lipSyncDelayMs || 0) / 1000))
+      lipSyncDelayRef.current.delayTime.setTargetAtTime(sec, now, 0.02)
     }
   }, [])
 
@@ -480,6 +491,15 @@ export function useAudioMix() {
     return new MediaStream(tracks)
   }, [ensureContext, applyDspSettings, syncAudioSources, setMusicMix])
 
+  // Ajuste milimétrico de Lip-Sync (0 a 500ms) para compensar desfases de cámaras USB o WiFi
+  const setAudioSyncDelay = useCallback((delayMs) => {
+    dspSettingsRef.current.lipSyncDelayMs = delayMs
+    if (lipSyncDelayRef.current && ctxRef.current) {
+      const sec = Math.max(0, Math.min(0.5, (delayMs || 0) / 1000))
+      lipSyncDelayRef.current.delayTime.setTargetAtTime(sec, ctxRef.current.currentTime, 0.02)
+    }
+  }, [])
+
   return {
     setMicStream,
     setMusicMix,
@@ -490,5 +510,6 @@ export function useAudioMix() {
     buildRecordingStream,
     applyDspSettings,
     ensureContext,
+    setAudioSyncDelay,
   }
 }

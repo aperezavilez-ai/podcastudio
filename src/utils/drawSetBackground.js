@@ -7,6 +7,7 @@ let offscreenCanvas = null
 let offscreenCtx = null
 
 const imageCache = new Map()
+const videoCache = new Map()
 
 function getCachedImage(src) {
   if (!src) return null
@@ -20,97 +21,51 @@ function getCachedImage(src) {
   return null
 }
 
-/** Fondos simplificados para el compositor de grabación (aprox. a los sets CSS). */
-const SETS = {
-  'broadcast-news': {
-    base: ['#1a1a22', '#2d2d38', '#1a1a22'],
-    accent: { y: 0, h: 0.18, color: '#c41e1e' },
-    footer: { y: 0.88, h: 0.12, color: 'rgba(196,30,30,0.85)' },
-  },
-  'breaking-news': {
-    base: ['#120808', '#2a1010', '#120808'],
-    accent: { y: 0, h: 0.22, color: '#e02020' },
-  },
-  'tech-studio': {
-    base: ['#0a1628', '#123456', '#0a1628'],
-    accent: { y: 0.82, h: 0.08, color: '#00a8ff' },
-  },
-  'glam-tv': {
-    base: ['#1a0a28', '#3d1a55', '#1a0a28'],
-    accent: { y: 0, h: 0.14, color: '#b040ff' },
-  },
-  'sport-energy': {
-    base: ['#0a1a0a', '#1a4020', '#0a1a0a'],
-    accent: { y: 0, h: 0.12, color: '#00c853' },
-  },
-  'podcast-dark': {
-    base: ['#0c0c10', '#181820', '#0c0c10'],
-    accent: { y: 0.9, h: 0.1, color: '#e8612a' },
-  },
-  'kids-color': {
-    base: ['#ffe082', '#ff8a65', '#81d4fa'],
-  },
-  'corporate-blue': {
-    base: ['#0d1b2a', '#1b3a5c', '#0d1b2a'],
-    accent: { y: 0, h: 0.1, color: '#2563eb' },
-  },
-  'neon-night': {
-    base: ['#050510', '#120820', '#050510'],
-    accent: { y: 0.85, h: 0.06, color: '#ff00aa' },
-  },
-  'warm-lounge': {
-    base: ['#2a1810', '#4a3020', '#2a1810'],
-  },
-  'split-news': {
-    base: ['#141418', '#222228', '#141418'],
-    accent: { y: 0, h: 1, color: 'rgba(30,30,40,0.92)', split: 0.42 },
-  },
-  'newsroom-prime': {
-    base: ['#0f172a', '#1e293b', '#0f172a'],
-    accent: { y: 0.08, h: 0.14, color: '#3b82f6' },
-    footer: { y: 0.86, h: 0.14, color: 'rgba(30,58,138,0.85)' },
-  },
-  'late-night': {
-    base: ['#050814', '#0d1527', '#03050a'],
-    accent: { y: 0, h: 0.45, color: 'rgba(56,189,248,0.18)' },
-    footer: { y: 0.78, h: 0.22, color: '#1a1006' },
-  },
-  'music-acoustic': {
-    base: ['#23150d', '#3a2214', '#150a04'],
-    accent: { y: 0.05, h: 0.28, color: 'rgba(245,158,11,0.25)' },
-    footer: { y: 0.75, h: 0.25, color: '#1a0e07' },
-  },
-  'music-concert': {
-    base: ['#090514', '#1b0c36', '#05020a'],
-    accent: { y: 0, h: 0.35, color: 'rgba(236,72,153,0.32)' },
-    footer: { y: 0.82, h: 0.18, color: '#0f0520' },
-  },
-  'music-studio': {
-    base: ['#1c1612', '#2f231b', '#120d09'],
-    accent: { y: 0.15, h: 0.22, color: 'rgba(217,119,6,0.22)' },
-    footer: { y: 0.8, h: 0.2, color: '#18110b' },
-  },
-  'minimal-dark': {
-    base: ['#101014', '#1c1c22', '#101014'],
-  },
+function getCachedVideo(src) {
+  if (!src || typeof document === 'undefined') return null
+  if (videoCache.has(src)) return videoCache.get(src)
+  const video = document.createElement('video')
+  video.src = src
+  video.loop = true
+  video.muted = true
+  video.playsInline = true
+  video.crossOrigin = 'anonymous'
+  video.preload = 'auto'
+  video.play().catch(() => {})
+  videoCache.set(src, video)
+  return video
 }
 
-function fillGradient(ctx, w, h, colors) {
-  const g = ctx.createLinearGradient(0, 0, w, h)
-  colors.forEach((c, i) => g.addColorStop(i / Math.max(1, colors.length - 1), c))
-  ctx.fillStyle = g
-  ctx.fillRect(0, 0, w, h)
-}
-
-export function drawSetBackground(ctx, w, h, templateId, cameraAngle = 'mid') {
+export function drawSetBackground(ctx, w, h, templateId, cameraAngle = 'mid', preferVideo = true) {
   if (!templateId || templateId === 'none') {
     ctx.fillStyle = '#0a0a0e'
     ctx.fillRect(0, 0, w, h)
     return
   }
 
-  // Si existe imagen realista 3D para la plantilla, dibujarla en el canvas con el encuadre vMix
   const tmpl = getBackgroundTemplate(templateId)
+
+  // Prioridad: Video Loop Broadcast en tiempo real (100% realista con movimiento)
+  if (preferVideo && tmpl?.video) {
+    const vid = getCachedVideo(tmpl.video)
+    if (vid && vid.readyState >= 2 && vid.videoWidth) {
+      ctx.save()
+      if (cameraAngle === 'mid') {
+        ctx.translate(w / 2, h / 2)
+        ctx.scale(1.22, 1.22)
+        ctx.translate(-w / 2, -h / 2 + (h * 0.025))
+      } else if (cameraAngle === 'screen') {
+        ctx.translate(w * 0.4, h / 2)
+        ctx.scale(1.18, 1.18)
+        ctx.translate(-w * 0.4 + (w * 0.06), -h / 2)
+      }
+      ctx.drawImage(vid, 0, 0, w, h)
+      ctx.restore()
+      return
+    }
+  }
+
+  // Fallback si el video aún se está cargando
   if (tmpl?.image) {
     const img = getCachedImage(tmpl.image)
     if (img && img.complete && img.naturalWidth > 0) {
@@ -130,30 +85,8 @@ export function drawSetBackground(ctx, w, h, templateId, cameraAngle = 'mid') {
     }
   }
 
-  const spec = SETS[templateId]
-  if (!spec) {
-    ctx.fillStyle = '#0a0a0e'
-    ctx.fillRect(0, 0, w, h)
-    return
-  }
-
-  fillGradient(ctx, w, h, spec.base)
-
-  if (spec.accent?.split) {
-    ctx.fillStyle = spec.accent.color
-    ctx.fillRect(w * spec.accent.split, 0, w * (1 - spec.accent.split), h)
-    return
-  }
-
-  if (spec.accent) {
-    ctx.fillStyle = spec.accent.color
-    ctx.fillRect(0, h * spec.accent.y, w, h * spec.accent.h)
-  }
-
-  if (spec.footer) {
-    ctx.fillStyle = spec.footer.color
-    ctx.fillRect(0, h * spec.footer.y, w, h * spec.footer.h)
-  }
+  ctx.fillStyle = '#0a0a0e'
+  ctx.fillRect(0, 0, w, h)
 }
 
 /** Dibuja la capa frontal de escritorio / podium PNG para que el presentador quede detrás */

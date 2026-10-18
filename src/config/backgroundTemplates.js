@@ -18,74 +18,67 @@ export const BACKGROUND_TEMPLATES = [
     desk: null,
     hasDesk: false,
     defaultPresenter: { x: 50, y: 50, scale: 100 },
+    liveVideo: false,
   },
 
-  // TV & NOTICIAS
+  // 1. TV & NOTICIAS - 100% SET VIRTUAL
   {
-    id: 'news-prime',
-    name: 'Noticiero Central 4K (Set Vivo)',
+    id: 'news-city-skyline',
+    name: 'Noticias City Skyline (Set Vivo)',
     category: 'noticias',
-    desc: 'Estudio broadcast con videowall animado, horizonte urbano y escritorio curvo con iluminación LED',
+    desc: 'Estudio broadcast con skyline nocturno y pantallas animadas en loop continuo',
     chromaRecommended: true,
-    image: '/sets/news-prime.jpg',
-    video: '/sets/news-prime.mp4',
+    image: null,
+    video: '/sets/news-city-skyline.mp4',
     desk: '/sets/news-prime-desk.png',
     hasDesk: true,
     defaultPresenter: { x: 50, y: 56, scale: 92 },
+    liveVideo: true,
   },
 
-  // ENTREVISTAS & TALK SHOW
+  // 2. ENTREVISTAS & TALK SHOW - 100% SET VIRTUAL
   {
-    id: 'talkshow-late',
-    name: 'Late Night Talk Show (Set Vivo)',
+    id: 'interview-studio-warm',
+    name: 'Estudio Entrevistas Cálido (Set Vivo)',
     category: 'entrevistas',
-    desc: 'Loft estilo Nueva York con ladrillo visto, focos de cine vintage y escritorio de madera noble',
+    desc: 'Ambiente cálido e íntimo para entrevistas profesionales con iluminación de estudio',
     chromaRecommended: true,
-    image: '/sets/talkshow-late.jpg',
-    video: '/sets/talkshow-late.mp4',
+    image: null,
+    video: '/sets/interview-studio-warm.mp4',
     desk: '/sets/talkshow-late-desk.png',
     hasDesk: true,
     defaultPresenter: { x: 50, y: 55, scale: 90 },
+    liveVideo: true,
   },
 
-  // TECH & KEYNOTE
+  // 3. TECH & KEYNOTE - 100% SET VIRTUAL
   {
-    id: 'corporate-stage',
-    name: 'Gran Escenario Keynote 3D (Set Vivo)',
+    id: 'tech-keynote-modern',
+    name: 'Tech Keynote Moderno (Set Vivo)',
     category: 'tech',
-    desc: 'Auditorio con pantalla LED gigante curva animada y tarima circular brillante',
+    desc: 'Escenario futurista con pantalla LED ultra panorámica y suelo reflectante de estudio',
     chromaRecommended: true,
-    image: '/sets/corporate-stage.jpg',
-    video: '/sets/corporate-stage.mp4',
+    image: null,
+    video: '/sets/tech-keynote-modern.mp4',
     desk: null,
     hasDesk: false,
     defaultPresenter: { x: 50, y: 62, scale: 80 },
-  },
-  {
-    id: 'tech-cyber',
-    name: 'Cyber Tech & Podcast IA (Set Vivo)',
-    category: 'tech',
-    desc: 'Estudio futurista con paneles acústicos negros, barras neón RGB pulsantes y mesa de podcast',
-    chromaRecommended: true,
-    image: '/sets/tech-cyber.jpg',
-    video: '/sets/tech-cyber.mp4',
-    desk: null,
-    hasDesk: false,
-    defaultPresenter: { x: 50, y: 58, scale: 92 },
+    liveVideo: true,
   },
 
-  // MÚSICA & CONCIERTOS
+  // 4. MÚSICA & CONCIERTOS - 100% SET VIRTUAL
   {
-    id: 'concert-arena',
-    name: 'Arena Concierto / Live Session (Set Vivo)',
+    id: 'concert-stage-lights',
+    name: 'Escenario Luces de Concierto (Set Vivo)',
     category: 'musica',
-    desc: 'Escenario de concierto profesional con truss metálico, luces robóticas móviles y tarima de directo',
+    desc: 'Plataforma musical con reflectores móviles y efectos visuales de escenario en vivo',
     chromaRecommended: true,
-    image: '/sets/concert-arena.jpg',
-    video: '/sets/concert-arena.mp4',
+    image: null,
+    video: '/sets/concert-stage-lights.mp4',
     desk: null,
     hasDesk: false,
     defaultPresenter: { x: 50, y: 68, scale: 85 },
+    liveVideo: true,
   },
 ]
 

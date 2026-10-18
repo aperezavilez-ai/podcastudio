@@ -165,17 +165,21 @@ export default function RemoteCam() {
     pcRef.current = pc
     iceQueueRef.current = []
 
-    // Agregar tracks locales (video y audio para micrófono del celular con parámetros de alta tasa de bits)
+    // Agregar tracks locales (video y audio para micrófono del celular con latencia mínima y cero búfer)
     localStream.getTracks().forEach((track) => {
+      try {
+        if (track.kind === 'video') track.contentHint = 'motion'
+      } catch {}
       const sender = pc.addTrack(track, localStream)
       if (track.kind === 'video') {
         videoSenderRef.current = sender
         try {
           const params = sender.getParameters() || {}
           if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
-          params.encodings[0].maxBitrate = 3500000 // 3.5 Mbps Full HD broadcast
+          params.encodings[0].maxBitrate = 2200000 // 2.2 Mbps: fluido sin provocar saturación de búfer Wi-Fi
           params.encodings[0].priority = 'high'
           params.encodings[0].networkPriority = 'high'
+          params.encodings[0].maxFramerate = 30
           if ('degradationPreference' in params) {
             params.degradationPreference = 'maintain-framerate'
           }
@@ -186,7 +190,7 @@ export default function RemoteCam() {
         try {
           const params = sender.getParameters() || {}
           if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
-          params.encodings[0].maxBitrate = 192000 // 192 kbps estéreo / voz limpia
+          params.encodings[0].maxBitrate = 128000 // 128 kbps Opus cristalino con latencia mínima
           params.encodings[0].priority = 'high'
           params.encodings[0].networkPriority = 'high'
           sender.setParameters(params).catch(() => {})
@@ -359,8 +363,9 @@ export default function RemoteCam() {
     try {
       const audioConstraints = {
         echoCancellation: true,
-        noiseSuppression: true,
+        noiseSuppression: false,
         autoGainControl: true,
+        latency: { ideal: 0 },
       }
 
       let stream = null
@@ -370,7 +375,7 @@ export default function RemoteCam() {
             facingMode: { ideal: targetFacing },
             width: { ideal: 1920, max: 1920 },
             height: { ideal: 1080, max: 1080 },
-            frameRate: { ideal: 30, max: 30 },
+            frameRate: { ideal: 30, max: 60 },
           },
           audio: audioConstraints,
         })
