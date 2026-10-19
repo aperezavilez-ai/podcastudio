@@ -195,12 +195,19 @@ export default function CameraConnectModal({
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(remoteUrl)}`
 
   const [connectingUsbId, setConnectingUsbId] = useState(null)
+  const [usbConnectError, setUsbConnectError] = useState(null)
 
   const handleConnectUsb = async (deviceId, label) => {
     if (!onUsbConnect) return
     setConnectingUsbId(deviceId)
+    setUsbConnectError(null)
     try {
-      await onUsbConnect(deviceId, targetSlot, customLabel.trim() || label)
+      const res = await onUsbConnect(deviceId, targetSlot, customLabel.trim() || label)
+      if (!res) {
+        setUsbConnectError('No se pudo abrir la cámara. Verifica que no esté en uso por otra aplicación (Zoom, Meet, etc.) o bloqueada por la tecla/interruptor de privacidad de tu laptop.')
+      }
+    } catch (err) {
+      setUsbConnectError(err.message || 'Error al conectar la cámara USB')
     } finally {
       setConnectingUsbId(null)
     }
@@ -490,6 +497,24 @@ Instrucciones:
                     </div>
                   )
                 })
+              )}
+              {usbConnectError && (
+                <div style={{
+                  color: '#f87171',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  borderRadius: 8,
+                  padding: '10px 14px',
+                  fontSize: 12,
+                  marginTop: 12,
+                  lineHeight: 1.4,
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                }}>
+                  <i className="ti ti-alert-triangle" style={{ fontSize: 16, marginTop: 1, flexShrink: 0 }} />
+                  <span>{usbConnectError}</span>
+                </div>
               )}
             </div>
           )}

@@ -3898,8 +3898,12 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         masterCameraSlot={masterCameraSlot}
         onSetMaster={(slot) => setMasterCameraSlot(slot)}
         onUsbConnect={async (deviceId, slot, label) => {
-          await startCamera(deviceId, slot, label)
-          setConnectModalOpen(false)
+          const stream = await startCamera(deviceId, slot, label)
+          if (stream) {
+            setConnectModalOpen(false)
+            return stream
+          }
+          return null
         }}
         onWifiConnect={async (url, slot, label) => {
           const stream = await connectWifiCamera(url, slot, label)

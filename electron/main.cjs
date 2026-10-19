@@ -15,6 +15,7 @@ app.commandLine.appendSwitch(
   'enable-features',
   'CanvasOopRasterization,WebRtcHWDecoding,WebRtcHWEncoding'
 )
+app.commandLine.appendSwitch('disable-features', 'MediaFoundationVideoCapture')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
