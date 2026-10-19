@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { buildCanvasFilter } from '../utils/videoLook.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 import { applyChromaKey } from '../hooks/useChromaKey.js'
-import { getSegmentationEngine, segmentPersonFromVideo } from '../utils/aiSegmentation.js'
 import SetBackground, { SetForegroundDesk } from './SetBackground.jsx'
 import styles from './ProgramPreview.module.css'
 
@@ -43,30 +42,16 @@ function ChromaMasterVideo({ stream, className, style, filter, chromaSettings, m
     }
   }, [stream, mainVideoRef])
 
-  // Pre-cargar modelo de segmentación neuronal por IA al montar
-  useEffect(() => {
-    if (chromaSettings?.enabled) {
-      getSegmentationEngine().catch(() => {})
-    }
-  }, [chromaSettings?.enabled])
-
   useEffect(() => {
     const v = localVideoRef.current
     const c = canvasRef.current
     if (!v || !c || !chromaSettings?.enabled) return undefined
     const ctx = c.getContext('2d', { willReadFrequently: true })
 
-    const mode = chromaSettings.mode || 'ai'
     const crop = chromaSettings.crop || { left: 0, right: 0, top: 0, bottom: 0 }
-    const smoothness = (chromaSettings.edgeSmoothness ?? 30) / 100
-    const threshold = (chromaSettings.aiSensitivity ?? 38) / 100
-    const temporalSmoothing = (chromaSettings.antiFlicker ?? 70) / 100
 
     let animId
-    let lastSegTime = 0
-    let lastMask = null
-
-    const tick = (ts) => {
+    const tick = () => {
       if (v.readyState >= 2 && v.videoWidth > 0) {
         if (c.width !== v.videoWidth || c.height !== v.videoHeight) {
           c.width = v.videoWidth
@@ -75,55 +60,19 @@ function ChromaMasterVideo({ stream, className, style, filter, chromaSettings, m
 
         ctx.drawImage(v, 0, 0)
 
-        if (mode === 'ai' || mode === 'hybrid') {
-          // Ejecutar inferencia neuronal a máx 30fps para no saturar la CPU/GPU y mantener 60fps en pantalla
-          if (ts - lastSegTime >= 32) {
-            lastSegTime = ts
-            const mask = segmentPersonFromVideo(v, {
-              threshold,
-              smoothness,
-              temporalSmoothing,
-            })
-            if (mask) lastMask = mask
-          }
-
-          if (lastMask) {
-            ctx.imageSmoothingEnabled = true
-            ctx.imageSmoothingQuality = 'medium'
-            ctx.globalCompositeOperation = 'destination-in'
-            ctx.drawImage(lastMask, 0, 0, c.width, c.height)
-            ctx.globalCompositeOperation = 'source-over'
-          }
-
-          if (mode === 'hybrid') {
-            try {
-              const frame = ctx.getImageData(0, 0, c.width, c.height)
-              applyChromaKey(
-                frame,
-                chromaSettings.keyColor || '#00b140',
-                chromaSettings.similarity ?? 40,
-                chromaSettings.smoothness ?? 25,
-                chromaSettings.despill ?? 50,
-                crop
-              )
-              ctx.putImageData(frame, 0, 0)
-            } catch {}
-          }
-        } else {
-          // Modo croma tradicional por color verde/azul
-          try {
-            const frame = ctx.getImageData(0, 0, c.width, c.height)
-            applyChromaKey(
-              frame,
-              chromaSettings.keyColor || '#00b140',
-              chromaSettings.similarity ?? 40,
-              chromaSettings.smoothness ?? 25,
-              chromaSettings.despill ?? 50,
-              crop
-            )
-            ctx.putImageData(frame, 0, 0)
-          } catch {}
-        }
+        // Modo croma tradicional por color verde/azul directo (ultra fluido a 60fps)
+        try {
+          const frame = ctx.getImageData(0, 0, c.width, c.height)
+          applyChromaKey(
+            frame,
+            chromaSettings.keyColor || '#00b140',
+            chromaSettings.similarity ?? 40,
+            chromaSettings.smoothness ?? 25,
+            chromaSettings.despill ?? 50,
+            crop
+          )
+          ctx.putImageData(frame, 0, 0)
+        } catch {}
 
         // Si hay recorte de habitación (crop), limpiar márgenes
         if (crop.left > 0 || crop.right > 0 || crop.top > 0 || crop.bottom > 0) {

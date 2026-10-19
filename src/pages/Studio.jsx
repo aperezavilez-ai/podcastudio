@@ -1383,7 +1383,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
       presenterContrast: virtualSetPresenterContrast,
       chromaSettings: {
         enabled: chromaEnabled,
-        mode: virtualSetCutoutMode || 'ai',
+        mode: virtualSetCutoutMode || 'chroma',
         edgeSmoothness: virtualSetEdgeSmoothness,
         keyColor: chromaColor,
         similarity: chromaSimilarity,
@@ -2296,7 +2296,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                       liveMotionEnabled: virtualSetLiveMotionEnabled,
                       chromaSettings: {
                         enabled: chromaEnabled,
-                        mode: virtualSetCutoutMode || 'ai',
+                        mode: virtualSetCutoutMode || 'chroma',
                         edgeSmoothness: virtualSetEdgeSmoothness,
                         aiSensitivity: virtualSetAiSensitivity,
                         antiFlicker: virtualSetAntiFlicker,

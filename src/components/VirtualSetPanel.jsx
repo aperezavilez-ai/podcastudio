@@ -239,84 +239,30 @@ export default function VirtualSetPanel({
         </div>
       )}
 
-      {/* 2. MÉTODO DE RECORTE & IA (SIN TELA VERDE VS CROMA KEY) */}
+      {/* 2. MÉTODO DE RECORTE (CROMA KEY CLÁSICO / TELA VERDE) */}
       {activeTab === 'cutout' && (
         <div className={styles.tabContent}>
           <div className={styles.sectionHeader}>
-            <i className="ti ti-brain" style={{ color: '#38bdf8' }} />
+            <i className="ti ti-color-filter" style={{ color: '#10b981' }} />
             <span>Motor de Recorte de Fondo</span>
           </div>
 
           <div className={styles.modeSelectorCol}>
             <button
               type="button"
-              className={`${styles.modeOptionCard} ${cutoutMode === 'ai' ? styles.modeOptionCardActive : ''}`}
-              onClick={() => onCutoutModeChange?.('ai')}
-            >
-              <i className={`ti ti-sparkles ${styles.modeIcon}`} />
-              <div className={styles.modeTextCol}>
-                <span className={styles.modeTitle}>🧠 Recorte IA (Sin tela verde)</span>
-                <span className={styles.modeDesc}>Red neuronal MediaPipe con filtro temporal anti-flicker: silueta limpia en tiempo real.</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              className={`${styles.modeOptionCard} ${cutoutMode === 'chroma' ? styles.modeOptionCardActive : ''}`}
+              className={`${styles.modeOptionCard} ${styles.modeOptionCardActive}`}
               onClick={() => onCutoutModeChange?.('chroma')}
             >
               <i className={`ti ti-color-filter ${styles.modeIcon}`} style={{ color: '#10b981' }} />
               <div className={styles.modeTextCol}>
                 <span className={styles.modeTitle}>🟩 Croma Key Físico (Tela Verde / Azul)</span>
-                <span className={styles.modeDesc}>Para estudios con ciclorama o tela verde iluminada (espacio YCbCr).</span>
-              </div>
-            </button>
-
-            <button
-              type="button"
-              className={`${styles.modeOptionCard} ${cutoutMode === 'hybrid' ? styles.modeOptionCardActive : ''}`}
-              onClick={() => onCutoutModeChange?.('hybrid')}
-            >
-              <i className={`ti ti-layers-intersect ${styles.modeIcon}`} style={{ color: '#a855f7' }} />
-              <div className={styles.modeTextCol}>
-                <span className={styles.modeTitle}>🔀 Híbrido IA + Corrección Croma</span>
-                <span className={styles.modeDesc}>Corta el fondo con IA y elimina desbordes o reflejos verdes en la piel.</span>
+                <span className={styles.modeDesc}>Recorte instantáneo por color en tiempo real a 60fps sin latencia ni sobrecarga de IA.</span>
               </div>
             </button>
           </div>
 
-          {cutoutMode === 'ai' && (
-            <>
-              <div className={styles.sliderRow}>
-                <span className={styles.sliderLabel}>Sensibilidad IA (Captura Ropa y Cabello)</span>
-                <input
-                  type="range"
-                  min={20}
-                  max={70}
-                  value={aiSensitivity}
-                  onChange={e => onAiSensitivityChange?.(+e.target.value)}
-                  title="Baja el valor si la IA borra tu ropa negra o silla; súbelo para recortar más fondo"
-                />
-                <span className={styles.val}>{aiSensitivity}%</span>
-              </div>
-
-              <div className={styles.sliderRow}>
-                <span className={styles.sliderLabel}>Estabilizador Anti-Parpadeo (Jitter Filter)</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={90}
-                  value={antiFlicker}
-                  onChange={e => onAntiFlickerChange?.(+e.target.value)}
-                  title="Elimina el ruido y saltos entre cuadros congelando los bordes de la toma"
-                />
-                <span className={styles.val}>{antiFlicker}%</span>
-              </div>
-            </>
-          )}
-
           <div className={styles.sliderRow}>
-            <span className={styles.sliderLabel}>Suavizado de Silueta (Feathering)</span>
+            <span className={styles.sliderLabel}>Suavizado de Bordes (Feathering)</span>
             <input
               type="range"
               min={5}
@@ -328,12 +274,10 @@ export default function VirtualSetPanel({
             <span className={styles.val}>{edgeSmoothness}%</span>
           </div>
 
-          {cutoutMode !== 'ai' && (
-            <>
-              <div className={styles.sectionHeader} style={{ marginTop: 12 }}>
-                <i className="ti ti-color-filter" style={{ color: '#10b981' }} />
-                <span>Color de Tela Física</span>
-              </div>
+          <div className={styles.sectionHeader} style={{ marginTop: 12 }}>
+            <i className="ti ti-color-filter" style={{ color: '#10b981' }} />
+            <span>Color de Tela Física</span>
+          </div>
 
               <div className={styles.colorPickerRow}>
                 <button
@@ -385,8 +329,6 @@ export default function VirtualSetPanel({
                 />
                 <span className={styles.val}>{chromaDespill}%</span>
               </div>
-            </>
-          )}
         </div>
       )}
 

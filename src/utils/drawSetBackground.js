@@ -1,7 +1,6 @@
 import { buildCanvasFilter } from './videoLook.js'
 import { applyChromaKey } from '../hooks/useChromaKey.js'
 import { getBackgroundTemplate } from '../config/backgroundTemplates.js'
-import { segmentPersonFromVideo } from './aiSegmentation.js'
 
 let offscreenCanvas = null
 let offscreenCtx = null
@@ -159,54 +158,21 @@ export function drawVideoInset(ctx, video, w, h, backgroundOrRect, directorCrop,
     }
     offscreenCtx.drawImage(video, 0, 0)
 
-    const mode = actualChroma.mode || 'ai'
     const crop = actualChroma.crop || { left: 0, right: 0, top: 0, bottom: 0 }
-    const smoothness = (actualChroma.edgeSmoothness ?? 30) / 100
-    const threshold = (actualChroma.aiSensitivity ?? 38) / 100
-    const temporalSmoothing = (actualChroma.antiFlicker ?? 70) / 100
 
-    if (mode === 'ai' || mode === 'hybrid') {
-      const mask = segmentPersonFromVideo(video, {
-        threshold,
-        smoothness,
-        temporalSmoothing,
-      })
-      if (mask) {
-        offscreenCtx.imageSmoothingEnabled = true
-        offscreenCtx.imageSmoothingQuality = 'high'
-        offscreenCtx.globalCompositeOperation = 'destination-in'
-        offscreenCtx.drawImage(mask, 0, 0, vw, vh)
-        offscreenCtx.globalCompositeOperation = 'source-over'
-      }
-
-      if (mode === 'hybrid') {
-        try {
-          const frame = offscreenCtx.getImageData(0, 0, vw, vh)
-          applyChromaKey(
-            frame,
-            actualChroma.keyColor || '#00b140',
-            actualChroma.similarity ?? 40,
-            actualChroma.smoothness ?? 25,
-            actualChroma.despill ?? 50,
-            crop
-          )
-          offscreenCtx.putImageData(frame, 0, 0)
-        } catch {}
-      }
-    } else {
-      try {
-        const frame = offscreenCtx.getImageData(0, 0, vw, vh)
-        applyChromaKey(
-          frame,
-          actualChroma.keyColor || '#00b140',
-          actualChroma.similarity ?? 40,
-          actualChroma.smoothness ?? 25,
-          actualChroma.despill ?? 50,
-          crop
-        )
-        offscreenCtx.putImageData(frame, 0, 0)
-      } catch {}
-    }
+    // Croma Key físico por color verde/azul directo en tiempo real
+    try {
+      const frame = offscreenCtx.getImageData(0, 0, vw, vh)
+      applyChromaKey(
+        frame,
+        actualChroma.keyColor || '#00b140',
+        actualChroma.similarity ?? 40,
+        actualChroma.smoothness ?? 25,
+        actualChroma.despill ?? 50,
+        crop
+      )
+      offscreenCtx.putImageData(frame, 0, 0)
+    } catch {}
 
     // Limpieza de bordes fuera de plano
     if (crop.left > 0 || crop.right > 0 || crop.top > 0 || crop.bottom > 0) {
@@ -250,6 +216,30 @@ export function drawVideoInset(ctx, video, w, h, backgroundOrRect, directorCrop,
     const finalFilter = [filter, lightingFilter].filter(Boolean).join(' ')
     if (finalFilter && finalFilter !== 'none') ctx.filter = finalFilter
 
+    // --- Mejoras de integración realista ---
+    // 1. Sombra de contacto suave bajo la persona
+    ctx.save()
+    ctx.globalAlpha = 0.35
+    ctx.filter = 'blur(18px)'
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'
+    const shadowW = dw * 0.55
+    const shadowH = dh * 0.08
+    const shadowX = dx + (dw - shadowW) / 2
+    const shadowY = dy + dh - shadowH * 0.3
+    ctx.beginPath()
+    ctx.ellipse(shadowX + shadowW / 2, shadowY + shadowH / 2, shadowW / 2, shadowH / 2, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+
+    // 2. Light wrap simple (luz del entorno en los bordes)
+    ctx.save()
+    ctx.globalCompositeOperation = 'source-over'
+    ctx.globalAlpha = 0.18
+    ctx.filter = 'blur(6px) brightness(1.4)'
+    ctx.drawImage(sourceDrawable, dx - 2, dy - 2, dw + 4, dh + 4)
+    ctx.restore()
+
+    // Dibujar persona
     ctx.drawImage(sourceDrawable, dx, dy, dw, dh)
     ctx.filter = 'none'
     ctx.restore()

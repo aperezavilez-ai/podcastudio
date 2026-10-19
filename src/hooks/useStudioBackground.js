@@ -63,8 +63,11 @@ export function useStudioBackground() {
   // Ángulo de Cámara Broadcast (Estilo vMix): 'mid' (Toma Conductor) por defecto
   const [cameraAngle, setCameraAngleState] = useState(() => loadStr(KEYS.cameraAngle, 'mid'))
 
-  // Modo de recorte: 'ai' (Segmentación neuronal sin tela verde por defecto) o 'chroma' (física)
-  const [cutoutMode, setCutoutModeState] = useState(() => loadStr(KEYS.cutoutMode, 'ai'))
+  // Modo de recorte: 'chroma' (física) por defecto sin IA
+  const [cutoutMode, setCutoutModeState] = useState(() => {
+    const saved = loadStr(KEYS.cutoutMode, 'chroma')
+    return (saved === 'ai' || saved === 'hybrid') ? 'chroma' : saved
+  })
 
   // Controles interactivos de posición, escala y recorte de grabación (calibrados para Mid-Shot por defecto)
   const [presenterScale, setPresenterScaleState] = useState(() => loadNum(KEYS.scale, 105))
@@ -101,8 +104,9 @@ export function useStudioBackground() {
   }, [])
 
   const setCutoutMode = useCallback((mode) => {
-    setCutoutModeState(mode)
-    try { localStorage.setItem(KEYS.cutoutMode, mode) } catch {}
+    const finalMode = (mode === 'ai' || mode === 'hybrid') ? 'chroma' : mode
+    setCutoutModeState(finalMode)
+    try { localStorage.setItem(KEYS.cutoutMode, finalMode) } catch {}
   }, [])
 
   const setPresenterScale = useCallback((scale) => {

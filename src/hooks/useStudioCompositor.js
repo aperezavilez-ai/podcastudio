@@ -284,7 +284,9 @@ export function useStudioCompositor({
     let lastFrame = 0
 
     const draw = (now) => {
-      if (now - lastFrame < 32) {
+      // Permitir hasta ~50fps cuando el sistema lo aguante (menos sensación robótica)
+      // Solo saltamos si el frame anterior fue extremadamente reciente
+      if (now - lastFrame < 16) {
         rafRef.current = requestAnimationFrame(draw)
         return
       }
@@ -372,8 +374,30 @@ export function useStudioCompositor({
   }, [compositorActive, hasStreams])
 
   const getProgramStream = useCallback(() => {
+    const s = settingsRef.current
+    const needsCompositor = Boolean(
+      s.background?.hasVirtualSet ||
+      (s.background?.templateId && s.background.templateId !== 'none') ||
+      s.background?.customImage ||
+      s.background?.customUrl ||
+      s.cintillo?.active ||
+      s.logoUrl ||
+      s.layout !== 'full'
+    )
+
+    // Camino directo de ultra baja latencia: si no hay escenario virtual, cintillo,
+    // logo ni layout múltiple, devolvemos el stream crudo de la cámara (cero canvas, cero latencia)
+    if (!needsCompositor) {
+      const slot = s.activeCamera ?? 0
+      const raw = streams?.[slot]
+      if (raw && raw.getVideoTracks?.().some(t => t.readyState === 'live')) {
+        return raw
+      }
+    }
+
+    // Camino normal (canvas) solo cuando realmente se necesita compositing
     const existing = outputStreamRef.current
-    const vt = existing?.getVideoTracks()?.[0]
+    const vt = existing?.getVideoTracks?.()?.[0]
     if (existing && vt && vt.readyState === 'live') {
       return existing
     }
@@ -385,7 +409,7 @@ export function useStudioCompositor({
       } catch {}
     }
     return existing
-  }, [])
+  }, [streams])
   const getDisplayCanvas = useCallback(() => canvasRef.current, [])
 
   return { getProgramStream, getDisplayCanvas, canvasRef }
