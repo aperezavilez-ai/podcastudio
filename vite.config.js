@@ -370,13 +370,12 @@ export default defineConfig(({ mode }) => {
           }
         }
       },
-      // Tree shaking mejorado
+      // Tree shaking y minificación con Terser
       minify: 'terser',
       terserOptions: {
         compress: {
           drop_console: mode === 'production',
           drop_debugger: mode === 'production',
-          pure_funcs: mode === 'production' ? ['console.log', 'console.info', 'console.debug'] : []
         }
       },
       // Chunks más grandes para menos requests
