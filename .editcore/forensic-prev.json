@@ -1,9 +1,9 @@
 {
-  "ok": false,
+  "ok": true,
   "root": "D:\\PROGRAMAS IA\\PODCASTUDIO",
-  "generatedAt": "2026-10-13T14:35:27.854Z",
-  "durationMs": 10649,
-  "filesScanned": 211,
+  "generatedAt": "2026-10-13T19:00:04.332Z",
+  "durationMs": 10503,
+  "filesScanned": 223,
   "filesTruncated": false,
   "excluded": [],
   "autoExcluded": [],
@@ -13,13 +13,13 @@
       "id": "syntax",
       "label": "Sintaxis JS/JSON",
       "status": "pass",
-      "summary": "117 archivos compilados"
+      "summary": "122 archivos compilados"
     },
     {
       "id": "imports",
       "label": "Imports / require",
-      "status": "fail",
-      "summary": "151 archivos de código revisados"
+      "status": "pass",
+      "summary": "156 archivos de código revisados"
     },
     {
       "id": "conflicts",
@@ -44,51 +44,18 @@
       "label": "Git",
       "status": "pass",
       "command": "git status --porcelain",
-      "summary": "53 archivos con cambios sin commit"
-    },
-    {
-      "id": "typecheck",
-      "label": "Typecheck",
-      "status": "skipped",
-      "summary": "sin TypeScript ni script typecheck"
-    },
-    {
-      "id": "tests",
-      "label": "Tests",
-      "status": "skipped",
-      "summary": "el proyecto no tiene script `test`"
+      "summary": "103 archivos con cambios sin commit"
     }
   ],
   "testStats": null,
-  "findings": [
-    {
-      "check": "imports",
-      "severity": "error",
-      "file": "api/ai/status.js",
-      "line": 1,
-      "key": "imports|api/ai/status.js|../lib/ai/config.js",
-      "message": "Importa \"../lib/ai/config.js\" y ese archivo no existe en la ruta resuelta (`api/lib/ai/config.js`). Existe un módulo con nombre similar en: `lib/ai/config.js`. Corrige la ruta relativa (cuenta bien los ../).",
-      "evidence": "resolución de ruta relativa en disco",
-      "resolvedTry": "api/lib/ai/config.js",
-      "alternates": [
-        "lib/ai/config.js"
-      ]
-    },
-    {
-      "check": "imports",
-      "severity": "error",
-      "file": "api/mercadopago/webhook.js",
-      "line": 2,
-      "key": "imports|pkg|raw-body|absent",
-      "message": "Importa el paquete \"raw-body\", que no está declarado ni instalado.",
-      "evidence": "package.json + node_modules"
-    }
-  ],
+  "findings": [],
   "counts": {
-    "error": 2,
+    "error": 0,
     "warning": 0
   },
   "notRun": [
+    "typecheck",
+    "tests",
     "build"
   ]
 }

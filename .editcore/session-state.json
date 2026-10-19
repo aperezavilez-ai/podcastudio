@@ -1,30 +1,10 @@
 {
   "version": 1,
   "workspaceRoot": "D:\\PROGRAMAS IA\\PODCASTUDIO",
-  "updatedAt": "2026-10-13T15:14:15.362Z",
+  "updatedAt": "2026-10-13T23:11:07.621Z",
   "fileTree": [
     {
-      "path": "lib/supabase/admin.js",
-      "kind": "file"
-    },
-    {
-      "path": "lib/supabase/auth.js",
-      "kind": "file"
-    },
-    {
-      "path": "lib/mercadopago/sync.js",
-      "kind": "file"
-    },
-    {
-      "path": "lib/mercadopago/subscriptions.js",
-      "kind": "file"
-    },
-    {
-      "path": "lib/mercadopago/webhooks.js",
-      "kind": "file"
-    },
-    {
-      "path": "api/ai/status.js",
+      "path": "src/components/TeleprompterDocUpload.jsx",
       "kind": "file"
     },
     {
@@ -64,12 +44,24 @@
       "kind": "directory"
     },
     {
+      "path": "API_DOCS.md",
+      "kind": "file"
+    },
+    {
+      "path": "ARCHITECTURE_GRAPH.md",
+      "kind": "file"
+    },
+    {
       "path": "CLAUDE.md",
       "kind": "file"
     },
     {
       "path": "docs/",
       "kind": "directory"
+    },
+    {
+      "path": "FORENSIC_REPORT.md",
+      "kind": "file"
     },
     {
       "path": "index.html",
@@ -180,6 +172,10 @@
       "kind": "file"
     },
     {
+      "path": "scripts/check-supabase.mjs",
+      "kind": "file"
+    },
+    {
       "path": "scripts/check-users.cjs",
       "kind": "file"
     },
@@ -205,6 +201,14 @@
     },
     {
       "path": "scripts/test-login.cjs",
+      "kind": "file"
+    },
+    {
+      "path": "scripts/test-login.mjs",
+      "kind": "file"
+    },
+    {
+      "path": "SECURITY_ROTATION.md",
       "kind": "file"
     },
     {
@@ -254,49 +258,141 @@
     {
       "path": "vercel.json",
       "kind": "file"
-    },
-    {
-      "path": "vite.config.js",
-      "kind": "file"
     }
   ],
-  "fileTreeAt": "2026-10-13T15:03:57.827Z",
+  "fileTreeAt": "2026-10-13T22:59:10.178Z",
   "recentMods": [
     {
-      "path": "lib/supabase/admin.js",
+      "path": "src/components/TeleprompterDocUpload.jsx",
       "action": "write_file",
       "summary": "archivo escrito (kernel)",
-      "at": "2026-10-13T15:14:15.362Z"
-    },
-    {
-      "path": "lib/supabase/auth.js",
-      "action": "write_file",
-      "summary": "archivo escrito (kernel)",
-      "at": "2026-10-13T15:13:07.567Z"
-    },
-    {
-      "path": "lib/mercadopago/sync.js",
-      "action": "write_file",
-      "summary": "archivo escrito (kernel)",
-      "at": "2026-10-13T15:13:06.631Z"
-    },
-    {
-      "path": "lib/mercadopago/subscriptions.js",
-      "action": "write_file",
-      "summary": "archivo escrito (kernel)",
-      "at": "2026-10-13T15:12:18.737Z"
+      "at": "2026-10-13T23:11:07.620Z"
     },
     {
       "path": "lib/mercadopago/webhooks.js",
       "action": "write_file",
       "summary": "archivo escrito (kernel)",
-      "at": "2026-10-13T15:11:09.812Z"
+      "at": "2026-10-13T19:23:59.449Z"
+    },
+    {
+      "path": "lib/mercadopago/sync.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T19:23:58.563Z"
+    },
+    {
+      "path": "lib/mercadopago/subscriptions.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T19:23:58.061Z"
+    },
+    {
+      "path": "lib/mercadopago/signature.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T19:23:57.832Z"
+    },
+    {
+      "path": "lib/mercadopago/client.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T19:23:57.398Z"
+    },
+    {
+      "path": "api/mercadopago/webhook.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T19:21:59.538Z"
+    },
+    {
+      "path": "api/mercadopago/status.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T19:21:59.140Z"
+    },
+    {
+      "path": "api/mercadopago/session.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T19:21:58.355Z"
+    },
+    {
+      "path": "api/mercadopago/checkout.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T19:21:57.778Z"
     },
     {
       "path": "api/ai/status.js",
-      "action": "replace_in_file",
-      "summary": "parche aplicado (kernel)",
-      "at": "2026-10-13T15:10:01.324Z"
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T19:21:57.488Z"
+    },
+    {
+      "path": "lib/supabase/admin.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T19:19:08.930Z"
+    },
+    {
+      "path": "lib/ai/errors.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T18:51:37.071Z"
+    },
+    {
+      "path": "lib/ai/config.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T18:51:36.344Z"
+    },
+    {
+      "path": "lib/ai/claude.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T18:50:15.026Z"
+    },
+    {
+      "path": "scripts/test-login.cjs",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T18:24:46.916Z"
+    },
+    {
+      "path": "scripts/test-login.mjs",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T18:24:40.120Z"
+    },
+    {
+      "path": "scripts/check-supabase.mjs",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T18:16:47.949Z"
+    },
+    {
+      "path": "api/ai.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T16:53:32.805Z"
+    },
+    {
+      "path": "api/mercadopago/sync.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T16:53:11.341Z"
+    },
+    {
+      "path": "api/mercadopago/subscription.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T16:53:10.946Z"
+    },
+    {
+      "path": "lib/supabase/auth.js",
+      "action": "write_file",
+      "summary": "archivo escrito (kernel)",
+      "at": "2026-10-13T16:51:06.117Z"
     },
     {
       "path": "vite.config.js",
@@ -309,106 +405,10 @@
       "action": "write_file",
       "summary": "archivo escrito (kernel)",
       "at": "2026-10-13T15:00:28.041Z"
-    },
-    {
-      "path": "lib/ai/claude.js",
-      "action": "write_file",
-      "summary": "archivo escrito (kernel)",
-      "at": "2026-10-13T14:55:10.338Z"
-    },
-    {
-      "path": "package.json",
-      "action": "replace_in_file",
-      "summary": "parche aplicado (kernel)",
-      "at": "2026-10-13T14:51:19.299Z"
-    },
-    {
-      "path": "api/mercadopago/webhook.js",
-      "action": "replace_in_file",
-      "summary": "parche aplicado (kernel)",
-      "at": "2026-10-13T14:50:34.236Z"
-    },
-    {
-      "path": "lib/ai/errors.js",
-      "action": "write_file",
-      "summary": "archivo escrito (kernel)",
-      "at": "2026-10-13T14:49:21.168Z"
-    },
-    {
-      "path": "lib/ai/config.js",
-      "action": "write_file",
-      "summary": "archivo escrito (kernel)",
-      "at": "2026-10-13T14:48:43.947Z"
-    },
-    {
-      "path": "README.md",
-      "action": "replace_in_file",
-      "summary": "parche aplicado (kernel)",
-      "at": "2026-10-13T01:19:45.499Z"
-    },
-    {
-      "path": "src/components/PlansGrid.jsx",
-      "action": "replace_in_file",
-      "summary": "parche aplicado (kernel)",
-      "at": "2026-10-13T01:18:18.888Z"
-    },
-    {
-      "path": "src/hooks/useAI.js",
-      "action": "write_file",
-      "summary": "archivo escrito (kernel)",
-      "at": "2026-10-13T01:08:26.126Z"
-    },
-    {
-      "path": "api/ai.js",
-      "action": "write_file",
-      "summary": "archivo escrito (kernel)",
-      "at": "2026-10-13T01:05:33.504Z"
-    },
-    {
-      "path": "lib/mercadopago/client.js",
-      "action": "write_file",
-      "summary": "archivo escrito (kernel)",
-      "at": "2026-10-13T00:58:49.391Z"
-    },
-    {
-      "path": "api/mercadopago/status.js",
-      "action": "replace_in_file",
-      "summary": "parche aplicado (kernel)",
-      "at": "2026-10-13T00:57:20.022Z"
-    },
-    {
-      "path": "api/mercadopago/subscription.js",
-      "action": "replace_in_file",
-      "summary": "parche aplicado (kernel)",
-      "at": "2026-10-13T00:57:19.916Z"
-    },
-    {
-      "path": "api/mercadopago/sync.js",
-      "action": "replace_in_file",
-      "summary": "parche aplicado (kernel)",
-      "at": "2026-10-13T00:57:19.666Z"
-    },
-    {
-      "path": "api/mercadopago/session.js",
-      "action": "replace_in_file",
-      "summary": "parche aplicado (kernel)",
-      "at": "2026-10-13T00:57:19.302Z"
-    },
-    {
-      "path": "api/mercadopago/checkout.js",
-      "action": "replace_in_file",
-      "summary": "parche aplicado (kernel)",
-      "at": "2026-10-13T00:57:19.059Z"
-    },
-    {
-      "path": "supabase/migrations/20261005000000_init.sql",
-      "action": "write_file",
-      "summary": "archivo escrito (kernel)",
-      "at": "2026-10-12T21:52:18.963Z"
     }
   ],
   "recentReads": [],
   "task": "",
   "nextAction": "",
-  "fileTreeHash": "7d1dbe2de80e"
+  "fileTreeHash": "143d04eff903"
 }

@@ -1,9 +1,9 @@
 {
   "version": 3,
-  "builtAt": "2026-10-13T15:03:54.294Z",
-  "fileCount": 202,
-  "symbolCount": 1935,
-  "schemaCount": 2,
+  "builtAt": "2026-10-13T23:17:47.278Z",
+  "fileCount": 213,
+  "symbolCount": 1964,
+  "schemaCount": 5,
   "symbols": [
     {
       "name": "Plans",
@@ -126,33 +126,45 @@
       "path": "src/App.jsx"
     },
     {
+      "name": "error",
+      "kind": "variable",
+      "line": 87,
+      "path": "src/App.jsx"
+    },
+    {
+      "name": "message",
+      "kind": "variable",
+      "line": 90,
+      "path": "src/App.jsx"
+    },
+    {
       "name": "{ data: { subscription: authSub } }",
       "kind": "variable",
-      "line": 98,
+      "line": 102,
       "path": "src/App.jsx"
     },
     {
       "name": "cancelled",
       "kind": "variable",
-      "line": 114,
+      "line": 118,
       "path": "src/App.jsx"
     },
     {
       "name": "handleAuth",
       "kind": "variable",
-      "line": 122,
+      "line": 126,
       "path": "src/App.jsx"
     },
     {
       "name": "handleProject",
       "kind": "variable",
-      "line": 127,
+      "line": 139,
       "path": "src/App.jsx"
     },
     {
       "name": "handleSignOut",
       "kind": "variable",
-      "line": 131,
+      "line": 143,
       "path": "src/App.jsx"
     },
     {
@@ -540,21 +552,39 @@
       "path": "src/components/ErrorBoundary.jsx"
     },
     {
-      "name": "wrongHost",
+      "name": "err",
       "kind": "variable",
       "line": 21,
       "path": "src/components/ErrorBoundary.jsx"
     },
     {
-      "name": "browser",
+      "name": "errMsg",
+      "kind": "variable",
+      "line": 22,
+      "path": "src/components/ErrorBoundary.jsx"
+    },
+    {
+      "name": "errStack",
+      "kind": "variable",
+      "line": 23,
+      "path": "src/components/ErrorBoundary.jsx"
+    },
+    {
+      "name": "wrongHost",
       "kind": "variable",
       "line": 24,
       "path": "src/components/ErrorBoundary.jsx"
     },
     {
-      "name": "reloadHint",
+      "name": "browser",
       "kind": "variable",
       "line": 25,
+      "path": "src/components/ErrorBoundary.jsx"
+    },
+    {
+      "name": "reloadHint",
+      "kind": "variable",
+      "line": 26,
       "path": "src/components/ErrorBoundary.jsx"
     },
     {
@@ -4774,36 +4804,6 @@
       "kind": "variable",
       "line": 34,
       "path": "src/hooks/useTeleprompter.js"
-    },
-    {
-      "name": "next",
-      "kind": "variable",
-      "line": 37,
-      "path": "src/hooks/useTeleprompter.js"
-    },
-    {
-      "name": "toggle",
-      "kind": "variable",
-      "line": 60,
-      "path": "src/hooks/useTeleprompter.js"
-    },
-    {
-      "name": "reset",
-      "kind": "variable",
-      "line": 61,
-      "path": "src/hooks/useTeleprompter.js"
-    },
-    {
-      "name": "setRecordingActive",
-      "kind": "variable",
-      "line": 63,
-      "path": "src/hooks/useTeleprompter.js"
-    },
-    {
-      "name": "WIFI_PRESETS",
-      "kind": "component",
-      "line": 8,
-      "path": "src/hooks/useWebcam.js"
     }
   ],
   "schemas": [
@@ -4811,6 +4811,21 @@
       "path": "supabase/schema.sql",
       "bytes": 3688,
       "mtimeMs": 1791580422225.113
+    },
+    {
+      "path": "supabase/migrations/20250114000000_add_indexes.sql",
+      "bytes": 1922,
+      "mtimeMs": 1791907888371.3855
+    },
+    {
+      "path": "supabase/migrations/20250114000001_audit_logs.sql",
+      "bytes": 3007,
+      "mtimeMs": 1791908010589.6775
+    },
+    {
+      "path": "supabase/migrations/20250114000002_soft_deletes.sql",
+      "bytes": 3959,
+      "mtimeMs": 1791908029272.5989
     },
     {
       "path": "supabase/migrations/20261005000000_init.sql",
