@@ -194,9 +194,16 @@ export default function CameraConnectModal({
 
   const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(remoteUrl)}`
 
+  const [connectingUsbId, setConnectingUsbId] = useState(null)
+
   const handleConnectUsb = async (deviceId, label) => {
     if (!onUsbConnect) return
-    await onUsbConnect(deviceId, targetSlot, customLabel.trim() || label)
+    setConnectingUsbId(deviceId)
+    try {
+      await onUsbConnect(deviceId, targetSlot, customLabel.trim() || label)
+    } finally {
+      setConnectingUsbId(null)
+    }
   }
 
   const handleConnectWifi = async (urlToConnect) => {
@@ -462,6 +469,7 @@ Instrucciones:
                       <button
                         type="button"
                         className={`${styles.connectBtn} ${isCurrent ? styles.connectBtnConnected : ''}`}
+                        disabled={connectingUsbId === cam.deviceId}
                         onClick={() => {
                           if (isCurrent) {
                             if (onDisconnect) onDisconnect(targetSlot)
@@ -471,7 +479,9 @@ Instrucciones:
                         }}
                         title={isCurrent ? 'Desactivar / Apagar esta cámara en este canal' : `Asignar a CAM ${targetSlot + 1}`}
                       >
-                        {isCurrent ? (
+                        {connectingUsbId === cam.deviceId ? (
+                          <><i className="ti ti-loader" style={{ animation: 'spin 1s linear infinite' }} /> Conectando...</>
+                        ) : isCurrent ? (
                           <><i className="ti ti-power" style={{ color: '#f87171' }} /> Desactivar</>
                         ) : (
                           <><i className="ti ti-plug" /> Asignar a CAM {targetSlot + 1}</>

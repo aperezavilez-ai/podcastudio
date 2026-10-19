@@ -1670,8 +1670,8 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
         const maxCams = Math.max(4, planLimits.maxCameras || 4)
         let n = await autoConnectAll(devs.cameras, maxCams)
         if (n === 0 && devs.cameras.length > 0 && devs.cameras[0]) {
-          await startCamera(devs.cameras[0].deviceId, masterCameraSlot, devs.cameras[0].label)
-          n = 1
+          const s = await startCamera(devs.cameras[0].deviceId, masterCameraSlot, devs.cameras[0].label)
+          if (s) n = 1
         }
         if (n === 0) {
           if (devs.cameras.length === 0) {

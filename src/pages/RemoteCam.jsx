@@ -57,6 +57,7 @@ export default function RemoteCam() {
   const audioSenderRef = useRef(null)
   const offerSentRef = useRef(false)
   const isOfferingRef = useRef(false)
+  const handshakeTimerRef = useRef(null)
 
   // Responder a pings de descubrimiento para que el estudio detecte este celular automáticamente
   useEffect(() => {
@@ -137,6 +138,11 @@ export default function RemoteCam() {
         channelRef.current.unsubscribe()
       } catch {}
       channelRef.current = null
+    }
+
+    if (handshakeTimerRef.current) {
+      clearInterval(handshakeTimerRef.current)
+      handshakeTimerRef.current = null
     }
 
     videoSenderRef.current = null
@@ -288,9 +294,8 @@ export default function RemoteCam() {
 
       if (payload.type === 'studio-ready') {
         // El estudio está listo para recibir nuestro feed
-        if (!offerSentRef.current) {
-          await sendOffer()
-        }
+        offerSentRef.current = false
+        await sendOffer()
         return
       }
 
@@ -300,6 +305,10 @@ export default function RemoteCam() {
             await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
           }
           setStatus('connected')
+          if (handshakeTimerRef.current) {
+            clearInterval(handshakeTimerRef.current)
+            handshakeTimerRef.current = null
+          }
 
           // Aplicar candidatos encolados
           const queue = iceQueueRef.current || []
@@ -336,18 +345,38 @@ export default function RemoteCam() {
     channel.subscribe(async (subStatus) => {
       console.log('[RemoteCam] Estado de suscripción canal:', subStatus)
       if (subStatus === 'SUBSCRIBED') {
-        // Notificar al estudio que el teléfono está listo
-        await channel.send({
-          type: 'broadcast',
-          event: 'signal',
-          payload: { type: 'phone-ready', slot, sender: 'phone' },
-        })
-        // Enviar la oferta inicial tras breve espera si el estudio no respondió antes
+        const notifyStudio = () => {
+          if (channelRef.current) {
+            channelRef.current.send({
+              type: 'broadcast',
+              event: 'signal',
+              payload: { type: 'phone-ready', slot, sender: 'phone' },
+            }).catch(() => {})
+          }
+        }
+
+        // Notificar al estudio de inmediato
+        notifyStudio()
+
+        // Enviar la oferta inicial tras breve espera
         setTimeout(() => {
           if (!offerSentRef.current) {
             sendOffer()
           }
-        }, 500)
+        }, 400)
+
+        // Bucle de saludo hasta confirmar conexión WebRTC establecida
+        if (handshakeTimerRef.current) clearInterval(handshakeTimerRef.current)
+        handshakeTimerRef.current = setInterval(() => {
+          if (pcRef.current?.connectionState === 'connected' || pcRef.current?.iceConnectionState === 'connected') {
+            if (handshakeTimerRef.current) {
+              clearInterval(handshakeTimerRef.current)
+              handshakeTimerRef.current = null
+            }
+            return
+          }
+          notifyStudio()
+        }, 2000)
       } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
         console.warn('[RemoteCam] Error en canal de señalización:', subStatus)
         setErrorMsg('Error en el canal de comunicación con el estudio. Recarga la página para reintentar.')

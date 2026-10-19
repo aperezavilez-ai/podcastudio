@@ -330,7 +330,8 @@ export function useWebcam() {
     try {
       userDisabledSlotsRef.current.delete(slotIndex)
       stopCamera(slotIndex)
-      const stream = await openCameraStream(deviceId)
+      await waitMs(150)
+      const stream = await openCameraStream(deviceId, false)
       applyStreamQualityHints(stream)
       const track = stream.getVideoTracks()[0]
       const activeId = track?.getSettings?.().deviceId || deviceId

@@ -13,8 +13,20 @@ export default function Auth({ onAuth }) {
   const [searchParams] = useSearchParams()
   const pendingPlan = searchParams.get('plan')
   const nextPath = searchParams.get('next')
-  const [mode, setMode] = useState('login')
-  const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' })
+  const [rememberEmail, setRememberEmail] = useState(() => {
+    try {
+      return localStorage.getItem('podcastudio_remember_email_opt') !== 'false'
+    } catch {
+      return true
+    }
+  })
+  const [form, setForm] = useState(() => {
+    let savedEmail = ''
+    try {
+      savedEmail = localStorage.getItem('podcastudio_saved_email') || ''
+    } catch {}
+    return { name: '', email: savedEmail, password: '', confirm: '' }
+  })
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -71,11 +83,26 @@ export default function Auth({ onAuth }) {
     }))
   }
 
+  const persistRememberedEmail = (email) => {
+    if (rememberEmail && email) {
+      try {
+        localStorage.setItem('podcastudio_saved_email', email.trim())
+        localStorage.setItem('podcastudio_remember_email_opt', 'true')
+      } catch {}
+    } else {
+      try {
+        localStorage.removeItem('podcastudio_saved_email')
+        localStorage.setItem('podcastudio_remember_email_opt', 'false')
+      } catch {}
+    }
+  }
+
   const submitLogin = async (e) => {
     e.preventDefault()
     setError('')
     setInfo('')
     if (!form.email || !form.password) { setError('Completa todos los campos.'); return }
+    persistRememberedEmail(form.email)
     setLoading(true)
     try {
       if (!isSupabaseConfigured) {
@@ -220,6 +247,20 @@ export default function Auth({ onAuth }) {
               </button>
             </div>
           </div>
+          {mode === 'login' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '-4px 0 14px', fontSize: 13, color: '#94a3b8', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                id="rememberEmailCheck"
+                checked={rememberEmail}
+                onChange={(e) => setRememberEmail(e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: '#ff6b00', cursor: 'pointer' }}
+              />
+              <label htmlFor="rememberEmailCheck" style={{ cursor: 'pointer', userSelect: 'none', color: '#cbd5e1' }}>
+                Recordar mi correo en este equipo
+              </label>
+            </div>
+          )}
           {mode === 'signup' && (
             <div className={styles.field}>
               <label>Confirmar contraseña</label>

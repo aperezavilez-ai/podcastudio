@@ -103,11 +103,23 @@ function createStaticServer(distPath) {
       }
     })
 
-    server.listen(0, '127.0.0.1', () => {
-      const port = server.address().port
-      resolve({ port, server })
+    const FIXED_PORT = 24180
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        // Si otra instancia previa sigue abierta, asignar puerto efímero como fallback
+        const fallbackServer = http.createServer(server.listeners('request')[0])
+        fallbackServer.listen(0, '127.0.0.1', () => {
+          resolve({ port: fallbackServer.address().port, server: fallbackServer })
+        })
+        fallbackServer.on('error', reject)
+      } else {
+        reject(err)
+      }
     })
-    server.on('error', reject)
+
+    server.listen(FIXED_PORT, '127.0.0.1', () => {
+      resolve({ port: FIXED_PORT, server })
+    })
   })
 }
 
@@ -133,11 +145,14 @@ async function createWindow() {
   // Permisos directos de hardware para cámaras y micrófonos sin avisos
   const ses = session.defaultSession
   ses.setPermissionCheckHandler((webContents, permission) => {
-    return ['media', 'camera', 'microphone', 'display-capture', 'notifications'].includes(permission)
+    return true
   })
   ses.setPermissionRequestHandler((webContents, permission, callback) => {
-    callback(['media', 'camera', 'microphone', 'display-capture', 'notifications'].includes(permission))
+    callback(true)
   })
+  if (ses.setDevicePermissionHandler) {
+    ses.setDevicePermissionHandler(() => true)
+  }
 
   // Atajo F12 para abrir DevTools si se requiere inspeccionar
   mainWindow.webContents.on('before-input-event', (event, input) => {
