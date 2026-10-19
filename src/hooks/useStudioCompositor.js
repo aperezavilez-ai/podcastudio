@@ -163,7 +163,7 @@ export function useStudioCompositor({
         shelf = document.createElement('div')
         shelf.id = 'podcastudio-compositor-shelf'
         shelf.setAttribute('aria-hidden', 'true')
-        shelf.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:320px;height:180px;opacity:0.01;pointer-events:none;overflow:hidden;z-index:-9999;'
+        shelf.style.cssText = 'position:fixed;bottom:0;right:0;width:160px;height:90px;opacity:0.02;pointer-events:none;overflow:hidden;z-index:99999;transform:translateZ(0);'
         document.body.appendChild(shelf)
       }
     }

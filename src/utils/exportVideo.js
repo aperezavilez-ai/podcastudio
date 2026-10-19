@@ -2,9 +2,6 @@ let ffmpegInstance = null
 
 async function getFfmpeg() {
   if (ffmpegInstance) return ffmpegInstance
-  if (typeof window !== 'undefined' && !window.crossOriginIsolated) {
-    throw new Error('Ambiente sin SharedArrayBuffer; usando motor nativo de Canvas acelerado')
-  }
   const { FFmpeg } = await import('@ffmpeg/ffmpeg')
   const { toBlobURL } = await import('@ffmpeg/util')
   const ffmpeg = new FFmpeg()
@@ -36,7 +33,7 @@ async function getFfmpeg() {
   }
 
   const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Timeout cargando motor FFmpeg (usando Canvas)')), 3000)
+    setTimeout(() => reject(new Error('Timeout cargando motor FFmpeg')), 25000)
   )
 
   return Promise.race([loadWithTimeout(), timeoutPromise])

@@ -44,10 +44,12 @@ function createStaticServer(distPath) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       try {
-        // Cabeceras CORS universales para streaming de video y WebRTC
+        // Cabeceras CORS universales para streaming de video y WebAssembly acelerado
         res.setHeader('Access-Control-Allow-Origin', '*')
         res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
         res.setHeader('Access-Control-Allow-Headers', '*')
+        res.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+        res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless')
 
         if (req.method === 'OPTIONS') {
           res.writeHead(204)

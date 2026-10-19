@@ -217,7 +217,7 @@ export function useRecorder() {
       URL.revokeObjectURL(url)
     } catch (e) {
       console.warn('MP4 finalization fallback to raw download:', e)
-      downloadRecording({ ...rec, name: rec.name.replace(/\.webm$/i, '.mp4') })
+      downloadRecording(rec)
     } finally {
       setConverting(false)
       setConvertProgress(0)

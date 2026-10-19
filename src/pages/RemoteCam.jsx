@@ -182,13 +182,11 @@ export default function RemoteCam() {
         try {
           const params = sender.getParameters() || {}
           if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
-          params.encodings[0].maxBitrate = 2200000 // 2.2 Mbps: fluido sin provocar saturación de búfer Wi-Fi
+          params.encodings[0].maxBitrate = 2500000 // 2.5 Mbps fluido y nítido
           params.encodings[0].priority = 'high'
           params.encodings[0].networkPriority = 'high'
           params.encodings[0].maxFramerate = 30
-          if ('degradationPreference' in params) {
-            params.degradationPreference = 'maintain-framerate'
-          }
+          params.degradationPreference = 'maintain-framerate'
           sender.setParameters(params).catch(() => {})
         } catch {}
       } else if (track.kind === 'audio') {
@@ -402,9 +400,9 @@ export default function RemoteCam() {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: targetFacing },
-            width: { ideal: 1920, max: 1920 },
-            height: { ideal: 1080, max: 1080 },
-            frameRate: { ideal: 30, max: 60 },
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 30, max: 30 },
           },
           audio: audioConstraints,
         })
@@ -413,8 +411,8 @@ export default function RemoteCam() {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: targetFacing },
-              width: { ideal: 1280, max: 1920 },
-              height: { ideal: 720, max: 1080 },
+              width: { ideal: 1280, max: 1280 },
+              height: { ideal: 720, max: 720 },
               frameRate: { ideal: 30, max: 30 },
             },
             audio: true,
@@ -422,7 +420,7 @@ export default function RemoteCam() {
         } catch {
           // Fallback a solo video si el navegador rechaza el audio
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: targetFacing } },
+            video: { facingMode: { ideal: targetFacing }, frameRate: { ideal: 30 } },
             audio: false,
           })
         }

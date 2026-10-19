@@ -5,6 +5,11 @@ import {
   buildFormatFilename,
 } from '../utils/multiFormatExporter.js'
 import { fixWebmDuration } from '../utils/fixWebmDuration.js'
+import {
+  generateAllSocialThumbnails,
+  downloadThumbnailFile,
+  SOCIAL_THUMBNAIL_PRESETS,
+} from '../utils/thumbnailGenerator.js'
 import styles from './MultiFormatExportModal.module.css'
 
 export default function MultiFormatExportModal({
@@ -21,6 +26,9 @@ export default function MultiFormatExportModal({
   const [convertingKey, setConvertingKey] = useState(null)
   const [progress, setProgress] = useState(0)
   const [packProgress, setPackProgress] = useState(null) // { current: 1, total: 3, label: '' }
+  const [thumbnails, setThumbnails] = useState([])
+  const [generatingThumbs, setGeneratingThumbs] = useState(false)
+  const [thumbError, setThumbError] = useState(null)
 
   // Conjunto de presets seleccionados para exportar en el pack
   const [selectedKeys, setSelectedKeys] = useState(() => {
@@ -40,6 +48,46 @@ export default function MultiFormatExportModal({
       }
     }
   }, [selectedNetworks])
+
+  // Generar automáticamente las miniaturas para cada red social a partir del video grabado
+  useEffect(() => {
+    if (!open || !recording) return
+    let isMounted = true
+    setGeneratingThumbs(true)
+    setThumbError(null)
+
+    const mediaSource = recording.blob || recording.url
+    if (!mediaSource) {
+      setGeneratingThumbs(false)
+      return
+    }
+
+    generateAllSocialThumbnails(mediaSource, recording.name || 'episodio')
+      .then((thumbs) => {
+        if (isMounted) {
+          setThumbnails(thumbs)
+          setGeneratingThumbs(false)
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          console.warn('[MultiFormatExportModal] No se pudieron extraer miniaturas:', err)
+          setThumbError('No se pudo extraer la miniatura del video')
+          setGeneratingThumbs(false)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [open, recording])
+
+  const handleDownloadAllThumbnails = () => {
+    if (!thumbnails || thumbnails.length === 0) return
+    thumbnails.forEach((thumb, idx) => {
+      setTimeout(() => downloadThumbnailFile(thumb), idx * 300)
+    })
+  }
 
   if (!open || !recording) return null
 
@@ -346,6 +394,65 @@ export default function MultiFormatExportModal({
               </div>
             )
           })}
+        </div>
+
+        {/* SECCIÓN DE MINIATURAS OFICIALES PARA CADA RED SOCIAL */}
+        <div className={styles.thumbsSection}>
+          <div className={styles.thumbsHeader}>
+            <div className={styles.thumbsTitleRow}>
+              <i className="ti ti-photo" style={{ color: '#38bdf8', fontSize: 16 }} />
+              <h3 className={styles.thumbsTitle}>Miniaturas y Portadas Oficiales para Redes</h3>
+              <span className={styles.thumbsBadge}>JPG HD</span>
+            </div>
+
+            <button
+              type="button"
+              className={styles.downloadAllThumbsBtn}
+              onClick={handleDownloadAllThumbnails}
+              disabled={generatingThumbs || thumbnails.length === 0}
+              title="Descargar las 4 portadas oficiales de una vez"
+            >
+              <i className="ti ti-download" />
+              <span>{generatingThumbs ? 'Generando miniaturas...' : 'Descargar Pack Miniaturas (4 Redes)'}</span>
+            </button>
+          </div>
+
+          <div className={styles.thumbsGrid}>
+            {SOCIAL_THUMBNAIL_PRESETS.map((preset) => {
+              const thumb = thumbnails.find(t => t.id === preset.id)
+              return (
+                <div key={preset.id} className={styles.thumbCard}>
+                  <div className={styles.thumbImgWrap}>
+                    {thumb?.dataUrl ? (
+                      <img src={thumb.dataUrl} alt={preset.label} className={styles.thumbImg} />
+                    ) : (
+                      <div className={styles.thumbPlaceholder}>
+                        <i className={preset.icon} style={{ fontSize: 20, color: preset.color }} />
+                        <span>{generatingThumbs ? 'Procesando...' : preset.aspectRatio}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className={styles.thumbMeta}>
+                    <span className={styles.thumbLabel} title={preset.label}>
+                      <i className={preset.icon} style={{ color: preset.color, marginRight: 4 }} />
+                      {preset.network}
+                    </span>
+                    <span className={styles.thumbDim}>{preset.badge}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.thumbDownloadBtn}
+                    onClick={() => thumb && downloadThumbnailFile(thumb)}
+                    disabled={!thumb || generatingThumbs}
+                    title={`Descargar miniatura para ${preset.network}`}
+                  >
+                    <i className="ti ti-download" />
+                    <span>Descargar {preset.aspectRatio}</span>
+                  </button>
+                </div>
+              )
+            })}
+          </div>
         </div>
 
         {/* Barra de progreso global */}

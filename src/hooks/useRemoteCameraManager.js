@@ -175,6 +175,13 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
             const track = trackEvent.track
             if (!track) return
 
+            try {
+              if (track.kind === 'video') track.contentHint = 'motion'
+              if (trackEvent.receiver && 'playoutDelayHint' in trackEvent.receiver) {
+                trackEvent.receiver.playoutDelayHint = 0
+              }
+            } catch {}
+
             trackMap.set(track.id, track)
 
             track.onunmute = () => {
