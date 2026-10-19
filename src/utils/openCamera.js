@@ -20,7 +20,7 @@ export function waitMs(ms) {
  * Envoltorio seguro para getUserMedia con límite de tiempo estricto.
  * Evita que bloqueos de controladores (como Lenovo Chicony 04f2:b57e) dejen la UI en 'Conectando...' permanentemente.
  */
-export function getUserMediaWithTimeout(constraints, timeoutMs = 3500) {
+export function getUserMediaWithTimeout(constraints, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     let resolved = false
     const timer = setTimeout(() => {
@@ -71,7 +71,7 @@ export async function openCameraStreamFacing(facingMode, withAudio = true) {
             noiseSuppression: false,
             autoGainControl: true,
           },
-        }, 4000)
+        }, 6000)
       } catch {}
     }
   }
@@ -79,7 +79,7 @@ export async function openCameraStreamFacing(facingMode, withAudio = true) {
   let lastError = null
   for (const video of videoAttempts) {
     try {
-      return await getUserMediaWithTimeout({ video, audio: false }, 3500)
+      return await getUserMediaWithTimeout({ video, audio: false }, 6000)
     } catch (e) {
       lastError = e
     }
@@ -96,20 +96,19 @@ export async function openCameraStream(deviceId, withAudio = false) {
   const videoAttempts = []
 
   if (deviceId) {
-    // 1. Intento sin restricción de resolución (modo nativo del sensor - máxima compatibilidad en Windows DirectShow)
-    videoAttempts.push({ deviceId: { exact: deviceId } })
-    // 2. Intento con deviceId directo
-    videoAttempts.push({ deviceId })
-    // 3. Intento con ID ideal (tolerante a cambios de puerto USB o identificador de sesión)
-    videoAttempts.push({ deviceId: { ideal: deviceId } })
-    // 4. Intento 720p estándar (EasyCamera / laptops)
-    videoAttempts.push({ deviceId: { exact: deviceId }, ...FLUID_720P_VIDEO })
+    // 1. Intento con deviceId ideal y 720p estándar (máxima tasa de éxito en laptops Lenovo/EasyCamera)
     videoAttempts.push({ deviceId: { ideal: deviceId }, ...FLUID_720P_VIDEO })
+    // 2. Intento con deviceId ideal sin restricciones de resolución
+    videoAttempts.push({ deviceId: { ideal: deviceId } })
+    // 3. Intento con deviceId directo
+    videoAttempts.push({ deviceId })
+    // 4. Intento con deviceId exacto
+    videoAttempts.push({ deviceId: { exact: deviceId } })
   }
 
-  // 5. Fallbacks genéricos si el deviceId no responde
-  videoAttempts.push(true)
+  // 5. Fallbacks genéricos si el ID específico no responde
   videoAttempts.push({ ...FLUID_720P_VIDEO })
+  videoAttempts.push(true)
   videoAttempts.push({ ...BROADCAST_HD_VIDEO })
 
   // Intentar con audio si se solicitó explícitamente
@@ -123,7 +122,7 @@ export async function openCameraStream(deviceId, withAudio = false) {
             noiseSuppression: false,
             autoGainControl: true,
           },
-        }, 3500)
+        }, 6000)
       } catch {}
     }
   }
@@ -132,14 +131,15 @@ export async function openCameraStream(deviceId, withAudio = false) {
   let lastError = null
   for (const video of videoAttempts) {
     try {
-      return await getUserMediaWithTimeout({ video, audio: false }, 3500)
+      return await getUserMediaWithTimeout({ video, audio: false }, 6000)
     } catch (e) {
       lastError = e
-      // Si Windows informa que el hardware está ocupado, esperar 350ms y reintentar
+      console.warn('[openCamera] Intento falló, probando siguiente configuración:', e?.name || e?.message)
+      // Si Windows informa que el hardware está ocupado, esperar 400ms y reintentar
       if (e?.name === 'NotReadableError' || e?.name === 'AbortError' || e?.name === 'TrackStartError') {
-        await waitMs(350)
+        await waitMs(400)
         try {
-          return await getUserMediaWithTimeout({ video, audio: false }, 3000)
+          return await getUserMediaWithTimeout({ video, audio: false }, 5000)
         } catch {}
       }
     }
@@ -147,8 +147,8 @@ export async function openCameraStream(deviceId, withAudio = false) {
 
   // Último intento de rescate: abrir cualquier cámara de video disponible en el sistema
   try {
-    await waitMs(300)
-    return await getUserMediaWithTimeout({ video: true, audio: false }, 3000)
+    await waitMs(400)
+    return await getUserMediaWithTimeout({ video: true, audio: false }, 5000)
   } catch {}
 
   throw lastError || new Error('No se pudo abrir la cámara')

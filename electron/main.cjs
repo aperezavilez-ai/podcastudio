@@ -10,12 +10,10 @@ app.commandLine.appendSwitch('enable-gpu-rasterization')
 app.commandLine.appendSwitch('enable-accelerated-video-decode')
 app.commandLine.appendSwitch('enable-accelerated-mjpeg-decode')
 app.commandLine.appendSwitch('use-angle', 'd3d11')
-app.commandLine.appendSwitch('ignore-gpu-blocklist')
 app.commandLine.appendSwitch(
   'enable-features',
-  'CanvasOopRasterization,WebRtcHWDecoding,WebRtcHWEncoding'
+  'MediaFoundationVideoCapture,CanvasOopRasterization,WebRtcHWDecoding,WebRtcHWEncoding'
 )
-app.commandLine.appendSwitch('disable-features', 'MediaFoundationVideoCapture')
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
