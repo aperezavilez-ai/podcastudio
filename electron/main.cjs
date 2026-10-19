@@ -4,15 +4,16 @@ const http = require('http')
 const fs = require('fs')
 
 // ============================================================================
-// ACELERACIÓN POR HARDWARE Y OPTIMIZACIÓN BROADCAST GPU
+// ACELERACIÓN POR HARDWARE DIRECTX / GPU BROADCAST (WINDOWS D3D11)
 // ============================================================================
 app.commandLine.appendSwitch('enable-gpu-rasterization')
-app.commandLine.appendSwitch('enable-zero-copy')
+app.commandLine.appendSwitch('enable-accelerated-video-decode')
+app.commandLine.appendSwitch('enable-accelerated-mjpeg-decode')
+app.commandLine.appendSwitch('use-angle', 'd3d11')
 app.commandLine.appendSwitch('ignore-gpu-blocklist')
-app.commandLine.appendSwitch('enable-native-gpu-memory-buffers')
 app.commandLine.appendSwitch(
   'enable-features',
-  'VaapiVideoDecoder,CanvasOopRasterization,WebRtcHWDecoding,WebRtcHWEncoding'
+  'CanvasOopRasterization,WebRtcHWDecoding,WebRtcHWEncoding'
 )
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')

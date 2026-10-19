@@ -63,7 +63,10 @@ function ChromaMasterVideo({ stream, className, style, filter, chromaSettings, m
     const temporalSmoothing = (chromaSettings.antiFlicker ?? 70) / 100
 
     let animId
-    const tick = () => {
+    let lastSegTime = 0
+    let lastMask = null
+
+    const tick = (ts) => {
       if (v.readyState >= 2 && v.videoWidth > 0) {
         if (c.width !== v.videoWidth || c.height !== v.videoHeight) {
           c.width = v.videoWidth
@@ -73,17 +76,22 @@ function ChromaMasterVideo({ stream, className, style, filter, chromaSettings, m
         ctx.drawImage(v, 0, 0)
 
         if (mode === 'ai' || mode === 'hybrid') {
-          // Recorte neuronal inteligente sin tela verde con filtro anti-flicker
-          const mask = segmentPersonFromVideo(v, {
-            threshold,
-            smoothness,
-            temporalSmoothing,
-          })
-          if (mask) {
+          // Ejecutar inferencia neuronal a máx 30fps para no saturar la CPU/GPU y mantener 60fps en pantalla
+          if (ts - lastSegTime >= 32) {
+            lastSegTime = ts
+            const mask = segmentPersonFromVideo(v, {
+              threshold,
+              smoothness,
+              temporalSmoothing,
+            })
+            if (mask) lastMask = mask
+          }
+
+          if (lastMask) {
             ctx.imageSmoothingEnabled = true
-            ctx.imageSmoothingQuality = 'high'
+            ctx.imageSmoothingQuality = 'medium'
             ctx.globalCompositeOperation = 'destination-in'
-            ctx.drawImage(mask, 0, 0, c.width, c.height)
+            ctx.drawImage(lastMask, 0, 0, c.width, c.height)
             ctx.globalCompositeOperation = 'source-over'
           }
 
@@ -265,6 +273,17 @@ function SeamlessMasterVideo({
     prevKeyRef.current = cameraKey
 
     if (!streamChanged && !keyChanged) return
+
+    // Si es la misma cámara y el stream activo ya tiene este mismo identificador de stream, no conmutar bus
+    const currentBusStream = activeBus === 'A' ? streamA : streamB
+    if (!keyChanged && stream && currentBusStream && stream.id === currentBusStream.id) {
+      if (activeBus === 'A') {
+        safeAttachVideo(videoARef.current, stream)
+      } else {
+        safeAttachVideo(videoBRef.current, stream)
+      }
+      return
+    }
 
     if (!streamA && !streamB) {
       setStreamA(stream)

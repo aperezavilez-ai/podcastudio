@@ -49,6 +49,7 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
   const peerConnectionsRef = useRef({}) // { [slotIndex]: RTCPeerConnection }
   const iceQueuesRef = useRef({}) // { [slotIndex]: [] }
   const activeTracksRef = useRef({}) // { [slotIndex]: Map<trackId, track> }
+  const compoundStreamsRef = useRef({}) // { [slotIndex]: MediaStream }
   const sessionPrefixRef = useRef(getStudioSessionPrefix())
 
   const getRoomCodeForSlot = useCallback((slotIndex) => {
@@ -65,6 +66,7 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
     }
     delete iceQueuesRef.current[slotIndex]
     delete activeTracksRef.current[slotIndex]
+    delete compoundStreamsRef.current[slotIndex]
 
     // 2. Notificar por canal si sigue abierto
     if (channelsRef.current[slotIndex]) {
@@ -143,25 +145,35 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
             const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended')
             if (liveTracks.length === 0) return
 
-            // Crear un MediaStream con los tracks activos para que React detecte la actualización
-            const compoundStream = new MediaStream(liveTracks)
-            setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
-            if (onStreamConnected) {
-              onStreamConnected(slotIndex, compoundStream, callerLabel)
+            let stream = compoundStreamsRef.current[slotIndex]
+            if (!stream) {
+              stream = new MediaStream(liveTracks)
+              compoundStreamsRef.current[slotIndex] = stream
+              setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
+              if (onStreamConnected) {
+                onStreamConnected(slotIndex, stream, callerLabel)
+              }
+            } else {
+              // Sincronizar tracks en el stream existente sin reemplazar el objeto MediaStream
+              const currentTracks = stream.getTracks()
+              const liveTrackIds = new Set(liveTracks.map(t => t.id))
+              currentTracks.forEach(t => {
+                if (!liveTrackIds.has(t.id)) {
+                  try { stream.removeTrack(t) } catch {}
+                }
+              })
+              liveTracks.forEach(t => {
+                if (!currentTracks.some(ct => ct.id === t.id)) {
+                  try { stream.addTrack(t) } catch {}
+                }
+              })
+              setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
             }
           }
 
           newPc.ontrack = (trackEvent) => {
             const track = trackEvent.track
             if (!track) return
-
-            // Configurar el receiver para latencia ultra baja interactiva y perfecta sincronía labial
-            try {
-              const receiver = trackEvent.receiver
-              if (receiver && 'playoutDelayHint' in receiver) {
-                receiver.playoutDelayHint = 0
-              }
-            } catch {}
 
             trackMap.set(track.id, track)
 

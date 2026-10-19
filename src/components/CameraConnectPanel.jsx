@@ -34,6 +34,8 @@ export default function CameraConnectPanel({
   const [usbDeviceId, setUsbDeviceId] = useState('')
   const [wifiUrl, setWifiUrl] = useState('')
   const [btWifiUrl, setBtWifiUrl] = useState('')
+  const [usbConnecting, setUsbConnecting] = useState(false)
+  const [usbError, setUsbError] = useState(null)
 
   const meta = cameraMeta[slotIndex]
   const hasStream = meta && !meta.awaitingWifi
@@ -41,7 +43,30 @@ export default function CameraConnectPanel({
   const handleUsb = async () => {
     const id = usbDeviceId || devices.cameras[0]?.deviceId
     if (!id) return
-    await onUsbConnect(id, slotIndex)
+
+    setUsbConnecting(true)
+    setUsbError(null)
+
+    // Si el slot actual ya tiene una cámara remota o WiFi conectada, conectar al siguiente slot libre
+    let targetSlot = slotIndex
+    if (meta && (meta.type === 'remote' || meta.type === 'wifi')) {
+      const emptySlot = Array.from({ length: slotsCount || 4 }).findIndex((_, idx) => !cameraMeta[idx])
+      if (emptySlot !== -1) {
+        targetSlot = emptySlot
+        if (onSelectSlot) onSelectSlot(emptySlot)
+      }
+    }
+
+    try {
+      const res = await onUsbConnect(id, targetSlot)
+      if (!res) {
+        setUsbError('No se pudo abrir la cámara. Verifica que ninguna otra aplicación (Zoom, Meet, etc.) la esté usando.')
+      }
+    } catch (e) {
+      setUsbError(e.message || 'Error al conectar cámara USB')
+    } finally {
+      setUsbConnecting(false)
+    }
   }
 
   const handleWifi = async () => {
@@ -158,9 +183,24 @@ export default function CameraConnectPanel({
               ))
             }
           </select>
-          <button type="button" className={styles.connectBtn} onClick={handleUsb} disabled={!devices.cameras.length}>
-            <i className="ti ti-plug" /> Conectar USB
+          <button
+            type="button"
+            className={styles.connectBtn}
+            onClick={handleUsb}
+            disabled={!devices.cameras.length || usbConnecting}
+          >
+            <i
+              className={`ti ${usbConnecting ? 'ti-loader' : 'ti-plug'}`}
+              style={usbConnecting ? { animation: 'spin 1s linear infinite' } : {}}
+            />
+            {usbConnecting ? 'Conectando...' : 'Conectar USB'}
           </button>
+          {usbError && (
+            <div style={{ color: '#ef4444', fontSize: 11, marginTop: 6, lineHeight: 1.3 }}>
+              <i className="ti ti-alert-triangle" style={{ marginRight: 4 }} />
+              {usbError}
+            </div>
+          )}
         </div>
       )}
 

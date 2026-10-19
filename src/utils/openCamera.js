@@ -2,14 +2,14 @@
 const BROADCAST_HD_VIDEO = {
   width: { ideal: 1920 },
   height: { ideal: 1080 },
-  frameRate: { ideal: 30, max: 60 },
+  frameRate: { ideal: 30 },
 }
 
-// Perfil fluido 720p estándar (compatible con webcams integradas de laptop)
+// Perfil fluido 720p estándar (compatible con webcams integradas de laptop como EasyCamera)
 const FLUID_720P_VIDEO = {
   width: { ideal: 1280 },
   height: { ideal: 720 },
-  frameRate: { ideal: 30, max: 60 },
+  frameRate: { ideal: 30 },
 }
 
 export function waitMs(ms) {
@@ -61,21 +61,21 @@ export async function openCameraStream(deviceId, withAudio = false) {
   const videoAttempts = []
 
   if (deviceId) {
-    // 1. Intento óptimo HD con ID exacto
-    videoAttempts.push({ deviceId: { exact: deviceId }, ...BROADCAST_HD_VIDEO })
-    // 2. Intento 720p con ID exacto (el más común en EasyCamera / laptops)
-    videoAttempts.push({ deviceId: { exact: deviceId }, ...FLUID_720P_VIDEO })
-    // 3. Intento sin restricción de resolución con ID exacto
+    // 1. Intento sin restricción de resolución (modo nativo del sensor de la webcam - máxima compatibilidad en Windows)
     videoAttempts.push({ deviceId: { exact: deviceId } })
-    // 4. Intento con ID ideal
-    videoAttempts.push({ deviceId: { ideal: deviceId }, ...FLUID_720P_VIDEO })
+    // 2. Intento 720p estándar (EasyCamera / laptops)
+    videoAttempts.push({ deviceId: { exact: deviceId }, ...FLUID_720P_VIDEO })
+    // 3. Intento HD 1080p
+    videoAttempts.push({ deviceId: { exact: deviceId }, ...BROADCAST_HD_VIDEO })
+    // 4. Intento con ID ideal (tolerante a cambios de puerto USB o identificador de sesión)
     videoAttempts.push({ deviceId: { ideal: deviceId } })
+    videoAttempts.push({ deviceId: { ideal: deviceId }, ...FLUID_720P_VIDEO })
     videoAttempts.push({ deviceId })
   }
 
-  // 5. Fallbacks genéricos si el deviceId fue reasignado por el sistema
-  videoAttempts.push({ ...BROADCAST_HD_VIDEO })
+  // 5. Fallbacks genéricos si el deviceId no responde
   videoAttempts.push({ ...FLUID_720P_VIDEO })
+  videoAttempts.push({ ...BROADCAST_HD_VIDEO })
   videoAttempts.push(true)
 
   // Intentar con audio si se solicitó explícitamente
@@ -101,15 +101,21 @@ export async function openCameraStream(deviceId, withAudio = false) {
       return await navigator.mediaDevices.getUserMedia({ video, audio: false })
     } catch (e) {
       lastError = e
-      // Si Windows Media Foundation informa que el hardware está ocupado, esperar 300ms y reintentar
-      if (e?.name === 'NotReadableError' || e?.name === 'AbortError') {
-        await waitMs(300)
+      // Si Windows Media Foundation informa que el hardware está ocupado, esperar 400ms y reintentar
+      if (e?.name === 'NotReadableError' || e?.name === 'AbortError' || e?.name === 'TrackStartError') {
+        await waitMs(400)
         try {
           return await navigator.mediaDevices.getUserMedia({ video, audio: false })
         } catch {}
       }
     }
   }
+
+  // Último intento de rescate: abrir cualquier cámara de video disponible en el sistema
+  try {
+    await waitMs(500)
+    return await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+  } catch {}
 
   throw lastError || new Error('No se pudo abrir la cámara')
 }

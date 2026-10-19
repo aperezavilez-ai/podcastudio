@@ -258,19 +258,25 @@ export function useWebcam() {
   const enumerateDevices = useCallback(async (requestPermission = true) => {
     try {
       if (requestPermission) {
-        let stream
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-        } catch {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        }
-        stream?.getTracks().forEach(t => t.stop())
-        await waitMs(250)
+        // Consultar si los dispositivos ya tienen etiquetas (permisos ya concedidos en Electron o sesión previa)
+        const initialCheck = await navigator.mediaDevices.enumerateDevices().catch(() => [])
+        const alreadyHasLabels = initialCheck.some(d => d.kind === 'videoinput' && d.label && d.label.length > 0)
 
-        try {
-          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-          audioStream.getTracks().forEach(t => t.stop())
-        } catch { /* mic permission optional */ }
+        if (!alreadyHasLabels) {
+          let stream
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+          } catch {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+          }
+          stream?.getTracks().forEach(t => t.stop())
+          await waitMs(500) // Tiempo de respiro para que el controlador UVC de Windows libere el hardware
+
+          try {
+            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+            audioStream.getTracks().forEach(t => t.stop())
+          } catch { /* mic permission optional */ }
+        }
       }
       const all = await navigator.mediaDevices.enumerateDevices()
       const cams = uniqueCameras(all.filter(d => d.kind === 'videoinput'))
@@ -564,7 +570,15 @@ export function useWebcam() {
           const stream = await startCamera(cam.deviceId, PRIMARY_CAMERA_SLOT, cam.label || 'CAM 1')
           if (stream) connected = 1
         } else if (streamsRef.current[PRIMARY_CAMERA_SLOT]) {
-          connected = 1
+          // Si el slot primario ya está ocupado (por ejemplo por un iPhone remoto), conectar a la siguiente ranura disponible
+          const freeSlot = [1, 2, 3].find(s => !streamsRef.current[s] && !userDisabledSlotsRef.current.has(s))
+          if (freeSlot !== undefined) {
+            const cam = list[0]
+            const stream = await startCamera(cam.deviceId, freeSlot, cam.label || `CAM ${freeSlot + 1}`)
+            if (stream) connected = 1
+          } else {
+            connected = 1
+          }
         }
       } else {
         let camIdx = 0
