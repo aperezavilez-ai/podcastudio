@@ -13,6 +13,7 @@ export default function Auth({ onAuth }) {
   const [searchParams] = useSearchParams()
   const pendingPlan = searchParams.get('plan')
   const nextPath = searchParams.get('next')
+  const [mode, setMode] = useState('login')
   const [rememberEmail, setRememberEmail] = useState(() => {
     try {
       return localStorage.getItem('podcastudio_remember_email_opt') !== 'false'
