@@ -1,6 +1,6 @@
-release/
+/release/
 *.exe
-electron/
-supabase/
-.git/
+/electron/
+/supabase/
+/.git/
 test-*.cjs
