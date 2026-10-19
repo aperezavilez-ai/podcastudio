@@ -89,7 +89,7 @@ export default function MultiFormatExportModal({
     })
   }
 
-  if (!open || !recording) return null
+  const cancelRef = React.useRef(false)
 
   const toggleKey = (key) => {
     setSelectedKeys(prev => {
@@ -110,8 +110,6 @@ export default function MultiFormatExportModal({
       return SOCIAL_PRESETS_EXPORT.map(p => p.key)
     })
   }
-
-  const cancelRef = React.useRef(false)
 
   const handleCancelExport = () => {
     cancelRef.current = true
@@ -243,6 +241,8 @@ export default function MultiFormatExportModal({
     if (isBusy) handleCancelExport()
     onClose()
   }
+
+  if (!open || !recording) return null
 
   return (
     <div className={styles.overlay} onClick={handleModalClose}>
