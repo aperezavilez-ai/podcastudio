@@ -75,8 +75,8 @@ export function useStudioCompositor({
     canvas.height = initialRes.height
     canvasRef.current = canvas
     try {
-      outputStreamRef.current = canvas.captureStream?.(30) || null
-      // Fix: Aplicar contentHint='motion' para priorizar fluidez
+      outputStreamRef.current = canvas.captureStream?.(60) || null
+      // Priorizar fluidez broadcast a 60fps
       if (outputStreamRef.current) {
         const track = outputStreamRef.current.getVideoTracks()[0]
         if (track) {
@@ -98,8 +98,7 @@ export function useStudioCompositor({
         canvasRef.current.width = res.width
         canvasRef.current.height = res.height
         if (typeof canvasRef.current.captureStream === 'function') {
-          outputStreamRef.current = canvasRef.current.captureStream(30)
-          // Fix: Aplicar contentHint='motion' al nuevo stream
+          outputStreamRef.current = canvasRef.current.captureStream(60)
           if (outputStreamRef.current) {
             const track = outputStreamRef.current.getVideoTracks()[0]
             if (track) {
@@ -142,6 +141,7 @@ export function useStudioCompositor({
   settingsRef.current = {
     activeCamera: currentCam,
     fromCamera: transitionFromRef.current,
+    logoUrl,
     logoPosition,
     podcastName,
     cintillo,
@@ -181,7 +181,8 @@ export function useStudioCompositor({
         shelf = document.createElement('div')
         shelf.id = 'podcastudio-compositor-shelf'
         shelf.setAttribute('aria-hidden', 'true')
-        shelf.style.cssText = 'position:fixed;bottom:0;right:0;width:320px;height:180px;opacity:0.99;pointer-events:none;overflow:hidden;z-index:-9999;transform:translateZ(0);'
+        // Capa activa en Chromium sin oclusión para que los decodificadores de hardware operen a 60 FPS continuos
+        shelf.style.cssText = 'position:fixed;top:0;left:0;width:640px;height:360px;opacity:0.01;pointer-events:none;overflow:hidden;z-index:1;transform:translateZ(0);'
         document.body.appendChild(shelf)
       }
     }
@@ -208,7 +209,7 @@ export function useStudioCompositor({
         v.autoplay = true
         v.setAttribute('playsinline', '')
         v.setAttribute('webkit-playsinline', '')
-        v.style.cssText = 'width:320px;height:180px;display:block;'
+        v.style.cssText = 'width:640px;height:360px;display:block;'
         if (shelf) shelf.appendChild(v)
         videos[i] = v
       }
@@ -306,22 +307,8 @@ export function useStudioCompositor({
 
     const ctx = canvas.getContext('2d', { alpha: false })
 
-    // Fix: Throttle a 30fps exactos para sincronizar con captureStream(30)
-    const TARGET_FPS = 30
-    const FRAME_TIME = 1000 / TARGET_FPS
-    let lastFrameTime = 0
-
-    const draw = (timestamp) => {
-      const elapsed = timestamp - lastFrameTime
-
-      // Esperar hasta completar el intervalo de 30fps (33.3ms)
-      if (elapsed < FRAME_TIME - 1) {
-        rafRef.current = requestAnimationFrame(draw)
-        return
-      }
-
-      // Ajustar lastFrameTime para compensar drift acumulado
-      lastFrameTime = timestamp - (elapsed % FRAME_TIME)
+    // Motor de renderizado broadcast a 60 FPS fluidos sin throttle bloqueante
+    const draw = () => {
 
       const s = settingsRef.current
       if (s.transitionStartMs && getTransitionProgress(s.transitionStartMs, TRANSITION_DURATION_MS) >= 1) {
@@ -434,7 +421,13 @@ export function useStudioCompositor({
     }
     if (canvasRef.current && typeof canvasRef.current.captureStream === 'function') {
       try {
-        const fresh = canvasRef.current.captureStream(30)
+        const fresh = canvasRef.current.captureStream(60)
+        if (fresh) {
+          const track = fresh.getVideoTracks()[0]
+          if (track) {
+            try { track.contentHint = 'motion' } catch {}
+          }
+        }
         outputStreamRef.current = fresh
         return fresh
       } catch {}

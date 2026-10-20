@@ -86,16 +86,17 @@ export async function finalizeUniversalMp4(sourceBlob, options = {}) {
     '-avoid_negative_ts', 'make_zero',
   ]
 
-  // Configuración de codificación de video con keyframes regulares a 1 segundo para navegación ultra fluida
+  // Configuración de codificación de video con tasa constante a 60 FPS para máxima fluidez y navegación instantánea
   const videoEncodeArgs = [
     '-c:v', 'libx264',
     '-preset', 'ultrafast',
     '-pix_fmt', 'yuv420p',
-    '-g', '30',
-    '-keyint_min', '15',
+    '-r', '60',
+    '-g', '60',
+    '-keyint_min', '30',
     '-force_key_frames', 'expr:gte(t,n_forced*1)',
     '-sc_threshold', '0',
-    '-crf', '20',
+    '-crf', '18',
   ]
 
   // Configuración de audio profesional a 192kbps

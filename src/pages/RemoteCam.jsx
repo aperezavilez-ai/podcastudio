@@ -178,11 +178,11 @@ export default function RemoteCam() {
         try {
           const params = sender.getParameters() || {}
           if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
-          params.encodings[0].maxBitrate = 3500000 // 3.5 Mbps: fluido sin provocar saturación de búfer Wi-Fi
-          params.encodings[0].minBitrate = 1200000 // Evitar que caiga a 0 fps en quietud
+          params.encodings[0].maxBitrate = 8000000 // 8 Mbps broadcast HD
+          params.encodings[0].minBitrate = 2000000
           params.encodings[0].priority = 'high'
           params.encodings[0].networkPriority = 'high'
-          params.encodings[0].maxFramerate = 30
+          params.encodings[0].maxFramerate = 60
           if ('degradationPreference' in params) {
             params.degradationPreference = 'maintain-framerate'
           }
@@ -269,9 +269,9 @@ export default function RemoteCam() {
           try {
             const params = videoSenderRef.current.getParameters() || {}
             if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
-            params.encodings[0].maxBitrate = 3500000 // 3.5 Mbps HD cristalino
-            params.encodings[0].minBitrate = 1200000 // Garantiza que no caiga a 0 fps en reposo
-            params.encodings[0].maxFramerate = 30
+            params.encodings[0].maxBitrate = 8000000 // 8 Mbps HD cristalino
+            params.encodings[0].minBitrate = 2000000
+            params.encodings[0].maxFramerate = 60
             params.encodings[0].priority = 'high'
             params.encodings[0].networkPriority = 'high'
             if ('degradationPreference' in params) {
@@ -281,10 +281,10 @@ export default function RemoteCam() {
           } catch {}
         }
 
-        // Modificar SDP para forzar bitrate mínimo y máximo en el motor WebRTC
+        // Modificar SDP para forzar bitrate y framerate en el motor WebRTC
         let finalSdp = offer.sdp || ''
         if (finalSdp && !finalSdp.includes('x-google-min-bitrate')) {
-          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:3500\r\nb=TIAS:3500000\r\n')
+          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:8000\r\nb=TIAS:8000000\r\n')
         }
 
         const payloadOffer = {
@@ -428,7 +428,7 @@ export default function RemoteCam() {
             facingMode: { ideal: targetFacing },
             width: { ideal: 1920, max: 1920 },
             height: { ideal: 1080, max: 1080 },
-            frameRate: { ideal: 30, min: 24, max: 30 },
+            frameRate: { ideal: 60, min: 24, max: 60 },
           },
           audio: audioConstraints,
         })
@@ -439,17 +439,26 @@ export default function RemoteCam() {
               facingMode: { ideal: targetFacing },
               width: { ideal: 1280, max: 1920 },
               height: { ideal: 720, max: 1080 },
-              frameRate: { ideal: 30, min: 20, max: 30 },
+              frameRate: { ideal: 60, min: 20, max: 60 },
             },
             audio: true,
           })
         } catch {
           // Fallback a solo video si el navegador rechaza el audio
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: targetFacing } },
+            video: {
+              facingMode: { ideal: targetFacing },
+              frameRate: { ideal: 60, min: 20, max: 60 },
+            },
             audio: false,
           })
         }
+      }
+
+      if (stream) {
+        stream.getVideoTracks().forEach(t => {
+          try { t.contentHint = 'motion' } catch {}
+        })
       }
 
       streamRef.current = stream
@@ -625,7 +634,7 @@ export default function RemoteCam() {
                 facingMode: { ideal: nextFacing },
                 width: { ideal: 1920, max: 1920 },
                 height: { ideal: 1080, max: 1080 },
-                frameRate: { ideal: 30, max: 60 },
+                frameRate: { ideal: 60, min: 24, max: 60 },
               },
               audio: {
                 echoCancellation: true,
@@ -635,6 +644,9 @@ export default function RemoteCam() {
             })
 
             const newVideoTrack = newStream.getVideoTracks()[0]
+            if (newVideoTrack) {
+              try { newVideoTrack.contentHint = 'motion' } catch {}
+            }
             const newAudioTrack = newStream.getAudioTracks()[0]
 
             if (videoSenderRef.current && newVideoTrack) {

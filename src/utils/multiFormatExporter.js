@@ -117,8 +117,8 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
     video.crossOrigin = 'anonymous'
     video.playsInline = true
     video.preload = 'auto'
-    // Elemento visible en DOM fuera de pantalla para que Chromium decodifique 100% de los fotogramas
-    video.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:640px;height:360px;opacity:0.99;pointer-events:none;z-index:-9999;'
+    // Elemento visible en DOM para que Chromium mantenga decodificación por hardware al 100%
+    video.style.cssText = 'position:fixed;top:0;left:0;width:640px;height:360px;opacity:0.01;pointer-events:none;z-index:1;'
     document.body.appendChild(video)
     const blobUrl = sourceMedia instanceof Blob ? URL.createObjectURL(sourceMedia) : sourceMedia
     video.src = blobUrl
@@ -131,7 +131,12 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
 
     const cleanup = () => {
       isTerminated = true
-      if (animId) cancelAnimationFrame(animId)
+      if (animId) {
+        if ('cancelVideoFrameCallback' in video) {
+          try { video.cancelVideoFrameCallback(animId) } catch {}
+        }
+        cancelAnimationFrame(animId)
+      }
       if (intervalId) clearInterval(intervalId)
       try { video.pause() } catch {}
       video.src = ''
@@ -157,8 +162,12 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
         canvas.height = finalH
         const ctx = canvas.getContext('2d', { alpha: false })
 
-        // Capturar audio del video
-        let combinedStream = canvas.captureStream(30)
+        // Capturar video y audio con fluidez 60 FPS
+        let combinedStream = canvas.captureStream(60)
+        try {
+          const track = combinedStream.getVideoTracks()[0]
+          if (track) track.contentHint = 'motion'
+        } catch {}
         let audioAdded = false
 
         try {
@@ -309,13 +318,18 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
         const renderLoop = () => {
           if (isTerminated) return
           drawFrame()
-          animId = requestAnimationFrame(renderLoop)
+          if ('requestVideoFrameCallback' in video) {
+            animId = video.requestVideoFrameCallback(renderLoop)
+          } else {
+            animId = requestAnimationFrame(renderLoop)
+          }
         }
 
-        animId = requestAnimationFrame(renderLoop)
-        intervalId = setInterval(() => {
-          if (!isTerminated) drawFrame()
-        }, 33)
+        if ('requestVideoFrameCallback' in video) {
+          animId = video.requestVideoFrameCallback(renderLoop)
+        } else {
+          animId = requestAnimationFrame(renderLoop)
+        }
       } catch (err) {
         cleanup()
         reject(err)

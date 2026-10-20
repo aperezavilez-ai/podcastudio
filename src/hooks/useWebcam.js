@@ -125,7 +125,11 @@ function createMjpegStream(url) {
 
     img.onload = () => {
       if (!stream) {
-        stream = canvas.captureStream(24)
+        stream = canvas.captureStream(60)
+        try {
+          const track = stream.getVideoTracks()[0]
+          if (track) track.contentHint = 'motion'
+        } catch {}
         draw()
         resolve({
           stream,

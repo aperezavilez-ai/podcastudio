@@ -1,15 +1,15 @@
-// Perfil broadcast 1080p con preferencias flexibles para máxima compatibilidad con cualquier webcam
+// Perfil broadcast 1080p con preferencias de alta tasa de cuadros (60 FPS ideal)
 const BROADCAST_HD_VIDEO = {
   width: { ideal: 1920 },
   height: { ideal: 1080 },
-  frameRate: { ideal: 30 },
+  frameRate: { ideal: 60, min: 24 },
 }
 
-// Perfil fluido 720p estándar (compatible con webcams integradas de laptop como EasyCamera)
+// Perfil fluido 720p estándar (compatible con webcams integradas de laptop)
 const FLUID_720P_VIDEO = {
   width: { ideal: 1280 },
   height: { ideal: 720 },
-  frameRate: { ideal: 30 },
+  frameRate: { ideal: 60, min: 24 },
 }
 
 export function waitMs(ms) {
