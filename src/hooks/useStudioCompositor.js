@@ -163,7 +163,7 @@ export function useStudioCompositor({
         shelf = document.createElement('div')
         shelf.id = 'podcastudio-compositor-shelf'
         shelf.setAttribute('aria-hidden', 'true')
-        shelf.style.cssText = 'position:fixed;bottom:0;right:0;width:160px;height:90px;opacity:0.02;pointer-events:none;overflow:hidden;z-index:99999;transform:translateZ(0);'
+        shelf.style.cssText = 'position:fixed;bottom:0;right:0;width:320px;height:180px;opacity:0.99;pointer-events:none;overflow:hidden;z-index:-9999;transform:translateZ(0);'
         document.body.appendChild(shelf)
       }
     }
@@ -190,7 +190,7 @@ export function useStudioCompositor({
         v.autoplay = true
         v.setAttribute('playsinline', '')
         v.setAttribute('webkit-playsinline', '')
-        v.style.cssText = 'width:320px;height:180px;'
+        v.style.cssText = 'width:320px;height:180px;display:block;'
         if (shelf) shelf.appendChild(v)
         videos[i] = v
       }

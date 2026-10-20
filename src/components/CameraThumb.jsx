@@ -1,6 +1,4 @@
 import React, { useEffect, useRef } from 'react'
-import { drawVideoCover, COMPOSITOR_W, COMPOSITOR_H } from '../utils/canvasCompositor.js'
-import { drawCintillo, drawLogo } from '../utils/drawOverlays.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 
 function CameraThumb({
@@ -13,99 +11,45 @@ function CameraThumb({
   logoOverlay = null,
   crop = null,
   directorCrop = null,
-  maxFps = 12,
 }) {
-  const canvasRef = useRef(null)
   const videoRef = useRef(null)
   const effectiveCrop = crop || directorCrop
 
   useEffect(() => {
-    if (!stream || !canvasRef.current) return
+    const video = videoRef.current
+    if (!video || !stream) return
 
-    if (!videoRef.current) {
-      const v = document.createElement('video')
-      v.muted = true
-      v.playsInline = true
-      v.autoplay = true
-      videoRef.current = v
+    video.setAttribute('playsinline', 'true')
+    video.setAttribute('webkit-playsinline', 'true')
+    video.muted = true
+
+    if (video.srcObject !== stream) {
+      video.srcObject = stream
     }
 
-    const video = videoRef.current
-    if (video.srcObject !== stream) video.srcObject = stream
-    const tryPlay = () => { video.play().catch(() => {}) }
+    const tryPlay = () => {
+      const p = video.play()
+      if (p && typeof p.catch === 'function') p.catch(() => {})
+    }
     tryPlay()
 
     video.addEventListener('canplay', tryPlay)
     video.addEventListener('loadeddata', tryPlay)
     video.addEventListener('loadedmetadata', tryPlay)
 
-    // Despertar el reproductor si el track de WebRTC se desmutea al recibir el primer keyframe
-    const videoTracks = stream?.getVideoTracks?.() || []
-    videoTracks.forEach(t => {
-      t.addEventListener('unmute', tryPlay)
-    })
+    const videoTracks = stream.getVideoTracks() || []
+    videoTracks.forEach(t => t.addEventListener('unmute', tryPlay))
 
-    const unbindKeepAlive = bindVideoKeepAlive(video)
+    const unbind = bindVideoKeepAlive(video)
 
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext('2d')
-    let rafId = 0
-    let lastFrame = 0
-    const minFrameMs = maxFps > 0 ? 1000 / maxFps : 0
-
-    const draw = (ts) => {
-      if (minFrameMs && ts - lastFrame < minFrameMs) {
-        rafId = requestAnimationFrame(draw)
-        return
-      }
-      lastFrame = ts
-      const tw = canvas.clientWidth || 108
-      const th = canvas.clientHeight || 62
-      const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      const pw = Math.round(tw * dpr)
-      const ph = Math.round(th * dpr)
-      if (canvas.width !== pw || canvas.height !== ph) {
-        canvas.width = pw
-        canvas.height = ph
-      }
-
-      ctx.imageSmoothingEnabled = true
-      ctx.imageSmoothingQuality = 'medium'
-      ctx.setTransform(1, 0, 0, 1, 0, 0)
-      ctx.fillStyle = '#07070a'
-      ctx.fillRect(0, 0, pw, ph)
-
-      if (video.readyState >= 2 && video.videoWidth) {
-        const scale = pw / COMPOSITOR_W
-        ctx.save()
-        ctx.scale(scale, scale)
-        if (effectiveCrop?.filter && effectiveCrop.filter !== 'none') {
-          try { ctx.filter = effectiveCrop.filter } catch {}
-        }
-        drawVideoCover(ctx, video, 0, 0, COMPOSITOR_W, COMPOSITOR_H, effectiveCrop)
-        ctx.filter = 'none'
-        if (logoOverlay) drawLogo(ctx, COMPOSITOR_W, COMPOSITOR_H, logoOverlay)
-        if (cintillo?.active) {
-          drawCintillo(ctx, COMPOSITOR_W, COMPOSITOR_H, {
-            active: true,
-            tag: cintillo.tag,
-            text: cintillo.text,
-            color: cintillo.color,
-            position: cintilloPosition,
-          })
-        }
-        ctx.restore()
-      }
-
-      rafId = requestAnimationFrame(draw)
-    }
-
-    rafId = requestAnimationFrame(draw)
     return () => {
-      cancelAnimationFrame(rafId)
-      unbindKeepAlive()
+      unbind?.()
+      video.removeEventListener('canplay', tryPlay)
+      video.removeEventListener('loadeddata', tryPlay)
+      video.removeEventListener('loadedmetadata', tryPlay)
+      videoTracks.forEach(t => t.removeEventListener('unmute', tryPlay))
     }
-  }, [stream, cintillo, cintilloPosition, logoOverlay, effectiveCrop, maxFps])
+  }, [stream])
 
   if (!stream) {
     return (
@@ -129,13 +73,60 @@ function CameraThumb({
     )
   }
 
+  const zoom = Math.max(1, Number(effectiveCrop?.zoom) || 1)
+  const fx = typeof effectiveCrop?.focusX === 'number' ? effectiveCrop.focusX : 0.5
+  const fy = typeof effectiveCrop?.focusY === 'number' ? effectiveCrop.focusY : 0.42
+  const filter = (effectiveCrop?.filter && effectiveCrop.filter !== 'none') ? effectiveCrop.filter : undefined
+
   return (
-    <canvas
-      ref={canvasRef}
+    <div
       className={className}
-      style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover', ...style }}
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        overflow: 'hidden',
+        background: '#07070a',
+        borderRadius: style?.borderRadius ?? 7,
+        ...style,
+      }}
       onClick={onClick}
-    />
+    >
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        webkit-playsinline="true"
+        muted
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'block',
+          objectFit: 'cover',
+          objectPosition: `${Math.round(fx * 100)}% ${Math.round(fy * 100)}%`,
+          transform: zoom > 1 ? `scale(${zoom})` : undefined,
+          transformOrigin: `${Math.round(fx * 100)}% ${Math.round(fy * 100)}%`,
+          filter,
+        }}
+      />
+      {cintillo?.active && (
+        <div style={{
+          position: 'absolute',
+          bottom: 4,
+          left: 4,
+          padding: '2px 6px',
+          background: cintillo.color || '#e8612a',
+          color: '#fff',
+          fontSize: 9,
+          fontWeight: 800,
+          borderRadius: 3,
+          boxShadow: '0 2px 6px rgba(0,0,0,0.6)',
+          pointerEvents: 'none',
+        }}>
+          {cintillo.tag || cintillo.text}
+        </div>
+      )}
+    </div>
   )
 }
 

@@ -5,13 +5,9 @@ import styles from './RemoteCam.module.css'
 
 const RTC_CONFIG = {
   iceServers: [
+    { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:stun.services.mozilla.com' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
     {
       urls: 'turn:openrelay.metered.ca:80',
       username: 'openrelay',
@@ -28,7 +24,7 @@ const RTC_CONFIG = {
       credential: 'openrelay',
     },
   ],
-  iceCandidatePoolSize: 10,
+  iceCandidatePoolSize: 4,
 }
 
 export default function RemoteCam() {
@@ -182,7 +178,8 @@ export default function RemoteCam() {
         try {
           const params = sender.getParameters() || {}
           if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
-          params.encodings[0].maxBitrate = 2200000 // 2.2 Mbps: fluido sin provocar saturación de búfer Wi-Fi
+          params.encodings[0].maxBitrate = 3500000 // 3.5 Mbps: fluido sin provocar saturación de búfer Wi-Fi
+          params.encodings[0].minBitrate = 1200000 // Evitar que caiga a 0 fps en quietud
           params.encodings[0].priority = 'high'
           params.encodings[0].networkPriority = 'high'
           params.encodings[0].maxFramerate = 30
@@ -266,12 +263,41 @@ export default function RemoteCam() {
           offerToReceiveAudio: false,
         })
         await pc.setLocalDescription(offer)
+
+        // Aplicar parámetros de codificación de hardware forzados tras setLocalDescription
+        if (videoSenderRef.current) {
+          try {
+            const params = videoSenderRef.current.getParameters() || {}
+            if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
+            params.encodings[0].maxBitrate = 3500000 // 3.5 Mbps HD cristalino
+            params.encodings[0].minBitrate = 1200000 // Garantiza que no caiga a 0 fps en reposo
+            params.encodings[0].maxFramerate = 30
+            params.encodings[0].priority = 'high'
+            params.encodings[0].networkPriority = 'high'
+            if ('degradationPreference' in params) {
+              params.degradationPreference = 'maintain-framerate'
+            }
+            await videoSenderRef.current.setParameters(params)
+          } catch {}
+        }
+
+        // Modificar SDP para forzar bitrate mínimo y máximo en el motor WebRTC
+        let finalSdp = offer.sdp || ''
+        if (finalSdp && !finalSdp.includes('x-google-min-bitrate')) {
+          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:3500\r\nb=TIAS:3500000\r\n')
+        }
+
+        const payloadOffer = {
+          type: offer.type,
+          sdp: finalSdp || offer.sdp,
+        }
+
         await channel.send({
           type: 'broadcast',
           event: 'signal',
           payload: {
             type: 'offer',
-            sdp: offer,
+            sdp: payloadOffer,
             sender: 'phone',
             slot,
             guestName: guestName.trim() || undefined,
@@ -279,7 +305,7 @@ export default function RemoteCam() {
           },
         })
         offerSentRef.current = true
-        console.log('[RemoteCam] Oferta WebRTC enviada al estudio exitosamente')
+        console.log('[RemoteCam] Oferta WebRTC enviada al estudio exitosamente con parámetros de alta fluidez')
       } catch (err) {
         console.error('Error enviando offer WebRTC:', err)
       } finally {

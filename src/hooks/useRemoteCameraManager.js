@@ -3,13 +3,9 @@ import { supabase } from '../lib/supabase.js'
 
 export const RTC_CONFIG = {
   iceServers: [
+    { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:stun.services.mozilla.com' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
     {
       urls: 'turn:openrelay.metered.ca:80',
       username: 'openrelay',
@@ -26,7 +22,7 @@ export const RTC_CONFIG = {
       credential: 'openrelay',
     },
   ],
-  iceCandidatePoolSize: 10,
+  iceCandidatePoolSize: 4,
 }
 
 function getStudioSessionPrefix() {
