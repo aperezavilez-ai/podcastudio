@@ -1,0 +1,14 @@
+{
+  "id": "20261013-122358-639",
+  "reason": "implementer",
+  "createdAt": "2026-10-13T19:23:58.640Z",
+  "projectRoot": "D:\\PROGRAMAS IA\\PODCASTUDIO",
+  "files": [
+    {
+      "path": "lib/mercadopago/webhooks.js",
+      "existed": true,
+      "backup": "lib__mercadopago__webhooks.js.bak",
+      "bytes": 2500
+    }
+  ]
+}

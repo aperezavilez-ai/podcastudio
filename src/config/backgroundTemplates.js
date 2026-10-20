@@ -1,5 +1,6 @@
 export const BACKGROUND_CATEGORIES = [
   { id: 'all', label: 'Todos' },
+  { id: '3d', label: '🎬 Escenarios 3D Profesionales' },
   { id: 'noticias', label: '📺 Noticias TV' },
   { id: 'entrevistas', label: '🎙️ Talk Show & Entrevistas' },
   { id: 'musica', label: '🎸 Escenarios Musicales' },
@@ -19,8 +20,80 @@ export const BACKGROUND_TEMPLATES = [
     hasDesk: false,
     defaultPresenter: { x: 50, y: 50, scale: 100 },
     liveVideo: false,
+    is3D: false,
   },
 
+  // ========================================
+  // ESCENARIOS 3D PROFESIONALES (NEW)
+  // ========================================
+  {
+    id: 'news-3d',
+    name: '🎬 Estudio de Noticias 3D Profesional',
+    category: '3d',
+    desc: 'Set de noticiario broadcast completo con iluminación 3D real, sombras dinámicas y parallax reactivo',
+    chromaRecommended: true,
+    image: null,
+    video: null,
+    gltf: '/sets3d/news-modern.glb',
+    desk: null,
+    hasDesk: false,
+    defaultPresenter: { x: 50, y: 50, scale: 100 },
+    liveVideo: false,
+    is3D: true,
+    requiresWebGL: true,
+  },
+  {
+    id: 'interview-3d',
+    name: '🎬 Talk Show Cálido 3D',
+    category: '3d',
+    desc: 'Set de entrevista estilo late night con sofás 3D, biblioteca y plantas realistas con iluminación cálida',
+    chromaRecommended: true,
+    image: null,
+    video: null,
+    gltf: '/sets3d/talkshow-warm.glb',
+    desk: null,
+    hasDesk: false,
+    defaultPresenter: { x: 50, y: 50, scale: 100 },
+    liveVideo: false,
+    is3D: true,
+    requiresWebGL: true,
+  },
+  {
+    id: 'tech-3d',
+    name: '🎬 Tech Keynote 3D Futurista',
+    category: '3d',
+    desc: 'Escenario estilo Apple Keynote con pantalla LED ultra-wide, grid holográfico y materiales metálicos',
+    chromaRecommended: true,
+    image: null,
+    video: null,
+    gltf: '/sets3d/tech-keynote.glb',
+    desk: null,
+    hasDesk: false,
+    defaultPresenter: { x: 50, y: 50, scale: 100 },
+    liveVideo: false,
+    is3D: true,
+    requiresWebGL: true,
+  },
+  {
+    id: 'concert-3d',
+    name: '🎬 Escenario Musical 3D',
+    category: '3d',
+    desc: 'Stage de concierto con luces móviles animadas, humo volumétrico y efectos de escenario profesionales',
+    chromaRecommended: true,
+    image: null,
+    video: null,
+    gltf: '/sets3d/concert-stage.glb',
+    desk: null,
+    hasDesk: false,
+    defaultPresenter: { x: 50, y: 50, scale: 100 },
+    liveVideo: false,
+    is3D: true,
+    requiresWebGL: true,
+  },
+
+  // ========================================
+  // ESCENARIOS 2D (LEGACY)
+  // ========================================
   // 1. TV & NOTICIAS - 100% SET VIRTUAL
   {
     id: 'news-city-skyline',
@@ -79,6 +152,7 @@ export const BACKGROUND_TEMPLATES = [
     hasDesk: false,
     defaultPresenter: { x: 50, y: 68, scale: 85 },
     liveVideo: true,
+    is3D: false,
   },
 ]
 

@@ -3,6 +3,7 @@ import { buildCanvasFilter } from '../utils/videoLook.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 import { applyChromaKey } from '../hooks/useChromaKey.js'
 import SetBackground, { SetForegroundDesk } from './SetBackground.jsx'
+import Virtual3DCanvas from './Virtual3DCanvas.jsx'
 import styles from './ProgramPreview.module.css'
 
 function lutClass(lutId) {
@@ -673,7 +674,20 @@ export default function ProgramPreview({
       lightingFilter += ` drop-shadow(0 0 ${Math.max(2, Math.round(backlight * 0.15))}px ${rimColor})`
     }
 
-    const combinedFilter = [cssFilter, lightingFilter].filter(Boolean).join(' ')
+    const is3DSet = Boolean(virtualSet?.templateId && (virtualSet.templateId.endsWith('-3d') || virtualSet.templateId.includes('-3d')))
+    if (is3DSet) {
+      return (
+        <div className={styles.preview}>
+          <Virtual3DCanvas
+            templateId={virtualSet.templateId}
+            presenterStream={stream}
+            quality="auto"
+            style={{ width: '100%', height: '100%', position: 'absolute', inset: 0 }}
+          />
+          <LookOverlays look={activeLook} />
+        </div>
+      )
+    }
 
     return (
       <div className={styles.preview}>

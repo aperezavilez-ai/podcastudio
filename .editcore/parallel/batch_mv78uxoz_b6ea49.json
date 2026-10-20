@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "id": "batch_mv78uxoz_b6ea49",
+  "task": "SOLICITUD ORIGINAL:\nla ia que funciones desempeña ?\n\nPLAN AUTORIZADO:\n## 🔍 Diagnóstico real\n\nULTIMO AVANCE DEL AGENTE (no reexplores desde cero):\n## 🔗 Estado de conexiones — PODCASTUDIO\n\n- [x] **GitHub** (token en bóveda) — Conectado\n\n- [x] **Vercel** (token en bóveda) — Conectado\n\n- [x] **Supabase propio / GAFCORE** — Conectado\n\n- [x] **Servidor SSH** — Conectado\n\n- [x] **Git local** (rama `main`) — Inicializado\n\n- [x] **Remote GitHub** — `https://github.com/aperezavilez-ai/podcastudio.git`\n\n- [x] **Listo para publicar** — Sí\n\n**Siguiente paso:** llamar `publish_project`.\n\nINSTRUCCION ACTUAL:\nContinua la tarea activa. Explica en que paso vas y sigue ejecutando desde la evidencia guardada.\n\nLa autorizacion original sigue vigente. Retoma exactamente donde quedaste. PROHIBIDO reexplorar el repo entero ni reinventar el diagnostico si ya hay evidencia arriba.",
+  "threadId": "chat-1791930003140-6a92c298bf519",
+  "createdAt": "2026-10-13T22:20:06.035Z",
+  "status": "open",
+  "jobs": [
+    {
+      "id": "job_mv78uxoy_27c7",
+      "index": 0,
+      "role": "explorer",
+      "title": "Mapear estructura y puntos de entrada",
+      "goal": "Listar rutas clave sin editar",
+      "scopePaths": [
+        "src",
+        "app",
+        "package.json"
+      ],
+      "status": "running",
+      "result": null,
+      "error": null,
+      "startedAt": "2026-10-13T22:20:06.038Z",
+      "finishedAt": null
+    },
+    {
+      "id": "job_mv78uxoy_b97a",
+      "index": 1,
+      "role": "analyst",
+      "title": "Analizar dominio datos/API",
+      "goal": "Hallazgos de datos/auth/API; no escribir aún",
+      "scopePaths": [
+        "src/server",
+        "src/lib",
+        "supabase",
+        "api"
+      ],
+      "status": "pending",
+      "result": null,
+      "error": null,
+      "startedAt": null,
+      "finishedAt": null
+    },
+    {
+      "id": "job_mv78uxoy_c17d",
+      "index": 2,
+      "role": "implementer",
+      "title": "Implementar UI prioritaria",
+      "goal": "UI según elite policy; no tocar server",
+      "scopePaths": [
+        "src/components",
+        "src/routes",
+        "app",
+        "src/pages",
+        "public"
+      ],
+      "status": "pending",
+      "result": null,
+      "error": null,
+      "startedAt": null,
+      "finishedAt": null
+    },
+    {
+      "id": "job_mv78uxoy_fe64",
+      "index": 3,
+      "role": "verifier",
+      "title": "Verificar consistencia y checklist",
+      "goal": "Revisar sin pisar writes ajenos; reportar gaps",
+      "scopePaths": [
+        "src",
+        "package.json"
+      ],
+      "status": "pending",
+      "result": null,
+      "error": null,
+      "startedAt": null,
+      "finishedAt": null
+    }
+  ],
+  "overlaps": [],
+  "fanIn": null
+}

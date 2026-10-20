@@ -1,0 +1,14 @@
+{
+  "id": "20261013-122357-489",
+  "reason": "implementer",
+  "createdAt": "2026-10-13T19:23:57.517Z",
+  "projectRoot": "D:\\PROGRAMAS IA\\PODCASTUDIO",
+  "files": [
+    {
+      "path": "lib/mercadopago/signature.js",
+      "existed": true,
+      "backup": "lib__mercadopago__signature.js.bak",
+      "bytes": 2621
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+const { createRequire } = require('module')
+const require = createRequire(__dirname)
+
+const { AI_CONFIG, validateConfig } = require('./config.js')
+const { AIError, AIConfigError, AITimeoutError } = require('./errors.js')
+
+const {
+  apiUrl: MEAI_API,
+  model: MEAI_MODEL,
+  timeoutMs: DEFAULT_TIMEOUT,
+  maxRetries: MAX_RETRIES,
+  retryDelayMs: RETRY_DELAY_MS,
+  maxPromptChars: MAX_PROMPT_CHARS,
+  maxSystemChars: MAX_SYSTEM_CHARS,
+  defaultMaxTokens: DEFAULT_MAX_TOKENS,
+} = AI_CONFIG
+
+function sanitize(text, maxLen) {
+  if (!text) return ''
+  return text.slice(0, maxLen)
+}
+
+async function callClaude({
+  prompt,
+  systemPrompt = '',
+  apiKey,
+  model = MEAI_MODEL,
+  timeout = DEFAULT_TIMEOUT,
+  maxTokens = DEFAULT_MAX_TOKENS,
+  temperature = 0.3,
+  stream = false,
+  onChunk,
+  responseFormat,
+}) {
+  if (!apiKey) throw new AIConfigError()
+  if (!prompt?.trim()) throw new AIError('Prompt vacío', 'VALIDATION_ERROR', 400)
+
+  const safePrompt = sanitize(prompt, MAX_PROMPT_CHARS)
+  const safeSystem = sanitize(systemPrompt, MAX_SYSTEM_CHARS)
+
+  const messages = []
+  if (safeSystem) messages.push({ role: 'system', content: safeSystem })
+  messages.push({ role: 'user', content: safePrompt })
+
+  const body = {
+    model,
+    max_tokens: maxTokens,
+    temperature,
+    messages,
+    stream,
+    ...(responseFormat && { response_format: responseFormat }),
+  }
+
+  let lastError
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController()
+    const id = setTimeout(() => controller.abort(), timeout)
+    try {
+      const res = await fetch(MEAI_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
+      clearTimeout(id)
+
+      if (!res.ok) {
+        const err = await res.text().catch(() => '')
+        const status = res.status
+        if (status === 429) throw new AIError('Límite de peticiones excedido', 'RATE_LIMITED', 429)
+        if (status === 401) throw new AIError('API key inválida', 'UNAUTHORIZED', 401)
+        throw new AIError(`MeAI ${status}${err ? `: ${err.slice(0, 200)}` : ''}`, 'API_ERROR', status)
+      }
+
+      if (stream) {
+        let fullContent = ''
+        let totalTokens = 0
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          const chunk = decoder.decode(value, { stream: true })
+          const lines = chunk.split('\n').filter(l => l.startsWith('data: '))
+          for (const line of lines) {
+            const data = line.slice(6).trim()
+            if (data === '[DONE]') continue
+            try {
+              const parsed = JSON.parse(data)
+              const delta = parsed.choices?.[0]?.delta?.content ?? ''
+              if (delta) {
+                fullContent += delta
+                onChunk?.(delta)
+              }
+              if (parsed.usage) totalTokens = parsed.usage.total_tokens
+            } catch {}
+          }
+        }
+        return { text: fullContent, usage: { total_tokens: totalTokens } }
+      }
+
+      const data = await res.json()
+      const content = data.choices?.[0]?.message?.content ?? ''
+      const usage = data.usage || {}
+      if (!content && attempt < MAX_RETRIES) throw new AIError('Respuesta vacía', 'EMPTY_RESPONSE', 502)
+      return { text: content, usage }
+    } catch (e) {
+      lastError = e
+      if (e.name === 'AbortError') throw new AITimeoutError()
+      if (e instanceof AIError) throw e
+      if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)))
+    }
+  }
+  throw lastError
+}
+
+function estimateTokens(text) {
+  if (!text) return 0
+  return Math.ceil(text.length / 3.5)
+}
+
+module.exports = {
+  callClaude,
+  estimateTokens,
+  validateConfig,
+}
