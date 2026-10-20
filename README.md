@@ -1,12 +1,29 @@
-# PodcastStudio
+# PodcastStudio 2.0 🎬
 
-Estudio profesional de grabación multicámara para podcasters — React 19, Vite 8, Supabase, Mercado Pago, Claude API. Producción: [podcastudio.mx](https://www.podcastudio.mx).
+Estudio profesional de grabación multicámara con **Escenarios Virtuales 3D** — React 19, Vite 8, Three.js, Supabase. Producción: [podcastudio.mx](https://www.podcastudio.mx).
+
+## ✨ Nuevo en v2.0: Escenarios Virtuales 3D
+
+**El primer software de podcast con sets 3D profesionales en tiempo real:**
+- 🎬 4 escenarios 3D con iluminación broadcast real
+- 🌟 Parallax reactivo al movimiento del presentador
+- 💡 Sombras dinámicas y post-processing profesional
+- 🚀 Sin pantalla verde requerida (chroma key con IA)
+
+**Escenarios disponibles:**
+1. **Estudio de Noticias 3D** - Set broadcast completo
+2. **Talk Show Cálido 3D** - Entrevista estilo late night
+3. **Tech Keynote 3D** - Escenario futurista estilo Apple
+4. **Escenario Musical 3D** - Stage de concierto profesional
+
+---
 
 ## Stack
 
 | Capa | Tecnología |
 |------|------------|
 | Frontend | React 19, Vite 8, PWA |
+| **3D Engine** | **Three.js r165, WebGL 2.0** |
 | Auth / DB | Supabase (`projects`, `subscriptions`, `recordings`) |
 | Pagos | Mercado Pago Checkout + webhooks |
 | IA | Claude API (`/api/ai`) — cintillos, guiones, posts |
@@ -51,14 +68,28 @@ Rutas protegidas: `/plans` requiere sesión; `/setup` y `/studio` requieren susc
 
 ## Funciones del estudio
 
+### 🎬 Escenarios Virtuales 3D (NEW)
+- 4 sets 3D profesionales con iluminación real
+- Chroma key con IA (sin pantalla verde)
+- Sombras dinámicas y parallax reactivo
+- Post-processing: Bloom, SSAO, tone mapping
+
+### 📹 Producción Multi-cámara
 - Switcher 3 cámaras (USB, WiFi, móvil dual)
-- Look Pro — presets, LUTs, viñeta, transiciones (límites por plan)
-- Sets virtuales de estudio (preview + grabación)
-- Cintillos animados + IA, teleprompter, música/SFX
+- Look Pro — presets, LUTs, viñeta, transiciones
+- Sets virtuales 2D de estudio (legacy)
 - Director IA de cámaras (plan Pro)
-- Grabación WebM/MP4 local
-- Posts IA para redes (20/mes Starter, ilimitado Pro)
-- Publicar: descarga local, Mux cloud, YouTube (si configurado)
+
+### 🎙️ Herramientas Profesionales
+- Cintillos animados + IA generativa
+- Teleprompter con carga de guiones
+- Banco de música y efectos de sonido
+- Grabación WebM/MP4 local (hasta 4K)
+
+### 🤖 IA Integrada
+- Posts para redes sociales (20/mes Starter, ilimitado Pro)
+- Generación de guiones y cintillos
+- Publicar: descarga local, Mux cloud, YouTube
 
 ## Build
 
