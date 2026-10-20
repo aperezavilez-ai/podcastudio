@@ -1,0 +1,14 @@
+{
+  "id": "20261013-161107-055",
+  "reason": "implementer",
+  "createdAt": "2026-10-13T23:11:07.057Z",
+  "projectRoot": "D:\\PROGRAMAS IA\\PODCASTUDIO",
+  "files": [
+    {
+      "path": "src/components/TeleprompterDocUpload.jsx",
+      "existed": true,
+      "backup": "src__components__TeleprompterDocUpload.jsx.bak",
+      "bytes": 2127
+    }
+  ]
+}

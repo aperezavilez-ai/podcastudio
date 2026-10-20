@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv722q4k_1ff4e9",
+  "task": "ya es la quinta vez que se supone que lo arreglas lo hara si o no ?",
+  "createdAt": 1791918612164,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-13T19:10:12.164Z",
+  "meta": {}
+}

@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv78r0k4_765bf7",
+  "task": "no entraaaaaaaaaaa, que mas revisas y revisas y siempre es lo mismo y no corrijes el error no abre el proyecto no entra al panel del studio",
+  "createdAt": 1791929823124,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-13T22:17:03.124Z",
+  "meta": {}
+}

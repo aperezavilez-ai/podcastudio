@@ -1,0 +1,14 @@
+{
+  "id": "20261013-115136-597",
+  "reason": "implementer",
+  "createdAt": "2026-10-13T18:51:36.714Z",
+  "projectRoot": "D:\\PROGRAMAS IA\\PODCASTUDIO",
+  "files": [
+    {
+      "path": "lib/ai/errors.js",
+      "existed": true,
+      "backup": "lib__ai__errors.js.bak",
+      "bytes": 1903
+    }
+  ]
+}

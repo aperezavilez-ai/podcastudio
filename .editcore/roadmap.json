@@ -1,0 +1,167 @@
+{
+  "version": "1.0",
+  "project": {
+    "name": "PODCASTUDIO",
+    "description": "",
+    "stack": [],
+    "status": "planning",
+    "createdAt": "2026-10-14T14:06:29.269Z",
+    "lastModified": "2026-10-14T14:06:29.547Z"
+  },
+  "connections": {
+    "github": {
+      "repo": null,
+      "branch": "main",
+      "remoteUrl": null,
+      "hasLocalGit": false,
+      "lastPush": "2026-10-16T23:15:39.921Z"
+    },
+    "vercel": {
+      "projectId": null,
+      "projectName": null,
+      "liveUrl": "https://podcastudio.mx",
+      "linked": true,
+      "lastDeploy": "2026-10-16T23:15:40.070Z"
+    },
+    "supabase": {
+      "url": null,
+      "projectRef": null,
+      "hasMigrations": false,
+      "lastMigration": null
+    },
+    "server": {
+      "host": null,
+      "path": null,
+      "linked": false
+    }
+  },
+  "deployment": {
+    "pipeline": "vercel",
+    "lastDeploy": {
+      "timestamp": null,
+      "type": null,
+      "status": null,
+      "url": null
+    }
+  },
+  "history": [
+    {
+      "date": "2026-10-14T14:06:29.549Z",
+      "action": "modified",
+      "details": "git push main (347d6d3): feat: multi-camera 15 slots and switcher master",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-14T14:06:45.432Z",
+      "action": "modified",
+      "details": "git push main (347d6d3): feat: multi-camera 15 slots and switcher master",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-14T14:23:57.206Z",
+      "action": "modified",
+      "details": "git push undefined (undefined): undefined",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-14T14:38:46.654Z",
+      "action": "modified",
+      "details": "git push undefined (undefined): undefined",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-14T15:20:25.801Z",
+      "action": "modified",
+      "details": "git push main (f8e5cd1): feat: unified master cintillos, pip multicam layouts and gopro wifi support",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-14T15:29:41.488Z",
+      "action": "modified",
+      "details": "git push main (8b29c26): fix: restore dynamic zoom controls, click handlers, and fix pip badge position",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-14T15:51:04.576Z",
+      "action": "modified",
+      "details": "git push main (28b4c43): feat: explicit camera role assignments (Master, PiP, Doble), slot selector bars, swap buttons and placeholders",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-14T17:51:25.052Z",
+      "action": "modified",
+      "details": "git push main (b6906eb): feat(recording): crash-proof IndexedDB recording buffer and multi-format pack export",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-14T18:10:08.876Z",
+      "action": "modified",
+      "details": "git push main (1552604): fix: resolve avatar undefined in cintillos, direct click to master on screen recuadros, and add multi-streaming live panel",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-15T17:09:40.353Z",
+      "action": "modified",
+      "details": "git push main (c0ea516): fix(studio): camara master unica, cierre de PiP al clic, cuadricula de centrado y LUTs de cine profesional",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-15T17:59:55.996Z",
+      "action": "modified",
+      "details": "git push main (bb250bb): feat: universal MP4 export, smooth push-in slider, per-camera calibration in multi-camera and direct slot routing",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-15T18:54:44.919Z",
+      "action": "modified",
+      "details": "git push main (4e283de): feat: voice auto-ducking for music, camera UVC hardware lock and clean voice ISO track export",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-15T23:49:28.001Z",
+      "action": "modified",
+      "details": "git push main (7f2b461): fix(export): finalize universal seekable MP4 with faststart, full audio sync, and feedback-free audio recording",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-16T01:23:58.696Z",
+      "action": "modified",
+      "details": "git push main (aee30b1): feat(cintillos): cintillos de redes independientes (YouTube, Instagram, TikTok, Facebook) con logo y texto lateral, eliminando Apple y Spotify",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-16T14:12:20.954Z",
+      "action": "modified",
+      "details": "git push main (2f2c724): feat(remote-cam): sistema completo de camara remota P2P WebRTC para iPhone y Android via QR",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-16T17:49:43.976Z",
+      "action": "modified",
+      "details": "git push main (fc904af): fix(studio): make camera mic icon interactive with mute toggle, fix webrtc audio decoding, remove -CAM box and fix calibrator preview",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-16T23:15:39.943Z",
+      "action": "modified",
+      "details": "git push main (d5c2e79): feat(studio): escenarios virtuales con cromakey, modo aula virtual, botones maestros reorganizados, audio feedback fix y musica nueva royalty-free",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-16T23:15:40.070Z",
+      "action": "deployed",
+      "details": "Vercel deploy: https://podcastudio.mx",
+      "by": "editcore"
+    }
+  ],
+  "issues": [],
+  "editcore": {
+    "lastScanned": "2026-10-14T14:06:29.548Z",
+    "analysis": {
+      "frameworks": [],
+      "languages": [],
+      "packageManager": "",
+      "entryPoints": []
+    }
+  }
+}

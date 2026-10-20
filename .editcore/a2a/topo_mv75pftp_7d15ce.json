@@ -1,0 +1,27 @@
+{
+  "id": "topo_mv75pftp_7d15ce",
+  "task": "solo enfocate en corregir este error no toques ni corrijas ningun otro al abrir la web y que entrar",
+  "createdAt": 1791924710750,
+  "status": "running",
+  "pipeline": [
+    "supervisor",
+    "explorer",
+    "analyst",
+    "implementer",
+    "verifier",
+    "supervisor"
+  ],
+  "currentRole": "supervisor",
+  "hopCount": 0,
+  "visits": {
+    "supervisor": 1
+  },
+  "activeDebate": null,
+  "debates": [],
+  "findings": [],
+  "proposals": [],
+  "results": [],
+  "history": [],
+  "startedAt": "2026-10-13T20:51:50.750Z",
+  "meta": {}
+}

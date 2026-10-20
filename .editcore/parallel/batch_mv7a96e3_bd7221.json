@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "id": "batch_mv7a96e3_bd7221",
+  "task": "AUTORIZACION DE EJECUCION (PROCEDE): las reglas de DIAGNOSTICO / NO MODIFICAR del analisis previo quedan ANULADAS para esta corrida.\n\nPuedes usar write_file y replace_in_file sobre codigo real del proyecto abierto.\n\nNo uses .claude/*.md ni ROADMAP.md ni TODOs documentales como objetivo de correccion.\n\nSOLICITUD ORIGINAL (sanitizada):\nno te pedi eso????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????\n\nPLAN YA AUTORIZADO POR EL USUARIO:\n## 🖼️ Análisis de la imagen\nVeo una pantalla de error de **React en producción** (`podcastudio.mx/studio`):\n- **Título:** \"No se puedo cargar la app\"\n- **Error:** `Minified React error #321`\n- **Stack trace relevante:**\n - `Object.J1` (vendor-react, línea 66233)\n - `e.useRef` (vendor-react, línea 7254)\n - `TeleprompterDocUpload-4Ce1Cdwp.js:2:10634`\n## 🔍 Qué significa esto\nEl error **#321 de React** suele estar relacionado con un **hook que se llama en un orden o contexto incorrecto**. El stack trace indica que el problema viene de `useRef` dentro del archivo `TeleprompterDocUpload`. Esto es común cuando:\n- Un hook (como `useRef`) se llama condicionalmente (dentro de un `if`, un `for`, o un early return).\n- El hook se llama fuera de un componente React (por ejemplo, en un módulo de utilidades).\n- Hay un error de tipado o valor que hace que React no pueda inicializar el hook.\n## 📋 Próximo paso concreto\nPara encontrar la causa raíz, necesito revisar el código fuente de `TeleprompterDocUpload`. Si me dices **la ruta del archivo** o lo abro directamente desde el proyecto, puedo:\n1. Localizar el uso de `useRef` en ese componente.\n2. Verificar si hay condicionales o llamadas fuera de lugar.\n3. Corregir el hook para que se ejecute en el orden correcto.\n¿Lo abro ahora?\n\nINSTRUCCION DE EJECUCION:\n\nEl usuario ya autorizo con procede/continua/adelante. Ejecuta cambios reales con herramientas ahora.\n\nNO generes otro plan. NO repitas ## Entendimiento ni ## Plan paso a pas",
+  "threadId": "chat-1791932349100-9b1b73cc178d28",
+  "createdAt": "2026-10-13T22:59:10.107Z",
+  "status": "open",
+  "jobs": [
+    {
+      "id": "job_mv7a96e3_81eb",
+      "index": 0,
+      "role": "explorer",
+      "title": "Mapear estructura y puntos de entrada",
+      "goal": "Listar rutas clave sin editar",
+      "scopePaths": [
+        "src",
+        "app",
+        "package.json"
+      ],
+      "status": "running",
+      "result": null,
+      "error": null,
+      "startedAt": "2026-10-13T22:59:10.138Z",
+      "finishedAt": null
+    },
+    {
+      "id": "job_mv7a96e3_ce4c",
+      "index": 1,
+      "role": "analyst",
+      "title": "Analizar dominio datos/API",
+      "goal": "Hallazgos de datos/auth/API; no escribir aún",
+      "scopePaths": [
+        "src/server",
+        "src/lib",
+        "supabase",
+        "api"
+      ],
+      "status": "pending",
+      "result": null,
+      "error": null,
+      "startedAt": null,
+      "finishedAt": null
+    },
+    {
+      "id": "job_mv7a96e3_f901",
+      "index": 2,
+      "role": "implementer",
+      "title": "Implementar UI prioritaria",
+      "goal": "UI según elite policy; no tocar server",
+      "scopePaths": [
+        "src/components",
+        "src/routes",
+        "app",
+        "src/pages",
+        "public"
+      ],
+      "status": "pending",
+      "result": null,
+      "error": null,
+      "startedAt": null,
+      "finishedAt": null
+    },
+    {
+      "id": "job_mv7a96e3_295b",
+      "index": 3,
+      "role": "verifier",
+      "title": "Verificar consistencia y checklist",
+      "goal": "Revisar sin pisar writes ajenos; reportar gaps",
+      "scopePaths": [
+        "src",
+        "package.json"
+      ],
+      "status": "pending",
+      "result": null,
+      "error": null,
+      "startedAt": null,
+      "finishedAt": null
+    }
+  ],
+  "overlaps": [],
+  "fanIn": null
+}
