@@ -217,14 +217,19 @@ export function useVirtual3D({
 }
 
 /**
- * Mapeo de template IDs a URLs de escenas GLTF
+ * Mapeo de template IDs a URLs de escenas (procedurales o GLTF)
  */
 function getSceneUrl(templateId) {
   const scenes = {
-    'news-3d': '/sets3d/news-modern.glb',
-    'interview-3d': '/sets3d/talkshow-warm.glb',
-    'tech-3d': '/sets3d/tech-keynote.glb',
-    'concert-3d': '/sets3d/concert-stage.glb'
+    'news-3d': 'procedural:news',
+    'interview-3d': 'procedural:talkshow',
+    'tech-3d': 'procedural:tech',
+    'concert-3d': 'procedural:concert',
+    // Fallback a GLTF si existen
+    'news-3d-gltf': '/sets3d/news-modern.glb',
+    'interview-3d-gltf': '/sets3d/talkshow-warm.glb',
+    'tech-3d-gltf': '/sets3d/tech-keynote.glb',
+    'concert-3d-gltf': '/sets3d/concert-stage.glb'
   }
   return scenes[templateId] || scenes['news-3d']
 }

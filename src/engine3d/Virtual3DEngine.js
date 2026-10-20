@@ -6,6 +6,12 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
+import {
+  createNewsStudio3D,
+  createTalkShowStudio3D,
+  createTechKeynoteStudio3D,
+  createConcertStudio3D
+} from './ProceduralStudios.js'
 
 export class Virtual3DEngine {
   constructor(canvas, options = {}) {
