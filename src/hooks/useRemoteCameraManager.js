@@ -125,10 +125,11 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
 
       if (payload.type === 'offer') {
         try {
-          // Limpiar peer connection previa si existía
+          // Limpiar peer connection previa y stream previo si existían
           if (peerConnectionsRef.current[slotIndex]) {
             try { peerConnectionsRef.current[slotIndex].close() } catch {}
           }
+          compoundStreamsRef.current[slotIndex] = null
 
           const callerLabel = payload.guestName
             ? (payload.sessionRole === 'student' ? `Alumno: ${payload.guestName}` : payload.guestName)
@@ -149,10 +150,6 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
             if (!stream) {
               stream = new MediaStream(liveTracks)
               compoundStreamsRef.current[slotIndex] = stream
-              setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
-              if (onStreamConnected) {
-                onStreamConnected(slotIndex, stream, callerLabel)
-              }
             } else {
               // Sincronizar tracks en el stream existente sin reemplazar el objeto MediaStream
               const currentTracks = stream.getTracks()
@@ -167,7 +164,10 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
                   try { stream.addTrack(t) } catch {}
                 }
               })
-              setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
+            }
+            setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
+            if (onStreamConnected) {
+              onStreamConnected(slotIndex, stream, callerLabel)
             }
           }
 
