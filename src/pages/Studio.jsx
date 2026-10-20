@@ -1760,12 +1760,12 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     }
     setCountdown(null)
 
-    let videoStream = getProgramStream()
+    // FORZAR cámara directa para grabación (evita canvas vacío y video pausado)
     const masterCamStream = streams[programCamera] || streams[masterCameraSlot] || null
-    const hasLiveCompositorVideo = videoStream && videoStream.getVideoTracks().length > 0 && videoStream.getVideoTracks()[0].readyState === 'live'
-    if (!hasLiveCompositorVideo) {
-      console.warn('[Studio] Compositor stream sin video activo, usando masterCamStream como base de grabación')
-      videoStream = masterCamStream
+    let videoStream = masterCamStream
+    if (!videoStream || !videoStream.getVideoTracks().some(t => t.readyState === 'live')) {
+      // Fallback al compositor solo si la cámara directa no está disponible
+      videoStream = getProgramStream()
     }
     if (!videoStream) {
       setPreparingRecord(false)

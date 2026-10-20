@@ -118,20 +118,30 @@ export function useRecorder() {
     }
 
     try {
-      const mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond, audioBitsPerSecond: 320000 })
+      // Forzar codec más compatible y timeslice corto
+      const safeMime = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+        ? 'video/webm;codecs=vp8,opus'
+        : MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+          ? 'video/webm;codecs=vp9,opus'
+          : mimeType
+
+      const mr = new MediaRecorder(stream, {
+        mimeType: safeMime,
+        videoBitsPerSecond: Math.min(videoBitsPerSecond, 8000000),
+        audioBitsPerSecond: 128000,
+      })
       
       mr.ondataavailable = e => {
         if (e.data && e.data.size > 0) {
           chunksRef.current.push(e.data)
-          // Blindaje incremental: guarda en IndexedDB
           appendVaultChunk(sessionId, chunkIndexRef.current++, e.data)
         }
       }
 
       mr.onstop = async () => {
         finalizeVaultSession(sessionId, durationRef.current)
-        let blob = new Blob(chunksRef.current, { type: mimeType })
-        if (!isMp4Recording(mimeType)) {
+        let blob = new Blob(chunksRef.current, { type: safeMime })
+        if (!isMp4Recording(safeMime)) {
           const durationMs = Math.max(1000, Math.round((durationRef.current || 1) * 1000))
           try {
             blob = await fixWebmDuration(blob, durationMs)
@@ -154,7 +164,7 @@ export function useRecorder() {
           name: recName,
           size: blob.size,
           blob,
-          mimeType,
+          mimeType: safeMime,
           ext,
           quality,
           duration: durationRef.current,
@@ -167,7 +177,7 @@ export function useRecorder() {
         onCompleteRef.current = null
       }
 
-      mr.start(1000)
+      mr.start(250)
       mediaRecorderRef.current = mr
       setRecording(true)
       setDuration(0)

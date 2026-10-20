@@ -1,7 +1,7 @@
 {
   "name": "podcastudio",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "PODCASTUDIO - Estudio Profesional de Podcast y Streaming",
   "author": "PodcastStudio",
   "type": "module",
@@ -17,6 +17,7 @@
   "build": {
     "appId": "com.podcastudio.app",
     "productName": "PODCASTUDIO",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
@@ -28,8 +29,7 @@
     "win": {
       "icon": "build/icon.ico",
       "target": [
-        "nsis",
-        "portable"
+        "nsis"
       ]
     }
   },

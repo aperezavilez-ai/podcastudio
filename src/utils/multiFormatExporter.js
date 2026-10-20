@@ -258,7 +258,8 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
         const drawFrame = () => {
           if (isTerminated) return
 
-          if (video.ended || (duration > 0 && video.currentTime >= duration - 0.08)) {
+          // Finalizar cuando el video realmente termina, evitando cortes prematuros por duraciones estimadas
+          if (video.ended || (duration > 1 && video.currentTime >= duration)) {
             finishRecording()
             return
           }

@@ -5,20 +5,26 @@ PROHIBIDO reexplorar el repo entero si este documento cubre la tarea. Solo read_
 EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar codigo largo.
 
 ## Proceso
+- Versión: **v1.0.2**
 - Fase: **producción**
-- Estado: **Análisis forense completado + correcciones aplicadas**
-- Actualizado: 2025-01-14 00:00
-- Stack: React 19 + Vite 8 + Supabase + Mercado Pago + Claude API
+- Estado: **Motor de Video Broadcast 60 FPS + Escenarios 3D + Release v1.0.2**
+- Actualizado: 2026-10-20
+- Stack: React 19 + Vite 8 + Three.js + WebGL 2.0 + Supabase + Mercado Pago + Electron
 - Entry: index.html → src/main.jsx → src/App.jsx
-- Scripts: dev, build, preview
+- Scripts: dev, build, preview, electron:build
 - Deploy: Vercel (https://www.podcastudio.mx)
 
 ## 🎯 Última Tarea Completada
-**Análisis Forense Completo + Correcciones de Seguridad**
-- ✅ 11/11 correcciones aplicadas
-- ✅ Commit: 353f73d + b92ad37
-- ✅ Deploy: https://podcastudio-nnhyzswnv-aperezavilez-4333s-projects.vercel.app
-- ⏳ Pendiente: Rotación manual de claves (ver SECURITY_ROTATION.md)
+**Release v1.0.2: Motor de Video Broadcast 60 FPS y Calidad Facebook/TikTok/YouTube/Instagram**
+- ✅ Eliminación del throttle artificial `if (elapsed < FRAME_TIME - 1)` en compositor RAF que causaba 10.41 FPS.
+- ✅ Elevación de todo el pipeline a 60 FPS fluidos con `canvas.captureStream(60)` y `track.contentHint = 'motion'`.
+- ✅ Desbloqueo de oclusión de Chromium en estante de decodificación (`z-index: 1; opacity: 0.01;`) para evitar limitación a 1-5 FPS.
+- ✅ Cámaras móviles remotas (RemoteCam) y Wi-Fi optimizadas a 60 FPS con 8.0 Mbps WebRTC.
+- ✅ Transcodificación FFmpeg con tasa constante forzada a 60 FPS (`-r 60 -g 60 -crf 18`).
+- ✅ Multi-format exporter con `requestVideoFrameCallback()` para 9:16 y 1:1 sin fotogramas duplicados ni saltos.
+- ✅ Motor de Escenarios Virtuales 3D Three.js integrado con fallback procedural.
+- ✅ Deploy en producción activo: https://www.podcastudio.mx
+- ✅ Ejecutable oficial de escritorio: PODCASTUDIO-v1.0.2.exe
 
 ## 🔐 Estado de Seguridad
 **Antes**: 🔴 ALTO - Seguridad 3/10
