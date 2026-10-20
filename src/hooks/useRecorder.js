@@ -7,7 +7,6 @@ import {
   checkUnfinishedRecovery,
   purgeVaultSession,
 } from '../utils/recordingStorage.js'
-
 import { fixWebmDuration } from '../utils/fixWebmDuration.js'
 
 function isMp4Recording(mimeType) {
@@ -21,7 +20,6 @@ export function useRecorder() {
   const [converting, setConverting] = useState(false)
   const [convertProgress, setConvertProgress] = useState(0)
   const [recoveredSession, setRecoveredSession] = useState(null)
-
   const mediaRecorderRef = useRef(null)
   const voiceRecorderRef = useRef(null)
   const chunksRef = useRef([])
@@ -33,7 +31,6 @@ export function useRecorder() {
   const sessionIdRef = useRef(null)
   const chunkIndexRef = useRef(0)
 
-  // Verificación de sesiones no finalizadas para auto-recuperación
   useEffect(() => {
     let mounted = true
     checkUnfinishedRecovery().then((pending) => {
@@ -41,7 +38,9 @@ export function useRecorder() {
         setRecoveredSession(pending)
       }
     })
-    return () => { mounted = false }
+    return () => {
+      mounted = false
+    }
   }, [])
 
   const restoreRecoveredSession = useCallback(async () => {
@@ -49,7 +48,7 @@ export function useRecorder() {
     try {
       const restored = await assembleVaultRecording(recoveredSession.sessionId)
       if (restored) {
-        setRecordings(prev => [restored, ...prev])
+        setRecordings((prev) => [restored, ...prev])
       }
       setRecoveredSession(null)
     } catch (err) {
@@ -67,6 +66,7 @@ export function useRecorder() {
 
   const pickMimeType = () => {
     const types = [
+      'video/mp4;codecs=hvc1', // H.265 (máxima calidad si el navegador lo soporta)
       'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
       'video/mp4;codecs=avc1,mp4a.40.2',
       'video/mp4',
@@ -74,40 +74,50 @@ export function useRecorder() {
       'video/webm;codecs=vp8,opus',
       'video/webm',
     ]
-    return types.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm'
+    return types.find((t) => MediaRecorder.isTypeSupported(t)) || 'video/webm'
   }
 
   const startRecording = useCallback((stream, options = {}) => {
     if (!stream) return
+
+    // 1. Fusionar video + audio si se proporciona audioStream
+    let combinedStream = stream
+    if (options.audioStream) {
+      combinedStream = new MediaStream([
+        ...stream.getVideoTracks(),
+        ...options.audioStream.getAudioTracks(),
+      ])
+    }
+
     chunksRef.current = []
     voiceChunksRef.current = []
     chunkIndexRef.current = 0
     const sessionId = 'rec_' + Date.now()
     sessionIdRef.current = sessionId
-
     const mimeType = pickMimeType()
     mimeTypeRef.current = mimeType
     const ext = isMp4Recording(mimeType) ? 'mp4' : 'webm'
     const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')
     const recName = `episodio-${ts}.${ext}`
-
     const quality = options.quality || '1080p'
-    const videoBitsPerSecond = quality === '4k' ? 35000000 : quality === '720p' ? 8000000 : 16000000
+    const videoBitsPerSecond =
+      quality === '4k' ? 35000000 : quality === '720p' ? 6000000 : 12000000
 
-    // Inicializar sesión protegida en base de datos local
     startVaultSession(sessionId, { mimeType, ext, name: recName, quality })
 
-    // Iniciar grabador de voz limpia aislado si se proporciona micStream
+    // Grabador de voz limpia opcional (se mantiene)
     const cleanVoiceStream = options.cleanVoiceStream
     if (cleanVoiceStream && cleanVoiceStream.getAudioTracks().length > 0) {
       try {
         const audioMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
           ? 'audio/webm;codecs=opus'
           : MediaRecorder.isTypeSupported('audio/mp4')
-            ? 'audio/mp4'
-            : ''
-        const vr = audioMime ? new MediaRecorder(cleanVoiceStream, { mimeType: audioMime }) : new MediaRecorder(cleanVoiceStream)
-        vr.ondataavailable = e => {
+          ? 'audio/mp4'
+          : ''
+        const vr = audioMime
+          ? new MediaRecorder(cleanVoiceStream, { mimeType: audioMime })
+          : new MediaRecorder(cleanVoiceStream)
+        vr.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) voiceChunksRef.current.push(e.data)
         }
         vr.start(1000)
@@ -118,16 +128,14 @@ export function useRecorder() {
     }
 
     try {
-      // ✅ FIX CRÍTICO #3: Bitrate completo sin clamping y audio a 256kbps
-      const safeMime = mimeType
-
-      const mr = new MediaRecorder(stream, {
-        mimeType: safeMime,
-        videoBitsPerSecond, // ✅ Usar bitrate completo calculado (12Mbps para 1080p, 35Mbps para 4K)
-        audioBitsPerSecond: 256000, // ✅ Audio de alta calidad 256kbps
+      // 2. Usar el mimeType de mayor calidad (MP4 si está disponible)
+      const mr = new MediaRecorder(combinedStream, {
+        mimeType,
+        videoBitsPerSecond,
+        audioBitsPerSecond: 320000,
       })
-      
-      mr.ondataavailable = e => {
+
+      mr.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           chunksRef.current.push(e.data)
           appendVaultChunk(sessionId, chunkIndexRef.current++, e.data)
@@ -136,8 +144,8 @@ export function useRecorder() {
 
       mr.onstop = async () => {
         finalizeVaultSession(sessionId, durationRef.current)
-        let blob = new Blob(chunksRef.current, { type: safeMime })
-        if (!isMp4Recording(safeMime)) {
+        let blob = new Blob(chunksRef.current, { type: mimeType })
+        if (!isMp4Recording(mimeType)) {
           const durationMs = Math.max(1000, Math.round((durationRef.current || 1) * 1000))
           try {
             blob = await fixWebmDuration(blob, durationMs)
@@ -146,21 +154,19 @@ export function useRecorder() {
           }
         }
         const url = URL.createObjectURL(blob)
-
         let cleanVoiceBlob = null
         let cleanVoiceUrl = null
         if (voiceChunksRef.current && voiceChunksRef.current.length > 0) {
           cleanVoiceBlob = new Blob(voiceChunksRef.current, { type: 'audio/webm' })
           cleanVoiceUrl = URL.createObjectURL(cleanVoiceBlob)
         }
-
         const rec = {
           sessionId,
           url,
           name: recName,
           size: blob.size,
           blob,
-          mimeType: safeMime,
+          mimeType,
           ext,
           quality,
           duration: durationRef.current,
@@ -168,19 +174,19 @@ export function useRecorder() {
           cleanVoiceUrl,
           hasCleanVoice: Boolean(cleanVoiceBlob),
         }
-        setRecordings(prev => [...prev, rec])
+        setRecordings((prev) => [...prev, rec])
         onCompleteRef.current?.(rec)
         onCompleteRef.current = null
       }
 
-      mr.start(1000) // ✅ FIX: Timeslice de 1 segundo (menos overhead, más eficiente)
+      mr.start(250)
       mediaRecorderRef.current = mr
       setRecording(true)
       setDuration(0)
       durationRef.current = 0
       timerRef.current = setInterval(() => {
         durationRef.current += 1
-        setDuration(d => d + 1)
+        setDuration((d) => d + 1)
       }, 1000)
     } catch (e) {
       console.error('MediaRecorder error:', e)
@@ -190,11 +196,15 @@ export function useRecorder() {
   const stopRecording = useCallback((onComplete) => {
     if (typeof onComplete === 'function') onCompleteRef.current = onComplete
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.requestData() } catch {}
+      try {
+        mediaRecorderRef.current.requestData()
+      } catch {}
       mediaRecorderRef.current.stop()
     }
     if (voiceRecorderRef.current && voiceRecorderRef.current.state !== 'inactive') {
-      try { voiceRecorderRef.current.requestData() } catch {}
+      try {
+        voiceRecorderRef.current.requestData()
+      } catch {}
       voiceRecorderRef.current.stop()
     }
     clearInterval(timerRef.current)
@@ -208,40 +218,43 @@ export function useRecorder() {
     a.click()
   }, [])
 
-  const downloadRecordingMp4 = useCallback(async (rec) => {
-    if (!rec) return
-    // Si la grabación ya fue capturada nativamente en MP4 o su blob es mp4, descargar al instante sin demoras
-    const isMp4 = isMp4Recording(rec.mimeType) || isMp4Recording(rec.blob?.type) || rec.name?.toLowerCase().endsWith('.mp4')
-    if (isMp4 && rec.url) {
-      const a = document.createElement('a')
-      a.href = rec.url
-      a.download = rec.name.replace(/\.[^.]+$/, '') + '.mp4'
-      a.click()
-      return
-    }
+  const downloadRecordingMp4 = useCallback(
+    async (rec) => {
+      if (!rec) return
+      // Si la grabación ya fue capturada nativamente en MP4 o su blob es mp4, descargar inmediatamente en 0ms
+      const isMp4 = isMp4Recording(rec.mimeType) || isMp4Recording(rec.blob?.type) || rec.name?.toLowerCase().endsWith('.mp4')
+      if (isMp4 && rec.url) {
+        const a = document.createElement('a')
+        a.href = rec.url
+        a.download = rec.name.replace(/\.[^.]+$/, '') + '.mp4'
+        a.click()
+        return
+      }
 
-    setConverting(true)
-    setConvertProgress(0)
-    try {
-      const { finalizeUniversalMp4 } = await import('../utils/exportVideo.js')
-      const mp4Blob = await finalizeUniversalMp4(rec.blob, {
-        format: 'original',
-        onProgress: setConvertProgress,
-      })
-      const url = URL.createObjectURL(mp4Blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = rec.name.replace(/\.(webm|mp4)$/i, '') + '.mp4'
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (e) {
-      console.warn('MP4 finalization fallback to raw download:', e)
-      downloadRecording(rec)
-    } finally {
-      setConverting(false)
+      setConverting(true)
       setConvertProgress(0)
-    }
-  }, [downloadRecording])
+      try {
+        const { finalizeUniversalMp4 } = await import('../utils/exportVideo.js')
+        const mp4Blob = await finalizeUniversalMp4(rec.blob, {
+          format: 'original',
+          onProgress: setConvertProgress,
+        })
+        const url = URL.createObjectURL(mp4Blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = rec.name.replace(/\.(webm|mp4)$/i, '') + '.mp4'
+        a.click()
+        URL.revokeObjectURL(url)
+      } catch (e) {
+        console.warn('MP4 finalization fallback to raw download:', e)
+        downloadRecording(rec)
+      } finally {
+        setConverting(false)
+        setConvertProgress(0)
+      }
+    },
+    [downloadRecording]
+  )
 
   const deleteRecording = useCallback(async (recOrIndex) => {
     let targetRec = null

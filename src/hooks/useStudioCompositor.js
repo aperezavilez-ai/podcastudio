@@ -59,7 +59,6 @@ export function useStudioCompositor({
   const cintilloLogoImageRef = useRef(null)
   const customBgImageRef = useRef(null)
   const settingsRef = useRef({})
-
   const prevCameraRef = useRef(activeCamera ?? 0)
   const transitionFromRef = useRef(activeCamera ?? 0)
   const transitionStartRef = useRef(null)
@@ -68,7 +67,6 @@ export function useStudioCompositor({
   const animPhaseStartRef = useRef(performance.now())
 
   const initialRes = getResolutionForFormat(format, quality)
-
   if (!canvasRef.current && typeof document !== 'undefined') {
     const canvas = document.createElement('canvas')
     canvas.width = initialRes.width
@@ -76,13 +74,14 @@ export function useStudioCompositor({
     canvasRef.current = canvas
     try {
       outputStreamRef.current = canvas.captureStream?.(60) || null
-      // Priorizar fluidez broadcast a 60fps
       if (outputStreamRef.current) {
         const track = outputStreamRef.current.getVideoTracks()[0]
         if (track) {
           try {
             track.contentHint = 'motion'
-          } catch { /* Safari no lo soporta */ }
+          } catch {
+            /* Safari no lo soporta */
+          }
         }
       }
     } catch {
@@ -90,7 +89,7 @@ export function useStudioCompositor({
     }
   }
 
-  // Sincronizar dimensiones del canvas cuando cambia el formato o la calidad (4K, Full HD, HD)
+  // Sincronizar dimensiones del canvas cuando cambia el formato o la calidad
   useEffect(() => {
     const res = getResolutionForFormat(format, quality)
     if (canvasRef.current) {
@@ -98,13 +97,15 @@ export function useStudioCompositor({
         canvasRef.current.width = res.width
         canvasRef.current.height = res.height
         if (typeof canvasRef.current.captureStream === 'function') {
-          outputStreamRef.current = canvasRef.current.captureStream(60)
+          outputStreamRef.current = canvasRef.current.captureStream(60) // 👈 60 FPS, no 30
           if (outputStreamRef.current) {
             const track = outputStreamRef.current.getVideoTracks()[0]
             if (track) {
               try {
                 track.contentHint = 'motion'
-              } catch { /* Safari no lo soporta */ }
+              } catch {
+                /* Safari no lo soporta */
+              }
             }
           }
         }
@@ -116,7 +117,6 @@ export function useStudioCompositor({
     animKeyRef.current = animKey
     animPhaseStartRef.current = performance.now()
   }
-
   if (recording && !recordStartRef.current) {
     recordStartRef.current = performance.now()
   }
@@ -173,7 +173,6 @@ export function useStudioCompositor({
   useEffect(() => {
     keepAliveRef.current.forEach((off) => off())
     keepAliveRef.current = []
-
     let shelf = null
     if (typeof document !== 'undefined') {
       shelf = document.getElementById('podcastudio-compositor-shelf')
@@ -181,12 +180,11 @@ export function useStudioCompositor({
         shelf = document.createElement('div')
         shelf.id = 'podcastudio-compositor-shelf'
         shelf.setAttribute('aria-hidden', 'true')
-        // Capa activa en Chromium sin oclusión para que los decodificadores de hardware operen a 60 FPS continuos
-        shelf.style.cssText = 'position:fixed;top:0;left:0;width:640px;height:360px;opacity:0.01;pointer-events:none;overflow:hidden;z-index:1;transform:translateZ(0);'
+        shelf.style.cssText =
+          'position:fixed;top:0;left:0;width:640px;height:360px;opacity:0.01;pointer-events:none;overflow:hidden;z-index:1;transform:translateZ(0);'
         document.body.appendChild(shelf)
       }
     }
-
     const videos = videosRef.current
     Object.keys(videos).forEach((key) => {
       const slot = Number(key)
@@ -198,7 +196,6 @@ export function useStudioCompositor({
         delete videos[slot]
       }
     })
-
     Object.entries(streams).forEach(([slot, stream]) => {
       const i = Number(slot)
       if (!stream) return
@@ -216,16 +213,17 @@ export function useStudioCompositor({
       if (videos[i].srcObject !== stream) {
         videos[i].srcObject = stream
       }
-      const tryPlay = () => { videos[i].play().catch(() => {}) }
+      const tryPlay = () => {
+        videos[i].play().catch(() => {})
+      }
       tryPlay()
       videos[i].addEventListener('canplay', tryPlay)
       videos[i].addEventListener('loadedmetadata', tryPlay)
       try {
-        stream.getVideoTracks().forEach(t => t.addEventListener('unmute', tryPlay))
+        stream.getVideoTracks().forEach((t) => t.addEventListener('unmute', tryPlay))
       } catch {}
       keepAliveRef.current.push(bindVideoKeepAlive(videos[i]))
     })
-
     const resumeAll = () => {
       Object.values(videos).forEach((v) => {
         if (v?.srcObject) v.play().catch(() => {})
@@ -233,7 +231,6 @@ export function useStudioCompositor({
     }
     document.addEventListener('visibilitychange', resumeAll)
     window.addEventListener('pageshow', resumeAll)
-
     return () => {
       document.removeEventListener('visibilitychange', resumeAll)
       window.removeEventListener('pageshow', resumeAll)
@@ -249,7 +246,9 @@ export function useStudioCompositor({
     }
     const img = new Image()
     img.crossOrigin = 'anonymous'
-    img.onload = () => { logoImageRef.current = img }
+    img.onload = () => {
+      logoImageRef.current = img
+    }
     img.src = logoUrl
   }, [logoUrl])
 
@@ -260,7 +259,9 @@ export function useStudioCompositor({
     }
     const img = new Image()
     img.crossOrigin = 'anonymous'
-    img.onload = () => { cintilloLogoImageRef.current = img }
+    img.onload = () => {
+      cintilloLogoImageRef.current = img
+    }
     img.src = cintilloLogoUrl
   }, [cintilloLogoUrl])
 
@@ -271,7 +272,9 @@ export function useStudioCompositor({
     }
     const img = new Image()
     img.crossOrigin = 'anonymous'
-    img.onload = () => { customBgImageRef.current = img }
+    img.onload = () => {
+      customBgImageRef.current = img
+    }
     img.src = background.customUrl
   }, [background?.customUrl])
 
@@ -283,24 +286,17 @@ export function useStudioCompositor({
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || recording) return
-    const { width: tw, height: th } = getResolutionForFormat(format, quality)
+    const { width: tw, height: th } = getResolutionForFormat(format)
     if (canvas.width !== tw || canvas.height !== th) {
       canvas.width = tw
       canvas.height = th
       try {
-        const fresh = canvas.captureStream?.(60) || null
-        if (fresh) {
-          const track = fresh.getVideoTracks()[0]
-          if (track) {
-            try { track.contentHint = 'motion' } catch {}
-          }
-        }
-        outputStreamRef.current = fresh
+        outputStreamRef.current = canvas.captureStream?.(60) || null // 👈 60 FPS
       } catch {
         outputStreamRef.current = null
       }
     }
-  }, [format, quality, recording])
+  }, [format, recording])
 
   const hasStreams = Boolean(streams && Object.values(streams).some(Boolean))
 
@@ -311,12 +307,13 @@ export function useStudioCompositor({
       rafRef.current = null
       return undefined
     }
-
     const ctx = canvas.getContext('2d', { alpha: false })
 
-    // Motor de renderizado broadcast a 60 FPS fluidos sin throttle bloqueante
-    const draw = () => {
+    // 👇 SINCRONIZACIÓN CON EL FRAME REAL DE LA CÁMARA ACTIVA
+    const activeSlot = settingsRef.current.activeCamera ?? 0
+    const activeVideo = videosRef.current[activeSlot]
 
+    const draw = () => {
       const s = settingsRef.current
       if (s.transitionStartMs && getTransitionProgress(s.transitionStartMs, TRANSITION_DURATION_MS) >= 1) {
         transitionStartRef.current = null
@@ -327,40 +324,40 @@ export function useStudioCompositor({
       const video = videosRef.current[slot]
       const videoFrom = fromSlot !== slot ? videosRef.current[fromSlot] : null
       const c = s.cintillo
-
       const animElapsed = performance.now() - animPhaseStartRef.current
       const cintilloMotion = c?.active
         ? getCintilloMotion(s.animPhase, animElapsed, s.cintilloMotionEnabled)
         : null
-
       ctx.imageSmoothingEnabled = true
       ctx.imageSmoothingQuality = 'medium'
-
       const cw = canvas.width
       const ch = canvas.height
-
       try {
         drawCompositorFrame(ctx, cw, ch, {
           video,
           videoFrom: videoFrom && s.transitionStartMs ? videoFrom : null,
           transitionMode: s.transitionMode,
           transitionStartMs: s.transitionStartMs,
-          logoOverlay: logoImageRef.current ? {
-            podcastName: s.podcastName,
-            position: s.logoPosition,
-            logoImage: logoImageRef.current,
-          } : null,
-          cintilloOverlay: c?.active ? {
-            active: true,
-            tag: c.tag,
-            text: c.text,
-            subtitle: c.subtitle || c.sub || '',
-            color: c.color,
-            position: s.cintilloPosition || 'bl',
-            styleId: s.cintilloStyle || 'broadcast',
-            logoImage: cintilloLogoImageRef.current || null,
-            socials: c.socials || null,
-          } : null,
+          logoOverlay: logoImageRef.current
+            ? {
+                podcastName: s.podcastName,
+                position: s.logoPosition,
+                logoImage: logoImageRef.current,
+              }
+            : null,
+          cintilloOverlay: c?.active
+            ? {
+                active: true,
+                tag: c.tag,
+                text: c.text,
+                subtitle: c.subtitle || c.sub || '',
+                color: c.color,
+                position: s.cintilloPosition || 'bl',
+                styleId: s.cintilloStyle || 'broadcast',
+                logoImage: cintilloLogoImageRef.current || null,
+                socials: c.socials || null,
+              }
+            : null,
           cintilloMotion,
           directorCrop: s.directorCrop,
           fromCrop: null,
@@ -372,10 +369,12 @@ export function useStudioCompositor({
           recording: s.recording,
           recordStartMs: s.recordStartMs,
           recordDurationSec: s.recordDurationSec,
-          background: s.background ? {
-            ...s.background,
-            customImage: customBgImageRef.current,
-          } : null,
+          background: s.background
+            ? {
+                ...s.background,
+                customImage: customBgImageRef.current,
+              }
+            : null,
           layout: s.layout || 'full',
           pipVideo: s.pipCamera !== null ? videosRef.current[s.pipCamera] : null,
           secondaryVideo: s.secondaryCamera !== null ? videosRef.current[s.secondaryCamera] : null,
@@ -387,8 +386,18 @@ export function useStudioCompositor({
         ctx.fillStyle = '#07070a'
         ctx.fillRect(0, 0, cw, ch)
       }
-
       rafRef.current = requestAnimationFrame(draw)
+    }
+
+    // Si el video activo soporta requestVideoFrameCallback, usarlo para sincronizar
+    if (activeVideo && 'requestVideoFrameCallback' in activeVideo) {
+      const onVideoFrame = () => {
+        if (!compositorActive && !hasStreams) return
+        // Forzar un renderizado extra en cada frame de la cámara activa
+        draw()
+        activeVideo.requestVideoFrameCallback(onVideoFrame)
+      }
+      activeVideo.requestVideoFrameCallback(onVideoFrame)
     }
 
     rafRef.current = requestAnimationFrame(draw)
@@ -396,31 +405,26 @@ export function useStudioCompositor({
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       rafRef.current = null
     }
-  }, [compositorActive, hasStreams])
+  }, [compositorActive, hasStreams, activeCamera]) // Añadido activeCamera para re-sincronizar
 
   const getProgramStream = useCallback(() => {
     const s = settingsRef.current
     const needsCompositor = Boolean(
       s.background?.hasVirtualSet ||
-      (s.background?.templateId && s.background.templateId !== 'none') ||
-      s.background?.customImage ||
-      s.background?.customUrl ||
-      s.cintillo?.active ||
-      s.logoUrl ||
-      s.layout !== 'full'
+        (s.background?.templateId && s.background.templateId !== 'none') ||
+        s.background?.customImage ||
+        s.background?.customUrl ||
+        s.cintillo?.active ||
+        s.logoUrl ||
+        s.layout !== 'full'
     )
-
-    // Camino directo de ultra baja latencia: si no hay escenario virtual, cintillo,
-    // logo ni layout múltiple, devolvemos el stream crudo de la cámara (cero canvas, cero latencia)
     if (!needsCompositor) {
       const slot = s.activeCamera ?? 0
       const raw = streams?.[slot]
-      if (raw && raw.getVideoTracks?.().some(t => t.readyState === 'live')) {
+      if (raw && raw.getVideoTracks?.().some((t) => t.readyState === 'live')) {
         return raw
       }
     }
-
-    // Camino normal (canvas) solo cuando realmente se necesita compositing
     const existing = outputStreamRef.current
     const vt = existing?.getVideoTracks?.()?.[0]
     if (existing && vt && vt.readyState === 'live') {
@@ -432,7 +436,9 @@ export function useStudioCompositor({
         if (fresh) {
           const track = fresh.getVideoTracks()[0]
           if (track) {
-            try { track.contentHint = 'motion' } catch {}
+            try {
+              track.contentHint = 'motion'
+            } catch {}
           }
         }
         outputStreamRef.current = fresh
@@ -441,7 +447,12 @@ export function useStudioCompositor({
     }
     return existing
   }, [streams])
+
   const getDisplayCanvas = useCallback(() => canvasRef.current, [])
 
-  return { getProgramStream, getDisplayCanvas, canvasRef }
+  return {
+    getProgramStream,
+    getDisplayCanvas,
+    canvasRef,
+  }
 }

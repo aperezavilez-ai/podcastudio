@@ -1,11 +1,3 @@
-// Perfil broadcast 1080p con preferencias de alta tasa de cuadros (60 FPS ideal)
-const BROADCAST_HD_VIDEO = {
-  width: { ideal: 1920 },
-  height: { ideal: 1080 },
-  frameRate: { ideal: 60, min: 24 },
-}
-
-// Perfil fluido 720p estándar (compatible con webcams integradas de laptop)
 // ✅ FIX CRÍTICO #6: Resolución uniforme 1920x1080 para todo el pipeline
 const BROADCAST_HD_VIDEO = {
   width: { ideal: 1920 },
