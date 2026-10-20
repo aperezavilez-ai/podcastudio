@@ -315,7 +315,7 @@ export function useStudioCompositor({
       const elapsed = timestamp - lastFrameTime
 
       // Esperar hasta completar el intervalo de 30fps (33.3ms)
-      if (elapsed < FRAME_TIME - 1) {
+      if (elapsed < FRAME_TIME) { // Fix: Sin -1 para evitar jitter
         rafRef.current = requestAnimationFrame(draw)
         return
       }
@@ -340,7 +340,7 @@ export function useStudioCompositor({
         : null
 
       ctx.imageSmoothingEnabled = true
-      ctx.imageSmoothingQuality = 'medium'
+      ctx.imageSmoothingQuality = 'high' // Fix: Calidad máxima para evitar pixelación
 
       const cw = canvas.width
       const ch = canvas.height

@@ -118,7 +118,11 @@ export function useRecorder() {
     }
 
     try {
-      const mr = new MediaRecorder(stream, { mimeType, videoBitsPerSecond, audioBitsPerSecond: 320000 })
+      const mr = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: isMp4Recording(mimeType) ? 12_000_000 : 10_000_000, // Fix: Aumentar bitrate
+        audioBitsPerSecond: 320000
+      })
       
       mr.ondataavailable = e => {
         if (e.data && e.data.size > 0) {
