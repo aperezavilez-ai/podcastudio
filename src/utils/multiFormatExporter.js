@@ -118,7 +118,7 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
     video.playsInline = true
     video.preload = 'auto'
     // Elemento visible en DOM fuera de pantalla para que Chromium decodifique 100% de los fotogramas
-    video.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:640px;height:360px;opacity:0.01;pointer-events:none;z-index:-9999;'
+    video.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:640px;height:360px;opacity:0.99;pointer-events:none;z-index:-9999;'
     document.body.appendChild(video)
     const blobUrl = sourceMedia instanceof Blob ? URL.createObjectURL(sourceMedia) : sourceMedia
     video.src = blobUrl
