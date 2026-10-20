@@ -1,7 +1,7 @@
 {
   "name": "podcastudio",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "PODCASTUDIO - Estudio Profesional de Podcast y Streaming",
   "author": "PodcastStudio",
   "type": "module",
@@ -19,7 +19,7 @@
     "productName": "PODCASTUDIO",
     "npmRebuild": false,
     "directories": {
-      "output": "release"
+      "output": "C:/Users/apere/AppData/Local/Temp/podcastudio-release"
     },
     "files": [
       "dist/**/*",

@@ -123,9 +123,8 @@ export const MANUAL_SECTIONS = [
     summary: 'Exportar tu episodio.',
     steps: [
       { action: 'Iniciar grabación', detail: 'Pulsa el botón rojo «Grabar» en el panel derecho. Aparece REC y el cronómetro arriba.' },
-      { action: 'Detener', detail: 'Pulsa de nuevo «Detener». La grabación se guarda en la pestaña Grabaciones (icono archivos a la izquierda).' },
-      { action: 'Descargar WebM', detail: 'Pestaña Grabaciones → icono descarga en el clip. Formato rápido, ideal para editar.' },
-      { action: 'Descargar MP4', detail: 'Botón MP4 convierte el archivo (tarda un poco). Mejor para subir a redes.' },
+      { action: 'Descargar MP4', detail: 'Pestaña Grabaciones → botón MP4. Descarga directa en alta calidad lista para redes.' },
+      { action: 'Eliminar grabación', detail: 'Pestaña Grabaciones → botón X al lado de MP4 para borrar clips de inmediato.' },
       { action: 'Qué incluye el video', detail: 'Cámaras, cintillos, logo, look, música y mezcla de micrófono van dentro del archivo.' },
     ],
   },

@@ -35,20 +35,12 @@ export function drawVideoContain(ctx, video, x, y, w, h, directorCrop = null) {
   const videoAspect = sw / sh
   const boxAspect = w / h
 
-  // Fondo oscuro
-  ctx.fillStyle = '#08090e'
+  // Fondo oscuro con degradado ambiental acelerado por GPU (cero CPU blur)
+  const bgGrad = ctx.createRadialGradient(x + w / 2, y + h / 2, 40, x + w / 2, y + h / 2, Math.max(w, h) / 1.3)
+  bgGrad.addColorStop(0, '#12141f')
+  bgGrad.addColorStop(1, '#08090e')
+  ctx.fillStyle = bgGrad
   ctx.fillRect(x, y, w, h)
-
-  // Fondo ambiental difuminado sutil para acabado televisivo impecable
-  ctx.save()
-  ctx.beginPath()
-  ctx.rect(x, y, w, h)
-  ctx.clip()
-  try {
-    ctx.filter = 'blur(18px) brightness(0.35)'
-    ctx.drawImage(video, x, y, w, h)
-  } catch {}
-  ctx.restore()
 
   // Calcular encuadre exacto completo sin recortar nada
   let dw, dh, dx, dy
@@ -204,6 +196,9 @@ export function drawCompositorFrame(ctx, w, h, {
   quaternaryVideo = null,
   allVideos = null,
 }) {
+  // ✅ FIX CRÍTICO #5: Limpiar canvas COMPLETO al inicio de cada frame
+  ctx.clearRect(0, 0, w, h)
+
   const useVirtualSet = Boolean(background?.hasVirtualSet || (background?.templateId && background.templateId !== 'none') || background?.customImage || background?.customUrl)
 
   if (useVirtualSet) {

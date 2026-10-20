@@ -8,6 +8,13 @@ export function bindVideoKeepAlive(video) {
     }
   }
 
+  // ✅ FIX CRÍTICO #7: Atributos para evitar throttling de Chromium
+  video.setAttribute('disablePictureInPicture', 'false')
+  video.setAttribute('disableRemotePlayback', 'false')
+
+  // ✅ FIX: Intervalo continuo cada 2 segundos para mantener video activo
+  const keepAliveInterval = setInterval(resume, 2000)
+
   const onVisibility = () => {
     if (document.visibilityState === 'visible') resume()
   }
@@ -17,6 +24,7 @@ export function bindVideoKeepAlive(video) {
   window.addEventListener('focus', resume)
 
   return () => {
+    clearInterval(keepAliveInterval) // ✅ Limpiar intervalo
     document.removeEventListener('visibilitychange', onVisibility)
     window.removeEventListener('pageshow', resume)
     window.removeEventListener('focus', resume)

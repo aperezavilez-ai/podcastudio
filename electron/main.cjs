@@ -5,19 +5,26 @@ const fs = require('fs')
 
 // ============================================================================
 // ACELERACIÓN POR HARDWARE DIRECTX / GPU BROADCAST (WINDOWS D3D11)
+// ✅ FIX CRÍTICO #8: Hardware acceleration agresiva para video 1080p60
 // ============================================================================
+app.commandLine.appendSwitch('enable-zero-copy') // ✅ Reduce copias de memoria GPU
+app.commandLine.appendSwitch('enable-native-gpu-memory-buffers') // ✅ Buffers nativos
+app.commandLine.appendSwitch('ignore-gpu-blocklist') // ✅ Forzar GPU incluso en blacklist
 app.commandLine.appendSwitch('enable-gpu-rasterization')
 app.commandLine.appendSwitch('enable-accelerated-video-decode')
 app.commandLine.appendSwitch('enable-accelerated-mjpeg-decode')
 app.commandLine.appendSwitch('use-angle', 'd3d11')
 app.commandLine.appendSwitch(
   'enable-features',
-  'MediaFoundationVideoCapture,CanvasOopRasterization,WebRtcHWDecoding,WebRtcHWEncoding'
+  'MediaFoundationVideoCapture,CanvasOopRasterization,WebRtcHWDecoding,WebRtcHWEncoding,VaapiVideoDecoder,VaapiVideoEncoder,UseChromeOSDirectVideoDecoder'
 )
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('high-dpi-support', '1')
+app.commandLine.appendSwitch('enable-gpu-compositing') // ✅ Composición GPU
+app.commandLine.appendSwitch('enable-webgl') // ✅ WebGL
+app.commandLine.appendSwitch('enable-webgl2-compute-context') // ✅ WebGL2 compute
 
 let mainWindow = null
 let localServer = null

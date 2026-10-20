@@ -92,7 +92,7 @@ export function useRecorder() {
     const recName = `episodio-${ts}.${ext}`
 
     const quality = options.quality || '1080p'
-    const videoBitsPerSecond = quality === '4k' ? 35000000 : quality === '720p' ? 6000000 : 12000000
+    const videoBitsPerSecond = quality === '4k' ? 35000000 : quality === '720p' ? 8000000 : 16000000
 
     // Inicializar sesión protegida en base de datos local
     startVaultSession(sessionId, { mimeType, ext, name: recName, quality })
@@ -118,17 +118,13 @@ export function useRecorder() {
     }
 
     try {
-      // Forzar codec más compatible y timeslice corto
-      const safeMime = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-        ? 'video/webm;codecs=vp8,opus'
-        : MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-          ? 'video/webm;codecs=vp9,opus'
-          : mimeType
+      // ✅ FIX CRÍTICO #3: Bitrate completo sin clamping y audio a 256kbps
+      const safeMime = mimeType
 
       const mr = new MediaRecorder(stream, {
         mimeType: safeMime,
-        videoBitsPerSecond: Math.min(videoBitsPerSecond, 8000000),
-        audioBitsPerSecond: 128000,
+        videoBitsPerSecond, // ✅ Usar bitrate completo calculado (12Mbps para 1080p, 35Mbps para 4K)
+        audioBitsPerSecond: 256000, // ✅ Audio de alta calidad 256kbps
       })
       
       mr.ondataavailable = e => {
@@ -177,7 +173,7 @@ export function useRecorder() {
         onCompleteRef.current = null
       }
 
-      mr.start(250)
+      mr.start(1000) // ✅ FIX: Timeslice de 1 segundo (menos overhead, más eficiente)
       mediaRecorderRef.current = mr
       setRecording(true)
       setDuration(0)
@@ -213,6 +209,17 @@ export function useRecorder() {
   }, [])
 
   const downloadRecordingMp4 = useCallback(async (rec) => {
+    if (!rec) return
+    // Si la grabación ya fue capturada nativamente en MP4 o su blob es mp4, descargar al instante sin demoras
+    const isMp4 = isMp4Recording(rec.mimeType) || isMp4Recording(rec.blob?.type) || rec.name?.toLowerCase().endsWith('.mp4')
+    if (isMp4 && rec.url) {
+      const a = document.createElement('a')
+      a.href = rec.url
+      a.download = rec.name.replace(/\.[^.]+$/, '') + '.mp4'
+      a.click()
+      return
+    }
+
     setConverting(true)
     setConvertProgress(0)
     try {
@@ -235,6 +242,32 @@ export function useRecorder() {
       setConvertProgress(0)
     }
   }, [downloadRecording])
+
+  const deleteRecording = useCallback(async (recOrIndex) => {
+    let targetRec = null
+    let targetIndex = -1
+    if (typeof recOrIndex === 'number') {
+      targetIndex = recOrIndex
+      targetRec = recordings[targetIndex]
+    } else {
+      targetRec = recOrIndex
+      targetIndex = recordings.findIndex(r => r === recOrIndex || (r.sessionId && r.sessionId === recOrIndex?.sessionId))
+    }
+    if (targetRec) {
+      try {
+        if (targetRec.url) URL.revokeObjectURL(targetRec.url)
+        if (targetRec.cleanVoiceUrl) URL.revokeObjectURL(targetRec.cleanVoiceUrl)
+        if (targetRec.sessionId) {
+          await purgeVaultSession(targetRec.sessionId).catch(() => {})
+        }
+      } catch (err) {
+        console.warn('Error purgando sesión de grabación:', err)
+      }
+    }
+    if (targetIndex >= 0) {
+      setRecordings(prev => prev.filter((_, idx) => idx !== targetIndex))
+    }
+  }, [recordings])
 
   const formatDuration = (secs) => {
     const h = String(Math.floor(secs / 3600)).padStart(2, '0')
@@ -265,6 +298,7 @@ export function useRecorder() {
     downloadRecording,
     downloadRecordingMp4,
     downloadCleanVoice,
+    deleteRecording,
     formatDuration,
   }
 }

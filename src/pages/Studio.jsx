@@ -175,7 +175,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
   const {
     recording, duration, recordings, converting, convertProgress,
     recoveredSession, restoreRecoveredSession, dismissRecoveredSession,
-    startRecording, stopRecording, downloadRecording, downloadRecordingMp4, downloadCleanVoice, formatDuration,
+    startRecording, stopRecording, downloadRecording, downloadRecordingMp4, downloadCleanVoice, deleteRecording, formatDuration,
   } = useRecorder()
   const [showMultiFormatModal, setShowMultiFormatModal] = useState(false)
   const [multiFormatRecording, setMultiFormatRecording] = useState(null)
@@ -1760,12 +1760,18 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
     }
     setCountdown(null)
 
-    // FORZAR cámara directa para grabación (evita canvas vacío y video pausado)
+    // Flujo de video broadcast a 60 FPS con motion hint
     const masterCamStream = streams[programCamera] || streams[masterCameraSlot] || null
-    let videoStream = masterCamStream
+    let videoStream = getProgramStream()
     if (!videoStream || !videoStream.getVideoTracks().some(t => t.readyState === 'live')) {
-      // Fallback al compositor solo si la cámara directa no está disponible
-      videoStream = getProgramStream()
+      videoStream = masterCamStream
+    }
+    if (videoStream) {
+      try {
+        videoStream.getVideoTracks().forEach(t => {
+          try { t.contentHint = 'motion' } catch {}
+        })
+      } catch {}
     }
     if (!videoStream) {
       setPreparingRecord(false)
@@ -2098,7 +2104,7 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
               <li><b>Guion IA</b> — escribe el teleprompter del episodio</li>
               <li><b>Cintillos IA</b> — genera textos para pantalla (invitado, tema)</li>
               <li><b>Posts IA</b> — crea publicaciones y hashtags para redes</li>
-              <li><b>Descarga</b> — exporta WebM/MP4 y súbelo a tus canales</li>
+              <li><b>Descarga</b> — exporta en MP4 y súbelo a tus canales</li>
             </ul>
             {!aiConfigured && (
               <p className={styles.aiInfoSetup}>
@@ -2851,17 +2857,33 @@ export default function Studio({ project, user, subscription, onProjectSave, onS
                   Aún no hay grabaciones. Graba en el estudio y descarga tu episodio para subirlo a tus redes.
                 </div>
               : recordings.map((r, i) => (
-                <div key={i} className={styles.recItem}>
+                <div key={r.sessionId || i} className={styles.recItem}>
                   <i className="ti ti-file-video" style={{ fontSize: 20, color: 'var(--accent)' }} />
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500 }}>{r.name}</div>
                     <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{(r.size / 1024 / 1024).toFixed(1)} MB</div>
                   </div>
-                  <button className={styles.dlBtn} onClick={() => downloadRecording(r)}>
-                    <i className="ti ti-download" /> WebM
+                  <button
+                    className={styles.dlBtn}
+                    onClick={() => downloadRecordingMp4(r)}
+                    disabled={converting}
+                    title="Descargar video MP4"
+                  >
+                    <i className="ti ti-download" /> MP4
                   </button>
-                  <button className={styles.dlBtn} onClick={() => downloadRecordingMp4(r)} disabled={converting}>
-                    <i className="ti ti-file-type-mp4" /> MP4
+                  <button
+                    className={styles.dlBtn}
+                    onClick={() => deleteRecording(r)}
+                    title="Eliminar grabación"
+                    style={{
+                      color: '#ef4444',
+                      borderColor: 'rgba(239, 68, 68, 0.35)',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      padding: '6px 12px',
+                      marginLeft: 6,
+                    }}
+                  >
+                    <i className="ti ti-x" />
                   </button>
                 </div>
               ))

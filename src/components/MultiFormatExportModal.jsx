@@ -4,6 +4,7 @@ import {
   convertVideoToFormat,
   buildFormatFilename,
 } from '../utils/multiFormatExporter.js'
+import { convertVideoToFormatsParallel, buildFormatFilename as buildFormatFilenameParallel } from '../utils/multiFormatExporterParallel.js'
 import { fixWebmDuration } from '../utils/fixWebmDuration.js'
 import {
   generateAllSocialThumbnails,
@@ -177,79 +178,95 @@ export default function MultiFormatExportModal({
     if (presetsToExport.length === 0) return
 
     cancelRef.current = false
-    const { finalizeUniversalMp4 } = await import('../utils/exportVideo.js')
+    const abortController = new AbortController()
     const total = presetsToExport.length
-    setPackProgress({ current: 0, total, label: `Generando ${total} formatos en paralelo...` })
+    setPackProgress({ current: 0, total, label: `✅ Generando ${total} formatos EN PARALELO...` })
     setProgress(0)
 
     const progressMap = {}
     presetsToExport.forEach(p => { progressMap[p.key] = 0 })
 
-    const updateCombinedProgress = (key, pct) => {
-      progressMap[key] = pct
-      const sum = Object.values(progressMap).reduce((a, b) => a + b, 0)
-      const avg = Math.round(sum / total)
-      setProgress(avg)
+    const updateCombinedProgress = (formatIdx, pct) => {
+      const key = presetsToExport[formatIdx]?.key
+      if (key) {
+        progressMap[key] = pct
+        const sum = Object.values(progressMap).reduce((a, b) => a + b, 0)
+        const avg = Math.round(sum / total)
+        setProgress(avg)
+      }
     }
 
     try {
-      const results = await Promise.all(
-        presetsToExport.map(async (preset, idx) => {
-          if (cancelRef.current) return null
-          try {
-            let outputBlob = null
-            try {
-              outputBlob = await finalizeUniversalMp4(recording.blob, {
-                format: preset.baseFormat || preset.key,
-                mode: cropMode,
-                onProgress: (pct) => updateCombinedProgress(preset.key, pct),
-              })
-            } catch (ffmpegErr) {
-              console.warn('FFmpeg pack export fallback to canvas:', ffmpegErr)
-              if (preset.baseFormat === '16:9' || preset.key === '16:9') {
-                outputBlob = recording.blob
-                if (outputBlob && !outputBlob.type?.includes('mp4')) {
-                  const durMs = Math.max(1000, Math.round((recording.duration || 1) * 1000))
-                  try {
-                    outputBlob = await fixWebmDuration(outputBlob, durMs)
-                  } catch {}
-                }
-              } else {
-                outputBlob = await convertVideoToFormat(recording.blob, preset.key, {
-                  mode: cropMode,
-                  duration: recording.duration,
-                  onProgress: (pct) => updateCombinedProgress(preset.key, pct),
-                })
-              }
-            }
+      // ✅ FIX CRÍTICO #4: Usar exportador PARALELO en vez de secuencial
+      const formats = presetsToExport.map(p => p.key)
+      const resultBlobs = await convertVideoToFormatsParallel(recording.blob, formats, {
+        mode: cropMode,
+        duration: recording.duration,
+        quality: recording.quality || '1080p',
+        onProgress: updateCombinedProgress,
+        abortSignal: abortController.signal,
+      })
 
-            if (cancelRef.current || !outputBlob) return null
-
-            const actualExt = (outputBlob.type && outputBlob.type.includes('mp4')) ? 'mp4' : 'webm'
-            const fn = buildFormatFilename(recording.name, preset.key, actualExt)
-            return { blob: outputBlob, filename: fn, preset, idx }
-          } catch (err) {
-            console.error(`Error procesando ${preset.label}:`, err)
-            return null
+      if (!cancelRef.current && resultBlobs && resultBlobs.length > 0) {
+        // Descargar todos los formatos generados
+        resultBlobs.forEach((blob, idx) => {
+          if (blob) {
+            setTimeout(() => {
+              const preset = presetsToExport[idx]
+              const actualExt = (blob.type && blob.type.includes('mp4')) ? 'mp4' : 'webm'
+              const fn = buildFormatFilenameParallel(recording.name, preset.key, actualExt)
+              const u = URL.createObjectURL(blob)
+              const a = document.createElement('a')
+              a.href = u
+              a.download = fn
+              a.click()
+              setTimeout(() => URL.revokeObjectURL(u), 3000)
+            }, idx * 350)
           }
-        })
-      )
-
-      if (!cancelRef.current) {
-        const validResults = results.filter(Boolean)
-        validResults.forEach((res, downloadIdx) => {
-          setTimeout(() => {
-            const u = URL.createObjectURL(res.blob)
-            const a = document.createElement('a')
-            a.href = u
-            a.download = res.filename
-            a.click()
-            setTimeout(() => URL.revokeObjectURL(u), 3000)
-          }, downloadIdx * 350)
         })
       }
     } catch (err) {
-      console.error('Error en exportación paralela:', err)
+      if (err.message !== 'Exportación cancelada') {
+        console.error('Error en exportación paralela:', err)
+        // Fallback a exportación secuencial si falla paralelo
+        try {
+          console.warn('Fallback a exportación secuencial...')
+          const { finalizeUniversalMp4 } = await import('../utils/exportVideo.js')
+          const results = await Promise.all(
+            presetsToExport.map(async (preset, idx) => {
+              if (cancelRef.current) return null
+              try {
+                let outputBlob = await finalizeUniversalMp4(recording.blob, {
+                  format: preset.baseFormat || preset.key,
+                  mode: cropMode,
+                  onProgress: (pct) => updateCombinedProgress(idx, pct),
+                })
+                const actualExt = (outputBlob.type && outputBlob.type.includes('mp4')) ? 'mp4' : 'webm'
+                const fn = buildFormatFilename(recording.name, preset.key, actualExt)
+                return { blob: outputBlob, filename: fn }
+              } catch (e) {
+                console.error(`Error procesando ${preset.label}:`, e)
+                return null
+              }
+            })
+          )
+          if (!cancelRef.current) {
+            const validResults = results.filter(Boolean)
+            validResults.forEach((res, downloadIdx) => {
+              setTimeout(() => {
+                const u = URL.createObjectURL(res.blob)
+                const a = document.createElement('a')
+                a.href = u
+                a.download = res.filename
+                a.click()
+                setTimeout(() => URL.revokeObjectURL(u), 3000)
+              }, downloadIdx * 350)
+            })
+          }
+        } catch (fallbackErr) {
+          console.error('Error en fallback secuencial:', fallbackErr)
+        }
+      }
     } finally {
       setPackProgress(null)
       setProgress(0)

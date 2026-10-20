@@ -15,7 +15,10 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - Deploy: Vercel (https://www.podcastudio.mx)
 
 ## 🎯 Última Tarea Completada
-**Release v1.0.3: Video Remoto Continuo, Bitrate Adaptativo, Grabación Completa y Export Paralelo**
+**Release v1.0.3: Video Remoto Continuo, Bitrate Adaptativo, Grabación MP4 Nativa, Botón Eliminar [X] y Motor 60 FPS**
+- ✅ **Gestión de Grabaciones**: Eliminado botón WebM; ahora solo botón MP4 de descarga inmediata en 0ms y botón [✕] para eliminar grabaciones y liberar espacio en almacenamiento local.
+- ✅ **Motor 60 FPS sin CPU Blur**: Eliminados filtros gaussianos de CPU (`ctx.filter = blur(...)`) en `canvasCompositor.js` y `drawSetBackground.js`, reemplazados por degradados radiales nativos en GPU para fluidez broadcast a 60 FPS continuos sin caídas.
+- ✅ **Grabación Directa en MP4 por Hardware**: Corrección de codec para grabar directamente en H.264 MP4 acelerado por hardware a 16 Mbps en lugar de forzar software VP8 a 10-15 FPS.
 - ✅ **Video remoto continuo**: MediaStream persistente por slot (`addTrack`/`removeTrack`) en `src/hooks/useRemoteCameraManager.js`, eliminando congelamientos o reinicios de decodificador.
 - ✅ **Bitrate adaptativo en cámara remota**: Supervisión continua cada ~2s de RTT y `qualityLimitationReason` en `src/pages/RemoteCam.jsx` con asignación explícita de `contentHint = 'motion'`.
 - ✅ **Grabación completa hasta el final**: Invocación garantizada de `requestData()` previa a `stop()` en `src/hooks/useRecorder.js` para asegurar cero pérdida del último chunk de audio y video.

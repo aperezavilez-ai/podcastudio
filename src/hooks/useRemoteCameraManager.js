@@ -146,12 +146,13 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
           // Usa UN SOLO MediaStream persistente por slot. Agregar/quitar tracks no reinicia el decodificador.
           const dispatchStreamUpdate = () => {
             const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended')
-            if (liveTracks.length === 0) return
 
+            // ✅ FIX CRÍTICO #1: No salir prematuramente si no hay tracks, crear stream vacío y esperar
             let stream = compoundStreamsRef.current[slotIndex]
             if (!stream) {
               stream = new MediaStream()
               compoundStreamsRef.current[slotIndex] = stream
+              console.log('[RemoteCamManager] Stream creado para slot', slotIndex, '- esperando tracks')
             }
 
             // Sincronizar tracks sin recrear el MediaStream
@@ -175,8 +176,12 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
               }
             })
 
-            setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
-            if (onStreamConnected) {
+            // ✅ FIX: Notificar siempre, incluso con stream vacío (se llenará gradualmente)
+            const hasLiveTracks = liveTracks.length > 0
+            setRemoteStatus(prev => ({ ...prev, [slotIndex]: hasLiveTracks ? 'connected' : 'waiting' }))
+
+            // Notificar onStreamConnected con el stream (aunque esté vacío al inicio)
+            if (onStreamConnected && stream) {
               onStreamConnected(slotIndex, stream, callerLabel)
             }
           }
@@ -185,25 +190,41 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
             const track = trackEvent.track
             if (!track) return
 
+            console.log('[RemoteCamManager] Track recibido:', track.kind, 'readyState:', track.readyState, 'slot:', slotIndex)
             trackMap.set(track.id, track)
 
             track.onunmute = () => {
+              console.log('[RemoteCamManager] Track unmuted:', track.kind, 'slot:', slotIndex)
               dispatchStreamUpdate()
             }
 
             track.onended = () => {
+              console.log('[RemoteCamManager] Track ended:', track.kind, 'slot:', slotIndex)
               trackMap.delete(track.id)
               dispatchStreamUpdate()
+            }
+
+            // ✅ FIX: Manejar onmute sin eliminar el track (esperar unmute)
+            track.onmute = () => {
+              console.warn('[RemoteCamManager] Track muted temporalmente:', track.kind, 'slot:', slotIndex)
+              // NO eliminar track, solo esperar que se reactive
             }
 
             // Si el track viene dentro de un MediaStream ya agrupado por el navegador
             if (trackEvent.streams && trackEvent.streams[0]) {
               trackEvent.streams[0].getTracks().forEach(t => {
-                trackMap.set(t.id, t)
-                t.onunmute = () => dispatchStreamUpdate()
+                if (!trackMap.has(t.id)) {
+                  trackMap.set(t.id, t)
+                  t.onunmute = () => dispatchStreamUpdate()
+                  t.onended = () => {
+                    trackMap.delete(t.id)
+                    dispatchStreamUpdate()
+                  }
+                }
               })
             }
 
+            // Disparar actualización inmediatamente
             dispatchStreamUpdate()
           }
 

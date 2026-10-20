@@ -283,17 +283,24 @@ export function useStudioCompositor({
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas || recording) return
-    const { width: tw, height: th } = getResolutionForFormat(format)
+    const { width: tw, height: th } = getResolutionForFormat(format, quality)
     if (canvas.width !== tw || canvas.height !== th) {
       canvas.width = tw
       canvas.height = th
       try {
-        outputStreamRef.current = canvas.captureStream?.(30) || null
+        const fresh = canvas.captureStream?.(60) || null
+        if (fresh) {
+          const track = fresh.getVideoTracks()[0]
+          if (track) {
+            try { track.contentHint = 'motion' } catch {}
+          }
+        }
+        outputStreamRef.current = fresh
       } catch {
         outputStreamRef.current = null
       }
     }
-  }, [format, recording])
+  }, [format, quality, recording])
 
   const hasStreams = Boolean(streams && Object.values(streams).some(Boolean))
 

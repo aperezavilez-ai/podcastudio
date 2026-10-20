@@ -6,10 +6,11 @@ const BROADCAST_HD_VIDEO = {
 }
 
 // Perfil fluido 720p estándar (compatible con webcams integradas de laptop)
-const FLUID_720P_VIDEO = {
-  width: { ideal: 1280 },
-  height: { ideal: 720 },
-  frameRate: { ideal: 60, min: 24 },
+// ✅ FIX CRÍTICO #6: Resolución uniforme 1920x1080 para todo el pipeline
+const BROADCAST_HD_VIDEO = {
+  width: { ideal: 1920 },
+  height: { ideal: 1080 },
+  frameRate: { ideal: 60, min: 30 }, // ✅ Mínimo 30fps, no 24fps
 }
 
 export function waitMs(ms) {
@@ -54,7 +55,7 @@ export function getUserMediaWithTimeout(constraints, timeoutMs = 8000) {
 export async function openCameraStreamFacing(facingMode, withAudio = true) {
   const videoAttempts = [
     { facingMode: { ideal: facingMode }, ...BROADCAST_HD_VIDEO },
-    { facingMode: { ideal: facingMode }, ...FLUID_720P_VIDEO },
+    { facingMode: { ideal: facingMode }, ...BROADCAST_HD_VIDEO },
     { facingMode: { exact: facingMode } },
     { facingMode: { ideal: facingMode } },
     { facingMode },
@@ -96,26 +97,39 @@ export async function openCameraStream(deviceId, withAudio = false) {
   const videoAttempts = []
 
   if (deviceId) {
-    // 1. Intento con deviceId ideal y 720p estándar (máxima tasa de éxito en laptops Lenovo/EasyCamera)
-    videoAttempts.push({ deviceId: { ideal: deviceId }, ...FLUID_720P_VIDEO })
-    // 2. Intento con deviceId ideal sin restricciones de resolución
+    // 1. Intento con deviceId y perfil Broadcast HD 1080p a 60 FPS
+    videoAttempts.push({ deviceId: { ideal: deviceId }, ...BROADCAST_HD_VIDEO })
+    // 2. Intento con deviceId y perfil 720p a 60 FPS
+    videoAttempts.push({ deviceId: { ideal: deviceId }, ...BROADCAST_HD_VIDEO })
+    // 3. Intento con deviceId ideal sin restricciones de resolución
     videoAttempts.push({ deviceId: { ideal: deviceId } })
-    // 3. Intento con deviceId directo
+    // 4. Intento con deviceId directo
     videoAttempts.push({ deviceId })
-    // 4. Intento con deviceId exacto
+    // 5. Intento con deviceId exacto
     videoAttempts.push({ deviceId: { exact: deviceId } })
   }
 
-  // 5. Fallbacks genéricos si el ID específico no responde
-  videoAttempts.push({ ...FLUID_720P_VIDEO })
-  videoAttempts.push(true)
+  // Fallbacks genéricos si el ID específico no responde
   videoAttempts.push({ ...BROADCAST_HD_VIDEO })
+  videoAttempts.push({ ...BROADCAST_HD_VIDEO })
+  videoAttempts.push(true)
+
+  const prepareStream = (s) => {
+    if (s) {
+      try {
+        s.getVideoTracks().forEach(t => {
+          try { t.contentHint = 'motion' } catch {}
+        })
+      } catch {}
+    }
+    return s
+  }
 
   // Intentar con audio si se solicitó explícitamente
   if (withAudio) {
     for (const video of videoAttempts) {
       try {
-        return await getUserMediaWithTimeout({
+        const stream = await getUserMediaWithTimeout({
           video,
           audio: {
             echoCancellation: true,
@@ -123,6 +137,7 @@ export async function openCameraStream(deviceId, withAudio = false) {
             autoGainControl: true,
           },
         }, 6000)
+        return prepareStream(stream)
       } catch {}
     }
   }
@@ -131,7 +146,8 @@ export async function openCameraStream(deviceId, withAudio = false) {
   let lastError = null
   for (const video of videoAttempts) {
     try {
-      return await getUserMediaWithTimeout({ video, audio: false }, 6000)
+      const stream = await getUserMediaWithTimeout({ video, audio: false }, 6000)
+      return prepareStream(stream)
     } catch (e) {
       lastError = e
       console.warn('[openCamera] Intento falló, probando siguiente configuración:', e?.name || e?.message)
@@ -139,7 +155,8 @@ export async function openCameraStream(deviceId, withAudio = false) {
       if (e?.name === 'NotReadableError' || e?.name === 'AbortError' || e?.name === 'TrackStartError') {
         await waitMs(400)
         try {
-          return await getUserMediaWithTimeout({ video, audio: false }, 5000)
+          const stream = await getUserMediaWithTimeout({ video, audio: false }, 5000)
+          return prepareStream(stream)
         } catch {}
       }
     }
@@ -148,7 +165,8 @@ export async function openCameraStream(deviceId, withAudio = false) {
   // Último intento de rescate: abrir cualquier cámara de video disponible en el sistema
   try {
     await waitMs(400)
-    return await getUserMediaWithTimeout({ video: true, audio: false }, 5000)
+    const stream = await getUserMediaWithTimeout({ video: true, audio: false }, 5000)
+    return prepareStream(stream)
   } catch {}
 
   throw lastError || new Error('No se pudo abrir la cámara')

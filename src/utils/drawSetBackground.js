@@ -250,27 +250,23 @@ export function drawVideoInset(ctx, video, w, h, backgroundOrRect, directorCrop,
     const finalFilter = [filter, lightingFilter].filter(Boolean).join(' ')
     if (finalFilter && finalFilter !== 'none') ctx.filter = finalFilter
 
-    // --- Mejoras de integración realista ---
-    // 1. Sombra de contacto suave bajo la persona
+    // --- Mejoras de integración aceleradas por GPU ---
+    // 1. Sombra de contacto suave bajo la persona con degradado radial de hardware
     ctx.save()
-    ctx.globalAlpha = 0.35
-    ctx.filter = 'blur(18px)'
-    ctx.fillStyle = 'rgba(0,0,0,0.7)'
     const shadowW = dw * 0.55
     const shadowH = dh * 0.08
     const shadowX = dx + (dw - shadowW) / 2
     const shadowY = dy + dh - shadowH * 0.3
+    const shadowGrad = ctx.createRadialGradient(
+      shadowX + shadowW / 2, shadowY + shadowH / 2, 0,
+      shadowX + shadowW / 2, shadowY + shadowH / 2, shadowW / 2
+    )
+    shadowGrad.addColorStop(0, 'rgba(0,0,0,0.4)')
+    shadowGrad.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = shadowGrad
     ctx.beginPath()
     ctx.ellipse(shadowX + shadowW / 2, shadowY + shadowH / 2, shadowW / 2, shadowH / 2, 0, 0, Math.PI * 2)
     ctx.fill()
-    ctx.restore()
-
-    // 2. Light wrap simple (luz del entorno en los bordes)
-    ctx.save()
-    ctx.globalCompositeOperation = 'source-over'
-    ctx.globalAlpha = 0.18
-    ctx.filter = 'blur(6px) brightness(1.4)'
-    ctx.drawImage(sourceDrawable, dx - 2, dy - 2, dw + 4, dh + 4)
     ctx.restore()
 
     // Dibujar persona

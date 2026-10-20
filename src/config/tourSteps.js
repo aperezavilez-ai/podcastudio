@@ -39,7 +39,7 @@ export const TOUR_STEPS = [
     id: 'export',
     icon: 'ti-download',
     title: 'Graba y descarga',
-    description: 'Graba el episodio en el navegador con cintillos, logo y música. Descarga en WebM o MP4 y súbelo a YouTube, TikTok, Instagram o Facebook.',
+    description: 'Graba el episodio en el navegador con cintillos, logo y música. Descarga en MP4 y súbelo a YouTube, TikTok, Instagram o Facebook.',
     demoHint: 'No se graba ni descarga ningún archivo en el recorrido.',
     plans: [
       { id: 'starter', label: 'HD 1080p', highlight: false },

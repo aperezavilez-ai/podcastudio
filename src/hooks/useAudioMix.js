@@ -165,10 +165,17 @@ export function useAudioMix() {
             }
             const avg = sum / gateData.length // 0 a 255
             const now = ctx.currentTime
-            // Umbral de habla sensible: si el promedio supera 2.8, está hablando -> compuerta 100% abierta
-            // Si está en silencio/pausa vocal, atenuación suave a 0.40 (-8dB) que limpia siseo/aire sin cortar palabras
-            const targetGate = avg > 2.8 ? 1.0 : 0.40
-            noiseGateGainRef.current.gain.setTargetAtTime(targetGate, now, targetGate === 1.0 ? 0.003 : 0.12)
+
+            // ✅ FIX CRÍTICO #2: Umbral más alto para evitar falsos positivos
+            const SPEECH_THRESHOLD = 8.5 // ~3.3% de 255, equivalente a -30dBFS
+            const GATE_OPEN = 1.0
+            const GATE_CLOSED = 0.08 // -21dB en vez de -8dB para silenciar mejor el ruido
+
+            const targetGate = avg > SPEECH_THRESHOLD ? GATE_OPEN : GATE_CLOSED
+
+            // ✅ FIX: Transición suave para evitar clics (15ms apertura, 80ms cierre)
+            const timeConstant = (targetGate === GATE_OPEN) ? 0.015 : 0.080
+            noiseGateGainRef.current.gain.setTargetAtTime(targetGate, now, timeConstant)
           }
         }
         gateRafRef.current = requestAnimationFrame(runGateLoop)
@@ -190,6 +197,7 @@ export function useAudioMix() {
       micGainRef.current = micGain
 
       // Conexión en cadena DSP:
+      // ✅ FIX: Filtros PRIMERO, luego gate, luego compresor
       // lowCut1 -> lowCut2 -> humNotch -> deHiss -> lowPass -> eqLow -> eqMid -> eqHigh -> gateAnalyser -> noiseGateGain -> compressor -> micGain
       lowCut1.connect(lowCut2)
       lowCut2.connect(humNotch)
