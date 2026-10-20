@@ -13,15 +13,15 @@
       "repo": null,
       "branch": "main",
       "remoteUrl": null,
-      "hasLocalGit": false,
-      "lastPush": "2026-10-20T19:48:36.428Z"
+      "hasLocalGit": true,
+      "lastPush": "2026-10-20T21:08:29.000Z"
     },
     "vercel": {
       "projectId": null,
       "projectName": null,
       "liveUrl": "https://www.podcastudio.mx",
       "linked": true,
-      "lastDeploy": "2026-10-20T19:48:36.457Z"
+      "lastDeploy": "2026-10-20T21:09:54.000Z"
     },
     "supabase": {
       "url": null,
@@ -79,6 +79,18 @@
       "date": "2026-10-20T19:48:36.457Z",
       "action": "deployed",
       "details": "Vercel deploy: https://www.podcastudio.mx",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-20T21:08:29.000Z",
+      "action": "modified",
+      "details": "git push main (f4fa3b6): release: v1.0.3 - video remoto continuo, export paralelo y grabacion completa",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-20T21:09:54.000Z",
+      "action": "deployed",
+      "details": "Vercel deploy: https://www.podcastudio.mx (dpl_BJQjEsRRcSPTnRGKvypquQfdirXb)",
       "by": "editcore"
     }
   ],
