@@ -1,0 +1,71 @@
+{
+  "version": "1.0",
+  "project": {
+    "name": "PODCASTUDIO",
+    "description": "PODCASTUDIO - Estudio Profesional de Podcast y Streaming",
+    "stack": [],
+    "status": "planning",
+    "createdAt": "2026-10-20T18:50:33.655Z",
+    "lastModified": "2026-10-20T18:50:33.659Z"
+  },
+  "connections": {
+    "github": {
+      "repo": null,
+      "branch": "main",
+      "remoteUrl": null,
+      "hasLocalGit": false,
+      "lastPush": "2026-10-20T18:50:33.661Z"
+    },
+    "vercel": {
+      "projectId": null,
+      "projectName": null,
+      "liveUrl": "https://www.podcastudio.mx",
+      "linked": true,
+      "lastDeploy": "2026-10-20T18:50:33.782Z"
+    },
+    "supabase": {
+      "url": null,
+      "projectRef": null,
+      "hasMigrations": false,
+      "lastMigration": null
+    },
+    "server": {
+      "host": null,
+      "path": null,
+      "linked": false
+    }
+  },
+  "deployment": {
+    "pipeline": "vercel",
+    "lastDeploy": {
+      "timestamp": null,
+      "type": null,
+      "status": null,
+      "url": null
+    }
+  },
+  "history": [
+    {
+      "date": "2026-10-20T18:50:33.661Z",
+      "action": "modified",
+      "details": "git push main (d4cc035): fix(engine): upgrade pipeline to constant 60 FPS broadcast quality",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-20T18:50:33.782Z",
+      "action": "deployed",
+      "details": "Vercel deploy: https://www.podcastudio.mx",
+      "by": "editcore"
+    }
+  ],
+  "issues": [],
+  "editcore": {
+    "lastScanned": "2026-10-20T18:50:33.659Z",
+    "analysis": {
+      "frameworks": [],
+      "languages": [],
+      "packageManager": "",
+      "entryPoints": []
+    }
+  }
+}
