@@ -104,6 +104,40 @@ export function drawSetBackground(ctx, w, h, templateId, cameraAngle = 'mid', pr
     }
   }
 
+  if (tmpl?.is3D || templateId?.includes('-3d')) {
+    const isWood = templateId === 'interview-3d'
+    const isTech = templateId === 'tech-3d'
+    const isConcert = templateId === 'concert-3d'
+
+    const grad = ctx.createLinearGradient(0, 0, 0, h)
+    grad.addColorStop(0, isWood ? '#1a120c' : isTech ? '#060a12' : isConcert ? '#0a0512' : '#070b14')
+    grad.addColorStop(0.65, isWood ? '#26180f' : isTech ? '#0b1629' : isConcert ? '#160824' : '#0e182a')
+    grad.addColorStop(1, isWood ? '#120d09' : isTech ? '#04070c' : isConcert ? '#07030c' : '#05070d')
+    ctx.fillStyle = grad
+    ctx.fillRect(0, 0, w, h)
+
+    const glow = ctx.createRadialGradient(w / 2, h * 0.42, 10, w / 2, h * 0.42, w * 0.55)
+    glow.addColorStop(0, isWood ? 'rgba(255, 160, 60, 0.22)' : isTech ? 'rgba(0, 242, 254, 0.18)' : isConcert ? 'rgba(255, 0, 128, 0.25)' : 'rgba(37, 99, 235, 0.25)')
+    glow.addColorStop(1, 'rgba(0, 0, 0, 0)')
+    ctx.fillStyle = glow
+    ctx.fillRect(0, 0, w, h)
+
+    const floorY = h * 0.68
+    const floorGrad = ctx.createLinearGradient(0, floorY, 0, h)
+    floorGrad.addColorStop(0, isWood ? 'rgba(40, 25, 18, 0.95)' : isTech ? 'rgba(12, 20, 36, 0.95)' : isConcert ? 'rgba(15, 10, 25, 0.95)' : 'rgba(14, 22, 38, 0.95)')
+    floorGrad.addColorStop(1, '#05070b')
+    ctx.fillStyle = floorGrad
+    ctx.fillRect(0, floorY, w, h - floorY)
+
+    ctx.strokeStyle = isWood ? '#ff9933' : isTech ? '#00f2fe' : isConcert ? '#ff0077' : '#2563eb'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    ctx.moveTo(w * 0.1, floorY)
+    ctx.lineTo(w * 0.9, floorY)
+    ctx.stroke()
+    return
+  }
+
   ctx.fillStyle = '#0a0a0e'
   ctx.fillRect(0, 0, w, h)
 }

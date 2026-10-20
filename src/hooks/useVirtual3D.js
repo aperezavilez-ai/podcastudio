@@ -69,7 +69,7 @@ export function useVirtual3D({
     const sceneUrl = getSceneUrl(templateId)
     const sceneConfig = getSceneConfig(templateId)
 
-    engine.loadScene(sceneUrl, sceneConfig)
+    engine.loadScene(sceneUrl, sceneConfig, templateId)
       .then(() => {
         setReady(true)
         setLoading(false)
