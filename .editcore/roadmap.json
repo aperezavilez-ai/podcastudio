@@ -1,12 +1,12 @@
 {
-  "version": "1.0",
+  "version": "1.0.1",
   "project": {
     "name": "PODCASTUDIO",
-    "description": "",
-    "stack": [],
-    "status": "planning",
+    "description": "Estudio Profesional de Podcast y Streaming con Escenarios Virtuales 3D",
+    "stack": ["React", "Vite", "Three.js", "Electron", "WebRTC"],
+    "status": "active",
     "createdAt": "2026-10-14T14:06:29.269Z",
-    "lastModified": "2026-10-14T14:06:29.547Z"
+    "lastModified": "2026-10-20T15:45:00.000Z"
   },
   "connections": {
     "github": {
