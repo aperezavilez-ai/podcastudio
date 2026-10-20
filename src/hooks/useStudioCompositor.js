@@ -76,6 +76,15 @@ export function useStudioCompositor({
     canvasRef.current = canvas
     try {
       outputStreamRef.current = canvas.captureStream?.(30) || null
+      // Fix: Aplicar contentHint='motion' para priorizar fluidez
+      if (outputStreamRef.current) {
+        const track = outputStreamRef.current.getVideoTracks()[0]
+        if (track) {
+          try {
+            track.contentHint = 'motion'
+          } catch { /* Safari no lo soporta */ }
+        }
+      }
     } catch {
       outputStreamRef.current = null
     }
@@ -90,6 +99,15 @@ export function useStudioCompositor({
         canvasRef.current.height = res.height
         if (typeof canvasRef.current.captureStream === 'function') {
           outputStreamRef.current = canvasRef.current.captureStream(30)
+          // Fix: Aplicar contentHint='motion' al nuevo stream
+          if (outputStreamRef.current) {
+            const track = outputStreamRef.current.getVideoTracks()[0]
+            if (track) {
+              try {
+                track.contentHint = 'motion'
+              } catch { /* Safari no lo soporta */ }
+            }
+          }
         }
       }
     }
@@ -287,16 +305,23 @@ export function useStudioCompositor({
     }
 
     const ctx = canvas.getContext('2d', { alpha: false })
-    let lastFrame = 0
 
-    const draw = (now) => {
-      // Permitir hasta ~50fps cuando el sistema lo aguante (menos sensación robótica)
-      // Solo saltamos si el frame anterior fue extremadamente reciente
-      if (now - lastFrame < 16) {
+    // Fix: Throttle a 30fps exactos para sincronizar con captureStream(30)
+    const TARGET_FPS = 30
+    const FRAME_TIME = 1000 / TARGET_FPS
+    let lastFrameTime = 0
+
+    const draw = (timestamp) => {
+      const elapsed = timestamp - lastFrameTime
+
+      // Esperar hasta completar el intervalo de 30fps (33.3ms)
+      if (elapsed < FRAME_TIME - 1) {
         rafRef.current = requestAnimationFrame(draw)
         return
       }
-      lastFrame = now
+
+      // Ajustar lastFrameTime para compensar drift acumulado
+      lastFrameTime = timestamp - (elapsed % FRAME_TIME)
 
       const s = settingsRef.current
       if (s.transitionStartMs && getTransitionProgress(s.transitionStartMs, TRANSITION_DURATION_MS) >= 1) {

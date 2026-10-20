@@ -9,7 +9,21 @@ export default function CameraView({ stream, className, style, muted = true, onC
     if (!video || !stream) return
 
     video.srcObject = stream
-    video.play().catch(() => {})
+
+    // Fix: Retry loop para garantizar que el video inicie reproducción
+    let attempts = 0
+    const MAX_ATTEMPTS = 10
+    const playAttempt = () => {
+      video.play().catch((err) => {
+        if (attempts < MAX_ATTEMPTS) {
+          attempts++
+          setTimeout(playAttempt, 100)
+        } else {
+          console.warn('[CameraView] No se pudo iniciar video después de', MAX_ATTEMPTS, 'intentos:', err)
+        }
+      })
+    }
+    playAttempt()
 
     return bindVideoKeepAlive(video)
   }, [stream])
