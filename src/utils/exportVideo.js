@@ -33,7 +33,7 @@ async function getFfmpeg() {
   }
 
   const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Timeout cargando motor FFmpeg')), 25000)
+    setTimeout(() => reject(new Error('Timeout cargando motor FFmpeg')), 6000)
   )
 
   return Promise.race([loadWithTimeout(), timeoutPromise])

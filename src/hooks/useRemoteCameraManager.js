@@ -125,9 +125,14 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
 
       if (payload.type === 'offer') {
         try {
-          // Limpiar peer connection previa y stream previo si existían
-          if (peerConnectionsRef.current[slotIndex]) {
-            try { peerConnectionsRef.current[slotIndex].close() } catch {}
+          const existingPc = peerConnectionsRef.current[slotIndex]
+          if (existingPc && (existingPc.connectionState === 'connected' || existingPc.iceConnectionState === 'connected')) {
+            console.log('[RemoteCamManager] Conexión ya establecida en slot', slotIndex, '- ignorando oferta redundante')
+            return
+          }
+
+          if (existingPc) {
+            try { existingPc.close() } catch {}
           }
           compoundStreamsRef.current[slotIndex] = null
 
@@ -146,25 +151,12 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
             const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended')
             if (liveTracks.length === 0) return
 
-            let stream = compoundStreamsRef.current[slotIndex]
-            if (!stream) {
-              stream = new MediaStream(liveTracks)
-              compoundStreamsRef.current[slotIndex] = stream
-            } else {
-              // Sincronizar tracks en el stream existente sin reemplazar el objeto MediaStream
-              const currentTracks = stream.getTracks()
-              const liveTrackIds = new Set(liveTracks.map(t => t.id))
-              currentTracks.forEach(t => {
-                if (!liveTrackIds.has(t.id)) {
-                  try { stream.removeTrack(t) } catch {}
-                }
-              })
-              liveTracks.forEach(t => {
-                if (!currentTracks.some(ct => ct.id === t.id)) {
-                  try { stream.addTrack(t) } catch {}
-                }
-              })
-            }
+            // Crear siempre una instancia MediaStream nueva y limpia
+            // Esto garantiza que el elemento <video> en Studio, Compositor y Thumbnails
+            // decodifique inmediatamente a 30 FPS en vivo sin quedarse congelado ni requerir movimiento
+            const stream = new MediaStream(liveTracks)
+            compoundStreamsRef.current[slotIndex] = stream
+
             setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
             if (onStreamConnected) {
               onStreamConnected(slotIndex, stream, callerLabel)

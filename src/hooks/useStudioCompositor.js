@@ -197,7 +197,13 @@ export function useStudioCompositor({
       if (videos[i].srcObject !== stream) {
         videos[i].srcObject = stream
       }
-      videos[i].play().catch(() => {})
+      const tryPlay = () => { videos[i].play().catch(() => {}) }
+      tryPlay()
+      videos[i].addEventListener('canplay', tryPlay)
+      videos[i].addEventListener('loadedmetadata', tryPlay)
+      try {
+        stream.getVideoTracks().forEach(t => t.addEventListener('unmute', tryPlay))
+      } catch {}
       keepAliveRef.current.push(bindVideoKeepAlive(videos[i]))
     })
 

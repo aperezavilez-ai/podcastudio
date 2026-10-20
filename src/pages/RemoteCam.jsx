@@ -294,8 +294,9 @@ export default function RemoteCam() {
 
       if (payload.type === 'studio-ready') {
         // El estudio está listo para recibir nuestro feed
-        offerSentRef.current = false
-        await sendOffer()
+        if (!offerSentRef.current && pc.signalingState === 'stable') {
+          await sendOffer()
+        }
         return
       }
 
@@ -306,6 +307,7 @@ export default function RemoteCam() {
           }
           setStatus('connected')
           if (handshakeTimerRef.current) {
+            clearTimeout(handshakeTimerRef.current)
             clearInterval(handshakeTimerRef.current)
             handshakeTimerRef.current = null
           }
@@ -360,23 +362,19 @@ export default function RemoteCam() {
 
         // Enviar la oferta inicial tras breve espera
         setTimeout(() => {
-          if (!offerSentRef.current) {
+          if (!offerSentRef.current && pc.signalingState === 'stable') {
             sendOffer()
           }
-        }, 400)
+        }, 300)
 
-        // Bucle de saludo hasta confirmar conexión WebRTC establecida
-        if (handshakeTimerRef.current) clearInterval(handshakeTimerRef.current)
-        handshakeTimerRef.current = setInterval(() => {
-          if (pcRef.current?.connectionState === 'connected' || pcRef.current?.iceConnectionState === 'connected') {
-            if (handshakeTimerRef.current) {
-              clearInterval(handshakeTimerRef.current)
-              handshakeTimerRef.current = null
-            }
-            return
+        // Respaldo único tras 7s si por congestión de red no se ha conectado
+        if (handshakeTimerRef.current) clearTimeout(handshakeTimerRef.current)
+        handshakeTimerRef.current = setTimeout(() => {
+          if (pcRef.current && pcRef.current.connectionState !== 'connected' && pcRef.current.iceConnectionState !== 'connected') {
+            console.log('[RemoteCam] Verificando enlace con estudio tras espera inicial...')
+            notifyStudio()
           }
-          notifyStudio()
-        }, 2000)
+        }, 7000)
       } else if (subStatus === 'CHANNEL_ERROR' || subStatus === 'TIMED_OUT') {
         console.warn('[RemoteCam] Error en canal de señalización:', subStatus)
         setErrorMsg('Error en el canal de comunicación con el estudio. Recarga la página para reintentar.')
@@ -404,7 +402,7 @@ export default function RemoteCam() {
             facingMode: { ideal: targetFacing },
             width: { ideal: 1920, max: 1920 },
             height: { ideal: 1080, max: 1080 },
-            frameRate: { ideal: 30, max: 60 },
+            frameRate: { ideal: 30, min: 24, max: 30 },
           },
           audio: audioConstraints,
         })
@@ -415,7 +413,7 @@ export default function RemoteCam() {
               facingMode: { ideal: targetFacing },
               width: { ideal: 1280, max: 1920 },
               height: { ideal: 720, max: 1080 },
-              frameRate: { ideal: 30, max: 30 },
+              frameRate: { ideal: 30, min: 20, max: 30 },
             },
             audio: true,
           })
