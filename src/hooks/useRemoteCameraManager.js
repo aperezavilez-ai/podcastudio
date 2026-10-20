@@ -143,15 +143,37 @@ export function useRemoteCameraManager({ onStreamConnected, onStreamDisconnected
           activeTracksRef.current[slotIndex] = trackMap
 
           // Función para emitir el stream consolidado con todos los tracks recibidos (video y audio)
+          // Usa UN SOLO MediaStream persistente por slot. Agregar/quitar tracks no reinicia el decodificador.
           const dispatchStreamUpdate = () => {
             const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended')
             if (liveTracks.length === 0) return
 
-            // Crear siempre una instancia MediaStream nueva y limpia
-            // Esto garantiza que el elemento <video> en Studio, Compositor y Thumbnails
-            // decodifique inmediatamente a 30 FPS en vivo sin quedarse congelado ni requerir movimiento
-            const stream = new MediaStream(liveTracks)
-            compoundStreamsRef.current[slotIndex] = stream
+            let stream = compoundStreamsRef.current[slotIndex]
+            if (!stream) {
+              stream = new MediaStream()
+              compoundStreamsRef.current[slotIndex] = stream
+            }
+
+            // Sincronizar tracks sin recrear el MediaStream
+            const currentIds = new Set(stream.getTracks().map(t => t.id))
+            const desiredIds = new Set(liveTracks.map(t => t.id))
+
+            // Quitar tracks que ya no están
+            stream.getTracks().forEach(t => {
+              if (!desiredIds.has(t.id)) {
+                try { stream.removeTrack(t) } catch {}
+              }
+            })
+
+            // Agregar tracks nuevos
+            liveTracks.forEach(t => {
+              if (!currentIds.has(t.id)) {
+                try {
+                  if (t.kind === 'video') t.contentHint = 'motion'
+                  stream.addTrack(t)
+                } catch {}
+              }
+            })
 
             setRemoteStatus(prev => ({ ...prev, [slotIndex]: 'connected' }))
             if (onStreamConnected) {

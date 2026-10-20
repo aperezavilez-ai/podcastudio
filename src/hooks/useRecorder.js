@@ -194,9 +194,11 @@ export function useRecorder() {
   const stopRecording = useCallback((onComplete) => {
     if (typeof onComplete === 'function') onCompleteRef.current = onComplete
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try { mediaRecorderRef.current.requestData() } catch {}
       mediaRecorderRef.current.stop()
     }
     if (voiceRecorderRef.current && voiceRecorderRef.current.state !== 'inactive') {
+      try { voiceRecorderRef.current.requestData() } catch {}
       voiceRecorderRef.current.stop()
     }
     clearInterval(timerRef.current)

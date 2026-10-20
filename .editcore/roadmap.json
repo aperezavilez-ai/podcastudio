@@ -14,14 +14,14 @@
       "branch": "main",
       "remoteUrl": null,
       "hasLocalGit": false,
-      "lastPush": "2026-10-20T19:01:08.689Z"
+      "lastPush": "2026-10-20T19:48:36.428Z"
     },
     "vercel": {
       "projectId": null,
       "projectName": null,
       "liveUrl": "https://www.podcastudio.mx",
       "linked": true,
-      "lastDeploy": "2026-10-20T19:01:08.746Z"
+      "lastDeploy": "2026-10-20T19:48:36.457Z"
     },
     "supabase": {
       "url": null,
@@ -65,6 +65,18 @@
     },
     {
       "date": "2026-10-20T19:01:08.746Z",
+      "action": "deployed",
+      "details": "Vercel deploy: https://www.podcastudio.mx",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-20T19:48:36.429Z",
+      "action": "modified",
+      "details": "git push main (312018c): release: v1.0.2 - Motor broadcast 60 FPS y ejecutable v1.0.2",
+      "by": "editcore"
+    },
+    {
+      "date": "2026-10-20T19:48:36.457Z",
       "action": "deployed",
       "details": "Vercel deploy: https://www.podcastudio.mx",
       "by": "editcore"

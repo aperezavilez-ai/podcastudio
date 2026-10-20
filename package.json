@@ -1,7 +1,7 @@
 {
   "name": "podcastudio",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "PODCASTUDIO - Estudio Profesional de Podcast y Streaming",
   "author": "PodcastStudio",
   "type": "module",

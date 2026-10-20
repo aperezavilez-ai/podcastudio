@@ -179,59 +179,81 @@ export default function MultiFormatExportModal({
     cancelRef.current = false
     const { finalizeUniversalMp4 } = await import('../utils/exportVideo.js')
     const total = presetsToExport.length
-    for (let i = 0; i < total; i++) {
-      if (cancelRef.current) break
-      const preset = presetsToExport[i]
-      setPackProgress({ current: i + 1, total, label: `${preset.label} (${preset.key})...` })
-      setProgress(0)
+    setPackProgress({ current: 0, total, label: `Generando ${total} formatos en paralelo...` })
+    setProgress(0)
 
-      try {
-        let outputBlob = null
-        try {
-          outputBlob = await finalizeUniversalMp4(recording.blob, {
-            format: preset.baseFormat || preset.key,
-            mode: cropMode,
-            onProgress: (pct) => setProgress(pct),
-          })
-        } catch (ffmpegErr) {
-          console.warn('FFmpeg pack export fallback to canvas:', ffmpegErr)
-          if (preset.baseFormat === '16:9' || preset.key === '16:9') {
-            outputBlob = recording.blob
-            if (outputBlob && !outputBlob.type?.includes('mp4')) {
-              const durMs = Math.max(1000, Math.round((recording.duration || 1) * 1000))
-              try {
-                outputBlob = await fixWebmDuration(outputBlob, durMs)
-              } catch {}
-            }
-          } else {
-            outputBlob = await convertVideoToFormat(recording.blob, preset.key, {
-              mode: cropMode,
-              duration: recording.duration,
-              onProgress: (pct) => setProgress(pct),
-            })
-          }
-        }
+    const progressMap = {}
+    presetsToExport.forEach(p => { progressMap[p.key] = 0 })
 
-        if (cancelRef.current) break
-
-        if (outputBlob) {
-          const actualExt = (outputBlob.type && outputBlob.type.includes('mp4')) ? 'mp4' : 'webm'
-          const fn = buildFormatFilename(recording.name, preset.key, actualExt)
-          const u = URL.createObjectURL(outputBlob)
-          const a = document.createElement('a')
-          a.href = u
-          a.download = fn
-          a.click()
-          URL.revokeObjectURL(u)
-        }
-        await new Promise(r => setTimeout(r, 400))
-      } catch (err) {
-        console.error(`Error procesando ${preset.label}:`, err)
-      }
+    const updateCombinedProgress = (key, pct) => {
+      progressMap[key] = pct
+      const sum = Object.values(progressMap).reduce((a, b) => a + b, 0)
+      const avg = Math.round(sum / total)
+      setProgress(avg)
     }
 
-    setPackProgress(null)
-    setProgress(0)
+    try {
+      const results = await Promise.all(
+        presetsToExport.map(async (preset, idx) => {
+          if (cancelRef.current) return null
+          try {
+            let outputBlob = null
+            try {
+              outputBlob = await finalizeUniversalMp4(recording.blob, {
+                format: preset.baseFormat || preset.key,
+                mode: cropMode,
+                onProgress: (pct) => updateCombinedProgress(preset.key, pct),
+              })
+            } catch (ffmpegErr) {
+              console.warn('FFmpeg pack export fallback to canvas:', ffmpegErr)
+              if (preset.baseFormat === '16:9' || preset.key === '16:9') {
+                outputBlob = recording.blob
+                if (outputBlob && !outputBlob.type?.includes('mp4')) {
+                  const durMs = Math.max(1000, Math.round((recording.duration || 1) * 1000))
+                  try {
+                    outputBlob = await fixWebmDuration(outputBlob, durMs)
+                  } catch {}
+                }
+              } else {
+                outputBlob = await convertVideoToFormat(recording.blob, preset.key, {
+                  mode: cropMode,
+                  duration: recording.duration,
+                  onProgress: (pct) => updateCombinedProgress(preset.key, pct),
+                })
+              }
+            }
+
+            if (cancelRef.current || !outputBlob) return null
+
+            const actualExt = (outputBlob.type && outputBlob.type.includes('mp4')) ? 'mp4' : 'webm'
+            const fn = buildFormatFilename(recording.name, preset.key, actualExt)
+            return { blob: outputBlob, filename: fn, preset, idx }
+          } catch (err) {
+            console.error(`Error procesando ${preset.label}:`, err)
+            return null
+          }
+        })
+      )
+
+      if (!cancelRef.current) {
+        const validResults = results.filter(Boolean)
+        validResults.forEach((res, downloadIdx) => {
+          setTimeout(() => {
+            const u = URL.createObjectURL(res.blob)
+            const a = document.createElement('a')
+            a.href = u
+            a.download = res.filename
+            a.click()
+            setTimeout(() => URL.revokeObjectURL(u), 3000)
+          }, downloadIdx * 350)
+        })
+      }
+    } catch (err) {
+      console.error('Error en exportación paralela:', err)
+    } finally {
+      setPackProgress(null)
+      setProgress(0)
+    }
   }
 
   const isBusy = convertingKey !== null || packProgress !== null

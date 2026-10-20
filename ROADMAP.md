@@ -5,9 +5,9 @@ PROHIBIDO reexplorar el repo entero si este documento cubre la tarea. Solo read_
 EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar codigo largo.
 
 ## Proceso
-- Versión: **v1.0.2**
+- Versión: **v1.0.3**
 - Fase: **producción**
-- Estado: **Motor de Video Broadcast 60 FPS + Escenarios 3D + Release v1.0.2**
+- Estado: **Release v1.0.3 - Video Remoto Continuo, Bitrate Adaptativo, Grabación Completa y Export Paralelo**
 - Actualizado: 2026-10-20
 - Stack: React 19 + Vite 8 + Three.js + WebGL 2.0 + Supabase + Mercado Pago + Electron
 - Entry: index.html → src/main.jsx → src/App.jsx
@@ -15,6 +15,14 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - Deploy: Vercel (https://www.podcastudio.mx)
 
 ## 🎯 Última Tarea Completada
+**Release v1.0.3: Video Remoto Continuo, Bitrate Adaptativo, Grabación Completa y Export Paralelo**
+- ✅ **Video remoto continuo**: MediaStream persistente por slot (`addTrack`/`removeTrack`) en `src/hooks/useRemoteCameraManager.js`, eliminando congelamientos o reinicios de decodificador.
+- ✅ **Bitrate adaptativo en cámara remota**: Supervisión continua cada ~2s de RTT y `qualityLimitationReason` en `src/pages/RemoteCam.jsx` con asignación explícita de `contentHint = 'motion'`.
+- ✅ **Grabación completa hasta el final**: Invocación garantizada de `requestData()` previa a `stop()` en `src/hooks/useRecorder.js` para asegurar cero pérdida del último chunk de audio y video.
+- ✅ **Exportación de 4 formatos en paralelo**: `handleDownloadFullPack` migrado a `Promise.all` con tracking individual y global en `src/components/MultiFormatExportModal.jsx`.
+- ✅ Deploy en producción activo: https://www.podcastudio.mx
+- ✅ Ejecutable oficial de escritorio: PODCASTUDIO-v1.0.3.exe / PODCASTUDIO Setup 1.0.3.exe
+
 **Release v1.0.2: Motor de Video Broadcast 60 FPS y Calidad Facebook/TikTok/YouTube/Instagram**
 - ✅ Eliminación del throttle artificial `if (elapsed < FRAME_TIME - 1)` en compositor RAF que causaba 10.41 FPS.
 - ✅ Elevación de todo el pipeline a 60 FPS fluidos con `canvas.captureStream(60)` y `track.contentHint = 'motion'`.

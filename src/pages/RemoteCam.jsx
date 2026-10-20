@@ -228,10 +228,49 @@ export default function RemoteCam() {
       console.log('[RemoteCam] Connection state:', s)
       if (s === 'connected') {
         setStatus('connected')
+        // Iniciar adaptación de red simple
+        if (!window.__remoteAdaptInterval) {
+          window.__remoteAdaptInterval = setInterval(async () => {
+            if (!videoSenderRef.current || !pc || pc.connectionState !== 'connected') return
+            try {
+              const stats = await pc.getStats()
+              let rtt = 0
+              let limited = false
+              stats.forEach(report => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                  rtt = report.currentRoundTripTime || 0
+                }
+                if (report.type === 'outbound-rtp' && report.kind === 'video') {
+                  if (report.qualityLimitationReason === 'bandwidth' || report.qualityLimitationReason === 'cpu') {
+                    limited = true
+                  }
+                }
+              })
+              const params = videoSenderRef.current.getParameters() || {}
+              if (!params.encodings || !params.encodings[0]) return
+              const current = params.encodings[0].maxBitrate || 8000000
+              let next = current
+              if (limited || rtt > 0.3) {
+                next = Math.max(1500000, Math.floor(current * 0.7))
+              } else if (rtt < 0.15 && current < 8000000) {
+                next = Math.min(8000000, Math.floor(current * 1.2))
+              }
+              if (next !== current) {
+                params.encodings[0].maxBitrate = next
+                params.encodings[0].minBitrate = Math.floor(next * 0.3)
+                await videoSenderRef.current.setParameters(params).catch(() => {})
+              }
+            } catch {}
+          }, 2000)
+        }
       } else if (s === 'disconnected' || s === 'failed') {
         setStatus('connecting')
       } else if (s === 'closed') {
         setStatus('idle')
+        if (window.__remoteAdaptInterval) {
+          clearInterval(window.__remoteAdaptInterval)
+          window.__remoteAdaptInterval = null
+        }
       }
     }
 
@@ -510,6 +549,7 @@ export default function RemoteCam() {
       }
 
       const newTrack = newStream.getVideoTracks()[0]
+      try { if (newTrack) newTrack.contentHint = 'motion' } catch {}
       const oldTrack = streamRef.current?.getVideoTracks?.()?.[0]
 
       // Encontrar el sender de video en la conexión WebRTC
