@@ -648,6 +648,10 @@ ipcMain.handle('start-streaming', async (event, payload) => {
       return resolve({ success: false, error: "No se proporcionaron destinos válidos con clave de transmisión." });
     }
 
+    if (payload && payload.initialHeader && Array.isArray(payload.initialHeader)) {
+      streamInitHeader = Buffer.from(payload.initialHeader);
+    }
+
     // Detener cualquier worker anterior
     for (const worker of activeStreamWorkers) {
       try {
@@ -689,6 +693,7 @@ ipcMain.handle('start-streaming', async (event, payload) => {
         '-flvflags', 'no_duration_filesize',
         '-rtmp_buffer', '100',
         '-rtmp_live', 'live',
+        ...(destUrl.startsWith('rtmps://') ? ['-tls_verify', '0'] : []),
         '-f', 'flv',
         destUrl
       ];
@@ -706,8 +711,16 @@ ipcMain.handle('start-streaming', async (event, payload) => {
           connected: false
         };
 
+        // Si ya disponemos de la cabecera EBML inicial del Master, inyectarla al inicio de la tubería
+        if (streamInitHeader && proc.stdin && !proc.stdin.destroyed) {
+          try {
+            proc.stdin.write(streamInitHeader);
+          } catch (e) {}
+        }
+
         proc.stderr.on('data', (data) => {
           const msg = data.toString();
+          console.log(`[FFmpeg Stream ${target.name}]:`, msg);
           if (!workerEntry.connected && (msg.includes('Output #0') || msg.includes('Stream #0') || msg.includes('frame='))) {
             workerEntry.connected = true;
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -724,7 +737,8 @@ ipcMain.handle('start-streaming', async (event, payload) => {
           errors.push(`${target.name}: ${err.message}`);
         });
 
-        proc.on('close', () => {
+        proc.on('close', (code) => {
+          console.log(`Worker stream (${target.name}) cerrado con código: ${code}`);
           activeStreamWorkers = activeStreamWorkers.filter(w => w !== workerEntry);
           if (activeStreamWorkers.length === 0 && mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('stream-status', {
@@ -755,11 +769,17 @@ ipcMain.handle('start-streaming', async (event, payload) => {
   });
 });
 
+let streamInitHeader = null;
+
 // Receptor de chunks de audio/video del Master en vivo
 ipcMain.on('stream-chunk', (event, chunkBuffer) => {
-  if (activeStreamWorkers.length === 0) return;
+  if (!chunkBuffer) return;
   try {
     const buf = Buffer.isBuffer(chunkBuffer) ? chunkBuffer : Buffer.from(chunkBuffer);
+    if (!streamInitHeader) {
+      streamInitHeader = buf;
+    }
+    if (activeStreamWorkers.length === 0) return;
     for (const worker of activeStreamWorkers) {
       if (worker.process && worker.process.stdin && !worker.process.stdin.destroyed) {
         try {
@@ -772,6 +792,7 @@ ipcMain.on('stream-chunk', (event, chunkBuffer) => {
 
 ipcMain.handle('stop-streaming', async () => {
   return new Promise((resolve) => {
+    streamInitHeader = null;
     for (const worker of activeStreamWorkers) {
       try {
         if (worker.process && worker.process.stdin && !worker.process.stdin.destroyed) {
@@ -785,6 +806,13 @@ ipcMain.handle('stop-streaming', async () => {
       } catch (e) {}
     }
     activeStreamWorkers = [];
+    streamDestinations = [];
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('stream-status', {
+        active: false,
+        destinations: []
+      });
+    }
     resolve({ success: true });
   });
 });

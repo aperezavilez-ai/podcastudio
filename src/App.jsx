@@ -31,7 +31,7 @@ import MusicBank from './components/MusicBank.jsx';
 import { MUSIC_TRACKS, MUSIC_SFX, MUSIC_GENRES, SFX_CATEGORIES } from './config/musicTracks.js';
 import { useBackgroundMusic } from './hooks/useBackgroundMusic.js';
 import { useSoundEffect } from './hooks/useSoundEffect.js';
-import { startBroadcastEngine, updateBroadcastState, stopBroadcastEngine } from './utils/masterBroadcastEngine.js';
+import { startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, getInitHeader } from './utils/masterBroadcastEngine.js';
 import { createStreamTransport } from './utils/streamTransport.js';
 
 class ErrorBoundary extends Component {
@@ -49,7 +49,9 @@ const VideoTile = React.forwardRef(({ stream, isLocal, label, className, onClick
 
   useEffect(() => {
     if (videoRef.current && stream) {
-      videoRef.current.srcObject = stream;
+      if (videoRef.current.srcObject !== stream) {
+        videoRef.current.srcObject = stream;
+      }
       videoRef.current.play().catch(e => console.log("Play error:", e));
     }
   }, [stream, videoRef]);
@@ -58,7 +60,7 @@ const VideoTile = React.forwardRef(({ stream, isLocal, label, className, onClick
     <div className={`relative overflow-hidden bg-[#050505] flex items-center justify-center ${className} ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
       {chromaKey && bgImage && <img src={bgImage} className="absolute inset-0 w-full h-full object-cover z-0" alt="Virtual BG" />}
       {stream ? (
-        <video ref={videoRef} autoPlay playsInline muted={isLocal} className={`w-full h-full object-cover transition-all duration-300 ${chromaKey ? 'relative z-10 mix-blend-screen' : ''}`} style={{...style, filter: chromaKey ? `${style?.filter || ''} contrast(1.5) brightness(1.1)` : style?.filter }} />
+        <video ref={videoRef} autoPlay playsInline muted={isLocal} className={`w-full h-full object-cover ${chromaKey ? 'relative z-10 mix-blend-screen' : ''}`} style={{...style, filter: chromaKey ? `${style?.filter || ''} contrast(1.5) brightness(1.1)` : style?.filter }} />
       ) : (
         <div className="flex flex-col items-center justify-center text-gray-500 w-full h-full bg-[#111] z-10">
           <Camera size={24} className="mb-2 opacity-50" />
@@ -142,9 +144,9 @@ function PodcastStudioApp() {
     }
     return {
       facebook: { server: 'rtmps://live-api-s.facebook.com:443/rtmp/', key: '', enabled: true },
-      youtube: { server: 'rtmp://a.rtmp.youtube.com/live2/', key: '', enabled: true },
-      tiktok: { server: 'rtmp://live.tiktok.com/live/', key: '', enabled: true },
-      custom: { server: 'rtmp://live.twitch.tv/app/', key: '', enabled: true }
+      youtube: { server: 'rtmp://a.rtmp.youtube.com/live2/', key: '', enabled: false },
+      tiktok: { server: 'rtmp://live.tiktok.com/live/', key: '', enabled: false },
+      custom: { server: 'rtmp://live.twitch.tv/app/', key: '', enabled: false }
     };
   });
   useEffect(() => { localStorage.setItem('podcastStudio_streamConfigs', JSON.stringify(streamConfigs)); }, [streamConfigs]);
@@ -834,31 +836,37 @@ function PodcastStudioApp() {
         return alert('Para emitir en vivo, debes habilitar al menos un destino (Facebook, YouTube, TikTok o RTMP) y escribir su Clave de Transmisión (Stream Key).');
       }
 
+      // 1. Asegurar que el compositor broadcast esté activo y generando el Master con 0 retraso
+      startBroadcastEngine({
+        activeCam,
+        camSlots,
+        layoutMode,
+        chromaKeyActive,
+        virtualBg,
+        logoBase64,
+        cintillosVisible,
+        cintillo,
+        topic,
+        getCamStream,
+        localStream,
+        remoteCams,
+        camStreamsMap,
+        camMuted,
+      }, handleMasterChunk);
+
+      const initHeader = getInitHeader();
+
       if (window.api) {
-        const res = await window.api.startStreaming({ destinations: activeTargets });
+        const res = await window.api.startStreaming({
+          destinations: activeTargets,
+          initialHeader: initHeader ? Array.from(new Uint8Array(initHeader)) : null
+        });
+
         if (res.success) {
           isStreamingRef.current = true;
           setIsStreaming(true);
           setActiveLiveDestinations(activeTargets);
           setShowStreamModal(false);
-
-          // Iniciar compositor broadcast enviando el keyframe SPS/PPS de inmediato a Facebook
-          startBroadcastEngine({
-            activeCam,
-            camSlots,
-            layoutMode,
-            chromaKeyActive,
-            virtualBg,
-            logoBase64,
-            cintillosVisible,
-            cintillo,
-            topic,
-            getCamStream,
-            localStream,
-            remoteCams,
-            camStreamsMap,
-            camMuted,
-          }, handleMasterChunk);
         } else {
           isStreamingRef.current = false;
           if (!isRecordingRef.current) stopBroadcastEngine();
@@ -869,22 +877,6 @@ function PodcastStudioApp() {
         setIsStreaming(true);
         setActiveLiveDestinations(activeTargets);
         setShowStreamModal(false);
-        startBroadcastEngine({
-          activeCam,
-          camSlots,
-          layoutMode,
-          chromaKeyActive,
-          virtualBg,
-          logoBase64,
-          cintillosVisible,
-          cintillo,
-          topic,
-          getCamStream,
-          localStream,
-          remoteCams,
-          camStreamsMap,
-          camMuted,
-        }, handleMasterChunk);
       }
     } else {
       isStreamingRef.current = false;
@@ -1045,8 +1037,43 @@ function PodcastStudioApp() {
   const renderMonitorLayout = () => {
     const getTileProps = (id) => ({ stream: getCamStream(id), isLocal: id === 1, style: getVideoStyle(id), chromaKey: chromaKeyActive, bgImage: virtualBg });
     switch (layoutMode) {
-      case '1': return <VideoTile {...getTileProps(activeCam)} className="w-full h-full" />;
-      case 'pip': return (<div className="w-full h-full relative"><VideoTile {...getTileProps(activeCam)} className="w-full h-full" /><div className="absolute top-4 right-4 w-1/4 h-1/4 border-2 border-orange-500 rounded-lg z-20 overflow-hidden"><VideoTile {...getTileProps(camSlots[0])} className="w-full h-full" /></div></div>);
+      case '1':
+        return (
+          <div className="w-full h-full relative overflow-hidden bg-[#050505]">
+            {camSlots.map((id) => (
+              <div
+                key={id}
+                className="absolute inset-0 w-full h-full"
+                style={{
+                  display: activeCam === id ? 'block' : 'none',
+                  zIndex: activeCam === id ? 10 : 0,
+                }}
+              >
+                <VideoTile {...getTileProps(id)} className="w-full h-full" />
+              </div>
+            ))}
+          </div>
+        );
+      case 'pip':
+        return (
+          <div className="w-full h-full relative overflow-hidden bg-[#050505]">
+            {camSlots.map((id) => (
+              <div
+                key={id}
+                className="absolute inset-0 w-full h-full"
+                style={{
+                  display: activeCam === id ? 'block' : 'none',
+                  zIndex: activeCam === id ? 5 : 0,
+                }}
+              >
+                <VideoTile {...getTileProps(id)} className="w-full h-full" />
+              </div>
+            ))}
+            <div className="absolute top-4 right-4 w-1/4 h-1/4 border-2 border-orange-500 rounded-lg z-20 overflow-hidden shadow-2xl">
+              <VideoTile {...getTileProps(camSlots[0])} className="w-full h-full" />
+            </div>
+          </div>
+        );
       case '2': return (<div className="w-full h-full flex gap-2"><div className="w-1/2 h-full"><VideoTile {...getTileProps(camSlots[0])} className="w-full h-full" /></div><div className="w-1/2 h-full"><VideoTile {...getTileProps(camSlots[1])} className="w-full h-full" /></div></div>);
       case '3': return (<div className="w-full h-full flex gap-2"><div className="w-1/2 h-full"><VideoTile {...getTileProps(camSlots[0])} className="w-full h-full" /></div><div className="w-1/2 h-full flex flex-col gap-2"><div className="h-1/2"><VideoTile {...getTileProps(camSlots[1])} className="w-full h-full" /></div><div className="h-1/2"><VideoTile {...getTileProps(camSlots[2])} className="w-full h-full" /></div></div></div>);
       case '4': return (<div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-2">{camSlots.slice(0, 4).map(id => <div key={id}><VideoTile {...getTileProps(id)} className="w-full h-full" /></div>)}</div>);
@@ -1145,25 +1172,40 @@ function PodcastStudioApp() {
                </button>
              )}
 
-             {/* BOTÓN DE TRANSMISIÓN EN VIVO A LA DERECHA CON TIEMPO */}
-             <button
-               onClick={() => setShowStreamModal(true)}
-               className={`px-4 py-1.5 rounded font-bold text-xs flex items-center gap-2 cursor-pointer transition-all ${
-                 isStreaming 
-                   ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-900/50 animate-pulse border border-red-500' 
-                   : 'bg-red-700 hover:bg-red-600 text-white'
-               }`}
-             >
-               <Wifi size={14}/>
-               {isStreaming ? (
-                 <>
-                   <span>EN VIVO ({activeLiveDestinations.length})</span>
-                   <span className="font-mono bg-black/40 px-1.5 py-0.5 rounded text-[11px]">{formatTime(streamDuration)}</span>
-                 </>
-               ) : (
+             {/* INDICADOR EN VIVO / AL AIRE VERDE CON BOTÓN CIRCULAR TITILANDO */}
+             {isStreaming && (
+               <div className="flex items-center gap-2 bg-emerald-950/80 border border-emerald-500/80 text-emerald-300 px-3 py-1 rounded-full text-xs font-black shadow-[0_0_15px_rgba(16,185,129,0.4)] select-none">
+                 <span className="relative flex h-2.5 w-2.5">
+                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-[0_0_8px_#10b981]"></span>
+                 </span>
+                 <span className="tracking-wider">AL AIRE · EN VIVO</span>
+                 <span className="font-mono bg-black/60 text-emerald-300 px-1.5 py-0.5 rounded text-[11px] border border-emerald-500/40">
+                   {formatTime(streamDuration)}
+                 </span>
+               </div>
+             )}
+
+             {/* BOTÓN DE TRANSMISIÓN EN VIVO A LA DERECHA */}
+             {isStreaming ? (
+               <button
+                 onClick={handleStream}
+                 className="px-3.5 py-1.5 rounded font-bold text-xs flex items-center gap-2 cursor-pointer bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-900/50 animate-pulse border border-red-500 transition-all"
+                 title="Clic para Detener transmisión en vivo de inmediato"
+               >
+                 <Square size={13} className="fill-white" />
+                 <span>DETENER EN VIVO</span>
+               </button>
+             ) : (
+               <button
+                 onClick={() => setShowStreamModal(true)}
+                 className="px-4 py-1.5 rounded font-bold text-xs flex items-center gap-2 cursor-pointer bg-red-700 hover:bg-red-600 text-white shadow-md transition-all"
+                 title="Configurar y comenzar transmisión en vivo a Facebook, YouTube, TikTok"
+               >
+                 <Wifi size={14} />
                  <span>TRANSMITIR EN VIVO</span>
-               )}
-             </button>
+               </button>
+             )}
              {!isRightPanelOpen && <button onClick={() => setIsRightPanelOpen(true)} className="ml-2 p-1.5 bg-[#222] rounded text-gray-400 hover:text-white cursor-pointer"><PanelRight size={16} /></button>}
           </div>
         </div>

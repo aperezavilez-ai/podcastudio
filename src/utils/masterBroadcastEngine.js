@@ -371,10 +371,36 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
   }
 }
 
+let chunkListeners = new Set();
+let cachedInitHeader = null;
+
+export function addChunkListener(listener) {
+  if (typeof listener === 'function') {
+    chunkListeners.add(listener);
+    if (cachedInitHeader) {
+      try {
+        listener(cachedInitHeader.slice(0));
+      } catch (e) {}
+    }
+  }
+}
+
+export function removeChunkListener(listener) {
+  chunkListeners.delete(listener);
+}
+
+export function getInitHeader() {
+  return cachedInitHeader ? cachedInitHeader.slice(0) : null;
+}
+
 /**
  * Inicia la composición en tiempo real del Master y la generación de paquetes WebM/H.264
  */
 export function startBroadcastEngine(initialState, onChunk) {
+  if (onChunk) {
+    addChunkListener(onChunk);
+  }
+
   if (isRunning) {
     updateBroadcastState(initialState);
     return masterStream;
@@ -428,10 +454,17 @@ export function startBroadcastEngine(initialState, onChunk) {
     });
 
     mediaRecorder.ondataavailable = async (e) => {
-      if (e.data && e.data.size > 0 && onChunk) {
+      if (e.data && e.data.size > 0) {
         try {
           const buffer = await e.data.arrayBuffer();
-          onChunk(buffer);
+          if (!cachedInitHeader) {
+            cachedInitHeader = buffer.slice(0);
+          }
+          chunkListeners.forEach((listener) => {
+            try {
+              listener(buffer);
+            } catch (err) {}
+          });
         } catch (err) {
           console.warn('Error procesando chunk de broadcast:', err);
         }
@@ -492,4 +525,6 @@ export function stopBroadcastEngine() {
     v.srcObject = null;
   });
   videoElements.clear();
+  chunkListeners.clear();
+  cachedInitHeader = null;
 }
