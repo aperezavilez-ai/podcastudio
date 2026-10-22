@@ -1102,20 +1102,6 @@ function PodcastStudioApp() {
             </div>
           </div>
           <div className="flex items-center gap-3 text-xs" style={{ WebkitAppRegion: 'no-drag' }}>
-            {isRecording && (
-              <div className="flex items-center gap-2 bg-red-600 text-white px-3 py-1 rounded shadow-lg animate-pulse mr-2">
-                <div className="w-2 h-2 bg-white rounded-full"></div>
-                <span className="font-bold">REC MASTER</span>
-                <span className="font-mono">{formatTime(recordingTime)}</span>
-              </div>
-            )}
-            {isStreaming && (
-              <div className="flex items-center gap-2 bg-red-600 text-white px-3 py-1 rounded shadow-lg mr-2 font-bold animate-pulse">
-                <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
-                <span>EN VIVO ({activeLiveDestinations.length} RED{activeLiveDestinations.length > 1 ? 'ES' : ''})</span>
-                <span className="font-mono bg-black/40 px-1.5 py-0.5 rounded text-[11px]">{formatTime(streamDuration)}</span>
-              </div>
-            )}
             {music.playing && (
               <div className="flex items-center gap-1.5 bg-orange-950/40 border border-orange-500/40 text-orange-400 px-2 py-0.5 rounded text-[11px] animate-pulse">
                 <Music size={12} /> <span className="font-semibold">{music.currentTrack?.name}</span>
@@ -1146,8 +1132,39 @@ function PodcastStudioApp() {
             </button>
           </div>
           <div className="flex gap-2 items-center pr-32" style={{ WebkitAppRegion: 'no-drag' }}>
-             <button onClick={() => setShowStreamModal(true)} className={`px-4 py-1.5 rounded font-bold text-xs flex items-center gap-2 ${isStreaming ? 'bg-red-800 hover:bg-red-700 text-white shadow-lg shadow-red-900/50' : 'bg-red-700 hover:bg-red-600 text-white'}`}><Wifi size={14}/> {isStreaming ? `GESTIONAR EN VIVO (${activeLiveDestinations.length})` : 'TRANSMITIR EN VIVO'}</button>
-             {!isRightPanelOpen && <button onClick={() => setIsRightPanelOpen(true)} className="ml-2 p-1.5 bg-[#222] rounded text-gray-400 hover:text-white"><PanelRight size={16} /></button>}
+             {/* INDICADOR DE GRABACIÓN MASTER A LA DERECHA */}
+             {isRecording && (
+               <button
+                 onClick={handleRecord}
+                 className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded font-bold text-xs shadow-lg shadow-red-900/50 animate-pulse cursor-pointer border border-red-500"
+                 title="Detener grabación en vivo"
+               >
+                 <div className="w-2 h-2 bg-white rounded-full"></div>
+                 <span>REC MASTER</span>
+                 <span className="font-mono bg-black/40 px-1.5 py-0.5 rounded text-[11px]">{formatTime(recordingTime)}</span>
+               </button>
+             )}
+
+             {/* BOTÓN DE TRANSMISIÓN EN VIVO A LA DERECHA CON TIEMPO */}
+             <button
+               onClick={() => setShowStreamModal(true)}
+               className={`px-4 py-1.5 rounded font-bold text-xs flex items-center gap-2 cursor-pointer transition-all ${
+                 isStreaming 
+                   ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-900/50 animate-pulse border border-red-500' 
+                   : 'bg-red-700 hover:bg-red-600 text-white'
+               }`}
+             >
+               <Wifi size={14}/>
+               {isStreaming ? (
+                 <>
+                   <span>EN VIVO ({activeLiveDestinations.length})</span>
+                   <span className="font-mono bg-black/40 px-1.5 py-0.5 rounded text-[11px]">{formatTime(streamDuration)}</span>
+                 </>
+               ) : (
+                 <span>TRANSMITIR EN VIVO</span>
+               )}
+             </button>
+             {!isRightPanelOpen && <button onClick={() => setIsRightPanelOpen(true)} className="ml-2 p-1.5 bg-[#222] rounded text-gray-400 hover:text-white cursor-pointer"><PanelRight size={16} /></button>}
           </div>
         </div>
 
