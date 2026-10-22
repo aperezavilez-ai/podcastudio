@@ -27,10 +27,22 @@
       "has": [{ "type": "host", "value": "podcastudio-three.vercel.app" }],
       "destination": "https://www.podcastudio.mx/:path*",
       "permanent": true
+    },
+    {
+      "source": "/studio",
+      "destination": "/",
+      "permanent": false
+    },
+    {
+      "source": "/studio/:path*",
+      "destination": "/:path*",
+      "permanent": false
     }
   ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/:path*/assets/(.*)", "destination": "/assets/$1" },
     { "source": "/((?!assets/|api/).*)", "destination": "/index.html" }
   ],
   "headers": [

@@ -62,6 +62,12 @@ function createWindow() {
     width: 1500, height: 900, title: "PodcastStudio",
     icon: iconPath,
     autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#0a0a0a',
+      symbolColor: '#ffffff',
+      height: 38
+    },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -369,7 +375,7 @@ function startMediaServer() {
 
 app.whenReady().then(() => { createWindow(); startMediaServer(); });
 
-ipcMain.handle('get-qr-url', () => `https://${LOCAL_IP}:3000/camara`);
+ipcMain.handle('get-qr-url', () => `https://www.podcastudio.mx/remote-cam?slot=2&room=studio_cam_2`);
 
 ipcMain.on('send-answer', (event, { id, answer }) => {
   const client = mobileClients.get(id);

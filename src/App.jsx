@@ -31,6 +31,7 @@ import { MUSIC_TRACKS, MUSIC_SFX, MUSIC_GENRES, SFX_CATEGORIES } from './config/
 import { useBackgroundMusic } from './hooks/useBackgroundMusic.js';
 import { useSoundEffect } from './hooks/useSoundEffect.js';
 import { startBroadcastEngine, updateBroadcastState, stopBroadcastEngine } from './utils/masterBroadcastEngine.js';
+import { createStreamTransport } from './utils/streamTransport.js';
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -528,11 +529,41 @@ function PodcastStudioApp() {
   }, [activeCam, camSlots, layoutMode, chromaKeyActive, virtualBg, logoBase64, cintillosVisible, cintillo, topic, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
-    if (window.api) {
-      window.api.getQrUrl().then(url => {
-        setQrCodeUrl(url);
-        QRCode.toDataURL(url, { width: 250, margin: 2 }).then(img => setQrCodeImage(img));
+    const officialQr = 'https://www.podcastudio.mx/remote-cam?slot=2&room=studio_cam_2';
+    setQrCodeUrl(officialQr);
+    QRCode.toDataURL(officialQr, { width: 250, margin: 2 }).then(img => setQrCodeImage(img)).catch(() => {});
+
+    // Conectar receptor en la nube de cámaras remotas de celular (Supabase WebRTC)
+    let cloudTransport = null;
+    try {
+      cloudTransport = createStreamTransport('p2p');
+      [1, 2, 3].forEach(slotIdx => {
+        const roomCode = `studio_cam_${slotIdx + 1}`;
+        cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
+          console.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
+          setSlotStreams(prev => ({ ...prev, [slotIdx]: stream }));
+          setCameraMeta(prev => ({
+            ...prev,
+            [slotIdx]: { deviceId: `cloud_${slotIdx}`, label: label || `Celular Remoto (CAM ${slotIdx + 1})`, type: 'remote' }
+          }));
+          setMobileStatus(`Celular en vivo conectado en CAM ${slotIdx + 1}`);
+        });
+        cloudTransport.on('streamDisconnected', slotIdx => {
+          console.log(`[Cloud WebRTC] Cámara desconectada en slot ${slotIdx + 1}`);
+          setSlotStreams(prev => {
+            const next = { ...prev };
+            delete next[slotIdx];
+            return next;
+          });
+          setMobileStatus('');
+        });
+        cloudTransport.connectSlot(slotIdx, roomCode);
       });
+    } catch (e) {
+      console.warn('Transporte cloud:', e);
+    }
+
+    if (window.api) {
       window.api.onMobileWsConnected((id) => setMobileStatus(`Celular conectado (${id}).`));
       
       window.api.onRemoteOffer(async ({ id, offer }) => {
@@ -922,6 +953,21 @@ function PodcastStudioApp() {
     setCameraMeta(prev => ({ ...prev, [slot]: { ...prev[slot], label } }));
   };
 
+  const handleDeleteOrDisconnectCam = (camId) => {
+    const slotIdx = camId - 1;
+    const stream = getCamStream(camId);
+    if (stream) {
+      // Si la cámara tiene señal activa, apagarla y desconectarla inmediatamente
+      handleDisconnectSlot(slotIdx);
+    } else if (camId !== 1) {
+      // Si ya está "Sin señal" y es ranura secundaria (CAM 2, 3, 4...), eliminar la ranura
+      removeCam(camId);
+    } else {
+      // Si es CAM 1 y está sin señal, limpiar cualquier residuo
+      handleDisconnectSlot(0);
+    }
+  };
+
   const renderMonitorLayout = () => {
     const getTileProps = (id) => ({ stream: getCamStream(id), isLocal: id === 1, style: getVideoStyle(id), chromaKey: chromaKeyActive, bgImage: virtualBg });
     switch (layoutMode) {
@@ -969,14 +1015,19 @@ function PodcastStudioApp() {
         <div className="flex-1 flex flex-col min-w-0">
         
         {/* TOP BAR */}
-        <div className="flex justify-between items-center bg-[#0a0a0a] px-4 py-2 border-b border-[#222] shrink-0">
-          <div className="flex items-center gap-6">
+        <div 
+          className="flex justify-between items-center bg-[#0a0a0a] px-4 py-2 border-b border-[#222] shrink-0"
+          style={{ WebkitAppRegion: 'drag' }}
+        >
+          <div className="flex items-center gap-6" style={{ WebkitAppRegion: 'no-drag' }}>
             <div className="flex items-center gap-2.5">
-              <img src="/icon.png" alt="PodcastStudio Logo" className="w-6 h-6 rounded-md object-contain shadow-sm" />
-              <h1 className="text-lg font-bold text-orange-500 tracking-tight">Podcast<span className="text-white">Studio</span></h1>
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-md shadow-orange-500/20 border border-orange-400/30 flex-shrink-0">
+                <Mic size={15} className="text-white" />
+              </div>
+              <h1 className="text-base font-extrabold tracking-tight text-white">Podcast<span className="text-orange-500">Studio</span></h1>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-xs">
+          <div className="flex items-center gap-3 text-xs" style={{ WebkitAppRegion: 'no-drag' }}>
             {isRecording && (
               <div className="flex items-center gap-2 bg-red-600 text-white px-3 py-1 rounded shadow-lg animate-pulse mr-2">
                 <div className="w-2 h-2 bg-white rounded-full"></div>
@@ -1000,7 +1051,7 @@ function PodcastStudioApp() {
             <span className="text-gray-400">CALIDAD:</span>
             <span className="text-orange-500 border border-orange-500 rounded px-2 py-0.5 font-bold">1080p · 30fps</span>
           </div>
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-center pr-32" style={{ WebkitAppRegion: 'no-drag' }}>
              <button onClick={() => setShowStreamModal(true)} className={`px-4 py-1.5 rounded font-bold text-xs flex items-center gap-2 ${isStreaming ? 'bg-red-800 hover:bg-red-700 text-white shadow-lg shadow-red-900/50' : 'bg-red-700 hover:bg-red-600 text-white'}`}><Wifi size={14}/> {isStreaming ? `GESTIONAR EN VIVO (${activeLiveDestinations.length})` : 'TRANSMITIR EN VIVO'}</button>
              {!isRightPanelOpen && <button onClick={() => setIsRightPanelOpen(true)} className="ml-2 p-1.5 bg-[#222] rounded text-gray-400 hover:text-white"><PanelRight size={16} /></button>}
           </div>
@@ -1167,16 +1218,17 @@ function PodcastStudioApp() {
                       <Settings size={11} />
                     </button>
 
-                    {/* BOTÓN QUITAR RANURA */}
-                    {camId !== 1 && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); removeCam(camId); }} 
-                        className="text-gray-500 hover:text-red-400 hover:bg-[#252525] rounded p-0.5 transition-colors"
-                        title="Quitar ranura"
-                      >
-                        <X size={11} />
-                      </button>
-                    )}
+                    {/* BOTÓN BOTE DE BASURA / APAGAR / DESCONECTAR / ELIMINAR CÁMARA */}
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        handleDeleteOrDisconnectCam(camId); 
+                      }} 
+                      className="text-gray-400 hover:text-red-400 hover:bg-red-500/20 rounded p-0.5 transition-colors" 
+                      title={camStream ? `Apagar y desconectar señal de CAM ${camId}` : (camId !== 1 ? `Eliminar ranura de CAM ${camId}` : `Restablecer señal de CAM ${camId}`)}
+                    >
+                      <Trash2 size={11} className={camStream ? "text-red-400 hover:text-red-300" : "text-gray-500 hover:text-red-400"} />
+                    </button>
                   </div>
                 </div>
                 <div className="flex-1 relative overflow-hidden cursor-pointer" onClick={() => { setActiveCam(camId); setLayoutMode('1'); }}>
@@ -1632,7 +1684,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.0.0</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.0.1</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>

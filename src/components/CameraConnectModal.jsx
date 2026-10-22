@@ -168,21 +168,17 @@ export default function CameraConnectModal({
   const isMaster = targetSlot === masterCameraSlot;
   const currentMeta = cameraMeta[targetSlot];
 
-  // URL Remota para celulares
+  // URL Remota oficial para celulares (dominio seguro SSL podcastudio.mx)
   const remoteUrl = useMemo(() => {
-    if (useCloudDomain) {
-      const base = 'https://www.podcastudio.mx/remote-cam';
-      const params = new URLSearchParams({
-        slot: String(targetSlot + 1),
-        room: `studio_cam_${targetSlot + 1}`,
-      });
-      if (guestName.trim()) params.set('name', guestName.trim());
-      if (guestRole && guestRole !== 'guest') params.set('role', guestRole);
-      return `${base}?${params.toString()}`;
-    }
-    // Por defecto enlace local del media-server Electron
-    return localQrUrl || 'https://localhost:3000/camara';
-  }, [targetSlot, guestName, guestRole, useCloudDomain, localQrUrl]);
+    const base = 'https://www.podcastudio.mx/remote-cam';
+    const params = new URLSearchParams({
+      slot: String(targetSlot + 1),
+      room: `studio_cam_${targetSlot + 1}`,
+    });
+    if (guestName.trim()) params.set('name', guestName.trim());
+    if (guestRole && guestRole !== 'guest') params.set('role', guestRole);
+    return `${base}?${params.toString()}`;
+  }, [targetSlot, guestName, guestRole]);
 
   // Generación de QR Data URL
   useEffect(() => {
