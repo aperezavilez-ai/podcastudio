@@ -83,72 +83,312 @@ function createWindow() {
   }
 }
 
+const http = require('http');
+
+const mobileClients = new Map();
+let httpWsServer = null;
+
 function startMediaServer() {
   const appServer = express();
   const server = https.createServer(options, appServer);
+  
+  // WebSocket seguro sobre HTTPS (puerto 3000)
   wss = new WebSocketServer({ server });
+
+  // Servidor HTTP complementario para WebSocket estándar (puerto 3001)
+  // Esto evita bloqueos de certificados autofirmados en iOS Safari y Android Chrome
+  const plainHttpServer = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('PodcastStudio Signaling Server Active');
+  });
+  httpWsServer = new WebSocketServer({ server: plainHttpServer });
+
+  const setupWebSocketConnection = (ws) => {
+    const clientId = `Mobil_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 4)}`;
+    ws.clientId = clientId;
+    mobileClients.set(clientId, ws);
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('mobile-ws-connected', clientId);
+    }
+
+    ws.on('message', (msg) => {
+      try {
+        const data = JSON.parse(msg);
+        if (!mainWindow || mainWindow.isDestroyed()) return;
+
+        if (data.type === 'offer') {
+          mainWindow.webContents.send('remote-offer', { id: ws.clientId, offer: data.offer });
+        } else if (data.type === 'candidate') {
+          mainWindow.webContents.send('remote-candidate', { id: ws.clientId, candidate: data.candidate });
+        }
+      } catch (err) {
+        console.error('Error procesando mensaje WebSocket:', err);
+      }
+    });
+
+    ws.on('close', () => {
+      mobileClients.delete(ws.clientId);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('remote-disconnected', ws.clientId);
+      }
+    });
+
+    ws.on('error', () => {
+      mobileClients.delete(ws.clientId);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('remote-disconnected', ws.clientId);
+      }
+    });
+  };
+
+  wss.on('connection', setupWebSocketConnection);
+  httpWsServer.on('connection', setupWebSocketConnection);
 
   appServer.get('/camara', (req, res) => {
     res.send(`
-      <html>
-      <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-      <body style="background: #111; color: white; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; text-align: center;">
-          <video id="video" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; display: none; z-index: -1;"></video>
-          <div id="ui" style="position: relative; z-index: 10; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 15px;">
-            <h2 style="color: #ff6b00;">PodcastStudio</h2>
-            <p>Si sale advertencia, toca <b>"Avanzado"</b> y <b>"Continuar"</b>.</p>
-            <button id="startBtn" style="background: #ff6b00; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer;">INICIAR CÁMARA</button>
-            <div id="status" style="margin-top: 20px; font-size: 14px; color: #aaa;">Esperando...</div>
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+        <title>PodcastStudio Remote Cam</title>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { background: #0a0a0a; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+          #video { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; background: #000; z-index: 1; }
+          .ui-layer { position: relative; z-index: 20; height: 100%; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; pointer-events: none; }
+          .header { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); padding: 10px 16px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.1); pointer-events: auto; }
+          .logo { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; color: #ff6b00; }
+          .badge { font-size: 11px; padding: 4px 10px; border-radius: 999px; font-weight: 700; background: #222; color: #aaa; border: 1px solid #444; }
+          .badge.live { background: rgba(220,38,38,0.9); color: #fff; border-color: #ef4444; animation: pulse 1.5s infinite; }
+          .badge.connected { background: rgba(22,101,52,0.9); color: #86efac; border-color: #4ade80; }
+          .center-box { pointer-events: auto; background: rgba(15,15,18,0.92); backdrop-filter: blur(16px); padding: 28px 22px; border-radius: 20px; border: 1px solid rgba(255,107,0,0.3); text-align: center; max-width: 380px; margin: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.8); }
+          .btn-main { background: linear-gradient(135deg, #ff6b00, #ea580c); color: white; border: none; padding: 16px 28px; font-size: 17px; font-weight: 800; border-radius: 12px; cursor: pointer; width: 100%; box-shadow: 0 8px 20px rgba(234,88,12,0.4); transition: transform 0.1s; }
+          .btn-main:active { transform: scale(0.97); }
+          .controls { display: flex; gap: 10px; justify-content: center; pointer-events: auto; margin-bottom: 10px; }
+          .btn-action { background: rgba(0,0,0,0.75); backdrop-filter: blur(8px); color: #fff; border: 1px solid rgba(255,255,255,0.2); padding: 10px 16px; border-radius: 999px; font-size: 12px; font-weight: 700; cursor: pointer; }
+          @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+        </style>
+      </head>
+      <body>
+        <video id="video" autoplay playsinline webkit-playsinline muted></video>
+
+        <div class="ui-layer">
+          <div class="header">
+            <div class="logo">
+              <span>●</span> PodcastStudio Remote
+            </div>
+            <div id="statusBadge" class="badge">En Espera</div>
           </div>
-          <script>
-              const ws = new WebSocket('wss://${LOCAL_IP}:3000');
-              let pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-              document.getElementById('startBtn').addEventListener('click', async () => {
-                  document.getElementById('startBtn').style.display = 'none';
-                  document.getElementById('status').innerText = "Solicitando cámara...";
+
+          <div id="startDialog" class="center-box">
+            <h2 style="color: #ff6b00; margin-bottom: 8px;">Cámara de Invitado</h2>
+            <p style="font-size: 13px; color: #aaa; margin-bottom: 20px; line-height: 1.4;">
+              Conéctate en vivo como cámara remota HD para el programa.
+            </p>
+            <button id="startBtn" class="btn-main">CONECTAR CÁMARA</button>
+            <div id="connectHelp" style="margin-top: 14px; font-size: 11px; color: #777;">
+              Toca "Permitir" cuando el navegador solicite acceso a cámara y micrófono.
+            </div>
+          </div>
+
+          <div id="footerControls" class="controls" style="display: none;">
+            <button id="flipCamBtn" class="btn-action">🔄 Girar Cámara</button>
+            <button id="muteBtn" class="btn-action">🎤 Silenciar</button>
+          </div>
+        </div>
+
+        <script>
+          const LOCAL_IP = '${LOCAL_IP}';
+          let ws = null;
+          let pc = null;
+          let currentStream = null;
+          let currentFacing = 'user';
+          let isMuted = false;
+
+          const statusBadge = document.getElementById('statusBadge');
+          const startDialog = document.getElementById('startDialog');
+          const footerControls = document.getElementById('footerControls');
+          const videoEl = document.getElementById('video');
+
+          function updateStatus(text, type) {
+            statusBadge.innerText = text;
+            statusBadge.className = 'badge ' + (type || '');
+          }
+
+          function connectWebSocket() {
+            return new Promise((resolve) => {
+              // Intento 1: WSS en puerto 3000
+              const wssUrl = 'wss://' + LOCAL_IP + ':3000';
+              const wsUrl = 'ws://' + LOCAL_IP + ':3001';
+
+              let socket = new WebSocket(wssUrl);
+              let connected = false;
+
+              const timer = setTimeout(() => {
+                if (!connected) {
+                  try { socket.close(); } catch (e) {}
+                  // Fallback a WS estándar en puerto 3001 si WSS autofirmado es rechazado
+                  socket = new WebSocket(wsUrl);
+                  bindEvents(socket, resolve);
+                }
+              }, 1200);
+
+              function bindEvents(s, done) {
+                s.onopen = () => {
+                  connected = true;
+                  clearTimeout(timer);
+                  ws = s;
+                  done(s);
+                };
+                s.onmessage = async (e) => {
                   try {
-                      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 1280, height: 720 }, audio: true });
-                      document.getElementById('video').srcObject = stream;
-                      document.getElementById('video').style.display = 'block';
-                      document.getElementById('video').style.zIndex = '1';
-                      document.getElementById('ui').style.display = 'none';
-                      stream.getTracks().forEach(track => pc.addTrack(track, stream));
-                      pc.onicecandidate = e => { if (e.candidate) ws.send(JSON.stringify({ type: 'candidate', candidate: e.candidate })); };
-                      pc.createOffer().then(offer => { pc.setLocalDescription(offer); ws.send(JSON.stringify({ type: 'offer', offer: offer })); });
-                  } catch (err) { document.getElementById('status').innerText = "ERROR: " + err.message; }
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'answer' && pc) {
+                      await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+                      updateStatus('EN VIVO ★ AL AIRE', 'live');
+                    } else if (data.type === 'candidate' && pc) {
+                      await pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
+                    }
+                  } catch (err) {}
+                };
+                s.onclose = () => {
+                  updateStatus('Desconectado', '');
+                };
+                s.onerror = () => {
+                  if (!connected) {
+                    clearTimeout(timer);
+                    socket = new WebSocket(wsUrl);
+                    bindEvents(socket, done);
+                  }
+                };
+              }
+
+              bindEvents(socket, resolve);
+            });
+          }
+
+          async function startCameraAndStream() {
+            startDialog.style.display = 'none';
+            updateStatus('Solicitando cámara...', '');
+
+            try {
+              currentStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: currentFacing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+                audio: true
               });
-              ws.onmessage = async e => {
-                  const data = JSON.parse(e.data);
-                  if (data.answer) await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                  if (data.candidate) await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+
+              videoEl.srcObject = currentStream;
+              videoEl.style.display = 'block';
+              footerControls.style.display = 'flex';
+
+              updateStatus('Conectando al Estudio...', '');
+              await connectWebSocket();
+
+              pc = new RTCPeerConnection({
+                iceServers: [
+                  { urls: 'stun:stun.l.google.com:19302' },
+                  { urls: 'stun:stun1.l.google.com:19302' }
+                ]
+              });
+
+              currentStream.getTracks().forEach(track => {
+                const sender = pc.addTrack(track, currentStream);
+                if (track.kind === 'video') {
+                  try {
+                    const params = sender.getParameters();
+                    if (!params.encodings) params.encodings = [{}];
+                    params.encodings[0].maxBitrate = 2500000;
+                    params.degradationPreference = 'maintain-framerate';
+                    sender.setParameters(params);
+                  } catch (e) {}
+                }
+              });
+
+              pc.onicecandidate = (e) => {
+                if (e.candidate && ws && ws.readyState === 1) {
+                  ws.send(JSON.stringify({ type: 'candidate', candidate: e.candidate }));
+                }
               };
-          </script>
+
+              pc.oniceconnectionstatechange = () => {
+                if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                  updateStatus('EN VIVO ★ ESTUDIO', 'live');
+                } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                  updateStatus('Reconectando...', '');
+                }
+              };
+
+              const offer = await pc.createOffer({
+                offerToReceiveAudio: false,
+                offerToReceiveVideo: false
+              });
+              await pc.setLocalDescription(offer);
+
+              if (ws && ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'offer', offer: offer }));
+              }
+            } catch (err) {
+              startDialog.style.display = 'block';
+              updateStatus('Error de Cámara', '');
+              alert('Error al acceder a la cámara: ' + err.message);
+            }
+          }
+
+          document.getElementById('startBtn').addEventListener('click', startCameraAndStream);
+
+          document.getElementById('flipCamBtn').addEventListener('click', async () => {
+            currentFacing = currentFacing === 'user' ? 'environment' : 'user';
+            if (currentStream) {
+              currentStream.getTracks().forEach(t => t.stop());
+            }
+            startCameraAndStream();
+          });
+
+          document.getElementById('muteBtn').addEventListener('click', () => {
+            if (!currentStream) return;
+            isMuted = !isMuted;
+            currentStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
+            document.getElementById('muteBtn').innerText = isMuted ? '🔇 Desmutear' : '🎤 Silenciar';
+          });
+        </script>
       </body>
       </html>
     `);
   });
 
-  let camIdCounter = 0;
-  wss.on('connection', ws => {
-    ws.clientId = `Mobil_${++camIdCounter}`;
-    mainWindow.webContents.send('mobile-ws-connected', ws.clientId);
-    ws.on('message', msg => {
-      const data = JSON.parse(msg);
-      if (data.type === 'offer') mainWindow.webContents.send('remote-offer', { id: ws.clientId, offer: data.offer });
-      else if (data.type === 'candidate') mainWindow.webContents.send('remote-candidate', { id: ws.clientId, candidate: data.candidate });
-    });
-    ws.on('close', () => mainWindow.webContents.send('remote-disconnected', ws.clientId));
-  });
   server.listen(3000, '0.0.0.0');
+  plainHttpServer.listen(3001, '0.0.0.0');
 }
 
 app.whenReady().then(() => { createWindow(); startMediaServer(); });
 
 ipcMain.handle('get-qr-url', () => `https://${LOCAL_IP}:3000/camara`);
-ipcMain.on('send-answer', (event, { id, answer }) => { if (wss) for (const c of wss.clients) if (c.clientId === id && c.readyState === 1) c.send(JSON.stringify({ answer })); });
-ipcMain.on('send-candidate', (event, { id, candidate }) => { if (wss) for (const c of wss.clients) if (c.clientId === id && c.readyState === 1) c.send(JSON.stringify({ candidate })); });
+
+ipcMain.on('send-answer', (event, { id, answer }) => {
+  const client = mobileClients.get(id);
+  if (client && client.readyState === 1) {
+    client.send(JSON.stringify({ type: 'answer', answer }));
+  }
+});
+
+ipcMain.on('send-candidate', (event, { id, candidate }) => {
+  const client = mobileClients.get(id);
+  if (client && client.readyState === 1) {
+    client.send(JSON.stringify({ type: 'candidate', candidate }));
+  }
+});
+
 ipcMain.on('open-external', (event, url) => shell.openExternal(url));
-ipcMain.on('open-recordings-folder', () => shell.openPath('D:\\PROGRAMAS IA\\PODCASTSTUDIO1'));
+
+ipcMain.on('open-recordings-folder', () => {
+  const recDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'grabaciones');
+  if (!fs.existsSync(recDir)) {
+    try { fs.mkdirSync(recDir, { recursive: true }); } catch (e) {}
+  }
+  shell.openPath(recDir);
+});
 
 let currentRecordingPath = null;
 let streamDestinations = [];
@@ -158,7 +398,7 @@ let streamDestinations = [];
 // ============================================================================
 ipcMain.handle('start-recording', async () => {
   return new Promise((resolve) => {
-    const dir = 'D:\\PROGRAMAS IA\\PODCASTUDIO1';
+    const dir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'grabaciones');
     try {
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     } catch (e) {}

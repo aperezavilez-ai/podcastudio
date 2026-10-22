@@ -285,6 +285,7 @@ function PodcastStudioApp() {
   const [localStream, setLocalStream] = useState(null);
   const [remoteCams, setRemoteCams] = useState([]); 
   const peerConnections = useRef({}); 
+  const candidateBuffers = useRef({}); 
 
   const openCalibrator = (id) => {
     setCalibratorTargetSlot(id - 1);
@@ -533,27 +534,137 @@ function PodcastStudioApp() {
         QRCode.toDataURL(url, { width: 250, margin: 2 }).then(img => setQrCodeImage(img));
       });
       window.api.onMobileWsConnected((id) => setMobileStatus(`Celular conectado (${id}).`));
+      
       window.api.onRemoteOffer(async ({ id, offer }) => {
-        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        console.log(`[WebRTC] Oferta recibida de celular: ${id}`);
+        
+        // Cerrar conexión anterior si existía para este ID
+        if (peerConnections.current[id]) {
+          try { peerConnections.current[id].close(); } catch (e) {}
+        }
+
+        const pc = new RTCPeerConnection({
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+          ]
+        });
         peerConnections.current[id] = pc;
+
+        // Declarar transceptores en modo recepción exclusivamente (evita que la PC intente enviar video al celular)
+        try {
+          pc.addTransceiver('video', { direction: 'recvonly' });
+          pc.addTransceiver('audio', { direction: 'recvonly' });
+        } catch (e) {}
+
         pc.ontrack = (event) => {
           if (event.streams && event.streams[0]) {
-            setRemoteCams(prev => prev.find(s => s.id === id) ? prev : [...prev, { id, stream: event.streams[0] }]);
+            const stream = event.streams[0];
+            console.log(`[WebRTC] Video en vivo recibido de celular ${id}`);
+
+            setRemoteCams(prev => {
+              const filtered = prev.filter(s => s.id !== id);
+              return [...filtered, { id, stream }];
+            });
+
+            // Asignar automáticamente al slot de CAM 2 (slot 1) o al siguiente slot libre
+            setSlotStreams(prevStreams => {
+              let targetSlot = 1; // Comenzar en slot 1 (CAM 2)
+              while (targetSlot < 4 && prevStreams[targetSlot] && prevStreams[targetSlot].mobileId && prevStreams[targetSlot].mobileId !== id) {
+                targetSlot++;
+              }
+              if (targetSlot > 3) targetSlot = 1;
+              stream.mobileId = id;
+              return { ...prevStreams, [targetSlot]: stream };
+            });
+
+            setCameraMeta(prevMeta => {
+              let targetSlot = 1;
+              while (targetSlot < 4 && prevMeta[targetSlot] && prevMeta[targetSlot].deviceId && prevMeta[targetSlot].deviceId !== id && prevMeta[targetSlot].type === 'mobile') {
+                targetSlot++;
+              }
+              if (targetSlot > 3) targetSlot = 1;
+              return {
+                ...prevMeta,
+                [targetSlot]: { deviceId: id, label: `Celular (${id.slice(-4)})`, type: 'mobile' }
+              };
+            });
           }
         };
-        pc.onicecandidate = (e) => { if (e.candidate) window.api.sendCandidate(id, e.candidate); };
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        window.api.sendAnswer(id, answer);
+
+        pc.onicecandidate = (e) => {
+          if (e.candidate && window.api?.sendCandidate) {
+            window.api.sendCandidate(id, e.candidate);
+          }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          console.log(`[WebRTC ${id}] Estado ICE:`, pc.iceConnectionState);
+        };
+
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
+          // Vaciar candidatos pendientes que hayan llegado antes de setRemoteDescription
+          const pending = candidateBuffers.current[id] || [];
+          for (const cand of pending) {
+            try { await pc.addIceCandidate(new RTCIceCandidate(cand)); } catch (err) {}
+          }
+          candidateBuffers.current[id] = [];
+
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          window.api.sendAnswer(id, answer);
+          console.log(`[WebRTC] Answer enviado a celular: ${id}`);
+        } catch (err) {
+          console.error(`[WebRTC] Error negociando conexión con ${id}:`, err);
+        }
       });
+
       window.api.onRemoteCandidate(async ({ id, candidate }) => {
         const pc = peerConnections.current[id];
-        if (pc) { try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch (e) {} }
+        if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {}
+        } else {
+          // Almacenar en búfer si la descripción remota aún no está lista
+          if (!candidateBuffers.current[id]) {
+            candidateBuffers.current[id] = [];
+          }
+          candidateBuffers.current[id].push(candidate);
+        }
       });
+
       window.api.onRemoteDisconnected((id) => {
+        console.log(`[WebRTC] Celular desconectado: ${id}`);
         setRemoteCams(prev => prev.filter(s => s.id !== id));
-        if (peerConnections.current[id]) { peerConnections.current[id].close(); delete peerConnections.current[id]; }
+        if (peerConnections.current[id]) {
+          try { peerConnections.current[id].close(); } catch (e) {}
+          delete peerConnections.current[id];
+        }
+        delete candidateBuffers.current[id];
+
+        // Liberar el slot de cámara correspondiente y dejarlo en 'Sin señal'
+        setCameraMeta(prevMeta => {
+          const nextMeta = { ...prevMeta };
+          let targetSlot = null;
+          for (const [slot, meta] of Object.entries(nextMeta)) {
+            if (meta && meta.deviceId === id) {
+              targetSlot = slot;
+              delete nextMeta[slot];
+              break;
+            }
+          }
+          if (targetSlot !== null) {
+            setSlotStreams(prevStreams => {
+              const nextStreams = { ...prevStreams };
+              delete nextStreams[targetSlot];
+              return nextStreams;
+            });
+          }
+          return nextMeta;
+        });
       });
     }
   }, []);
