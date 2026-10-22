@@ -1,3 +1,10 @@
+process.on('uncaughtException', (err) => {
+  console.warn('[Electron Main Process UncaughtException]', err?.message || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.warn('[Electron Main Process UnhandledRejection]', reason);
+});
+
 const { app, BrowserWindow, Menu, ipcMain, session, shell } = require('electron');
 Menu.setApplicationMenu(null);
 const path = require('path');
@@ -369,11 +376,54 @@ function startMediaServer() {
     `);
   });
 
-  server.listen(3000, '0.0.0.0');
-  plainHttpServer.listen(3001, '0.0.0.0');
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn('[MediaServer] Puerto 3000 ocupado por Docker/WSL u otra instancia. Servidor local seguro omitido.');
+    } else {
+      console.warn('[MediaServer] Error:', err.message);
+    }
+  });
+
+  plainHttpServer.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn('[HttpServer] Puerto 3001 ocupado. Servidor local HTTP omitido.');
+    } else {
+      console.warn('[HttpServer] Error:', err.message);
+    }
+  });
+
+  try {
+    server.listen(3000, '0.0.0.0', () => {
+      console.log('[MediaServer] Servidor HTTPS activo en puerto 3000');
+    });
+  } catch (e) {
+    console.warn('[MediaServer] Catch listen 3000:', e.message);
+  }
+
+  try {
+    plainHttpServer.listen(3001, '0.0.0.0', () => {
+      console.log('[HttpServer] Servidor HTTP activo en puerto 3001');
+    });
+  } catch (e) {
+    console.warn('[HttpServer] Catch listen 3001:', e.message);
+  }
 }
 
-app.whenReady().then(() => { createWindow(); startMediaServer(); });
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+  app.whenReady().then(() => {
+    createWindow();
+    startMediaServer();
+  });
+}
 
 ipcMain.handle('get-qr-url', () => `https://www.podcastudio.mx/remote-cam?slot=2&room=studio_cam_2`);
 
