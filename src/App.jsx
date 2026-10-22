@@ -308,9 +308,8 @@ function PodcastStudioApp() {
   const getCamStream = (id) => { 
     const slotIdx = id - 1;
     if (slotStreams[slotIdx]) return slotStreams[slotIdx];
-    if (id === 1) return localStream; 
-    if (id === 2) return remoteCams[0]?.stream; 
-    return remoteCams[camSlots.indexOf(id) - 1]?.stream; 
+    if (id === 1 && localStream) return localStream; 
+    return null; 
   };
 
   // Mapeo dinámico de streams activos para análisis de audio por cámara
@@ -610,23 +609,47 @@ function PodcastStudioApp() {
               return [...filtered, { id, stream }];
             });
 
-            // Asignar automáticamente al slot de CAM 2 (slot 1) o al siguiente slot libre
+            // Asignar automáticamente al primer slot verdaderamente libre sin sobreescribir cámaras existentes
             setSlotStreams(prevStreams => {
-              let targetSlot = 1; // Comenzar en slot 1 (CAM 2)
-              while (targetSlot < 4 && prevStreams[targetSlot] && prevStreams[targetSlot].mobileId && prevStreams[targetSlot].mobileId !== id) {
-                targetSlot++;
+              let targetSlot = null;
+              // Si este móvil ya estaba asignado a un slot, mantenerlo
+              for (let s = 1; s < 4; s++) {
+                if (prevStreams[s] && prevStreams[s].mobileId === id) {
+                  targetSlot = s;
+                  break;
+                }
               }
-              if (targetSlot > 3) targetSlot = 1;
+              // Si no, buscar el primer slot libre
+              if (targetSlot === null) {
+                for (let s = 1; s < 4; s++) {
+                  if (!prevStreams[s]) {
+                    targetSlot = s;
+                    break;
+                  }
+                }
+              }
+              if (targetSlot === null) targetSlot = 1;
               stream.mobileId = id;
               return { ...prevStreams, [targetSlot]: stream };
             });
 
             setCameraMeta(prevMeta => {
-              let targetSlot = 1;
-              while (targetSlot < 4 && prevMeta[targetSlot] && prevMeta[targetSlot].deviceId && prevMeta[targetSlot].deviceId !== id && prevMeta[targetSlot].type === 'mobile') {
-                targetSlot++;
+              let targetSlot = null;
+              for (let s = 1; s < 4; s++) {
+                if (prevMeta[s] && prevMeta[s].deviceId === id) {
+                  targetSlot = s;
+                  break;
+                }
               }
-              if (targetSlot > 3) targetSlot = 1;
+              if (targetSlot === null) {
+                for (let s = 1; s < 4; s++) {
+                  if (!prevMeta[s]) {
+                    targetSlot = s;
+                    break;
+                  }
+                }
+              }
+              if (targetSlot === null) targetSlot = 1;
               return {
                 ...prevMeta,
                 [targetSlot]: { deviceId: id, label: `Celular (${id.slice(-4)})`, type: 'mobile' }
@@ -991,8 +1014,99 @@ function PodcastStudioApp() {
     }
   };
 
+  const createWifiMediaStream = async (url) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#05070a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    let isAlive = true;
+    let animId = null;
+
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.src = url;
+    video.autoplay = true;
+    video.muted = true;
+    video.playsInline = true;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = url;
+
+    let useVideo = false;
+
+    video.oncanplay = () => {
+      useVideo = true;
+      video.play().catch(() => {});
+    };
+
+    const renderFrame = () => {
+      if (!isAlive) return;
+      if (useVideo && video.readyState >= 2) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      } else if (img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      }
+      animId = requestAnimationFrame(renderFrame);
+    };
+    animId = requestAnimationFrame(renderFrame);
+
+    const stream = canvas.captureStream(30);
+    const track = stream.getVideoTracks()[0];
+    if (track) {
+      const origStop = track.stop.bind(track);
+      track.stop = () => {
+        isAlive = false;
+        if (animId) cancelAnimationFrame(animId);
+        try { video.pause(); video.src = ''; } catch (e) {}
+        try { img.src = ''; } catch (e) {}
+        origStop();
+      };
+    }
+    return stream;
+  };
+
   const handleWifiConnect = async (url, slot, label) => {
-    setCameraMeta(prev => ({ ...prev, [slot]: { url, label, type: 'wifi' } }));
+    if (slotStreams[slot]) {
+      try { slotStreams[slot].getTracks().forEach(t => t.stop()); } catch (e) {}
+    }
+    if (slot === 0 && localStream) {
+      try { localStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    }
+
+    try {
+      const stream = await createWifiMediaStream(url);
+      if (stream) {
+        setSlotStreams(prev => ({ ...prev, [slot]: stream }));
+        if (slot === 0) setLocalStream(stream);
+      }
+      setCameraMeta(prev => ({
+        ...prev,
+        [slot]: { url, label: label || `WiFi Cam ${slot + 1}`, type: 'wifi' }
+      }));
+      return stream;
+    } catch (err) {
+      console.error('Error conectando cámara WiFi:', err);
+      setCameraMeta(prev => ({
+        ...prev,
+        [slot]: { url, label: label || `WiFi Cam ${slot + 1}`, type: 'wifi' }
+      }));
+    }
+  };
+
+  const handleAssignRemoteStream = (remoteStream, slot, label, meta = {}) => {
+    if (slotStreams[slot] && slotStreams[slot] !== remoteStream) {
+      try { slotStreams[slot].getTracks().forEach(t => t.stop()); } catch (e) {}
+    }
+    setSlotStreams(prev => ({ ...prev, [slot]: remoteStream }));
+    setCameraMeta(prev => ({
+      ...prev,
+      [slot]: { deviceId: meta.id || `remote_${slot}`, label: label || `Cámara ${slot + 1}`, type: 'remote', ...meta }
+    }));
+    if (slot === 0) setLocalStream(remoteStream);
   };
 
   const handleDisconnectSlot = (slot) => {
@@ -2272,10 +2386,12 @@ function PodcastStudioApp() {
         devices={cameraDevices}
         cameraMeta={cameraMeta}
         streams={slotStreams}
+        remoteCams={remoteCams}
         masterCameraSlot={activeCam - 1}
         onSetMaster={(slot) => setActiveCam(slot + 1)}
         onUsbConnect={handleUsbConnect}
         onWifiConnect={handleWifiConnect}
+        onAssignRemoteStream={handleAssignRemoteStream}
         onDisconnect={handleDisconnectSlot}
         onRenameSlot={handleRenameSlot}
         localQrUrl={qrCodeUrl}

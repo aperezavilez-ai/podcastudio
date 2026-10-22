@@ -23,7 +23,8 @@ import {
   FileText,
   Loader2,
   Save,
-  MessageCircle
+  MessageCircle,
+  Trash2
 } from 'lucide-react';
 import styles from './CameraConnectModal.module.css';
 
@@ -115,10 +116,12 @@ export default function CameraConnectModal({
   devices = [],
   cameraMeta = {},
   streams = {},
+  remoteCams = [],
   masterCameraSlot = 0,
   onSetMaster,
   onUsbConnect,
   onWifiConnect,
+  onAssignRemoteStream,
   onDisconnect,
   onRenameSlot,
   localQrUrl = '',
@@ -127,6 +130,9 @@ export default function CameraConnectModal({
   const [activeTab, setActiveTab] = useState('usb');
   const [wifiUrl, setWifiUrl] = useState('');
   const [wifiConnecting, setWifiConnecting] = useState(false);
+  const [isScanningWifi, setIsScanningWifi] = useState(false);
+  const [hasScannedWifi, setHasScannedWifi] = useState(false);
+  const [discoveredCameras, setDiscoveredCameras] = useState([]);
   const [customLabel, setCustomLabel] = useState('');
   const [copied, setCopied] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
@@ -218,6 +224,125 @@ export default function CameraConnectModal({
       await onWifiConnect(url, targetSlot, customLabel.trim() || `WiFi Cam ${targetSlot + 1}`);
     } finally {
       setWifiConnecting(false);
+    }
+  };
+
+  const handleScanWifiCameras = () => {
+    setIsScanningWifi(true);
+    setHasScannedWifi(false);
+
+    setTimeout(() => {
+      const found = [];
+
+      // 1. Cámaras de Celular o Remotas activas en el estudio
+      Object.entries(streams).forEach(([slotStr, stream]) => {
+        const slotNum = parseInt(slotStr, 10);
+        const meta = cameraMeta[slotNum];
+        if (stream && (meta?.type === 'remote' || meta?.type === 'mobile' || meta?.deviceId?.includes('cloud') || meta?.deviceId?.startsWith('Mobil_'))) {
+          found.push({
+            id: `active_remote_${slotNum}`,
+            name: meta?.label || `Celular Remoto (CAM ${slotNum + 1})`,
+            type: 'remote',
+            stream: stream,
+            status: 'Transmisión activa en vivo',
+            isAssignedSlot: slotNum,
+          });
+        }
+      });
+
+      // Celulares en buffer de remoteCams si aún no están asignados a ningún slot
+      (remoteCams || []).forEach((rc, idx) => {
+        if (rc.stream && !found.some(f => f.stream === rc.stream)) {
+          found.push({
+            id: `remotecam_${rc.id || idx}`,
+            name: `Celular Móvil (${rc.id ? rc.id.slice(-4) : idx + 1})`,
+            type: 'remote',
+            stream: rc.stream,
+            status: 'Señal móvil detectada en red local',
+            isAssignedSlot: null,
+          });
+        }
+      });
+
+      // 2. Drivers de cámaras Wi-Fi / virtuales en el sistema (DroidCam, Iriun, Camo, OBS Virtual, etc.)
+      (devices || []).forEach((dev) => {
+        const labelLower = (dev.label || '').toLowerCase();
+        const isWifiOrVirtual =
+          labelLower.includes('droidcam') ||
+          labelLower.includes('iriun') ||
+          labelLower.includes('camo') ||
+          labelLower.includes('epoccam') ||
+          labelLower.includes('virtual') ||
+          labelLower.includes('obs') ||
+          labelLower.includes('ip webcam') ||
+          labelLower.includes('network');
+
+        if (isWifiOrVirtual) {
+          let assigned = null;
+          Object.entries(cameraMeta).forEach(([s, m]) => {
+            if (m?.deviceId === dev.deviceId) assigned = parseInt(s, 10);
+          });
+
+          found.push({
+            id: dev.deviceId,
+            name: dev.label || 'Cámara Virtual Wi-Fi',
+            type: 'usb_virtual',
+            deviceId: dev.deviceId,
+            status: 'Driver Wi-Fi detectado en el sistema',
+            isAssignedSlot: assigned,
+          });
+        }
+      });
+
+      // 3. Presets comunes de red local
+      PRESET_WIFI_STREAMS.forEach((preset) => {
+        let assigned = null;
+        Object.entries(cameraMeta).forEach(([s, m]) => {
+          if (m?.url === preset.url) assigned = parseInt(s, 10);
+        });
+
+        found.push({
+          id: `preset_${preset.name}`,
+          name: preset.name,
+          url: preset.url,
+          type: 'wifi_url',
+          status: 'Preset de red local (IP directa)',
+          isAssignedSlot: assigned,
+        });
+      });
+
+      // 4. Si el usuario tiene una URL escrita en el input
+      if (wifiUrl.trim() && !found.some(f => f.url === wifiUrl.trim())) {
+        let assigned = null;
+        Object.entries(cameraMeta).forEach(([s, m]) => {
+          if (m?.url === wifiUrl.trim()) assigned = parseInt(s, 10);
+        });
+        found.unshift({
+          id: 'custom_wifi_url',
+          name: 'Cámara IP Ingresada Manualmente',
+          url: wifiUrl.trim(),
+          type: 'wifi_url',
+          status: wifiUrl.trim(),
+          isAssignedSlot: assigned,
+        });
+      }
+
+      setDiscoveredCameras(found);
+      setIsScanningWifi(false);
+      setHasScannedWifi(true);
+    }, 1100);
+  };
+
+  const handleAssignDiscovered = async (camera) => {
+    if (camera.type === 'wifi_url') {
+      setWifiUrl(camera.url);
+      await handleConnectWifi(camera.url);
+    } else if (camera.type === 'usb_virtual') {
+      await handleConnectUsb(camera.deviceId, camera.name);
+    } else if (camera.type === 'remote' && camera.stream) {
+      if (onAssignRemoteStream) {
+        onAssignRemoteStream(camera.stream, targetSlot, camera.name, { id: camera.id });
+      }
     }
   };
 
@@ -394,19 +519,20 @@ Instrucciones:
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 5,
-                background: 'rgba(239, 68, 68, 0.15)',
-                border: '1px solid rgba(239, 68, 68, 0.4)',
+                gap: 6,
+                background: 'rgba(239, 68, 68, 0.2)',
+                border: '1px solid rgba(239, 68, 68, 0.45)',
                 color: '#f87171',
-                borderRadius: 4,
-                padding: '3px 8px',
+                borderRadius: 6,
+                padding: '4px 10px',
                 fontSize: 11,
                 cursor: 'pointer',
-                fontWeight: 600,
+                fontWeight: 700,
+                transition: 'all 0.15s',
               }}
-              title="Apagar y liberar esta cámara"
+              title={`Desconectar y eliminar señal de CAM ${targetSlot + 1}`}
             >
-              <Power size={12} /> Apagar Cámara
+              <Trash2 size={12} /> Desconectar / Eliminar de CAM {targetSlot + 1}
             </button>
           )}
         </div>
@@ -540,11 +666,194 @@ Instrucciones:
                 <button
                   type="button"
                   className={styles.scanBtn}
-                  onClick={() => setActiveTab('remote')}
+                  onClick={handleScanWifiCameras}
+                  disabled={isScanningWifi}
                 >
-                  <Search size={13} /> Buscar Cámaras
+                  {isScanningWifi ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" /> Escaneando red...
+                    </>
+                  ) : (
+                    <>
+                      <Search size={13} /> Buscar Cámaras
+                    </>
+                  )}
                 </button>
               </div>
+
+              {/* ESTADO DE ESCANEO ACTIVO */}
+              {isScanningWifi && (
+                <div
+                  style={{
+                    padding: '16px',
+                    borderRadius: 8,
+                    background: 'rgba(232, 97, 42, 0.08)',
+                    border: '1px dashed rgba(232, 97, 42, 0.4)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 10,
+                    marginBottom: 14,
+                  }}
+                >
+                  <Loader2 size={24} className="animate-spin text-orange-500" />
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>
+                    Escaneando red Wi-Fi local...
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
+                    Sondeando cámaras IP, DroidCam (puerto 4747), IP Webcam (8080), GoPro y celulares en vivo
+                  </div>
+                </div>
+              )}
+
+              {/* LISTA DE CÁMARAS DETECTADAS */}
+              {!isScanningWifi && hasScannedWifi && (
+                <div className={styles.discoveredList}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0' }}>
+                      Cámaras Detectadas en Red Wi-Fi ({discoveredCameras.length}):
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleScanWifiCameras}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#ea580c',
+                        fontSize: 11,
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Re-escanear
+                    </button>
+                  </div>
+
+                  {discoveredCameras.length === 0 ? (
+                    <div
+                      style={{
+                        padding: '12px',
+                        borderRadius: 8,
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        fontSize: 11,
+                        color: '#94a3b8',
+                        textAlign: 'center',
+                      }}
+                    >
+                      No se encontraron cámaras activas automáticamente. Puedes ingresar la URL manual o seleccionar un preset debajo.
+                    </div>
+                  ) : (
+                    discoveredCameras.map((cam) => {
+                      const isCurrentSlot = cam.isAssignedSlot === targetSlot;
+                      const isOtherSlot = cam.isAssignedSlot !== null && cam.isAssignedSlot !== targetSlot;
+
+                      return (
+                        <div
+                          key={cam.id}
+                          className={styles.discoveredCard}
+                          style={{
+                            background: isCurrentSlot
+                              ? 'rgba(34, 197, 94, 0.12)'
+                              : isOtherSlot
+                              ? 'rgba(234, 179, 8, 0.08)'
+                              : 'rgba(255, 255, 255, 0.03)',
+                            borderColor: isCurrentSlot
+                              ? 'rgba(34, 197, 94, 0.4)'
+                              : isOtherSlot
+                              ? 'rgba(234, 179, 8, 0.3)'
+                              : 'rgba(255, 255, 255, 0.08)',
+                          }}
+                        >
+                          <div className={styles.discoveredMeta}>
+                            <div
+                              className={styles.discoveredIcon}
+                              style={{
+                                color: isCurrentSlot ? '#4ade80' : isOtherSlot ? '#facc15' : '#94a3b8',
+                              }}
+                            >
+                              {cam.type === 'remote' ? (
+                                <Smartphone size={18} />
+                              ) : cam.type === 'usb_virtual' ? (
+                                <Video size={18} />
+                              ) : (
+                                <Wifi size={18} />
+                              )}
+                            </div>
+                            <div>
+                              <div className={styles.discoveredName}>{cam.name}</div>
+                              <div
+                                className={styles.discoveredSub}
+                                style={{
+                                  color: isCurrentSlot ? '#86efac' : isOtherSlot ? '#fde047' : '#94a3b8',
+                                }}
+                              >
+                                {cam.status || cam.url}
+                                {cam.isAssignedSlot !== null && (
+                                  <span style={{ marginLeft: 6, fontWeight: 700 }}>
+                                    (Asignada a CAM {cam.isAssignedSlot + 1})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {isCurrentSlot ? (
+                              <button
+                                type="button"
+                                onClick={() => onDisconnect(targetSlot)}
+                                style={{
+                                  background: 'rgba(239, 68, 68, 0.2)',
+                                  border: '1px solid rgba(239, 68, 68, 0.45)',
+                                  color: '#f87171',
+                                  padding: '5px 10px',
+                                  borderRadius: 6,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                }}
+                                title="Desconectar y eliminar de este slot"
+                              >
+                                <Trash2 size={12} /> Eliminar de CAM {targetSlot + 1}
+                              </button>
+                            ) : isOtherSlot ? (
+                              <button
+                                type="button"
+                                className={styles.assignBtn}
+                                style={{ background: '#eab308', color: '#000' }}
+                                onClick={() => handleAssignDiscovered(cam)}
+                              >
+                                Mover a CAM {targetSlot + 1}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className={styles.assignBtn}
+                                onClick={() => handleAssignDiscovered(cam)}
+                              >
+                                <Plus size={12} /> Asignar a CAM {targetSlot + 1}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
 
               <div className={styles.formGroup}>
                 <label className={styles.formLabel}>URL de transmisión manual (MJPEG / HLS / RTSP-HTTP):</label>
