@@ -1,0 +1,631 @@
+.wrap {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  max-width: 48%;
+  --cint-primary: #e8612a;
+  --cint-secondary: #ffffff;
+  pointer-events: auto;
+}
+
+.preview {
+  position: relative;
+  max-width: 100%;
+  transform: scale(0.72);
+  transform-origin: bottom left;
+}
+
+/* POSICIONES */
+.posBl { bottom: 16px; left: 16px; }
+.posBc { bottom: 16px; left: 50%; transform: translateX(-50%); }
+.posBr { bottom: 16px; right: 16px; left: auto; }
+.posTl { top: 16px; left: 16px; bottom: auto; align-items: flex-start; }
+.posTc { top: 16px; left: 50%; bottom: auto; transform: translateX(-50%); align-items: flex-start; }
+.posTr { top: 16px; right: 16px; left: auto; bottom: auto; align-items: flex-start; }
+.posMl { top: 50%; left: 16px; bottom: auto; transform: translateY(-50%); }
+.posMc { top: 50%; left: 50%; bottom: auto; transform: translate(-50%, -50%); }
+.posMr { top: 50%; right: 16px; left: auto; bottom: auto; transform: translateY(-50%); }
+
+.posBc.preview { transform: translateX(-50%) scale(0.72); transform-origin: bottom center; }
+.posBr.preview { transform: scale(0.72); transform-origin: bottom right; }
+
+/* VISOR PRINCIPAL (MASTER) EN 16:9 - NUNCA SOBREPASAR LA MITAD DE PANTALLA */
+.wrapLarge {
+  max-width: min(48%, 460px);
+  z-index: 11;
+}
+
+.wrapLarge.posBl { bottom: 20px; left: 20px; }
+.wrapLarge.posBr { bottom: 20px; right: 20px; left: auto; }
+.wrapLarge.posBc { bottom: 20px; left: 50%; transform: translateX(-50%); }
+.wrapLarge.posTl { top: 20px; left: 20px; bottom: auto; }
+.wrapLarge.posTc { top: 20px; left: 50%; bottom: auto; transform: translateX(-50%); }
+.wrapLarge.posTr { top: 20px; right: 20px; left: auto; bottom: auto; }
+
+/* CONTENEDOR 3D GENERAL */
+.cintInner3D {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  perspective: 1000px;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.75));
+}
+
+/* LOGO / AVATAR CON MOVIMIENTO 3D FLOTANTE */
+.cintLogoBox {
+  width: 42px;
+  height: 42px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  padding: 0;
+  transform-style: preserve-3d;
+}
+
+.logo3dFloat {
+  animation: logoBroadcastFloat 4.4s ease-in-out infinite;
+}
+
+@keyframes logoBroadcastFloat {
+  0% {
+    transform: perspective(600px) rotateY(0deg) translateY(0px) scale(1);
+    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.65));
+  }
+  25% {
+    transform: perspective(600px) rotateY(16deg) translateY(-3px) scale(1.05);
+    filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.75)) drop-shadow(0 0 12px var(--cint-primary));
+  }
+  50% {
+    transform: perspective(600px) rotateY(0deg) translateY(-5px) scale(1.06);
+    filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.8));
+  }
+  75% {
+    transform: perspective(600px) rotateY(-16deg) translateY(-2px) scale(1.03);
+    filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.7)) drop-shadow(0 0 10px var(--cint-primary));
+  }
+  100% {
+    transform: perspective(600px) rotateY(0deg) translateY(0px) scale(1);
+    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.65));
+  }
+}
+
+.cintLogoImg {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.6));
+  z-index: 2;
+}
+
+.logoReflection {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* BLOQUE PRINCIPAL DEL CINTILLO CON EFECTO SHIMMER */
+.cintMainBlock {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.cintMainBlock::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -150%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.28) 50%,
+    rgba(255, 255, 255, 0.04) 75%,
+    transparent 100%
+  );
+  transform: skewX(-25deg);
+  animation: cintilloShimmerSweep 6.5s infinite ease-in-out;
+  pointer-events: none;
+  z-index: 10;
+}
+
+@keyframes cintilloShimmerSweep {
+  0%, 75% { left: -150%; }
+  100% { left: 220%; }
+}
+
+/* TEXTOS BASE */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 8.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+
+.mainText {
+  display: block;
+  font-size: clamp(12px, 1.4vw, 17px);
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.2;
+  white-space: normal;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
+  letter-spacing: -0.01em;
+}
+
+.subText {
+  display: block;
+  font-size: clamp(9.5px, 1.0vw, 12px);
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.88);
+  margin-top: 2px;
+  line-height: 1.22;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.85);
+}
+
+.livePulseDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px currentColor;
+  display: inline-block;
+  animation: liveDotPulse 1.2s infinite;
+}
+
+@keyframes liveDotPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+/* ESTILO 1: GLASS BROADCAST (DEFAULT PRO) */
+.glassBody {
+  background: linear-gradient(135deg, rgba(16, 20, 32, 0.72) 0%, rgba(8, 10, 18, 0.82) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 10px 20px;
+  border-radius: 12px;
+  border-left: 4px solid var(--cint-primary);
+  min-width: 220px;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.25);
+}
+
+.glassTopBar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 3px;
+}
+
+.glassTopBar .tag {
+  padding: 2px 8px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+}
+
+/* ESTILO 2: CYBER NEÓN */
+.cyberBody {
+  background: rgba(10, 12, 20, 0.82);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  padding: 10px 20px;
+  border-radius: 8px;
+  min-width: 220px;
+  box-shadow: 0 0 20px rgba(0, 242, 254, 0.18), inset 0 0 14px rgba(0, 242, 254, 0.08);
+}
+
+.cyberTopLine {
+  height: 2px;
+  width: 100%;
+  margin-bottom: 6px;
+  box-shadow: 0 0 10px var(--cint-primary);
+}
+
+/* ESTILO 3: NOTICIERO LIVE BROADCAST */
+.newsContainer {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.newsHeaderBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 14px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: 0.1em;
+}
+
+.newsLiveTicker {
+  font-size: 9px;
+  font-weight: 700;
+  opacity: 0.95;
+}
+
+.newsBody {
+  background: rgba(12, 16, 26, 0.84);
+  backdrop-filter: blur(20px);
+  padding: 10px 18px;
+}
+
+/* ESTILO 4: METÁLICO VIP */
+.metallicBody {
+  background: linear-gradient(135deg, rgba(28, 24, 18, 0.82) 0%, rgba(12, 11, 15, 0.88) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-left: 4px solid var(--cint-primary);
+  padding: 10px 20px;
+  border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7), inset 0 1px 2px rgba(251, 191, 36, 0.3);
+}
+
+/* ESTILO 5: MINIMAL STUDIO */
+.minimalBody {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(8, 10, 16, 0.65);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 18px;
+  border-radius: 40px;
+}
+
+.minimalLine {
+  width: 3px;
+  height: 28px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+/* ESTILOS CLÁSICOS MEJORADOS CON GLASSMORPHISM */
+.classicAccent {
+  width: 4px;
+  align-self: stretch;
+  flex-shrink: 0;
+  border-radius: 3px 0 0 3px;
+}
+
+.classicBody {
+  background: rgba(14, 17, 26, 0.82);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: none;
+  padding: 10px 18px;
+  border-radius: 0 10px 10px 0;
+}
+
+.angledShape {
+  width: 28px;
+  clip-path: polygon(0 0, 100% 12%, 100% 88%, 0 100%);
+  flex-shrink: 0;
+}
+
+.angledBody {
+  background: rgba(12, 15, 24, 0.82);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: none;
+  padding: 10px 18px;
+  border-radius: 0 10px 10px 0;
+}
+
+.broadcastFlag {
+  width: 34px;
+  clip-path: polygon(0 0, 100% 0, 72% 100%, 0 100%);
+  flex-shrink: 0;
+}
+
+.broadcastBar {
+  background: rgba(14, 18, 28, 0.84);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 10px 18px 10px 10px;
+  border-radius: 0 10px 10px 0;
+}
+
+.profileBody {
+  background: rgba(12, 16, 26, 0.82);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 10px 18px;
+}
+
+.topTab {
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  padding: 3px 12px;
+  border-radius: 6px 6px 0 0;
+  margin-left: 8px;
+}
+
+.tabBody {
+  background: rgba(12, 16, 26, 0.85);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0 10px 10px 10px;
+  padding: 10px 18px;
+}
+
+.neonBody {
+  background: rgba(10, 12, 20, 0.82);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--cint-primary);
+  border-radius: 10px;
+  padding: 10px 18px;
+}
+
+.sportVertical {
+  padding: 6px 10px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sportBar {
+  background: rgba(12, 16, 26, 0.85);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: none;
+  padding: 10px 18px;
+  border-radius: 0 10px 10px 0;
+}
+
+.corpStripes {
+  width: 6px;
+  align-self: stretch;
+  flex-shrink: 0;
+  border-radius: 3px 0 0 3px;
+}
+
+.corpBody {
+  background: rgba(12, 16, 26, 0.85);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-left: none;
+  padding: 10px 18px;
+  border-radius: 0 10px 10px 0;
+}
+
+.premiumMain {
+  background: rgba(14, 16, 26, 0.85);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  padding: 10px 18px;
+}
+
+.premiumTopRow {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.premiumTopRow .tag {
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* =========================================================================
+   ADAPTABILIDAD RESPONSIVA POR FORMATO DE RED SOCIAL (9:16 Y 1:1)
+   ========================================================================= */
+
+/* FORMATO VERTICAL 9:16 (TikTok, Instagram Reels, YouTube Shorts) */
+.format_9_16 {
+  max-width: 90% !important;
+}
+
+.format_9_16.posBl { bottom: 18px !important; left: 14px !important; }
+.format_9_16.posBr { bottom: 18px !important; right: 14px !important; left: auto !important; }
+.format_9_16.posBc { bottom: 18px !important; left: 50% !important; }
+.format_9_16.posTl { top: 14px !important; left: 14px !important; }
+.format_9_16.posTr { top: 14px !important; right: 14px !important; left: auto !important; }
+.format_9_16.posTc { top: 14px !important; left: 50% !important; }
+
+.format_9_16 .cintInner3D {
+  gap: 8px !important;
+}
+
+.format_9_16 .cintLogoBox {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 8px !important;
+  padding: 4px !important;
+}
+
+.format_9_16 .mainText {
+  font-size: clamp(13px, 3.8vw, 17px) !important;
+  max-width: 250px !important;
+  line-height: 1.22 !important;
+}
+
+.format_9_16 .tag {
+  font-size: 8px !important;
+  letter-spacing: 0.1em !important;
+  padding: 1px 5px !important;
+}
+
+.format_9_16 .subText {
+  font-size: 9.5px !important;
+  margin-top: 1px !important;
+}
+
+.format_9_16 .glassBody,
+.format_9_16 .cyberBody,
+.format_9_16 .newsBody,
+.format_9_16 .metallicBody,
+.format_9_16 .minimalBody,
+.format_9_16 .classicBody,
+.format_9_16 .angledBody,
+.format_9_16 .broadcastBar,
+.format_9_16 .profileBody,
+.format_9_16 .tabBody,
+.format_9_16 .neonBody,
+.format_9_16 .sportBar,
+.format_9_16 .corpBody,
+.format_9_16 .premiumMain {
+  padding: 6px 12px !important;
+  border-radius: 8px !important;
+  min-width: 140px !important;
+}
+
+/* FORMATO CUADRADO 1:1 (Instagram Feed / Facebook Post) */
+.format_1_1 {
+  max-width: 86% !important;
+}
+
+.format_1_1.posBl { bottom: 20px !important; left: 18px !important; }
+.format_1_1.posBr { bottom: 20px !important; right: 18px !important; left: auto !important; }
+.format_1_1.posBc { bottom: 20px !important; left: 50% !important; }
+.format_1_1.posTl { top: 18px !important; left: 18px !important; }
+.format_1_1.posTr { top: 18px !important; right: 18px !important; left: auto !important; }
+.format_1_1.posTc { top: 18px !important; left: 50% !important; }
+
+.format_1_1 .cintLogoBox {
+  width: 46px !important;
+  height: 46px !important;
+  border-radius: 10px !important;
+  padding: 5px !important;
+}
+
+.format_1_1 .mainText {
+  font-size: clamp(15px, 2.6vw, 22px) !important;
+  max-width: 320px !important;
+}
+
+.format_1_1 .tag {
+  font-size: 8.5px !important;
+  padding: 2px 6px !important;
+}
+
+.format_1_1 .subText {
+  font-size: 11px !important;
+}
+
+.format_1_1 .glassBody,
+.format_1_1 .cyberBody,
+.format_1_1 .newsBody,
+.format_1_1 .metallicBody,
+.format_1_1 .minimalBody,
+.format_1_1 .classicBody,
+.format_1_1 .angledBody,
+.format_1_1 .broadcastBar,
+.format_1_1 .profileBody,
+.format_1_1 .tabBody,
+.format_1_1 .neonBody,
+.format_1_1 .sportBar,
+.format_1_1 .corpBody,
+.format_1_1 .premiumMain {
+  padding: 8px 15px !important;
+  border-radius: 10px !important;
+}
+
+/* ANIMACIONES BROADCAST SLIDER DE ENTRADA Y SALIDA */
+.phaseEnter {
+  animation: cintilloSliderEnter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.phaseExit {
+  animation: cintilloSliderExit 0.35s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+}
+
+@keyframes cintilloSliderEnter {
+  0% {
+    opacity: 0;
+    transform: translateX(-50px) scale(0.95);
+    filter: blur(8px);
+    clip-path: inset(0 100% 0 0 round 14px);
+  }
+  60% {
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: blur(0px);
+    clip-path: inset(0 0 0 0 round 14px);
+  }
+}
+
+@keyframes cintilloSliderExit {
+  0% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-40px) scale(0.95);
+    filter: blur(6px);
+  }
+}
+
+/* ESTILOS DE LOGO VECTORIAL DE REDES SOCIALES */
+.cintLogoBox svg {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.65));
+  z-index: 2;
+}
+
+.extras {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.closeBtn {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.5);
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.closeBtn:hover {
+  background: rgba(239, 68, 68, 0.8);
+  color: #fff;
+  border-color: #ef4444;
+}

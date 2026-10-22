@@ -1,0 +1,14 @@
+const path = require('path')
+const { validateConfig } = require(path.join(process.cwd(), 'lib', 'ai', 'config.js'))
+
+module.exports = async function handler(req, res) {
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Method not allowed' })
+    return
+  }
+  const configCheck = validateConfig()
+  res.status(200).json({
+    configured: configCheck.valid,
+    missing: configCheck.missing,
+  })
+}

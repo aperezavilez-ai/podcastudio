@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.1.0/dist/tabler-icons.min.css');
+@import "tailwindcss";
+
+:root {
+  --app-bg: #08080b;
+  --surface-1: #0d0d11;
+  --surface-2: #111118;
+  --surface-3: #161622;
+  --border-1: #1a1a24;
+  --border-2: #22222e;
+  --border-3: #2a2a38;
+  --text-primary: #e8e8f0;
+  --text-secondary: #8888a0;
+  --text-muted: #64748b;
+  --accent: #e8612a;
+  --accent-dim: rgba(232, 97, 42, 0.15);
+  --accent-border: rgba(232, 97, 42, 0.35);
+  --green: #1D9E75;
+  --green-dim: rgba(29, 158, 117, 0.15);
+  --green-border: rgba(29, 158, 117, 0.35);
+  --purple: #9d8ce8;
+  --purple-dim: rgba(157, 140, 232, 0.12);
+  --purple-border: rgba(157, 140, 232, 0.3);
+  --red: #e05050;
+  --red-dim: rgba(224, 80, 80, 0.12);
+  --blue: #4a90d9;
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 13px;
+  --radius-xl: 18px;
+}
+
+/* OCULTAR BARRA DE SCROLL BLANCA NATIVA DE WINDOWS / ELECTRON */
+/* Permite scroll fluido con la rueda del ratón y touchpad sin mostrar la barra visual */
+html, body, #root, * {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+::-webkit-scrollbar {
+  width: 0px !important;
+  height: 0px !important;
+  display: none !important;
+  background: transparent !important;
+}
+
+::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+body {
+  margin: 0;
+  background-color: #0a0a0a;
+  color: white;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow-x: hidden;
+}
