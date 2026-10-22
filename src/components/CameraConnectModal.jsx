@@ -135,7 +135,7 @@ export default function CameraConnectModal({
   const [connectingUsbId, setConnectingUsbId] = useState(null);
   const [usbConnectError, setUsbConnectError] = useState(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
-  const [useCloudDomain, setUseCloudDomain] = useState(false);
+  const [useCloudDomain, setUseCloudDomain] = useState(true);
 
   useEffect(() => {
     if (open) {
@@ -168,8 +168,11 @@ export default function CameraConnectModal({
   const isMaster = targetSlot === masterCameraSlot;
   const currentMeta = cameraMeta[targetSlot];
 
-  // URL Remota oficial para celulares (dominio seguro SSL podcastudio.mx)
+  // URL Remota oficial para celulares (Wi-Fi Local Directo o Enlace Cloud Seguro)
   const remoteUrl = useMemo(() => {
+    if (!useCloudDomain && localQrUrl && !localQrUrl.includes('remote-cam')) {
+      return localQrUrl;
+    }
     const base = 'https://www.podcastudio.mx/remote-cam';
     const params = new URLSearchParams({
       slot: String(targetSlot + 1),
@@ -178,7 +181,7 @@ export default function CameraConnectModal({
     if (guestName.trim()) params.set('name', guestName.trim());
     if (guestRole && guestRole !== 'guest') params.set('role', guestRole);
     return `${base}?${params.toString()}`;
-  }, [targetSlot, guestName, guestRole]);
+  }, [targetSlot, guestName, guestRole, useCloudDomain, localQrUrl]);
 
   // Generación de QR Data URL
   useEffect(() => {
@@ -759,6 +762,54 @@ Instrucciones:
                       >
                         🌐 Enlace Cloud / 4G
                       </button>
+                    </div>
+                  </div>
+
+                  {/* INDICADOR EN VIVO DEL PROCESO DE CONEXIÓN */}
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: '12px 14px',
+                      borderRadius: 12,
+                      background: isConnected
+                        ? 'rgba(16, 185, 129, 0.12)'
+                        : 'rgba(56, 189, 248, 0.08)',
+                      border: isConnected
+                        ? '1px solid rgba(16, 185, 129, 0.35)'
+                        : '1px solid rgba(56, 189, 248, 0.25)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        background: isConnected ? '#059669' : '#0284c7',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        boxShadow: isConnected ? '0 0 12px rgba(16,185,129,0.4)' : '0 0 12px rgba(56,189,248,0.3)',
+                      }}
+                    >
+                      {isConnected ? (
+                        <Check size={18} className="text-white" />
+                      ) : (
+                        <Radio size={18} className="text-white animate-pulse" />
+                      )}
+                    </div>
+                    <div style={{ flex: 1, textAlign: 'left' }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: isConnected ? '#6ee7b7' : '#7dd3fc', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>{isConnected ? `¡CAM ${targetSlot + 1} CONECTADA EN VIVO!` : `ESPERANDO CONEXIÓN EN CAM ${targetSlot + 1}...`}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, lineHeight: 1.35 }}>
+                        {isConnected
+                          ? 'Transmisión fluida y audio sincronizados en tiempo real.'
+                          : 'Apunta la cámara de tu celular al código QR abajo. En cuanto el teléfono ingrese, se activará en vivo aquí.'}
+                      </div>
                     </div>
                   </div>
 

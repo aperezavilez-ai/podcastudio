@@ -517,7 +517,11 @@ export default function RemoteCam() {
           if (pc.signalingState === 'have-local-offer') {
             await pc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
           }
-          setStatus('connected')
+          if (pc.iceConnectionState === 'connected' || pc.connectionState === 'connected') {
+            setStatus('connected');
+          } else {
+            setStatus('negotiating');
+          }
           reconnectAttemptsRef.current = 0
           if (handshakeTimerRef.current) {
             clearTimeout(handshakeTimerRef.current)
@@ -851,7 +855,13 @@ export default function RemoteCam() {
           <div className={styles.topOverlay}>
             <div className={`${styles.tallyPill} ${status === 'connected' ? styles.tallyLive : styles.tallyConnecting}`}>
               <div className={status === 'connected' ? styles.dotLive : styles.dotConnecting} />
-              <span>{status === 'connected' ? `AL AIRE • CAM ${slot}` : 'CONECTANDO...'}</span>
+              <span>
+                {status === 'connected' 
+                  ? `AL AIRE • CAM ${slot}` 
+                  : status === 'negotiating' 
+                    ? 'ENLAZANDO CON ESTUDIO...' 
+                    : 'CONECTANDO SEÑAL...'}
+              </span>
             </div>
             <div className={styles.slotInfoBadge}>{facingMode === 'environment' ? 'Trasera' : 'Frontal'}</div>
           </div>

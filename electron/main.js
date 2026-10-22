@@ -670,14 +670,15 @@ ipcMain.handle('start-streaming', async (event, payload) => {
       const workerArgs = [
         '-probesize', '32M',
         '-analyzeduration', '0',
+        '-fflags', '+nobuffer+flush_packets',
         '-f', 'webm',
         '-i', 'pipe:0',
         '-c:v', 'libx264',
-        '-preset', 'veryfast',
+        '-preset', 'ultrafast',
         '-tune', 'zerolatency',
-        '-b:v', '3000k',
-        '-maxrate', '3500k',
-        '-bufsize', '6000k',
+        '-b:v', '2500k',
+        '-maxrate', '2800k',
+        '-bufsize', '2800k',
         '-pix_fmt', 'yuv420p',
         '-g', '60',
         '-keyint_min', '60',
@@ -686,6 +687,8 @@ ipcMain.handle('start-streaming', async (event, payload) => {
         '-b:a', '128k',
         '-ar', '44100',
         '-flvflags', 'no_duration_filesize',
+        '-rtmp_buffer', '100',
+        '-rtmp_live', 'live',
         '-f', 'flv',
         destUrl
       ];

@@ -541,7 +541,7 @@ function PodcastStudioApp() {
     let cloudTransport = null;
     try {
       cloudTransport = createStreamTransport('p2p');
-      [1, 2, 3].forEach(slotIdx => {
+      [0, 1, 2, 3].forEach(slotIdx => {
         const roomCode = `studio_cam_${slotIdx + 1}`;
         cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
           console.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
@@ -1200,7 +1200,14 @@ function PodcastStudioApp() {
             )}
             
             {/* LOGO SUPERIOR IZQUIERDO OFICIAL DEL PROYECTO */}
-            {logoBase64 && <img src={logoBase64} alt="Logo Oficial del Proyecto" className="absolute top-4 left-4 h-16 object-contain z-30 drop-shadow-lg" />}
+            {logoBase64 && typeof logoBase64 === 'string' && logoBase64.trim() && (
+              <img 
+                src={logoBase64} 
+                alt="Logo Oficial del Proyecto" 
+                onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+                className="absolute top-4 left-4 h-16 object-contain z-30 drop-shadow-lg" 
+              />
+            )}
             
             {/* CINTILLO BROADCAST TRANSLÚCIDO 3D CON 13 ESTILOS Y ANIMACIONES */}
             {cintillosVisible && cintillo?.active && (
@@ -1731,43 +1738,7 @@ function PodcastStudioApp() {
                 )}
               </div>
 
-              {/* PANEL 5: CONEXIONES */}
-              <div className="border border-[#222] rounded bg-[#161616] overflow-hidden">
-                <button 
-                  onClick={() => {
-                    togglePanel('conexiones');
-                    setConnectModalSlot(activeCam - 1);
-                    setShowConnectModal(true);
-                  }} 
-                  className="w-full p-2.5 flex justify-between items-center text-xs hover:bg-[#2a2a2a] transition-colors"
-                >
-                  <span className="flex items-center gap-2 font-bold text-white">
-                    <Radio size={15} className="text-purple-400"/> Conexiones
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] bg-purple-950/60 text-purple-300 border border-purple-800/50 px-1.5 py-0.2 rounded font-semibold">Configurar</span>
-                    <ChevronDown size={14} className="text-gray-400"/>
-                  </div>
-                </button>
-                {activePanel === 'conexiones' && (
-                  <div className="p-3 border-t border-[#222] bg-[#0f0f0f] space-y-2">
-                    <button 
-                      onClick={() => { setConnectModalSlot(activeCam - 1); setShowConnectModal(true); }} 
-                      className="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded font-bold flex items-center justify-center gap-2 text-xs text-white shadow-lg transition-colors"
-                    >
-                      <Video size={14} /> Configurar Entrada de Video
-                    </button>
-                    <button 
-                      onClick={() => { setConnectModalSlot(activeCam - 1); setShowConnectModal(true); }} 
-                      className="w-full py-1.5 bg-[#181c26] hover:bg-[#202738] border border-blue-500/30 rounded font-bold flex items-center justify-center gap-2 text-[11px] text-blue-400 transition-colors"
-                    >
-                      <QrCode size={13} /> Invitar Celular / Remoto QR
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* PANEL 6: ESCENARIOS VIRTUALES */}
+              {/* PANEL 5: ESCENARIOS VIRTUALES */}
               <div className="border border-[#222] rounded bg-[#161616] overflow-hidden">
                 <button onClick={() => togglePanel('escenarios')} className="w-full p-2.5 flex justify-between items-center text-xs hover:bg-[#2a2a2a] transition-colors"><span className="flex items-center gap-2 font-bold text-white"><Layers size={15} className="text-emerald-400"/> Escenarios Virtuales</span><ChevronDown size={14} className="text-gray-400"/></button>
                 {activePanel === 'escenarios' && (
@@ -1780,6 +1751,24 @@ function PodcastStudioApp() {
                   </div>
                 )}
               </div>
+
+              {/* BOTÓN DIRECTO: CONFIGURAR ENTRADA DE VIDEO (DEBAJO DE ESCENARIOS VIRTUALES - SIN FLECHA NI DUPLICADOS) */}
+              <button 
+                onClick={() => { 
+                  setConnectModalSlot(activeCam - 1); 
+                  setShowConnectModal(true); 
+                }} 
+                className="w-full p-2.5 bg-[#161616] hover:bg-[#202025] border border-[#2a2a32] hover:border-blue-500/50 rounded flex items-center justify-between text-xs font-bold text-white transition-all cursor-pointer shadow-sm group"
+                title="Configurar cámaras USB, Wi-Fi y celulares remotos"
+              >
+                <span className="flex items-center gap-2">
+                  <Radio size={15} className="text-blue-400 group-hover:scale-110 transition-transform"/>
+                  <span>Configurar Entrada de Video</span>
+                </span>
+                <span className="text-[10px] bg-blue-950/60 text-blue-300 border border-blue-800/50 px-2 py-0.5 rounded font-semibold">
+                  Abrir
+                </span>
+              </button>
 
             </div>
           )}
