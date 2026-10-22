@@ -6,7 +6,7 @@ import {
   CheckCircle, Download, UploadCloud, Image as ImageIcon, FileVideo, AudioLines, Monitor,
   BookOpen, Type, Layers, Music, ChevronRight, ChevronLeft, PanelRight, ChevronDown,
   PlayCircle, PauseCircle, Upload, Facebook, Youtube, Instagram, VolumeX, Sparkle, RefreshCw,
-  Radio, Tv
+  Radio, Tv, Trash2
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import mammoth from 'mammoth';
@@ -383,22 +383,42 @@ function PodcastStudioApp() {
   useEffect(() => {
     const startCamera = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 }, audio: true });
-        setLocalStream(stream);
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const analyser = audioCtx.createAnalyser();
-        const source = audioCtx.createMediaStreamSource(stream);
-        source.connect(analyser);
-        analyser.fftSize = 256;
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        const updateVolume = () => {
-          analyser.getByteFrequencyData(dataArray);
-          let sum = 0; for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-          setMicLevel(Math.min(100, Math.round((sum / dataArray.length / 128) * 100)));
-          requestAnimationFrame(updateVolume);
-        };
-        updateVolume();
-      } catch (err) { console.error("Error cámara:", err); }
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
+          audio: true 
+        }).catch(async () => {
+          return await navigator.mediaDevices.getUserMedia({ 
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } } 
+          });
+        });
+
+        if (stream) {
+          setLocalStream(stream);
+          setSlotStreams(prev => ({ ...prev, 0: stream }));
+          const videoTrack = stream.getVideoTracks()[0];
+          const devId = videoTrack?.getSettings?.()?.deviceId;
+          const devLabel = videoTrack?.label || 'Cámara 1 (Principal)';
+          setCameraMeta(prev => ({ ...prev, 0: { deviceId: devId, label: devLabel, type: 'usb' } }));
+
+          if (stream.getAudioTracks().length > 0) {
+            try {
+              const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+              const analyser = audioCtx.createAnalyser();
+              const source = audioCtx.createMediaStreamSource(stream);
+              source.connect(analyser);
+              analyser.fftSize = 256;
+              const dataArray = new Uint8Array(analyser.frequencyBinCount);
+              const updateVolume = () => {
+                analyser.getByteFrequencyData(dataArray);
+                let sum = 0; for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                setMicLevel(Math.min(100, Math.round((sum / dataArray.length / 128) * 100)));
+                requestAnimationFrame(updateVolume);
+              };
+              updateVolume();
+            } catch (e) {}
+          }
+        }
+      } catch (err) { console.error("Error cámara inicial:", err); }
     };
     startCamera();
   }, []);
@@ -680,6 +700,15 @@ function PodcastStudioApp() {
     }
   };
 
+  const handleClearTeleprompter = () => {
+    setTeleprompterText('');
+    setIsTeleprompterPlaying(false);
+    teleprompterYRef.current = window.innerHeight;
+    if (teleprompterTextRef.current) {
+      teleprompterTextRef.current.style.transform = `translateY(${window.innerHeight}px)`;
+    }
+  };
+
   const handleLogoUpload = (e) => {
     const file = e.target.files[0];
     if (file) { 
@@ -704,28 +733,53 @@ function PodcastStudioApp() {
   }, []);
 
   const handleUsbConnect = async (deviceId, slot, label) => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { deviceId: { exact: deviceId }, width: 1280, height: 720 },
-        audio: true
-      });
+    // Si la cámara ya está activa en este slot con el mismo deviceId, mantenerla
+    const currentStream = slotStreams[slot] || (slot === 0 ? localStream : null);
+    const activeVideoTrack = currentStream?.getVideoTracks()?.[0];
+    const activeDevId = activeVideoTrack?.getSettings?.()?.deviceId;
+
+    if (activeVideoTrack && activeVideoTrack.readyState === 'live' && (activeDevId === deviceId || !deviceId)) {
+      setSlotStreams(prev => ({ ...prev, [slot]: currentStream }));
+      setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, label: label || 'Cámara USB', type: 'usb' } }));
+      if (slot === 0) setLocalStream(currentStream);
+      return currentStream;
+    }
+
+    // Detener tracks anteriores para liberar el bloqueo exclusivo del driver de Windows
+    if (slotStreams[slot]) {
+      try { slotStreams[slot].getTracks().forEach(t => t.stop()); } catch (e) {}
+    }
+    if (slot === 0 && localStream) {
+      try { localStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    }
+
+    // Pausa breve para que Windows DirectShow libere el hardware
+    await new Promise(r => setTimeout(r, 60));
+
+    let stream = null;
+    const attempts = [
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true },
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      { video: { deviceId: deviceId }, audio: true },
+      { video: { deviceId: deviceId }, audio: false },
+      { video: true, audio: false }
+    ];
+
+    for (const constraints of attempts) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (stream) break;
+      } catch (err) {}
+    }
+
+    if (stream) {
       setSlotStreams(prev => ({ ...prev, [slot]: stream }));
-      setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, label, type: 'usb' } }));
+      setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, label: label || 'Cámara USB', type: 'usb' } }));
       if (slot === 0) setLocalStream(stream);
       return stream;
-    } catch (err) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: deviceId } }
-        });
-        setSlotStreams(prev => ({ ...prev, [slot]: stream }));
-        setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, label, type: 'usb' } }));
-        if (slot === 0) setLocalStream(stream);
-        return stream;
-      } catch (e2) {
-        console.error("Error conectando cámara USB:", e2);
-        return null;
-      }
+    } else {
+      console.error("Error: No se pudo abrir la cámara tras intentar todas las combinaciones");
+      return null;
     }
   };
 
@@ -735,12 +789,16 @@ function PodcastStudioApp() {
 
   const handleDisconnectSlot = (slot) => {
     if (slotStreams[slot]) {
-      slotStreams[slot].getTracks().forEach(t => t.stop());
+      try { slotStreams[slot].getTracks().forEach(t => t.stop()); } catch (e) {}
       setSlotStreams(prev => {
         const next = { ...prev };
         delete next[slot];
         return next;
       });
+    }
+    if (slot === 0 && localStream) {
+      try { localStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+      setLocalStream(null);
     }
     setCameraMeta(prev => {
       const next = { ...prev };
@@ -1342,16 +1400,41 @@ function PodcastStudioApp() {
               <div className="border border-[#222] rounded bg-[#161616] overflow-hidden">
                 <button onClick={() => togglePanel('teleprompter')} className="w-full p-2.5 flex justify-between items-center text-xs hover:bg-[#2a2a2a] transition-colors">
                   <span className="flex items-center gap-2 font-bold text-white"><BookOpen size={15} className="text-blue-400"/> Teleprompter</span>
-                  <span className={`text-[9px] px-2 py-0.5 rounded font-bold ${isTeleprompterPlaying ? 'bg-green-900 text-green-400' : 'bg-[#222] text-gray-400'}`}>{isTeleprompterPlaying ? 'Leyendo' : 'En Espera'}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[9px] px-2 py-0.5 rounded font-bold ${isTeleprompterPlaying ? 'bg-green-900 text-green-400' : 'bg-[#222] text-gray-400'}`}>{isTeleprompterPlaying ? 'Leyendo' : 'En Espera'}</span>
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${activePanel === 'teleprompter' ? 'rotate-180' : ''}`}/>
+                  </div>
                 </button>
                 {activePanel === 'teleprompter' && (
                   <div className="p-3 border-t border-[#222] bg-[#0f0f0f] space-y-3">
-                    <label className="flex-1 bg-[#222] hover:bg-[#333] text-xs text-center py-2 rounded cursor-pointer flex items-center justify-center gap-1 border border-[#444] text-blue-400 font-bold"><Upload size={14}/> Subir Word (.docx)<input type="file" accept=".docx" className="hidden" onChange={handleWordUpload} /></label>
+                    <div className="flex gap-2 items-center">
+                      <label className="flex-1 bg-[#222] hover:bg-[#2c2c2c] text-xs text-center py-2 px-3 rounded cursor-pointer flex items-center justify-center gap-1.5 border border-[#444] text-blue-400 font-bold transition-colors">
+                        <Upload size={14}/> Subir Word (.docx)
+                        <input type="file" accept=".docx" className="hidden" onChange={handleWordUpload} />
+                      </label>
+                      <button 
+                        onClick={handleClearTeleprompter} 
+                        disabled={!teleprompterText}
+                        title="Eliminar archivo / limpiar teleprompter"
+                        className={`py-2 px-3 rounded text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
+                          teleprompterText 
+                            ? 'bg-red-950/40 hover:bg-red-900/60 text-red-400 hover:text-red-300 border-red-800/60 cursor-pointer' 
+                            : 'bg-[#181818] text-gray-600 border-[#2a2a2a] cursor-not-allowed opacity-50'
+                        }`}
+                      >
+                        <Trash2 size={13}/> Limpiar
+                      </button>
+                    </div>
                     <div className="flex gap-1">
                       <button onClick={handlePlayTeleprompter} className={`flex-1 py-1.5 rounded text-xs font-bold flex justify-center items-center gap-1 border ${isTeleprompterPlaying ? 'bg-green-600 text-white border-green-500' : 'bg-[#1a1a1a] text-green-500 border-green-900/50 hover:bg-[#222]'}`}><Monitor size={12}/> Play</button>
                       <button onClick={() => setIsTeleprompterPlaying(false)} className={`flex-1 py-1.5 rounded text-xs font-bold flex justify-center items-center gap-1 border ${!isTeleprompterPlaying ? 'bg-red-700 text-white border-red-500' : 'bg-[#1a1a1a] text-red-500 border-red-900/50 hover:bg-[#222]'}`}><Square size={12}/> Stop</button>
                     </div>
-                    <textarea value={teleprompterText} onChange={(e) => setTeleprompterText(e.target.value)} className="w-full bg-[#1a1a1a] border border-[#333] rounded p-2 text-sm text-gray-300 h-32 resize-none outline-none focus:border-orange-500" />
+                    <textarea 
+                      value={teleprompterText} 
+                      onChange={(e) => setTeleprompterText(e.target.value)} 
+                      placeholder="Escribe o pega aquí el guión del programa, o sube un archivo Word (.docx)..." 
+                      className="w-full bg-[#1a1a1a] border border-[#333] rounded p-2 text-sm text-gray-300 placeholder-gray-600 h-32 resize-none outline-none focus:border-orange-500" 
+                    />
                     <div className="space-y-2 pt-2 border-t border-[#333]">
                       <div className="flex items-center gap-2 text-[10px] text-gray-400"><span className="w-8">Vel.</span><input type="range" min="0.1" max="10" step="0.1" value={teleprompterSpeed} onChange={e => setTeleprompterSpeed(parseFloat(e.target.value))} className="flex-1 accent-orange-500" /><span className="w-8 text-right">{teleprompterSpeed.toFixed(1)}x</span></div>
                       <div className="flex items-center gap-2 text-[10px] text-gray-400"><span className="w-8">Texto</span><input type="range" min="20" max="100" value={teleprompterFontSize} onChange={e => setTeleprompterFontSize(parseInt(e.target.value))} className="flex-1 accent-orange-500" /><span className="w-8 text-right">{teleprompterFontSize}px</span></div>

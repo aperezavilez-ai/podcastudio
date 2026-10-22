@@ -3,6 +3,7 @@ node_modules/
 
 # Builds y empaquetado
 dist/
+dist_electron/
 release/
 *.exe
 *.mp4

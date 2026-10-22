@@ -10,6 +10,11 @@ const selfsigned = require('selfsigned');
 const { WebSocketServer } = require('ws');
 const os = require('os');
 
+// Configurar App ID oficial para Windows para asociar el icono de PodcastStudio en la barra de tareas
+if (process.platform === 'win32') {
+  app.setAppUserModelId("com.podcaststudio.app");
+}
+
 ffmpeg.setFfmpegPath(ffmpegPath);
 let mainWindow;
 let ffmpegRecordProcess = null;
@@ -44,9 +49,13 @@ const pems = selfsigned.generate([{ name: 'commonName', value: LOCAL_IP }], {
 const options = { key: pems.private, cert: pems.cert };
 
 function createWindow() {
-  const iconPath = fs.existsSync(path.join(__dirname, '../icon.ico'))
-    ? path.join(__dirname, '../icon.ico')
-    : path.join(__dirname, '../icon.png');
+  let iconPath = path.join(__dirname, '../icon.ico');
+  if (!fs.existsSync(iconPath)) {
+    iconPath = path.join(process.resourcesPath || __dirname, 'icon.ico');
+  }
+  if (!fs.existsSync(iconPath)) {
+    iconPath = path.join(__dirname, '../icon.png');
+  }
 
   mainWindow = new BrowserWindow({
     width: 1500, height: 900, title: "PodcastStudio",
@@ -58,6 +67,10 @@ function createWindow() {
     },
     backgroundColor: '#0a0a0a',
   });
+
+  if (iconPath && fs.existsSync(iconPath)) {
+    try { mainWindow.setIcon(iconPath); } catch (e) {}
+  }
 
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     if (permission === 'media') callback(true); else callback(false);
