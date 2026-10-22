@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, session, shell } = require('electron');
+Menu.setApplicationMenu(null);
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -60,6 +61,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1500, height: 900, title: "PodcastStudio",
     icon: iconPath,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -67,6 +69,9 @@ function createWindow() {
     },
     backgroundColor: '#0a0a0a',
   });
+
+  mainWindow.setMenu(null);
+  if (mainWindow.removeMenu) mainWindow.removeMenu();
 
   if (iconPath && fs.existsSync(iconPath)) {
     try { mainWindow.setIcon(iconPath); } catch (e) {}
