@@ -6,7 +6,7 @@ import {
   CheckCircle, Download, UploadCloud, Image as ImageIcon, FileVideo, AudioLines, Monitor,
   BookOpen, Type, Layers, Music, ChevronRight, ChevronLeft, PanelRight, ChevronDown,
   PlayCircle, PauseCircle, Upload, Facebook, Youtube, Instagram, VolumeX, Sparkle, RefreshCw,
-  Radio, Tv, Trash2
+  Radio, Tv, Trash2, Loader2
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import mammoth from 'mammoth';
@@ -18,6 +18,7 @@ import CintilloStylePicker from './components/CintilloStylePicker.jsx';
 import CintilloEditorModal from './components/CintilloEditorModal.jsx';
 import CameraConnectModal from './components/CameraConnectModal.jsx';
 import CameraCalibratorModal from './components/CameraCalibratorModal.jsx';
+import MultiFormatExportModal from './components/MultiFormatExportModal.jsx';
 import { useCameraAudioLevels } from './hooks/useCameraAudioLevels.js';
 import { buildCanvasFilter } from './utils/videoLook.js';
 import { CINTILLO_STYLES, getCintilloStyle } from './config/cintilloStyles.js';
@@ -77,6 +78,9 @@ function PodcastStudioApp() {
   const [countdown, setCountdown] = useState(null);
   const [micLevel, setMicLevel] = useState(0);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showMasterGrid, setShowMasterGrid] = useState(false);
+  const [recordedVideoData, setRecordedVideoData] = useState(null);
+  const recordingChunksRef = useRef([]);
 
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
@@ -589,6 +593,12 @@ function PodcastStudioApp() {
         } catch (e) {}
 
         pc.ontrack = (event) => {
+          if (event.receiver) {
+            try {
+              if ('playoutDelayHint' in event.receiver) event.receiver.playoutDelayHint = 0;
+              if ('jitterBufferTarget' in event.receiver) event.receiver.jitterBufferTarget = 0;
+            } catch (e) {}
+          }
           if (event.streams && event.streams[0]) {
             const stream = event.streams[0];
             console.log(`[WebRTC] Video en vivo recibido de celular ${id}`);
@@ -704,13 +714,18 @@ function PodcastStudioApp() {
     if (isStreamingRef.current && window.api?.sendStreamChunk) {
       window.api.sendStreamChunk(buffer);
     }
-    if (isRecordingRef.current && window.api?.sendRecordChunk) {
-      window.api.sendRecordChunk(buffer);
+    if (isRecordingRef.current) {
+      recordingChunksRef.current.push(buffer);
+      if (window.api?.sendRecordChunk) {
+        window.api.sendRecordChunk(buffer);
+      }
     }
   };
 
   const handleRecord = async () => {
     if (!isRecording) {
+      recordingChunksRef.current = [];
+      setRecordingTime(0);
       setCountdown(3);
       setTimeout(() => setCountdown(2), 1000);
       setTimeout(() => setCountdown(1), 2000);
@@ -748,9 +763,28 @@ function PodcastStudioApp() {
         }
       }, 3000);
     } else {
-      if (window.api) await window.api.stopRecording();
+      let stopRes = null;
+      if (window.api) {
+        try {
+          stopRes = await window.api.stopRecording();
+        } catch (e) {
+          console.warn('Error parando grabación FFmpeg:', e);
+        }
+      }
       setIsRecording(false);
       if (!isStreamingRef.current) stopBroadcastEngine();
+
+      const chunks = recordingChunksRef.current;
+      const recBlob = chunks.length > 0 ? new Blob(chunks, { type: 'video/webm' }) : null;
+      const recUrl = recBlob ? URL.createObjectURL(recBlob) : null;
+
+      setRecordedVideoData({
+        blob: recBlob,
+        url: recUrl,
+        filePath: stopRes?.path || null,
+        name: `PodcastStudio_Episodio_${Date.now()}`,
+        duration: recordingTime || 1,
+      });
       setShowExportModal(true);
     }
   };
@@ -1050,6 +1084,26 @@ function PodcastStudioApp() {
             )}
             <span className="text-gray-400">CALIDAD:</span>
             <span className="text-orange-500 border border-orange-500 rounded px-2 py-0.5 font-bold">1080p · 30fps</span>
+
+            {/* ZOOM DINÁMICO FUERA DE LA PANTALLA */}
+            <div className="flex items-center gap-1.5 bg-[#141417] px-2.5 py-1 rounded border border-[#2a2a32] text-xs">
+              <span className="text-orange-500 font-bold">ZOOM DINÁMICO</span>
+              <span className="px-1.5 py-0.2 rounded bg-orange-600 text-white font-bold text-[10px]">1.0x</span>
+            </div>
+
+            {/* BOTÓN DE CUADRÍCULA DE ENCUADRE MASTER */}
+            <button
+              onClick={() => setShowMasterGrid(prev => !prev)}
+              className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                showMasterGrid
+                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-400/60 shadow-[0_0_10px_rgba(6,182,212,0.3)]'
+                  : 'bg-[#18181b] hover:bg-[#27272a] text-gray-300 border border-[#333]'
+              }`}
+              title="Activar / Desactivar cuadrícula y guías de encuadre en el Master"
+            >
+              <Grid size={13} className={showMasterGrid ? 'text-cyan-400' : 'text-gray-400'} />
+              <span>{showMasterGrid ? 'Cuadrícula Activa' : 'Cuadrícula'}</span>
+            </button>
           </div>
           <div className="flex gap-2 items-center pr-32" style={{ WebkitAppRegion: 'no-drag' }}>
              <button onClick={() => setShowStreamModal(true)} className={`px-4 py-1.5 rounded font-bold text-xs flex items-center gap-2 ${isStreaming ? 'bg-red-800 hover:bg-red-700 text-white shadow-lg shadow-red-900/50' : 'bg-red-700 hover:bg-red-600 text-white'}`}><Wifi size={14}/> {isStreaming ? `GESTIONAR EN VIVO (${activeLiveDestinations.length})` : 'TRANSMITIR EN VIVO'}</button>
@@ -1064,11 +1118,29 @@ function PodcastStudioApp() {
             
             {countdown !== null && <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center"><span className="text-white text-9xl font-bold animate-ping">{countdown}</span></div>}
             
-            {/* ZOOM DINÁMICO */}
-            <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/60 backdrop-blur px-3 py-1.5 rounded-lg border border-[#333] z-30 pointer-events-none">
-               <span className="text-orange-500 text-[10px] font-bold">ZOOM DINÁMICO</span>
-               <span className="px-1.5 py-0.5 rounded text-[10px] bg-orange-600 text-white">1.0x</span>
-            </div>
+            {/* CUADRÍCULA PROFESIONAL DE ENCUADRE Y REGLA DE TERCIOS */}
+            {showMasterGrid && (
+              <div className="absolute inset-0 pointer-events-none z-30 select-none">
+                {/* Líneas verticales regla de tercios */}
+                <div className="absolute top-0 bottom-0 left-1/3 w-px border-l border-dashed border-cyan-400/40"></div>
+                <div className="absolute top-0 bottom-0 left-2/3 w-px border-l border-dashed border-cyan-400/40"></div>
+                {/* Líneas horizontales regla de tercios */}
+                <div className="absolute left-0 right-0 top-1/3 h-px border-t border-dashed border-cyan-400/40"></div>
+                <div className="absolute left-0 right-0 top-2/3 h-px border-t border-dashed border-cyan-400/40"></div>
+                {/* Margen Seguro de Broadcast */}
+                <div className="absolute inset-[6%] border border-dotted border-cyan-300/35 rounded-sm"></div>
+                {/* Cruz central de centrado de rostro/toma */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 pointer-events-none">
+                  <div className="absolute top-1/2 left-0 right-0 h-px bg-cyan-400/70"></div>
+                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-cyan-400/70"></div>
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full border border-cyan-400/80"></div>
+                </div>
+                {/* Badge en esquina superior */}
+                <div className="absolute top-3 right-3 bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded shadow pointer-events-none">
+                  GUÍA DE ENCUADRE MASTER
+                </div>
+              </div>
+            )}
             
             {/* LOGO SUPERIOR IZQUIERDO OFICIAL DEL PROYECTO */}
             {logoBase64 && <img src={logoBase64} alt="Logo Oficial del Proyecto" className="absolute top-4 left-4 h-16 object-contain z-30 drop-shadow-lg" />}
@@ -1110,22 +1182,7 @@ function PodcastStudioApp() {
                 </div>
             )}
 
-            {/* INDICADORES INFERIORES CENTRADOS */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4 z-30 pointer-events-none">
-              <div className="bg-black/80 px-4 py-1.5 rounded-full border border-[#333] text-xs text-gray-300 flex items-center gap-2">
-                <Mic size={12}/> CAM {activeCam}
-              </div>
-              <div className="bg-black/80 px-4 py-1.5 rounded-full border border-[#333] flex items-center">
-                <div className="w-16 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-green-500 transition-all duration-75" style={{ width: `${micLevel}%` }}></div>
-                </div>
-              </div>
-              <div className="bg-black/80 px-4 py-1.5 rounded-full border border-[#333] text-xs font-bold text-white">
-                PGM: {layoutMode === '1' ? `CAM ${activeCam}` : layoutMode.toUpperCase()}  MASTER
-              </div>
             </div>
-
-          </div>
         </div>
 
         {/* BOTTOM MULTI-CAM BAR */}
@@ -1673,7 +1730,36 @@ function PodcastStudioApp() {
           {/* BOTÓN INFERIOR DE GRABACIÓN */}
           {!isRightPanelCollapsed && (
             <div className="p-3 border-t border-[#222] bg-[#0a0a0a] flex flex-col gap-2 shrink-0">
-              <button onClick={handleRecord} className={`w-full py-2.5 rounded font-bold flex items-center justify-center gap-2 text-xs transition-colors ${isRecording ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse' : 'bg-[#2a1010] text-red-500 border border-red-900 hover:bg-[#3a1515]'}`}>{isRecording ? <><Square size={14}/> DETENER GRABACIÓN</> : <><Play size={14}/> INICIAR GRABACIÓN</>}</button>
+              <button 
+                onClick={handleRecord} 
+                className={`w-full py-3 rounded-lg font-bold flex items-center justify-center gap-2 text-xs transition-all cursor-pointer ${
+                  isRecording 
+                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-900/50 animate-pulse' 
+                    : countdown !== null 
+                      ? 'bg-orange-600 text-white animate-pulse' 
+                      : 'bg-red-700 hover:bg-red-600 text-white shadow-md'
+                }`}
+              >
+                {isRecording ? (
+                  <>
+                    <Square size={14} className="fill-white" />
+                    <span>DETENER GRABACIÓN</span>
+                    <span className="font-mono bg-black/40 px-2 py-0.5 rounded text-[11px] ml-1">
+                      {formatTime(recordingTime)}
+                    </span>
+                  </>
+                ) : countdown !== null ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>INICIANDO EN {countdown}...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play size={14} className="fill-white" />
+                    <span>INICIAR GRABACIÓN</span>
+                  </>
+                )}
+              </button>
             </div>
           )}
         </div>
@@ -2137,6 +2223,25 @@ function PodcastStudioApp() {
           </div>
         </div>
       )}
+
+      {/* MODAL DE EXPORTACIÓN Y DESCARGA MULTI-FORMATO (FACEBOOK, YOUTUBE, TIKTOK, INSTAGRAM) */}
+      <MultiFormatExportModal
+        open={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        recording={recordedVideoData}
+        onDownloadMp4={(rec) => {
+          if (rec?.blob) {
+            const url = URL.createObjectURL(rec.blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${rec.name || 'PodcastStudio_Master'}.mp4`;
+            a.click();
+            URL.revokeObjectURL(url);
+          } else if (window.api?.openRecordingsFolder) {
+            window.api.openRecordingsFolder();
+          }
+        }}
+      />
 
     </div>
   );

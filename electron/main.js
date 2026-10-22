@@ -45,16 +45,36 @@ function getLocalIP() {
 }
 const LOCAL_IP = getLocalIP();
 
-const pems = selfsigned.generate([{ name: 'commonName', value: LOCAL_IP }], {
-  days: 365, keySize: 2048,
-  extensions: [
-    { name: 'basicConstraints', cA: true },
-    { name: 'keyUsage', keyCertSign: true, digitalSignature: true, keyEncipherment: true },
-    { name: 'extKeyUsage', serverAuth: true },
-    { name: 'subjectAltName', altNames: [{ type: 2, value: 'localhost' }, { type: 7, ip: LOCAL_IP }] }
-  ]
-});
-const options = { key: pems.private, cert: pems.cert };
+function getCertificates() {
+  try {
+    const certCachePath = path.join(app.getPath('userData'), 'podcaststudio_cert.json');
+    if (fs.existsSync(certCachePath)) {
+      const data = JSON.parse(fs.readFileSync(certCachePath, 'utf8'));
+      if (data.key && data.cert && data.ip === LOCAL_IP) {
+        return { key: data.key, cert: data.cert };
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const pems = selfsigned.generate([{ name: 'commonName', value: LOCAL_IP }], {
+      days: 365, keySize: 1024,
+      extensions: [
+        { name: 'basicConstraints', cA: true },
+        { name: 'keyUsage', keyCertSign: true, digitalSignature: true, keyEncipherment: true },
+        { name: 'extKeyUsage', serverAuth: true },
+        { name: 'subjectAltName', altNames: [{ type: 2, value: 'localhost' }, { type: 7, ip: LOCAL_IP }] }
+      ]
+    });
+    try {
+      const certCachePath = path.join(app.getPath('userData'), 'podcaststudio_cert.json');
+      fs.writeFileSync(certCachePath, JSON.stringify({ key: pems.private, cert: pems.cert, ip: LOCAL_IP }), 'utf8');
+    } catch (e) {}
+    return { key: pems.private, cert: pems.cert };
+  } catch (e) {
+    return null;
+  }
+}
 
 function createWindow() {
   let iconPath = path.join(__dirname, '../icon.ico');
@@ -68,6 +88,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1500, height: 900, title: "PodcastStudio",
     icon: iconPath,
+    show: false,
     autoHideMenuBar: true,
     titleBarStyle: 'hidden',
     titleBarOverlay: {
@@ -79,6 +100,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: true,
     },
     backgroundColor: '#0a0a0a',
   });
@@ -89,6 +111,30 @@ function createWindow() {
   if (iconPath && fs.existsSync(iconPath)) {
     try { mainWindow.setIcon(iconPath); } catch (e) {}
   }
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
+
+  if (process.env.NODE_ENV !== 'development') {
+    mainWindow.webContents.on('devtools-opened', () => {
+      mainWindow.webContents.closeDevTools();
+    });
+  }
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith('http://localhost') && !url.startsWith('file://')) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http:') || url.startsWith('https:')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
 
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     if (permission === 'media') callback(true); else callback(false);
@@ -108,7 +154,8 @@ let httpWsServer = null;
 
 function startMediaServer() {
   const appServer = express();
-  const server = https.createServer(options, appServer);
+  const certs = getCertificates() || { key: '', cert: '' };
+  const server = https.createServer(certs, appServer);
   
   // WebSocket seguro sobre HTTPS (puerto 3000)
   wss = new WebSocketServer({ server });
@@ -317,8 +364,10 @@ function startMediaServer() {
                   try {
                     const params = sender.getParameters();
                     if (!params.encodings) params.encodings = [{}];
-                    params.encodings[0].maxBitrate = 2500000;
-                    params.degradationPreference = 'maintain-framerate';
+                    params.encodings[0].maxBitrate = 4500000;
+                    params.encodings[0].networkPriority = 'high';
+                    params.encodings[0].priority = 'high';
+                    params.degradationPreference = 'maintain-resolution';
                     sender.setParameters(params);
                   } catch (e) {}
                 }

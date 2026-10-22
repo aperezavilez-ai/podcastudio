@@ -8,10 +8,12 @@ const RTC_CONFIG = getWebRtcConfig()
 
 // TIERS CORREGIDOS: 720p30 es el estándar broadcast de oro para móviles.
 // Evita el motion blur y la saturación del encoder.
+// TIERS BROADCAST HD PRO: Bitrates optimizados hasta 6 Mbps y maintain-resolution para evitar pixelado en movimiento
 const QUALITY_TIERS = [
-  { label: 'HD 720p', maxBitrate: 2500000, width: 1280, height: 720, frameRate: 30 },
-  { label: 'SD+ 540p', maxBitrate: 1500000, width: 960, height: 540, frameRate: 30 },
-  { label: 'SD 360p', maxBitrate: 800000, width: 640, height: 360, frameRate: 24 },
+  { label: 'HD 720p Pro', maxBitrate: 4500000, width: 1280, height: 720, frameRate: 30 },
+  { label: 'Full HD 1080p', maxBitrate: 6000000, width: 1920, height: 1080, frameRate: 30 },
+  { label: 'HD 720p', maxBitrate: 3000000, width: 1280, height: 720, frameRate: 30 },
+  { label: 'SD+ 540p', maxBitrate: 1800000, width: 960, height: 540, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 300     
 const RTT_HEALTHY_MS = 120     
@@ -28,10 +30,10 @@ function applyVideoSenderParams(sender, tier) {
     e.maxFramerate = tier.frameRate
     e.priority = 'high'
     e.networkPriority = 'high'
-    // CLAVE: Ya no forzamos minBitrate. Si la red cae, WebRTC debe bajar la calidad.
     
+    // CLAVE: maintain-resolution evita que se degrade en macrobloques o pixeles al mover la toma
     if ('degradationPreference' in params) {
-      params.degradationPreference = 'maintain-framerate'
+      params.degradationPreference = 'maintain-resolution'
     }
     sender.setParameters(params).catch(() => {})
   } catch {}
