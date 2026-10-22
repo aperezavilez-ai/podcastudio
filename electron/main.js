@@ -385,12 +385,47 @@ function startMediaServer() {
                 } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
                   updateStatus('Reconectando...', '');
                 }
-              };
+              // Forzar preferencia de códec H.264 por hardware en el móvil para 0% lag y 0 pixelado
+              try {
+                const transceivers = pc.getTransceivers();
+                const vTransceiver = transceivers.find(t => t.sender && t.sender.track && t.sender.track.kind === 'video');
+                if (vTransceiver && 'setCodecPreferences' in vTransceiver && window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities) {
+                  const caps = RTCRtpReceiver.getCapabilities('video');
+                  if (caps && caps.codecs) {
+                    const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
+                    const others = caps.codecs.filter(c => c.mimeType.toLowerCase() !== 'video/h264');
+                    vTransceiver.setCodecPreferences([...h264, ...others]);
+                  }
+                }
+              } catch (e) {}
 
               const offer = await pc.createOffer({
                 offerToReceiveAudio: false,
                 offerToReceiveVideo: false
               });
+
+              function prioritizeH264(sdp) {
+                const lines = sdp.split('\r\n');
+                let mIdx = -1;
+                const h264Pts = [];
+                lines.forEach((l, i) => {
+                  if (l.startsWith('m=video')) mIdx = i;
+                  if (l.startsWith('a=rtpmap:') && l.toLowerCase().includes('h264')) {
+                    const pt = l.split(':')[1].split(' ')[0];
+                    if (!h264Pts.includes(pt)) h264Pts.push(pt);
+                  }
+                });
+                if (mIdx !== -1 && h264Pts.length > 0) {
+                  const parts = lines[mIdx].split(' ');
+                  const header = parts.slice(0, 3);
+                  const payloads = parts.slice(3);
+                  const rest = payloads.filter(p => !h264Pts.includes(p));
+                  lines[mIdx] = [...header, ...h264Pts, ...rest].join(' ');
+                }
+                return lines.join('\r\n');
+              }
+
+              offer.sdp = prioritizeH264(offer.sdp);
               await pc.setLocalDescription(offer);
 
               if (ws && ws.readyState === 1) {
@@ -502,9 +537,10 @@ ipcMain.on('open-recordings-folder', () => {
 
 let currentRecordingPath = null;
 let streamDestinations = [];
+let activeStreamWorkers = [];
 
 // ============================================================================
-// GRABACIÓN BROADCAST MASTER (MP4 LIMPIO + AUDIO MEZCLADO)
+// GRABACIÓN BROADCAST MASTER (MP4 LIMPIO + AUDIO MEZCLADO - 0 CONGELAMIENTO)
 // ============================================================================
 ipcMain.handle('start-recording', async () => {
   return new Promise((resolve) => {
@@ -525,10 +561,13 @@ ipcMain.handle('start-recording', async () => {
 
     try {
       ffmpegRecordProcess = spawn(ffmpegPath, [
+        '-probesize', '32M',
+        '-analyzeduration', '0',
         '-f', 'webm',
         '-i', 'pipe:0',
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
+        '-tune', 'zerolatency',
         '-crf', '18',
         '-pix_fmt', 'yuv420p',
         '-r', '30',
@@ -593,7 +632,8 @@ ipcMain.handle('stop-recording', async () => {
 });
 
 // ============================================================================
-// TRANSMISIÓN EN VIVO REAL / MULTI-STREAMING SIMULTÁNEO (RTMP & RTMPS)
+// TRANSMISIÓN EN VIVO REAL / MULTI-STREAMING SIMULTÁNEO (FACEBOOK LIVE RTMPS + YOUTUBE + TIKTOK)
+// Cada destino corre en su propio worker FFmpeg dedicado para evitar caídas y asegurar handshake TLS
 // ============================================================================
 ipcMain.handle('start-streaming', async (event, payload) => {
   return new Promise((resolve) => {
@@ -608,126 +648,140 @@ ipcMain.handle('start-streaming', async (event, payload) => {
       return resolve({ success: false, error: "No se proporcionaron destinos válidos con clave de transmisión." });
     }
 
-    // Detener cualquier stream anterior
-    if (ffmpegStreamProcess) {
+    // Detener cualquier worker anterior
+    for (const worker of activeStreamWorkers) {
       try {
-        if (ffmpegStreamProcess.stdin && !ffmpegStreamProcess.stdin.destroyed) {
-          ffmpegStreamProcess.stdin.end();
+        if (worker.process && worker.process.stdin && !worker.process.stdin.destroyed) {
+          worker.process.stdin.end();
         }
-        ffmpegStreamProcess.kill('SIGINT');
+        worker.process.kill('SIGINT');
       } catch (e) {}
-      ffmpegStreamProcess = null;
     }
-
+    activeStreamWorkers = [];
     streamDestinations = targets;
-    const urls = targets.map(t => t.url.trim());
 
-    // Configuración de salida: FLV para 1 destino, o TEE pseudo-muxer para Multi-Streaming simultáneo
-    let outputArgs = [];
-    if (urls.length === 1) {
-      outputArgs = ['-f', 'flv', urls[0]];
-    } else {
-      const teeTarget = urls.map(u => `[f=flv:onfail=ignore]${u}`).join('|');
-      outputArgs = ['-f', 'tee', teeTarget];
-    }
+    let startedCount = 0;
+    const errors = [];
 
-    const ffmpegArgs = [
-      '-f', 'webm',
-      '-i', 'pipe:0',
-      '-c:v', 'libx264',
-      '-preset', 'veryfast',
-      '-tune', 'zerolatency',
-      '-b:v', '2800k',
-      '-maxrate', '3200k',
-      '-bufsize', '6000k',
-      '-pix_fmt', 'yuv420p',
-      '-g', '60',
-      '-r', '30',
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-ar', '44100',
-      ...outputArgs
-    ];
+    // Spawnea un proceso FFmpeg independiente para cada destino configurado
+    for (const target of targets) {
+      const destUrl = target.url.trim();
 
-    try {
-      ffmpegStreamProcess = spawn(ffmpegPath, ffmpegArgs, {
-        stdio: ['pipe', 'ignore', 'pipe']
-      });
+      const workerArgs = [
+        '-probesize', '32M',
+        '-analyzeduration', '0',
+        '-f', 'webm',
+        '-i', 'pipe:0',
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-tune', 'zerolatency',
+        '-b:v', '3000k',
+        '-maxrate', '3500k',
+        '-bufsize', '6000k',
+        '-pix_fmt', 'yuv420p',
+        '-g', '60',
+        '-keyint_min', '60',
+        '-r', '30',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-ar', '44100',
+        '-flvflags', 'no_duration_filesize',
+        '-f', 'flv',
+        destUrl
+      ];
 
-      let hasSentStarted = false;
+      try {
+        const proc = spawn(ffmpegPath, workerArgs, {
+          stdio: ['pipe', 'ignore', 'pipe']
+        });
 
-      ffmpegStreamProcess.stderr.on('data', (data) => {
-        const msg = data.toString();
-        if (!hasSentStarted && (msg.includes('Output #0') || msg.includes('Stream #0') || msg.includes('frame='))) {
-          hasSentStarted = true;
-          if (mainWindow && !mainWindow.isDestroyed()) {
+        const workerEntry = {
+          id: target.id,
+          name: target.name,
+          url: destUrl,
+          process: proc,
+          connected: false
+        };
+
+        proc.stderr.on('data', (data) => {
+          const msg = data.toString();
+          if (!workerEntry.connected && (msg.includes('Output #0') || msg.includes('Stream #0') || msg.includes('frame='))) {
+            workerEntry.connected = true;
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('stream-status', {
+                active: true,
+                destinations: streamDestinations
+              });
+            }
+          }
+        });
+
+        proc.on('error', (err) => {
+          console.error(`Error en worker stream (${target.name}):`, err.message);
+          errors.push(`${target.name}: ${err.message}`);
+        });
+
+        proc.on('close', () => {
+          activeStreamWorkers = activeStreamWorkers.filter(w => w !== workerEntry);
+          if (activeStreamWorkers.length === 0 && mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('stream-status', {
-              active: true,
-              destinations: streamDestinations
+              active: false,
+              destinations: []
             });
           }
-        }
-      });
+        });
 
-      ffmpegStreamProcess.on('error', (err) => {
-        console.error('Error FFmpeg Streaming:', err);
-        if (!hasSentStarted) {
-          resolve({ success: false, error: err.message });
-        }
-      });
+        activeStreamWorkers.push(workerEntry);
+        startedCount++;
+      } catch (err) {
+        errors.push(`${target.name}: ${err.message}`);
+      }
+    }
 
-      ffmpegStreamProcess.on('close', (code) => {
-        ffmpegStreamProcess = null;
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('stream-status', {
-            active: false,
-            destinations: []
-          });
-        }
-      });
-
-      setTimeout(() => {
-        resolve({ success: true, destinations: targets });
-      }, 500);
-
-    } catch (err) {
-      console.error('Fallo al invocar FFmpeg stream:', err);
-      resolve({ success: false, error: err.message });
+    if (startedCount > 0) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('stream-status', {
+          active: true,
+          destinations: streamDestinations
+        });
+      }
+      resolve({ success: true, destinations: targets });
+    } else {
+      resolve({ success: false, error: errors.join(', ') || 'No se pudo conectar a los servidores de streaming.' });
     }
   });
 });
 
 // Receptor de chunks de audio/video del Master en vivo
 ipcMain.on('stream-chunk', (event, chunkBuffer) => {
-  if (ffmpegStreamProcess && ffmpegStreamProcess.stdin && !ffmpegStreamProcess.stdin.destroyed) {
-    try {
-      const buf = Buffer.isBuffer(chunkBuffer) ? chunkBuffer : Buffer.from(chunkBuffer);
-      ffmpegStreamProcess.stdin.write(buf);
-    } catch (e) {
-      console.warn('Error escribiendo chunk a FFmpeg stream:', e.message);
+  if (activeStreamWorkers.length === 0) return;
+  try {
+    const buf = Buffer.isBuffer(chunkBuffer) ? chunkBuffer : Buffer.from(chunkBuffer);
+    for (const worker of activeStreamWorkers) {
+      if (worker.process && worker.process.stdin && !worker.process.stdin.destroyed) {
+        try {
+          worker.process.stdin.write(buf);
+        } catch (e) {}
+      }
     }
-  }
+  } catch (err) {}
 });
 
 ipcMain.handle('stop-streaming', async () => {
   return new Promise((resolve) => {
-    if (ffmpegStreamProcess) {
+    for (const worker of activeStreamWorkers) {
       try {
-        if (ffmpegStreamProcess.stdin && !ffmpegStreamProcess.stdin.destroyed) {
-          ffmpegStreamProcess.stdin.end();
+        if (worker.process && worker.process.stdin && !worker.process.stdin.destroyed) {
+          worker.process.stdin.end();
         }
         setTimeout(() => {
-          if (ffmpegStreamProcess) {
-            ffmpegStreamProcess.kill('SIGINT');
-            ffmpegStreamProcess = null;
-          }
-          resolve({ success: true });
+          try {
+            if (worker.process) worker.process.kill('SIGINT');
+          } catch (e) {}
         }, 500);
-      } catch (e) {
-        resolve({ success: true });
-      }
-    } else {
-      resolve({ success: false });
+      } catch (e) {}
     }
+    activeStreamWorkers = [];
+    resolve({ success: true });
   });
 });

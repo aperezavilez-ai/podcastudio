@@ -732,37 +732,58 @@ function PodcastStudioApp() {
       setTimeout(async () => {
         setCountdown(null);
 
-        // Inicializar señal master del compositor broadcast
-        startBroadcastEngine({
-          activeCam,
-          camSlots,
-          layoutMode,
-          chromaKeyActive,
-          virtualBg,
-          logoBase64,
-          cintillosVisible,
-          cintillo,
-          topic,
-          getCamStream,
-          localStream,
-          remoteCams,
-          camStreamsMap,
-          camMuted,
-        }, handleMasterChunk);
-
         if (window.api) {
           const res = await window.api.startRecording();
           if (res.success) {
+            isRecordingRef.current = true;
             setIsRecording(true);
+
+            // Inicializar señal master del compositor broadcast con 0 congelamiento
+            startBroadcastEngine({
+              activeCam,
+              camSlots,
+              layoutMode,
+              chromaKeyActive,
+              virtualBg,
+              logoBase64,
+              cintillosVisible,
+              cintillo,
+              topic,
+              getCamStream,
+              localStream,
+              remoteCams,
+              camStreamsMap,
+              camMuted,
+            }, handleMasterChunk);
           } else {
+            isRecordingRef.current = false;
             if (!isStreamingRef.current) stopBroadcastEngine();
             alert('Error al iniciar grabación: ' + (res.error || 'Desconocido'));
           }
         } else {
+          isRecordingRef.current = true;
           setIsRecording(true);
+          startBroadcastEngine({
+            activeCam,
+            camSlots,
+            layoutMode,
+            chromaKeyActive,
+            virtualBg,
+            logoBase64,
+            cintillosVisible,
+            cintillo,
+            topic,
+            getCamStream,
+            localStream,
+            remoteCams,
+            camStreamsMap,
+            camMuted,
+          }, handleMasterChunk);
         }
       }, 3000);
     } else {
+      isRecordingRef.current = false;
+      setIsRecording(false);
       let stopRes = null;
       if (window.api) {
         try {
@@ -771,7 +792,6 @@ function PodcastStudioApp() {
           console.warn('Error parando grabación FFmpeg:', e);
         }
       }
-      setIsRecording(false);
       if (!isStreamingRef.current) stopBroadcastEngine();
 
       const chunks = recordingChunksRef.current;
@@ -814,40 +834,60 @@ function PodcastStudioApp() {
         return alert('Para emitir en vivo, debes habilitar al menos un destino (Facebook, YouTube, TikTok o RTMP) y escribir su Clave de Transmisión (Stream Key).');
       }
 
-      // Inicializar el compositor de broadcast en tiempo real
-      startBroadcastEngine({
-        activeCam,
-        camSlots,
-        layoutMode,
-        chromaKeyActive,
-        virtualBg,
-        logoBase64,
-        cintillosVisible,
-        cintillo,
-        topic,
-        getCamStream,
-        localStream,
-        remoteCams,
-        camStreamsMap,
-        camMuted,
-      }, handleMasterChunk);
-
       if (window.api) {
         const res = await window.api.startStreaming({ destinations: activeTargets });
         if (res.success) {
+          isStreamingRef.current = true;
           setIsStreaming(true);
           setActiveLiveDestinations(activeTargets);
           setShowStreamModal(false);
+
+          // Iniciar compositor broadcast enviando el keyframe SPS/PPS de inmediato a Facebook
+          startBroadcastEngine({
+            activeCam,
+            camSlots,
+            layoutMode,
+            chromaKeyActive,
+            virtualBg,
+            logoBase64,
+            cintillosVisible,
+            cintillo,
+            topic,
+            getCamStream,
+            localStream,
+            remoteCams,
+            camStreamsMap,
+            camMuted,
+          }, handleMasterChunk);
         } else {
+          isStreamingRef.current = false;
           if (!isRecordingRef.current) stopBroadcastEngine();
-          alert('Error al iniciar la transmisión: ' + (res.error || 'Verifica tu conexión y claves'));
+          alert('Error al conectar con Facebook / Servidor RTMP: ' + (res.error || 'Verifica la clave de transmisión y conexión'));
         }
       } else {
+        isStreamingRef.current = true;
         setIsStreaming(true);
         setActiveLiveDestinations(activeTargets);
         setShowStreamModal(false);
+        startBroadcastEngine({
+          activeCam,
+          camSlots,
+          layoutMode,
+          chromaKeyActive,
+          virtualBg,
+          logoBase64,
+          cintillosVisible,
+          cintillo,
+          topic,
+          getCamStream,
+          localStream,
+          remoteCams,
+          camStreamsMap,
+          camMuted,
+        }, handleMasterChunk);
       }
     } else {
+      isStreamingRef.current = false;
       if (window.api) await window.api.stopStreaming();
       setIsStreaming(false);
       setActiveLiveDestinations([]);

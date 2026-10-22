@@ -413,75 +413,14 @@ export default function MultiFormatExportModal({
           })}
         </div>
 
-        {/* SECCIÓN DE MINIATURAS OFICIALES PARA CADA RED SOCIAL */}
-        <div className={styles.thumbsSection}>
-          <div className={styles.thumbsHeader}>
-            <div className={styles.thumbsTitleRow}>
-              <ImageIcon size={16} style={{ color: '#38bdf8' }} />
-              <h3 className={styles.thumbsTitle}>Miniaturas y Portadas Oficiales para Redes</h3>
-              <span className={styles.thumbsBadge}>JPG HD</span>
-            </div>
-
-            <button
-              type="button"
-              className={styles.downloadAllThumbsBtn}
-              onClick={handleDownloadAllThumbnails}
-              disabled={generatingThumbs || thumbnails.length === 0}
-              title="Descargar las 4 portadas oficiales de una vez"
-              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-            >
-              <Download size={13} />
-              <span>{generatingThumbs ? 'Generando miniaturas...' : 'Descargar Pack Miniaturas (4 Redes)'}</span>
-            </button>
-          </div>
-
-          <div className={styles.thumbsGrid}>
-            {SOCIAL_THUMBNAIL_PRESETS.map((preset) => {
-              const thumb = thumbnails.find(t => t.id === preset.id)
-              return (
-                <div key={preset.id} className={styles.thumbCard}>
-                  <div className={styles.thumbImgWrap}>
-                    {thumb?.dataUrl ? (
-                      <img src={thumb.dataUrl} alt={preset.label} className={styles.thumbImg} />
-                    ) : (
-                      <div className={styles.thumbPlaceholder}>
-                        <PlatformIcon id={preset.id} size={22} color={preset.color} />
-                        <span>{generatingThumbs ? 'Procesando...' : preset.aspectRatio}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className={styles.thumbMeta}>
-                    <span className={styles.thumbLabel} title={preset.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <PlatformIcon id={preset.id} size={13} color={preset.color} />
-                      {preset.network}
-                    </span>
-                    <span className={styles.thumbDim}>{preset.badge}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className={styles.thumbDownloadBtn}
-                    onClick={() => thumb && downloadThumbnailFile(thumb)}
-                    disabled={!thumb || generatingThumbs}
-                    title={`Descargar miniatura para ${preset.network}`}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                  >
-                    <Download size={12} />
-                    <span>Descargar {preset.aspectRatio}</span>
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
         {packProgress && (
-          <div className={styles.packProgressWrap}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, marginBottom: 5 }}>
+          <div className={styles.packProgressWrap} style={{ margin: '14px 0', border: '1px solid rgba(56, 189, 248, 0.4)', background: 'rgba(15, 23, 42, 0.85)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, marginBottom: 8 }}>
               <span>
-                <strong>Generando Pack ({packProgress.current}/{packProgress.total}):</strong> {packProgress.label}
+                <strong style={{ color: '#38bdf8' }}>Generando Pack ({packProgress.current}/{packProgress.total}):</strong> {packProgress.label}
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontWeight: 700, color: '#38bdf8' }}>{progress}%</span>
+                <span style={{ fontWeight: 800, color: '#38bdf8', fontSize: 14 }}>{progress}%</span>
                 <button
                   type="button"
                   onClick={handleCancelExport}
@@ -489,10 +428,10 @@ export default function MultiFormatExportModal({
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 4,
-                    background: 'rgba(239, 68, 68, 0.15)',
+                    background: 'rgba(239, 68, 68, 0.2)',
                     border: '1px solid #ef4444',
                     color: '#f87171',
-                    padding: '4px 9px',
+                    padding: '4px 10px',
                     borderRadius: 6,
                     fontSize: 11,
                     fontWeight: 700,
@@ -504,11 +443,13 @@ export default function MultiFormatExportModal({
                 </button>
               </div>
             </div>
-            <div className={styles.progressBar}>
+            <div className={styles.progressBar} style={{ height: 10, background: '#1e293b' }}>
               <div
                 className={styles.progressFill}
                 style={{
                   width: `${Math.max(5, ((packProgress.current - 1) / packProgress.total) * 100 + (progress / packProgress.total))}%`,
+                  background: 'linear-gradient(90deg, #0284c7, #38bdf8)',
+                  boxShadow: '0 0 12px rgba(56, 189, 248, 0.5)'
                 }}
               />
             </div>
@@ -516,13 +457,13 @@ export default function MultiFormatExportModal({
         )}
 
         {convertingKey && !packProgress && (
-          <div className={styles.packProgressWrap}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, marginBottom: 5 }}>
+          <div className={styles.packProgressWrap} style={{ margin: '14px 0', border: '1px solid rgba(249, 115, 22, 0.4)', background: 'rgba(24, 18, 12, 0.85)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, marginBottom: 8 }}>
               <span>
-                <strong>Reencuadrando formato:</strong> {convertingKey}
+                <strong style={{ color: '#fb923c' }}>Procesando descarga de video:</strong> {convertingKey}
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontWeight: 700, color: '#38bdf8' }}>{progress}%</span>
+                <span style={{ fontWeight: 800, color: '#fb923c', fontSize: 14 }}>{progress}%</span>
                 <button
                   type="button"
                   onClick={handleCancelExport}
@@ -530,10 +471,10 @@ export default function MultiFormatExportModal({
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 4,
-                    background: 'rgba(239, 68, 68, 0.15)',
+                    background: 'rgba(239, 68, 68, 0.2)',
                     border: '1px solid #ef4444',
                     color: '#f87171',
-                    padding: '4px 9px',
+                    padding: '4px 10px',
                     borderRadius: 6,
                     fontSize: 11,
                     fontWeight: 700,
@@ -545,10 +486,14 @@ export default function MultiFormatExportModal({
                 </button>
               </div>
             </div>
-            <div className={styles.progressBar}>
+            <div className={styles.progressBar} style={{ height: 10, background: '#27272a' }}>
               <div
                 className={styles.progressFill}
-                style={{ width: `${Math.max(5, progress)}%` }}
+                style={{ 
+                  width: `${Math.max(5, progress)}%`,
+                  background: 'linear-gradient(90deg, #ea580c, #f97316)',
+                  boxShadow: '0 0 12px rgba(249, 115, 22, 0.5)'
+                }}
               />
             </div>
           </div>

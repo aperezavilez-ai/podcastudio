@@ -424,14 +424,47 @@ export default function RemoteCam() {
       try {
         if (!pc || pc.signalingState === 'closed') return
         if (pc.signalingState !== 'stable') return
-        if (isRestart) {
-          try { pc.restartIce() } catch {}
-        }
+        try {
+          const transceivers = pc.getTransceivers();
+          const vTransceiver = transceivers.find(t => t.sender && t.sender.track && t.sender.track.kind === 'video');
+          if (vTransceiver && 'setCodecPreferences' in vTransceiver && window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities) {
+            const caps = RTCRtpReceiver.getCapabilities('video');
+            if (caps && caps.codecs) {
+              const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
+              const others = caps.codecs.filter(c => c.mimeType.toLowerCase() !== 'video/h264');
+              vTransceiver.setCodecPreferences([...h264, ...others]);
+            }
+          }
+        } catch (e) {}
+
         const offer = await pc.createOffer({
           offerToReceiveVideo: false,
           offerToReceiveAudio: false,
           ...(isRestart ? { iceRestart: true } : {}),
         })
+
+        function prioritizeH264(sdp) {
+          const lines = sdp.split('\r\n');
+          let mIdx = -1;
+          const h264Pts = [];
+          lines.forEach((l, i) => {
+            if (l.startsWith('m=video')) mIdx = i;
+            if (l.startsWith('a=rtpmap:') && l.toLowerCase().includes('h264')) {
+              const pt = l.split(':')[1].split(' ')[0];
+              if (!h264Pts.includes(pt)) h264Pts.push(pt);
+            }
+          });
+          if (mIdx !== -1 && h264Pts.length > 0) {
+            const parts = lines[mIdx].split(' ');
+            const header = parts.slice(0, 3);
+            const payloads = parts.slice(3);
+            const rest = payloads.filter(p => !h264Pts.includes(p));
+            lines[mIdx] = [...header, ...h264Pts, ...rest].join(' ');
+          }
+          return lines.join('\r\n');
+        }
+
+        offer.sdp = prioritizeH264(offer.sdp);
         await pc.setLocalDescription(offer)
 
         if (videoSenderRef.current) {
@@ -441,7 +474,7 @@ export default function RemoteCam() {
 
         let finalSdp = offer.sdp || ''
         if (finalSdp && !finalSdp.includes('x-google-min-bitrate')) {
-          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:2500\r\nb=TIAS:2500000\r\n')
+          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:3500\r\nb=TIAS:3500000\r\n')
         }
 
         await channel.send({

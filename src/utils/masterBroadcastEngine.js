@@ -36,10 +36,10 @@ let currentState = {
   remoteCams: [],
 };
 
-// Elementos de video auxiliares para renderizar los streams en canvas
 const videoElements = new Map();
 let virtualBgImage = null;
 let logoImage = null;
+let lastStreamSync = 0;
 
 function getOrCreateVideo(camId, stream) {
   if (!videoElements.has(camId)) {
@@ -57,6 +57,15 @@ function getOrCreateVideo(camId, stream) {
     v.srcObject = null;
   }
   return v;
+}
+
+function syncVideoStreams() {
+  if (currentState.getCamStream) {
+    currentState.camSlots.forEach((id) => {
+      const stream = currentState.getCamStream(id);
+      getOrCreateVideo(id, stream);
+    });
+  }
 }
 
 function updateImages() {
@@ -198,12 +207,10 @@ function renderFrame() {
     ctx.fillRect(0, 0, width, height);
   }
 
-  // Actualizar streams en videos auxiliares
-  if (currentState.getCamStream) {
-    currentState.camSlots.forEach((id) => {
-      const stream = currentState.getCamStream(id);
-      getOrCreateVideo(id, stream);
-    });
+  // Actualizar streams de video en elementos auxiliares solo si es necesario (evita llamadas continuas a play() en cada frame)
+  if (!lastStreamSync || (Date.now() - lastStreamSync > 1000)) {
+    lastStreamSync = Date.now();
+    syncVideoStreams();
   }
 
   // 2. Renderizado de cámaras según Layout del switcher
@@ -402,11 +409,13 @@ export function startBroadcastEngine(initialState, onChunk) {
   if (audioTrack) tracks.push(audioTrack);
   masterStream = new MediaStream(tracks);
 
-  // Iniciar MediaRecorder para transmitir chunks de audio/video a Electron/FFmpeg
-  let chosenMime = 'video/webm;codecs=vp8,opus';
+  // Iniciar MediaRecorder: Priorizar códec H.264 por hardware (0% sobrecarga en CPU, sin congelamiento inicial)
+  let chosenMime = 'video/webm;codecs=h264,opus';
   if (!MediaRecorder.isTypeSupported(chosenMime)) {
-    if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) {
-      chosenMime = 'video/webm;codecs=h264,opus';
+    if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) {
+      chosenMime = 'video/mp4;codecs=avc1';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+      chosenMime = 'video/webm;codecs=vp8,opus';
     } else if (MediaRecorder.isTypeSupported('video/webm')) {
       chosenMime = 'video/webm';
     }
@@ -415,7 +424,7 @@ export function startBroadcastEngine(initialState, onChunk) {
   try {
     mediaRecorder = new MediaRecorder(masterStream, {
       mimeType: chosenMime,
-      videoBitsPerSecond: 3000000, // 3.0 Mbps Full HD
+      videoBitsPerSecond: 3500000, // 3.5 Mbps Full HD
     });
 
     mediaRecorder.ondataavailable = async (e) => {
@@ -429,8 +438,8 @@ export function startBroadcastEngine(initialState, onChunk) {
       }
     };
 
-    // Emitir chunks cada 250ms para latencia ultrabaja
-    mediaRecorder.start(250);
+    // Emitir chunks cada 500ms (equilibrio perfecto entre latencia ultrabaja y 0 congelamiento)
+    mediaRecorder.start(500);
   } catch (e) {
     console.error('Error inicializando MediaRecorder de broadcast:', e);
   }
@@ -445,8 +454,9 @@ export function updateBroadcastState(updates) {
   currentState = { ...currentState, ...updates };
   updateImages();
 
-  // Si cambiaron los streams o el estado de silencio de cámaras, sincronizar la mezcla de audio
-  if (updates.localStream || updates.remoteCams || updates.camStreamsMap || updates.camMuted) {
+  // Si cambiaron los streams o el estado de silencio de cámaras, sincronizar la mezcla de audio y videos
+  if (updates.localStream || updates.remoteCams || updates.camStreamsMap || updates.camMuted || updates.camSlots || updates.getCamStream) {
+    syncVideoStreams();
     setupAudioMixing(
       currentState.localStream,
       currentState.remoteCams,
