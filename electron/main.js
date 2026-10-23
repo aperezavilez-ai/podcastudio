@@ -9,7 +9,8 @@ const { app, BrowserWindow, Menu, ipcMain, session, shell } = require('electron'
 Menu.setApplicationMenu(null);
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
+const net = require('net');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
 const express = require('express');
@@ -629,6 +630,110 @@ ipcMain.handle('stop-recording', async () => {
       resolve({ success: false });
     }
   });
+});
+
+ipcMain.handle('scan-network-cameras', async () => {
+  const checkTcpPort = (host, port, timeout = 250) => {
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      socket.setTimeout(timeout);
+      socket.once('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once('timeout', () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.once('error', () => {
+        socket.destroy();
+        resolve(false);
+      });
+      try {
+        socket.connect(port, host);
+      } catch (e) {
+        resolve(false);
+      }
+    });
+  };
+
+  const getLocalArpIps = () => {
+    return new Promise((resolve) => {
+      exec('arp -a', { timeout: 1500 }, (err, stdout) => {
+        if (err || !stdout) return resolve([]);
+        const ips = [];
+        const lines = stdout.split('\n');
+        for (const line of lines) {
+          const match = line.trim().match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+          if (match) {
+            const ip = match[1];
+            if (!ip.startsWith('224.') && !ip.startsWith('239.') && !ip.endsWith('.255') && ip !== '127.0.0.1') {
+              ips.push(ip);
+            }
+          }
+        }
+        resolve([...new Set(ips)]);
+      });
+    });
+  };
+
+  const discovered = [];
+
+  // 1. Clientes móviles WebRTC actualmente conectados al servidor local
+  if (mobileClients && mobileClients.size > 0) {
+    for (const [clientId, ws] of mobileClients.entries()) {
+      discovered.push({
+        id: `mobile_live_${clientId}`,
+        name: `Celular Conectado (${clientId.slice(-4)})`,
+        url: null,
+        type: 'remote',
+        status: 'Transmitiendo en vivo vía WebRTC local',
+        real: true,
+      });
+    }
+  }
+
+  // 2. Sondear IPs activas en la red mediante ARP y puertos de cámaras reales
+  try {
+    const arpIps = await getLocalArpIps();
+    const ipsToScan = [...new Set(['127.0.0.1', LOCAL_IP, ...arpIps, '192.168.1.254', '10.5.5.9', '192.168.42.1'])];
+
+    const cameraPorts = [
+      { port: 4747, name: 'DroidCam Wi-Fi', path: '/video' },
+      { port: 8080, name: 'IP Webcam', path: '/video' },
+      { port: 8192, name: 'Cámara Acción China', path: '' },
+      { port: 8554, name: 'RTSP Stream', path: '' },
+    ];
+
+    const probePromises = [];
+
+    for (const ip of ipsToScan) {
+      for (const cp of cameraPorts) {
+        probePromises.push(
+          checkTcpPort(ip, cp.port, 250).then((isOpen) => {
+            if (isOpen) {
+              const streamUrl = cp.path ? `http://${ip}:${cp.port}${cp.path}` : `http://${ip}:${cp.port}`;
+              discovered.push({
+                id: `real_cam_${ip}_${cp.port}`,
+                name: `${cp.name} (${ip})`,
+                url: streamUrl,
+                type: 'wifi_url',
+                status: `Cámara activa en red (puerto ${cp.port})`,
+                real: true,
+              });
+            }
+          })
+        );
+      }
+    }
+
+    await Promise.all(probePromises);
+  } catch (err) {
+    console.warn('[Network Scanner Error]:', err.message);
+  }
+
+  // Retorna ÚNICAMENTE las cámaras que respondieron de verdad
+  return discovered;
 });
 
 // ============================================================================

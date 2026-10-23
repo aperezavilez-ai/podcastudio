@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('api', {
   onStreamStatus: (cb) => ipcRenderer.on('stream-status', (e, data) => cb(data)),
 
   getQrUrl: () => ipcRenderer.invoke('get-qr-url'),
+  scanNetworkCameras: () => ipcRenderer.invoke('scan-network-cameras'),
   openExternal: (url) => ipcRenderer.send('open-external', url),
   openRecordingsFolder: () => ipcRenderer.send('open-recordings-folder'),
 

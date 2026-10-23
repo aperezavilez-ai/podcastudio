@@ -182,8 +182,6 @@ export default function MultiFormatExportModal({
       a.download = filename
       a.click()
       URL.revokeObjectURL(url)
-
-      downloadThumbnailForPreset(preset)
     } catch (err) {
       if (!cancelRef.current) {
         console.error('Error al exportar formato:', err)
@@ -236,8 +234,6 @@ export default function MultiFormatExportModal({
           a.download = fn
           a.click()
           URL.revokeObjectURL(u)
-
-          downloadThumbnailForPreset(preset)
         }
         await new Promise(r => setTimeout(r, 900))
       } catch (err) {
@@ -386,28 +382,100 @@ export default function MultiFormatExportModal({
                   <span className={styles.resLabel}>{preset.width}x{preset.height}</span>
                 </div>
 
-                <button
-                  type="button"
-                  className={styles.cardDownloadBtn}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleDownloadSingle(preset)
-                  }}
-                  disabled={isBusy}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
-                >
-                  {isThisConverting ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      <span>Reencuadrando {progress}%...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Download size={14} />
-                      <span>Descargar {preset.key.replace('_yt', '')}</span>
-                    </>
-                  )}
-                </button>
+                {/* BARRA DE PORCENTAJE (0% AL 100%) INLINE EN CADA CUADRO */}
+                {isThisConverting && (
+                  <div
+                    style={{
+                      width: '100%',
+                      background: 'rgba(0, 0, 0, 0.6)',
+                      borderRadius: 6,
+                      padding: '6px 8px',
+                      border: '1px solid rgba(249, 115, 22, 0.5)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 4,
+                      marginTop: 4,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10, fontWeight: 700, color: '#fb923c' }}>
+                      <span>Reencuadrando:</span>
+                      <span style={{ fontSize: 11, color: '#fff', fontWeight: 800 }}>{progress}%</span>
+                    </div>
+                    <div style={{ width: '100%', height: 7, background: 'rgba(255, 255, 255, 0.1)', borderRadius: 3.5, overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          width: `${Math.max(5, progress)}%`,
+                          height: '100%',
+                          background: 'linear-gradient(90deg, #ea580c, #f97316)',
+                          boxShadow: '0 0 8px rgba(249, 115, 22, 0.6)',
+                          transition: 'width 0.2s ease',
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 'auto', width: '100%' }}>
+                  {/* BOTÓN DESCARGAR VIDEO */}
+                  <button
+                    type="button"
+                    className={styles.cardDownloadBtn}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDownloadSingle(preset)
+                    }}
+                    disabled={isBusy}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      background: isThisConverting ? '#ea580c' : undefined,
+                    }}
+                    title={`Descargar archivo de video para ${preset.label}`}
+                  >
+                    {isThisConverting ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" />
+                        <span>Generando Video ({progress}%)...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Film size={13} />
+                        <span>Descargar Video {preset.key.replace('_yt', '')}</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* BOTÓN DESCARGAR MINIATURA / PORTADA JPG */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      downloadThumbnailForPreset(preset)
+                    }}
+                    disabled={isBusy}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      color: '#94a3b8',
+                      borderRadius: 6,
+                      padding: '4px 8px',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 5,
+                      transition: 'all 0.15s',
+                    }}
+                    title={`Descargar portada JPG para ${preset.label}`}
+                  >
+                    <ImageIcon size={12} />
+                    <span>Miniatura JPG</span>
+                  </button>
+                </div>
               </div>
             )
           })}

@@ -227,26 +227,63 @@ export default function CameraConnectModal({
     }
   };
 
-  const handleScanWifiCameras = () => {
+  const handleExplicitDisconnect = (slot) => {
+    if (onDisconnect) {
+      onDisconnect(slot);
+    }
+    setCustomLabel('');
+    setWifiUrl('');
+    setDiscoveredCameras(prev =>
+      prev.map(c => {
+        if (c.isAssignedSlot === slot) return { ...c, isAssignedSlot: null };
+        return c;
+      })
+    );
+  };
+
+  const handleScanWifiCameras = async () => {
     setIsScanningWifi(true);
     setHasScannedWifi(false);
 
-    setTimeout(() => {
+    try {
       const found = [];
 
-      // 1. Cámaras de Celular o Remotas activas en el estudio
+      // 1. Sondeo REAL de red en Electron vía ARP y sockets TCP activos en la red local
+      if (typeof window !== 'undefined' && window.api?.scanNetworkCameras) {
+        try {
+          const netCams = await window.api.scanNetworkCameras();
+          if (Array.isArray(netCams)) {
+            netCams.forEach((nc) => {
+              let assigned = null;
+              Object.entries(cameraMeta).forEach(([s, m]) => {
+                if (m?.url === nc.url || m?.deviceId === nc.id) assigned = parseInt(s, 10);
+              });
+              found.push({
+                ...nc,
+                isAssignedSlot: assigned,
+              });
+            });
+          }
+        } catch (e) {
+          console.warn('[Scanner Error]:', e);
+        }
+      }
+
+      // 2. Cámaras de Celular o Remotas con señal WebRTC REAL activa en el estudio
       Object.entries(streams).forEach(([slotStr, stream]) => {
         const slotNum = parseInt(slotStr, 10);
         const meta = cameraMeta[slotNum];
         if (stream && (meta?.type === 'remote' || meta?.type === 'mobile' || meta?.deviceId?.includes('cloud') || meta?.deviceId?.startsWith('Mobil_'))) {
-          found.push({
-            id: `active_remote_${slotNum}`,
-            name: meta?.label || `Celular Remoto (CAM ${slotNum + 1})`,
-            type: 'remote',
-            stream: stream,
-            status: 'Transmisión activa en vivo',
-            isAssignedSlot: slotNum,
-          });
+          if (!found.some(f => f.stream === stream || (f.id && f.id === meta?.deviceId))) {
+            found.push({
+              id: `active_remote_${slotNum}`,
+              name: meta?.label || `Celular Remoto (CAM ${slotNum + 1})`,
+              type: 'remote',
+              stream: stream,
+              status: 'Transmisión activa en vivo',
+              isAssignedSlot: slotNum,
+            });
+          }
         }
       });
 
@@ -264,7 +301,7 @@ export default function CameraConnectModal({
         }
       });
 
-      // 2. Drivers de cámaras Wi-Fi / virtuales en el sistema (DroidCam, Iriun, Camo, OBS Virtual, etc.)
+      // 3. Drivers reales de cámaras Wi-Fi / virtuales detectados por hardware en Windows
       (devices || []).forEach((dev) => {
         const labelLower = (dev.label || '').toLowerCase();
         const isWifiOrVirtual =
@@ -272,10 +309,7 @@ export default function CameraConnectModal({
           labelLower.includes('iriun') ||
           labelLower.includes('camo') ||
           labelLower.includes('epoccam') ||
-          labelLower.includes('virtual') ||
-          labelLower.includes('obs') ||
-          labelLower.includes('ip webcam') ||
-          labelLower.includes('network');
+          labelLower.includes('obs virtual');
 
         if (isWifiOrVirtual) {
           let assigned = null;
@@ -283,54 +317,25 @@ export default function CameraConnectModal({
             if (m?.deviceId === dev.deviceId) assigned = parseInt(s, 10);
           });
 
-          found.push({
-            id: dev.deviceId,
-            name: dev.label || 'Cámara Virtual Wi-Fi',
-            type: 'usb_virtual',
-            deviceId: dev.deviceId,
-            status: 'Driver Wi-Fi detectado en el sistema',
-            isAssignedSlot: assigned,
-          });
+          if (!found.some(f => f.id === dev.deviceId)) {
+            found.push({
+              id: dev.deviceId,
+              name: dev.label || 'Cámara Virtual Wi-Fi',
+              type: 'usb_virtual',
+              deviceId: dev.deviceId,
+              status: 'Driver detectado en el sistema',
+              isAssignedSlot: assigned,
+            });
+          }
         }
       });
 
-      // 3. Presets comunes de red local
-      PRESET_WIFI_STREAMS.forEach((preset) => {
-        let assigned = null;
-        Object.entries(cameraMeta).forEach(([s, m]) => {
-          if (m?.url === preset.url) assigned = parseInt(s, 10);
-        });
-
-        found.push({
-          id: `preset_${preset.name}`,
-          name: preset.name,
-          url: preset.url,
-          type: 'wifi_url',
-          status: 'Preset de red local (IP directa)',
-          isAssignedSlot: assigned,
-        });
-      });
-
-      // 4. Si el usuario tiene una URL escrita en el input
-      if (wifiUrl.trim() && !found.some(f => f.url === wifiUrl.trim())) {
-        let assigned = null;
-        Object.entries(cameraMeta).forEach(([s, m]) => {
-          if (m?.url === wifiUrl.trim()) assigned = parseInt(s, 10);
-        });
-        found.unshift({
-          id: 'custom_wifi_url',
-          name: 'Cámara IP Ingresada Manualmente',
-          url: wifiUrl.trim(),
-          type: 'wifi_url',
-          status: wifiUrl.trim(),
-          isAssignedSlot: assigned,
-        });
-      }
-
+      // NOTA: ÚNICAMENTE DISPOSITIVOS REALES DETECTADOS (CERO PRESETS FALSOS)
       setDiscoveredCameras(found);
+    } finally {
       setIsScanningWifi(false);
       setHasScannedWifi(true);
-    }, 1100);
+    }
   };
 
   const handleAssignDiscovered = async (camera) => {
@@ -344,6 +349,14 @@ export default function CameraConnectModal({
         onAssignRemoteStream(camera.stream, targetSlot, camera.name, { id: camera.id });
       }
     }
+
+    setDiscoveredCameras(prev =>
+      prev.map(c => {
+        if (c.id === camera.id) return { ...c, isAssignedSlot: targetSlot };
+        if (c.isAssignedSlot === targetSlot) return { ...c, isAssignedSlot: null };
+        return c;
+      })
+    );
   };
 
   const handleSaveLabel = (e) => {
@@ -456,17 +469,56 @@ Instrucciones:
           <div className={styles.slotPills}>
             {Array.from({ length: slotsCount }).map((_, i) => {
               const hasStream = Boolean(streams[i]);
+              const hasMeta = Boolean(cameraMeta[i]);
               const active = targetSlot === i;
               return (
-                <button
+                <div
                   key={i}
-                  type="button"
-                  className={`${styles.slotPill} ${active ? styles.slotPillActive : ''} ${hasStream ? styles.slotPillConnected : ''}`}
-                  onClick={() => setTargetSlot(i)}
+                  style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
                 >
-                  <span>{i + 1}</span>
-                  {hasStream && <span className={styles.slotConnectedDot} />}
-                </button>
+                  <button
+                    type="button"
+                    className={`${styles.slotPill} ${active ? styles.slotPillActive : ''} ${hasStream ? styles.slotPillConnected : ''}`}
+                    onClick={() => setTargetSlot(i)}
+                    style={{ paddingRight: (hasStream || hasMeta) ? 20 : undefined }}
+                  >
+                    <span>{i + 1}</span>
+                    {hasStream && <span className={styles.slotConnectedDot} />}
+                  </button>
+                  {(hasStream || hasMeta) && onDisconnect && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleExplicitDisconnect(i);
+                      }}
+                      title={`Desconectar CAM ${i + 1}`}
+                      style={{
+                        position: 'absolute',
+                        right: -6,
+                        top: -6,
+                        width: 16,
+                        height: 16,
+                        borderRadius: '50%',
+                        background: '#ef4444',
+                        border: '1.5px solid #18181b',
+                        color: '#fff',
+                        fontSize: 9,
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        lineHeight: 1,
+                        zIndex: 5,
+                        padding: 0,
+                        boxShadow: '0 0 6px rgba(239,68,68,0.7)',
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               );
             })}
             {slotsCount < 8 && onAddSlot && (
@@ -509,13 +561,13 @@ Instrucciones:
               }}
             />
             <span style={{ color: isConnected ? '#fff' : '#aaa' }}>
-              CAM {targetSlot + 1}: <strong>{isConnected ? `Activa (${currentMeta?.label || 'Transmitiendo'})` : 'Desactivada (Sin señal)'}</strong>
+              CAM {targetSlot + 1}: <strong>{isConnected ? `Activa (${currentMeta?.label || 'Transmitiendo'})` : currentMeta ? `Asignada (${currentMeta.label || 'Sin señal'})` : 'Libre (Sin señal)'}</strong>
             </span>
           </div>
-          {isConnected && onDisconnect && (
+          {(isConnected || Boolean(currentMeta)) && onDisconnect && (
             <button
               type="button"
-              onClick={() => onDisconnect(targetSlot)}
+              onClick={() => handleExplicitDisconnect(targetSlot)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -530,9 +582,9 @@ Instrucciones:
                 fontWeight: 700,
                 transition: 'all 0.15s',
               }}
-              title={`Desconectar y eliminar señal de CAM ${targetSlot + 1}`}
+              title={`Desconectar y liberar CAM ${targetSlot + 1}`}
             >
-              <Trash2 size={12} /> Desconectar / Eliminar de CAM {targetSlot + 1}
+              <Trash2 size={12} /> Desconectar CAM {targetSlot + 1}
             </button>
           )}
         </div>
