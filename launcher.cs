@@ -9,7 +9,7 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyVersion("1.0.3.0")]
 [assembly: System.Reflection.AssemblyFileVersion("1.0.3.0")]
 [assembly: System.Reflection.AssemblyDescription("PodcastStudio - Estudio de Podcast Profesional con IA")]
-[assembly: System.Reflection.AssemblyCopyright("Copyright © 2026 PodcastStudio AI")]
+[assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 PodcastStudio AI")]
 
 class Program
 {
@@ -19,35 +19,27 @@ class Program
         try
         {
             string exeDir = AppDomain.CurrentDomain.BaseDirectory;
+            // Ruta al electron.exe en node_modules
+            string electronExe = Path.Combine(exeDir, "node_modules", "electron", "dist", "electron.exe");
 
-            // Buscar electron.exe en dist_electron primero, luego node_modules
-            string[] candidatePaths = new string[]
+            if (!File.Exists(electronExe))
             {
-                Path.Combine(exeDir, "dist_electron", "PodcastStudio.exe"),
-                Path.Combine(exeDir, "node_modules", "electron", "dist", "electron.exe"),
-                Path.Combine(exeDir, "electron.exe"),
-            };
-
-            string electronExe = null;
-            foreach (string candidate in candidatePaths)
-            {
-                if (File.Exists(candidate))
-                {
-                    electronExe = candidate;
-                    break;
-                }
-            }
-
-            if (electronExe == null)
-            {
-                // Fallback: buscar electron.exe globalmente via npm
-                electronExe = "electron";
+                MessageBox.Show(
+                    "No se encontro electron.exe en:\n" + electronExe +
+                    "\n\nAsegurate de haber ejecutado 'npm install' en la carpeta del proyecto.",
+                    "PodcastStudio - Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error
+                );
+                return;
             }
 
             ProcessStartInfo psi = new ProcessStartInfo();
             psi.FileName = electronExe;
+            // CRITICO: pasar el directorio raiz del proyecto como argumento
+            psi.Arguments = "\"" + exeDir.TrimEnd('\\') + "\"";
             psi.WorkingDirectory = exeDir;
-            psi.UseShellExecute = true;
+            psi.UseShellExecute = false;
             psi.WindowStyle = ProcessWindowStyle.Normal;
 
             Process.Start(psi);
@@ -55,8 +47,7 @@ class Program
         catch (Exception ex)
         {
             MessageBox.Show(
-                "Error al iniciar PodcastStudio:\n\n" + ex.Message +
-                "\n\nVerifica que Node.js y Electron estén instalados correctamente.",
+                "Error al iniciar PodcastStudio:\n\n" + ex.Message,
                 "PodcastStudio - Error de Inicio",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
