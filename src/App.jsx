@@ -1015,58 +1015,88 @@ function PodcastStudioApp() {
   };
 
   const createWifiMediaStream = async (url) => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1280;
-    canvas.height = 720;
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#05070a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 720;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#05070a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    let isAlive = true;
-    let animId = null;
+      let isAlive = true;
+      let animId = null;
+      let resolved = false;
 
-    const video = document.createElement('video');
-    video.crossOrigin = 'anonymous';
-    video.src = url;
-    video.autoplay = true;
-    video.muted = true;
-    video.playsInline = true;
+      const video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.autoplay = true;
+      video.muted = true;
+      video.playsInline = true;
 
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.src = url;
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
 
-    let useVideo = false;
+      let useVideo = false;
 
-    video.oncanplay = () => {
-      useVideo = true;
-      video.play().catch(() => {});
-    };
+      const finishConnect = () => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(failTimeout);
 
-    const renderFrame = () => {
-      if (!isAlive) return;
-      if (useVideo && video.readyState >= 2) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      } else if (img.complete && img.naturalWidth > 0) {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      }
-      animId = requestAnimationFrame(renderFrame);
-    };
-    animId = requestAnimationFrame(renderFrame);
+        const renderFrame = () => {
+          if (!isAlive) return;
+          if (useVideo && video.readyState >= 2) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          } else if (img.complete && img.naturalWidth > 0) {
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          }
+          animId = requestAnimationFrame(renderFrame);
+        };
+        animId = requestAnimationFrame(renderFrame);
 
-    const stream = canvas.captureStream(30);
-    const track = stream.getVideoTracks()[0];
-    if (track) {
-      const origStop = track.stop.bind(track);
-      track.stop = () => {
-        isAlive = false;
-        if (animId) cancelAnimationFrame(animId);
-        try { video.pause(); video.src = ''; } catch (e) {}
-        try { img.src = ''; } catch (e) {}
-        origStop();
+        const stream = canvas.captureStream(30);
+        const track = stream.getVideoTracks()[0];
+        if (track) {
+          const origStop = track.stop.bind(track);
+          track.stop = () => {
+            isAlive = false;
+            if (animId) cancelAnimationFrame(animId);
+            try { video.pause(); video.src = ''; } catch (e) {}
+            try { img.src = ''; } catch (e) {}
+            origStop();
+          };
+        }
+        resolve(stream);
       };
-    }
-    return stream;
+
+      video.oncanplay = () => {
+        useVideo = true;
+        video.play().catch(() => {});
+        finishConnect();
+      };
+
+      img.onload = () => {
+        if (!useVideo) finishConnect();
+      };
+
+      const failTimeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          isAlive = false;
+          try { video.pause(); video.src = ''; } catch (e) {}
+          try { img.src = ''; } catch (e) {}
+          reject(new Error('Tiempo de espera agotado. No se recibió señal de video en ' + url));
+        }
+      }, 5000);
+
+      try {
+        video.src = url;
+        img.src = url;
+      } catch (err) {
+        clearTimeout(failTimeout);
+        reject(err);
+      }
+    });
   };
 
   const handleWifiConnect = async (url, slot, label) => {
@@ -1090,10 +1120,7 @@ function PodcastStudioApp() {
       return stream;
     } catch (err) {
       console.error('Error conectando cámara WiFi:', err);
-      setCameraMeta(prev => ({
-        ...prev,
-        [slot]: { url, label: label || `WiFi Cam ${slot + 1}`, type: 'wifi' }
-      }));
+      throw err;
     }
   };
 

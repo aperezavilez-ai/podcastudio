@@ -28,15 +28,6 @@ import {
 } from 'lucide-react';
 import styles from './CameraConnectModal.module.css';
 
-const PRESET_WIFI_STREAMS = [
-  { name: 'GoPro WiFi Stream (Hero 4/5/6/7)', url: 'http://10.5.5.9:8080/live/amba.m3u8' },
-  { name: 'Cámara Acción China (SJCam / Eken)', url: 'http://192.168.1.254:8192' },
-  { name: 'Cámara Acción 4K (LiveDV / XDV IP)', url: 'http://192.168.42.1:8080' },
-  { name: 'DroidCam (Android / iPhone WiFi)', url: 'http://192.168.1.50:4747/video' },
-  { name: 'IP Webcam (Android / SmartCam)', url: 'http://192.168.1.50:8080/video' },
-  { name: 'OBS / NDI HLS Stream Local', url: 'http://localhost:8080/hls/stream.m3u8' },
-];
-
 function ModalVideoPreview({ stream, label }) {
   const vRef = useRef(null);
 
@@ -140,6 +131,8 @@ export default function CameraConnectModal({
   const [guestRole, setGuestRole] = useState('guest');
   const [connectingUsbId, setConnectingUsbId] = useState(null);
   const [usbConnectError, setUsbConnectError] = useState(null);
+  const [wifiConnectError, setWifiConnectError] = useState(null);
+  const [wifiConnectSuccess, setWifiConnectSuccess] = useState(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [useCloudDomain, setUseCloudDomain] = useState(true);
 
@@ -150,6 +143,8 @@ export default function CameraConnectModal({
       setCustomLabel(currentMeta?.label || '');
       setWifiUrl(currentMeta?.url || '');
       setUsbConnectError(null);
+      setWifiConnectError(null);
+      setWifiConnectSuccess(null);
     }
   }, [open, initialSlot, cameraMeta]);
 
@@ -158,6 +153,8 @@ export default function CameraConnectModal({
     setCustomLabel(currentMeta?.label || '');
     setWifiUrl(currentMeta?.url || '');
     setUsbConnectError(null);
+    setWifiConnectError(null);
+    setWifiConnectSuccess(null);
   }, [targetSlot, cameraMeta]);
 
   // ESC para cerrar
@@ -220,8 +217,17 @@ export default function CameraConnectModal({
     const url = (urlToConnect || wifiUrl)?.trim();
     if (!url || !onWifiConnect) return;
     setWifiConnecting(true);
+    setWifiConnectError(null);
+    setWifiConnectSuccess(null);
     try {
-      await onWifiConnect(url, targetSlot, customLabel.trim() || `WiFi Cam ${targetSlot + 1}`);
+      const resStream = await onWifiConnect(url, targetSlot, customLabel.trim() || `WiFi Cam ${targetSlot + 1}`);
+      if (resStream) {
+        setWifiConnectSuccess(`¡Conectado exitosamente a CAM ${targetSlot + 1}!`);
+      } else {
+        setWifiConnectError('No se pudo establecer el stream de video desde esa URL. Verifica que la cámara esté encendida y accesible.');
+      }
+    } catch (err) {
+      setWifiConnectError(err.message || 'Error al conectar con la cámara IP/WiFi.');
     } finally {
       setWifiConnecting(false);
     }
@@ -908,13 +914,17 @@ Instrucciones:
               )}
 
               <div className={styles.formGroup}>
-                <label className={styles.formLabel}>URL de transmisión manual (MJPEG / HLS / RTSP-HTTP):</label>
+                <label className={styles.formLabel}>URL de transmisión directa (MJPEG / HLS / RTSP-HTTP):</label>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     type="url"
-                    placeholder="http://192.168.1.100:8080/video"
+                    placeholder="http://192.168.1.1:8192/ o http://192.168.1.100:8080/video"
                     value={wifiUrl}
-                    onChange={(e) => setWifiUrl(e.target.value)}
+                    onChange={(e) => {
+                      setWifiUrl(e.target.value);
+                      setWifiConnectError(null);
+                      setWifiConnectSuccess(null);
+                    }}
                     className={styles.formInput}
                     style={{ flex: 1 }}
                   />
@@ -925,52 +935,72 @@ Instrucciones:
                     disabled={wifiConnecting || !wifiUrl.trim()}
                   >
                     {wifiConnecting ? <Loader2 size={13} className="animate-spin" /> : <Wifi size={13} />}
-                    Conectar
+                    {wifiConnecting ? 'Conectando...' : 'Conectar'}
                   </button>
                 </div>
-              </div>
 
-              <div className={styles.formGroup}>
-                <label className={styles.formLabel}>Presets comunes de red local:</label>
-                <div className={styles.presetGrid}>
-                  {PRESET_WIFI_STREAMS.map((preset) => (
-                    <button
-                      key={preset.name}
-                      type="button"
-                      className={styles.presetCard}
-                      onClick={() => {
-                        setWifiUrl(preset.url);
-                        handleConnectWifi(preset.url);
-                      }}
-                    >
-                      <span className={styles.presetCardName}>{preset.name}</span>
-                      <span className={styles.presetCardUrl}>{preset.url}</span>
-                    </button>
-                  ))}
-                </div>
+                {wifiConnectSuccess && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      color: '#4ade80',
+                      background: 'rgba(34, 197, 94, 0.12)',
+                      border: '1px solid rgba(34, 197, 94, 0.35)',
+                      borderRadius: 8,
+                      padding: '8px 12px',
+                      fontSize: 12,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <Check size={14} />
+                    <span>{wifiConnectSuccess}</span>
+                  </div>
+                )}
+
+                {wifiConnectError && (
+                  <div
+                    style={{
+                      marginTop: 8,
+                      color: '#f87171',
+                      background: 'rgba(239, 68, 68, 0.12)',
+                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                      borderRadius: 8,
+                      padding: '8px 12px',
+                      fontSize: 12,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <AlertTriangle size={14} />
+                    <span>{wifiConnectError}</span>
+                  </div>
+                )}
               </div>
 
               <div
                 style={{
                   marginTop: 14,
-                  padding: '10px 12px',
+                  padding: '12px 14px',
                   borderRadius: 8,
                   background: 'rgba(59, 130, 246, 0.08)',
                   border: '1px solid rgba(59, 130, 246, 0.25)',
                   fontSize: 11,
                   color: '#93c5fd',
-                  lineHeight: 1.45,
+                  lineHeight: 1.5,
                 }}
               >
-                <div style={{ fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Info size={13} className="text-blue-400" />
-                  ¿Cómo conectar GoPro y cámaras de acción chinas?
+                <div style={{ fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, color: '#bfdbfe' }}>
+                  <Info size={14} className="text-blue-400" />
+                  Conexión directa de Cámara de Acción / Celular por Wi-Fi
                 </div>
                 <div>
-                  <strong>Opción 1 (Recomendada, cero lag):</strong> Conecta tu GoPro (Hero 8+) o cámara de acción china con su cable USB a la PC. En la pantallita de la cámara selecciona <em>"Modo PC Cam / Cámara web"</em>. Ve a la pestaña <strong>USB / Capturadora</strong> y aparecerá de inmediato a 1080p sin latencia.
+                  <strong>Cámaras de Acción (ActionCam / GoPro / SJCam):</strong> Si tu cámara crea una red Wi-Fi propia (ej. <em>ActionCam_...</em>), primero conecta tu computadora a esa red en Windows con su contraseña (ej. <em>12345678</em>). La cámara asignará la IP local (habitualmente <code>http://192.168.1.1:8192/</code> o puerto <code>8080</code>). Ingresa esa dirección arriba y pulsa <strong>Conectar</strong>.
                 </div>
-                <div style={{ marginTop: 5 }}>
-                  <strong>Opción 2 (WiFi directo):</strong> Enciende el Wi-Fi de la cámara, conecta tu computadora a la red Wi-Fi de la cámara e ingresa la URL de stream de arriba.
+                <div style={{ marginTop: 6 }}>
+                  <strong>Conexión Directa USB (Recomendada):</strong> También puedes conectar la cámara por cable USB y en su pantalla seleccionar <em>Modo PC Cam / Cámara Web</em>. Aparecerá de inmediato en la pestaña <strong>USB / Capturadora</strong> sin latencia de red.
                 </div>
               </div>
             </>

@@ -633,7 +633,7 @@ ipcMain.handle('stop-recording', async () => {
 });
 
 ipcMain.handle('scan-network-cameras', async () => {
-  const checkTcpPort = (host, port, timeout = 250) => {
+  const checkTcpPort = (host, port, timeout = 450) => {
     return new Promise((resolve) => {
       const socket = new net.Socket();
       socket.setTimeout(timeout);
@@ -659,7 +659,7 @@ ipcMain.handle('scan-network-cameras', async () => {
 
   const getLocalArpIps = () => {
     return new Promise((resolve) => {
-      exec('arp -a', { timeout: 1500 }, (err, stdout) => {
+      exec('arp -a', { timeout: 2000 }, (err, stdout) => {
         if (err || !stdout) return resolve([]);
         const ips = [];
         const lines = stdout.split('\n');
@@ -696,12 +696,14 @@ ipcMain.handle('scan-network-cameras', async () => {
   // 2. Sondear IPs activas en la red mediante ARP y puertos de cámaras reales
   try {
     const arpIps = await getLocalArpIps();
-    const ipsToScan = [...new Set(['127.0.0.1', LOCAL_IP, ...arpIps, '192.168.1.254', '10.5.5.9', '192.168.42.1'])];
+    // Subnet local base
+    const baseIps = ['127.0.0.1', LOCAL_IP, '192.168.1.1', '192.168.1.254', '10.5.5.9', '192.168.42.1'];
+    const ipsToScan = [...new Set([...baseIps, ...arpIps])];
 
     const cameraPorts = [
       { port: 4747, name: 'DroidCam Wi-Fi', path: '/video' },
       { port: 8080, name: 'IP Webcam', path: '/video' },
-      { port: 8192, name: 'Cámara Acción China', path: '' },
+      { port: 8192, name: 'Cámara de Acción', path: '/' },
       { port: 8554, name: 'RTSP Stream', path: '' },
     ];
 
@@ -710,7 +712,7 @@ ipcMain.handle('scan-network-cameras', async () => {
     for (const ip of ipsToScan) {
       for (const cp of cameraPorts) {
         probePromises.push(
-          checkTcpPort(ip, cp.port, 250).then((isOpen) => {
+          checkTcpPort(ip, cp.port, 450).then((isOpen) => {
             if (isOpen) {
               const streamUrl = cp.path ? `http://${ip}:${cp.port}${cp.path}` : `http://${ip}:${cp.port}`;
               discovered.push({
