@@ -122,7 +122,15 @@ export class P2PStreamTransport extends BaseStreamTransport {
                 if (!currentIds.has(t.id)) { try { stream.addTrack(t) } catch {} }
               })
             }
-            liveTracks.forEach((t) => { try { t.contentHint = 'motion' } catch {} })
+            liveTracks.forEach((t) => {
+              try {
+                if (t.kind === 'video') t.contentHint = 'motion';
+                if (t.kind === 'audio') {
+                  t.contentHint = 'speech';
+                  t.enabled = true;
+                }
+              } catch {}
+            })
             this.emit('statusChanged', slotIndex, 'connected')
             this.emit('streamConnected', slotIndex, stream, callerLabel)
           }

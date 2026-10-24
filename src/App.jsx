@@ -43,7 +43,7 @@ class ErrorBoundary extends Component {
   }
 }
 
-const VideoTile = React.forwardRef(({ stream, isLocal, label, className, onClick, style, chromaKey, bgImage }, ref) => {
+const VideoTile = React.forwardRef(({ stream, isLocal, muted, label, className, onClick, style, chromaKey, bgImage }, ref) => {
   const internalRef = useRef(null);
   const videoRef = ref || internalRef;
 
@@ -56,11 +56,22 @@ const VideoTile = React.forwardRef(({ stream, isLocal, label, className, onClick
     }
   }, [stream, videoRef]);
 
+  const isMuted = muted !== undefined ? muted : isLocal;
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.muted = isMuted;
+      if (!isMuted && videoRef.current.paused) {
+        videoRef.current.play().catch(e => console.log("Audio un-mute play error:", e));
+      }
+    }
+  }, [isMuted, videoRef]);
+
   return (
     <div className={`relative overflow-hidden bg-[#050505] flex items-center justify-center ${className} ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
       {chromaKey && bgImage && <img src={bgImage} className="absolute inset-0 w-full h-full object-cover z-0" alt="Virtual BG" />}
       {stream ? (
-        <video ref={videoRef} autoPlay playsInline muted={isLocal} className={`w-full h-full object-cover ${chromaKey ? 'relative z-10 mix-blend-screen' : ''}`} style={{...style, filter: chromaKey ? `${style?.filter || ''} contrast(1.5) brightness(1.1)` : style?.filter }} />
+        <video ref={videoRef} autoPlay playsInline muted={isMuted} className={`w-full h-full object-cover ${chromaKey ? 'relative z-10 mix-blend-screen' : ''}`} style={{...style, filter: chromaKey ? `${style?.filter || ''} contrast(1.5) brightness(1.1)` : style?.filter }} />
       ) : (
         <div className="flex flex-col items-center justify-center text-gray-500 w-full h-full bg-[#111] z-10">
           <Camera size={24} className="mb-2 opacity-50" />
@@ -120,6 +131,8 @@ function PodcastStudioApp() {
     return {};
   });
   const [camMuted, setCamMuted] = useState({ 1: false, 2: false, 3: false, 4: false });
+  // Control de retorno de audio local (bocina / parlante de monitoreo en estudio para cada cámara)
+  const [camSpeakerMuted, setCamSpeakerMuted] = useState({ 1: true, 2: false, 3: false, 4: false });
 
   // TELEPROMPTER
   const [teleprompterText, setTeleprompterText] = useState('Hoy hablamos de: El futuro del podcasting y la IA\n\nCon nosotros: Invitado Especial\n\nIntroduce el tema, desarrolla los puntos clave y cierra con una llamada a la acción.');
@@ -361,6 +374,14 @@ function PodcastStudioApp() {
       });
     }
     handleSaveSlotProfile(camId - 1, { audioMuted: nextMuted });
+  };
+
+  // Silenciar / Activar bocina de monitoreo local (retorno en altavoces de la computadora para no viciar el audio)
+  const toggleSpeakerCam = (camId) => {
+    setCamSpeakerMuted(prev => ({
+      ...prev,
+      [camId]: !Boolean(prev[camId])
+    }));
   };
   
   const getVideoStyle = (camId) => {
@@ -1176,7 +1197,14 @@ function PodcastStudioApp() {
   };
 
   const renderMonitorLayout = () => {
-    const getTileProps = (id) => ({ stream: getCamStream(id), isLocal: id === 1, style: getVideoStyle(id), chromaKey: chromaKeyActive, bgImage: virtualBg });
+    const getTileProps = (id) => ({
+      stream: getCamStream(id),
+      isLocal: id === 1,
+      muted: Boolean(camSpeakerMuted[id]),
+      style: getVideoStyle(id),
+      chromaKey: chromaKeyActive,
+      bgImage: virtualBg
+    });
     switch (layoutMode) {
       case '1':
         return (
@@ -1504,6 +1532,31 @@ function PodcastStudioApp() {
                       );
                     })()}
 
+                    {/* BOTÓN DE BOCINA DE RETORNO / MONITOREO LOCAL (AL LADO DEL MICRÓFONO PARA NO VICIAR AUDIO) */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSpeakerCam(camId);
+                      }}
+                      className={`p-1 rounded flex items-center justify-center transition-all ${
+                        camSpeakerMuted[camId]
+                          ? 'bg-red-950/70 text-red-400 hover:bg-red-900/80 border border-red-700/50'
+                          : 'bg-black/50 text-emerald-400 hover:bg-[#222] border border-emerald-800/40'
+                      }`}
+                      title={
+                        camSpeakerMuted[camId]
+                          ? `Bocina local de CAM ${camId} SILENCIADA (Evita acople/vicio en estudio) · Clic para escuchar`
+                          : `Bocina local de CAM ${camId} ACTIVA · Clic para silenciar en tus altavoces`
+                      }
+                    >
+                      {camSpeakerMuted[camId] ? (
+                        <VolumeX size={10} className="text-red-400" />
+                      ) : (
+                        <Volume2 size={10} className="text-emerald-400" />
+                      )}
+                    </button>
+
                     {/* BOTÓN CONEXIONES (USB / WIFI / QR) */}
                     <button 
                       onClick={(e) => { e.stopPropagation(); setConnectModalSlot(camId - 1); setShowConnectModal(true); }} 
@@ -1536,7 +1589,7 @@ function PodcastStudioApp() {
                   </div>
                 </div>
                 <div className="flex-1 relative overflow-hidden cursor-pointer" onClick={() => { setActiveCam(camId); setLayoutMode('1'); }}>
-                   <VideoTile stream={camStream} isLocal={camId === 1} className="w-full h-full opacity-80" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
+                   <VideoTile stream={camStream} isLocal={camId === 1} muted={true} className="w-full h-full opacity-80" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
                 </div>
                 <div className="flex p-0.5 bg-[#111]">
                    <button onClick={() => { setActiveCam(camId); setLayoutMode('pip'); }} className="flex-1 text-[9px] text-gray-400 hover:text-white hover:bg-[#333] rounded">PIP</button>
@@ -2031,8 +2084,11 @@ function PodcastStudioApp() {
 
       {/* MODAL CONFIGURADOR DE REDES SOCIALES (PROGRAMA E INVITADOS) */}
       {showSocialsModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#111318] border border-[#2a2b35] rounded-xl w-[640px] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div 
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowSocialsModal(false); }}
+        >
+          <div className="bg-[#111318] border border-[#2a2b35] rounded-xl w-[640px] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150" onClick={(e) => e.stopPropagation()}>
             
             {/* HEADER */}
             <div className="flex justify-between items-center p-4 border-b border-[#222] bg-[#161820]">
@@ -2045,7 +2101,13 @@ function PodcastStudioApp() {
                   <p className="text-[10px] text-gray-400">Edita los usuarios (@handles) y textos en pantalla para invitados y canal</p>
                 </div>
               </div>
-              <button onClick={() => setShowSocialsModal(false)} className="text-gray-400 hover:text-white p-1 rounded hover:bg-[#222]">
+              <button 
+                type="button" 
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowSocialsModal(false); }} 
+                className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-[#222] transition-colors"
+                title="Cerrar ventana"
+                aria-label="Cerrar"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -2296,9 +2358,26 @@ function PodcastStudioApp() {
 
       {/* MODAL CALIBRADOR Y MONITOR PREVIEW (P/VW) */}
       {showSettingsModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-[#0d0d0d] border border-[#2a2b30] rounded-xl w-[900px] h-[600px] flex flex-col shadow-2xl overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-[#2a2b30] bg-[#16171b]"><div className="flex items-center gap-3"><div className="p-2 bg-orange-600/20 rounded-lg text-orange-500 border border-orange-500/50"><Sliders size={20} /></div><div><h2 className="text-lg font-bold text-white">Calibrador y Monitor Preview (P/VW)</h2><p className="text-[10px] text-gray-400">Ajusta zoom independiente, encuadre, color y audio antes de enviar a Master</p></div></div><button onClick={() => setShowSettingsModal(false)} className="text-gray-500 hover:text-white"><X size={20} /></button></div>
+        <div 
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowSettingsModal(false); }}
+        >
+          <div className="bg-[#0d0d0d] border border-[#2a2b30] rounded-xl w-[900px] h-[600px] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-[#2a2b30] bg-[#16171b]">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-600/20 rounded-lg text-orange-500 border border-orange-500/50"><Sliders size={20} /></div>
+                <div><h2 className="text-lg font-bold text-white">Calibrador y Monitor Preview (P/VW)</h2><p className="text-[10px] text-gray-400">Ajusta zoom independiente, encuadre, color y audio antes de enviar a Master</p></div>
+              </div>
+              <button 
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowSettingsModal(false); }} 
+                className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-[#222] transition-colors"
+                title="Cerrar ventana"
+                aria-label="Cerrar"
+              >
+                <X size={20} />
+              </button>
+            </div>
             <div className="flex gap-2 p-2 bg-[#111] border-b border-[#222]">{camSlots.map(id => (<button key={id} onClick={() => setEditingCamId(id)} className={`px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transition-all ${editingCamId === id ? 'bg-[#222] text-white border border-[#444]' : 'text-gray-500 hover:text-gray-300'}`}><div className={`w-2 h-2 rounded-full ${getCamStream(id) ? 'bg-green-500' : 'bg-red-500'}`}></div>CAM {id}</button>))}</div>
             <div className="flex-1 flex overflow-hidden">
               <div className="flex-1 p-4 bg-black flex flex-col items-center justify-center relative border-r border-[#222]"><div className="w-full max-w-2xl aspect-video bg-[#050505] border border-[#333] rounded relative overflow-hidden"><VideoTile stream={getCamStream(editingCamId)} isLocal={editingCamId === 1} className="w-full h-full" style={getVideoStyle(editingCamId)} /></div></div>
@@ -2313,12 +2392,23 @@ function PodcastStudioApp() {
 
       {/* MODAL STREAMING */}
       {showStreamModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#0f1115] border border-[#2a2b30] rounded-xl w-[850px] flex flex-col shadow-2xl overflow-hidden">
+        <div 
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowStreamModal(false); }}
+        >
+          <div className="bg-[#0f1115] border border-[#2a2b30] rounded-xl w-[850px] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
             
             <div className="flex justify-between items-center p-5 border-b border-[#2a2b30]">
               <div className="flex items-center gap-3"><div className="p-2 bg-red-600/20 rounded-lg text-red-500"><Share2 size={24} /></div><div><h2 className="text-lg font-bold text-white">Transmisión En Vivo Multi-Streaming</h2><p className="text-[11px] text-gray-400">Emite tu señal Master simultáneamente en YouTube, Facebook y TikTok.</p></div></div>
-              <button onClick={() => setShowStreamModal(false)} className="text-gray-500 hover:text-white"><X size={20} /></button>
+              <button 
+                type="button" 
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowStreamModal(false); }} 
+                className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-[#222] transition-colors"
+                title="Cerrar ventana"
+                aria-label="Cerrar"
+              >
+                <X size={20} />
+              </button>
             </div>
 
             <div className="flex px-5 gap-2 pt-3 bg-[#0f1115] border-b border-[#2a2b30]">
@@ -2442,9 +2532,23 @@ function PodcastStudioApp() {
 
       {/* MODAL QR PARA CELULAR */}
       {showQRModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-[#16171b] border border-[#2a2b30] rounded-xl w-[500px] flex flex-col shadow-2xl overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b border-[#2a2b30]"><div className="flex items-center gap-2 text-lg font-bold text-white"><Video size={18} className="text-orange-500" /> Conectar Celular</div><button onClick={() => setShowQRModal(false)} className="text-gray-500 hover:text-white"><X size={20} /></button></div>
+        <div 
+          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowQRModal(false); }}
+        >
+          <div className="bg-[#16171b] border border-[#2a2b30] rounded-xl w-[500px] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-[#2a2b30]">
+              <div className="flex items-center gap-2 text-lg font-bold text-white"><Video size={18} className="text-orange-500" /> Conectar Celular</div>
+              <button 
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowQRModal(false); }} 
+                className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-[#222] transition-colors"
+                title="Cerrar ventana"
+                aria-label="Cerrar"
+              >
+                <X size={20} />
+              </button>
+            </div>
             <div className="p-5 flex flex-col gap-4 items-center">
               <div className="bg-white p-2 rounded-lg">
                 {qrCodeImage ? <img src={qrCodeImage} className="w-[200px] h-[200px]" alt="QR Code" /> : <div className="w-[200px] h-[200px] flex items-center justify-center text-black">Generando QR...</div>}

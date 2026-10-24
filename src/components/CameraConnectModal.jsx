@@ -135,6 +135,50 @@ export default function CameraConnectModal({
   const [wifiConnectSuccess, setWifiConnectSuccess] = useState(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [useCloudDomain, setUseCloudDomain] = useState(true);
+  const [copiedSlotNumber, setCopiedSlotNumber] = useState(null);
+
+  // Encontrar el siguiente slot disponible (libre de señal y metadatos)
+  const getNextAvailableSlot = useCallback((preferredSlot) => {
+    const isOccupied = (s) => Boolean(streams[s]) || Boolean(cameraMeta[s]?.deviceId || cameraMeta[s]?.url);
+    
+    // Si preferredSlot > 0 y está libre, usarlo directamente
+    if (preferredSlot != null && preferredSlot > 0 && !isOccupied(preferredSlot)) {
+      return preferredSlot;
+    }
+
+    // Buscar primer slot libre entre 1 y slotsCount - 1 (para cámaras remotas/invitados)
+    for (let s = 1; s < slotsCount; s++) {
+      if (!isOccupied(s)) {
+        return s;
+      }
+    }
+
+    // Si slots 1..N están ocupados pero slot 0 está desocupado
+    if (!isOccupied(0)) {
+      return 0;
+    }
+
+    // Si todos los slots están llenos y se pueden añadir más
+    if (slotsCount < 8 && onAddSlot) {
+      onAddSlot();
+      return slotsCount;
+    }
+
+    return preferredSlot != null ? preferredSlot : 1;
+  }, [streams, cameraMeta, slotsCount, onAddSlot]);
+
+  // Si se abre la pestaña de celular y el slot actual está ocupado o es CAM 1, sugerir el siguiente libre
+  useEffect(() => {
+    if (open && activeTab === 'remote') {
+      const isOccupied = Boolean(streams[targetSlot]) || Boolean(cameraMeta[targetSlot]?.deviceId || cameraMeta[targetSlot]?.url);
+      if (targetSlot === 0 && isOccupied) {
+        const nextFree = getNextAvailableSlot(targetSlot);
+        if (nextFree !== targetSlot) {
+          setTargetSlot(nextFree);
+        }
+      }
+    }
+  }, [open, activeTab, targetSlot, streams, cameraMeta, getNextAvailableSlot]);
 
   useEffect(() => {
     if (open) {
@@ -161,7 +205,7 @@ export default function CameraConnectModal({
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -171,20 +215,22 @@ export default function CameraConnectModal({
   const isMaster = targetSlot === masterCameraSlot;
   const currentMeta = cameraMeta[targetSlot];
 
-  // URL Remota oficial para celulares (Wi-Fi Local Directo o Enlace Cloud Seguro)
-  const remoteUrl = useMemo(() => {
+  // Generador de URL Remota para cualquier slot (Wi-Fi Local Directo o Enlace Cloud Seguro)
+  const generateRemoteUrl = useCallback((slotIdx) => {
     if (!useCloudDomain && localQrUrl && !localQrUrl.includes('remote-cam')) {
       return localQrUrl;
     }
     const base = 'https://www.podcastudio.mx/remote-cam';
     const params = new URLSearchParams({
-      slot: String(targetSlot + 1),
-      room: `studio_cam_${targetSlot + 1}`,
+      slot: String(slotIdx + 1),
+      room: `studio_cam_${slotIdx + 1}`,
     });
     if (guestName.trim()) params.set('name', guestName.trim());
     if (guestRole && guestRole !== 'guest') params.set('role', guestRole);
     return `${base}?${params.toString()}`;
-  }, [targetSlot, guestName, guestRole, useCloudDomain, localQrUrl]);
+  }, [guestName, guestRole, useCloudDomain, localQrUrl]);
+
+  const remoteUrl = useMemo(() => generateRemoteUrl(targetSlot), [generateRemoteUrl, targetSlot]);
 
   // Generación de QR Data URL
   useEffect(() => {
@@ -395,10 +441,20 @@ export default function CameraConnectModal({
   };
 
   const handleCopyLink = async () => {
-    const ok = await copyTextToClipboard(remoteUrl);
+    // Si targetSlot está ocupado o es slot 0 con señal, asignar inteligentemente al siguiente slot libre
+    let slotToAssign = targetSlot;
+    const isOccupied = Boolean(streams[slotToAssign]) || Boolean(cameraMeta[slotToAssign]?.deviceId || cameraMeta[slotToAssign]?.url);
+    if (slotToAssign === 0 || isOccupied) {
+      slotToAssign = getNextAvailableSlot(targetSlot);
+      setTargetSlot(slotToAssign);
+    }
+
+    const assignedUrl = generateRemoteUrl(slotToAssign);
+    const ok = await copyTextToClipboard(assignedUrl);
     if (ok) {
+      setCopiedSlotNumber(slotToAssign + 1);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), 3000);
     }
   };
 
@@ -409,24 +465,33 @@ export default function CameraConnectModal({
   };
   const roleLabel = roleNameMap[guestRole] || 'Invitado';
 
-  const invitationText = `🎙️ Invitación para unirte en vivo a PodcastStudio (${roleLabel} - CAM ${targetSlot + 1})
+  const handleCopyInvite = async () => {
+    let slotToAssign = targetSlot;
+    const isOccupied = Boolean(streams[slotToAssign]) || Boolean(cameraMeta[slotToAssign]?.deviceId || cameraMeta[slotToAssign]?.url);
+    if (slotToAssign === 0 || isOccupied) {
+      slotToAssign = getNextAvailableSlot(targetSlot);
+      setTargetSlot(slotToAssign);
+    }
+
+    const assignedUrl = generateRemoteUrl(slotToAssign);
+    const inviteText = `🎙️ Invitación para unirte en vivo a PodcastStudio (${roleLabel} - CAM ${slotToAssign + 1})
 
 ${guestName.trim() ? `Hola ${guestName.trim()}, ` : 'Hola, '}te invito a conectarte en vivo con tu cámara y micrófono como ${guestRole === 'student' ? 'alumno a la clase virtual' : guestRole === 'cohost' ? 'co-presentador' : 'invitado'}:
 
 👉 Enlace de acceso directo:
-${remoteUrl}
+${assignedUrl}
 
 Instrucciones:
 1. Abre el enlace en tu celular o computadora (Safari en iPhone, Chrome en Android/PC).
 2. Permite el acceso a tu cámara y micrófono cuando te lo solicite el navegador.
 3. Presiona "Activar Cámara y Conectar".
-¡Listo! Tu video y voz entrarán en vivo al estudio.`;
+¡Listo! Tu video y voz entrarán en vivo al estudio en CAM ${slotToAssign + 1}.`;
 
-  const handleCopyInvite = async () => {
-    const ok = await copyTextToClipboard(invitationText);
+    const ok = await copyTextToClipboard(inviteText);
     if (ok) {
+      setCopiedSlotNumber(slotToAssign + 1);
       setCopiedInvite(true);
-      setTimeout(() => setCopiedInvite(false), 2000);
+      setTimeout(() => setCopiedInvite(false), 3000);
     }
   };
 
@@ -444,7 +509,11 @@ Instrucciones:
   if (!open) return null;
 
   return (
-    <div className={styles.backdrop} onClick={onClose} role="presentation">
+    <div 
+      className={styles.backdrop} 
+      onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }} 
+      role="presentation"
+    >
       <div
         className={styles.modal}
         onClick={(e) => e.stopPropagation()}
@@ -464,7 +533,13 @@ Instrucciones:
               </span>
             )}
           </div>
-          <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Cerrar">
+          <button 
+            type="button" 
+            className={styles.closeBtn} 
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose?.(); }} 
+            aria-label="Cerrar ventana"
+            title="Cerrar"
+          >
             <X size={18} />
           </button>
         </header>
@@ -1223,7 +1298,7 @@ Instrucciones:
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                     <button type="button" className={styles.copyUrlBtn} onClick={handleCopyLink}>
                       {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
-                      {copied ? '¡Enlace copiado!' : 'Copiar enlace directo'}
+                      {copied ? `¡Enlace copiado para CAM ${copiedSlotNumber || (targetSlot + 1)}!` : 'Copiar enlace directo'}
                     </button>
                     <button
                       type="button"
@@ -1233,7 +1308,7 @@ Instrucciones:
                       title="Copiar mensaje con instrucciones completas"
                     >
                       {copiedInvite ? <Check size={14} className="text-green-400" /> : <FileText size={14} />}
-                      {copiedInvite ? '¡Invitación copiada!' : 'Copiar texto para Invitar'}
+                      {copiedInvite ? `¡Invitación copiada para CAM ${copiedSlotNumber || (targetSlot + 1)}!` : 'Copiar texto para Invitar'}
                     </button>
                     <button
                       type="button"

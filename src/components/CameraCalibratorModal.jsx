@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { X } from 'lucide-react'
 import styles from './CameraCalibratorModal.module.css'
 import { ZOOM_PRESETS } from '../hooks/useDynamicZoom.js'
 import { buildCanvasFilter } from '../utils/videoLook.js'
@@ -346,7 +347,7 @@ export default function CameraCalibratorModal({
   const slotName = getSlotLabel(selectedSlot, meta?.customLabel, isCurrentSlotMaster)
 
   return (
-    <div className={styles.backdrop} onClick={onClose}>
+    <div className={styles.backdrop} onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         {/* HEADER */}
         <div className={styles.header}>
@@ -364,8 +365,14 @@ export default function CameraCalibratorModal({
               </p>
             </div>
           </div>
-          <button type="button" className={styles.closeBtn} onClick={onClose} title="Cerrar">
-            <i className="ti ti-x" />
+          <button 
+            type="button" 
+            className={styles.closeBtn} 
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose?.(); }} 
+            title="Cerrar ventana"
+            aria-label="Cerrar"
+          >
+            <X size={18} />
           </button>
         </div>
 
