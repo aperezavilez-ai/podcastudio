@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Windows.Forms;
@@ -6,8 +6,9 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyTitle("PodcastStudio")]
 [assembly: System.Reflection.AssemblyProduct("PodcastStudio AI")]
 [assembly: System.Reflection.AssemblyCompany("PodcastStudio AI")]
-[assembly: System.Reflection.AssemblyVersion("1.0.3.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.0.3.0")]
+[assembly: System.Reflection.AssemblyVersion("1.0.4.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.0.4.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("1.0.4.0")]
 [assembly: System.Reflection.AssemblyDescription("PodcastStudio - Estudio de Podcast Profesional con IA")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 PodcastStudio AI")]
 
