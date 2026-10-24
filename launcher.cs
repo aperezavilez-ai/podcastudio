@@ -6,14 +6,14 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 
-[assembly: System.Reflection.AssemblyTitle("PodcastStudio")]
-[assembly: System.Reflection.AssemblyProduct("PodcastStudio AI")]
-[assembly: System.Reflection.AssemblyCompany("PodcastStudio AI")]
+[assembly: System.Reflection.AssemblyTitle("PodcaStudio")]
+[assembly: System.Reflection.AssemblyProduct("PodcaStudio")]
+[assembly: System.Reflection.AssemblyCompany("PodcaStudio")]
 [assembly: System.Reflection.AssemblyVersion("1.0.7.0")]
 [assembly: System.Reflection.AssemblyFileVersion("1.0.7.0")]
 [assembly: System.Reflection.AssemblyInformationalVersion("1.0.7.0")]
-[assembly: System.Reflection.AssemblyDescription("PodcastStudio - Estudio de Podcast Profesional con IA")]
-[assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 PodcastStudio AI")]
+[assembly: System.Reflection.AssemblyDescription("PodcaStudio - Estudio Profesional de Transmisi\u00F3n & Producci\u00F3n")]
+[assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 PodcaStudio")]
 
 class Program
 {
@@ -29,16 +29,16 @@ class Program
         if (!File.Exists(electronExe))
         {
             MessageBox.Show(
-                "No se encontrÃ³ electron.exe en:\n" + electronExe +
-                "\n\nAsegÃºrate de haber ejecutado 'npm install' en la carpeta del proyecto.",
-                "PodcastStudio - Error de Archivo",
+                "No se encontr\u00F3 electron.exe en:\n" + electronExe +
+                "\n\nAseg\u00FArese de haber ejecutado 'npm install' en la carpeta del proyecto.",
+                "PodcaStudio - Error de Archivo",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
             );
             return;
         }
 
-        // Mostrar Splash Screen nativo instantÃ¡neo con animaciÃ³n
+        // Mostrar Splash Screen nativo instantaneo con animacion
         SplashForm splash = new SplashForm(exeDir, electronExe);
         Application.Run(splash);
     }
@@ -52,7 +52,7 @@ public class SplashForm : Form
     private Icon _appIcon;
     private Image _appImage;
     private int _animOffset = 0;
-    private string _statusText = "Iniciando motor de transmisiÃ³n y estudio...";
+    private string _statusText = "Iniciando motor de transmisi\u00F3n y estudio...";
     private Thread _workerThread;
     private bool _isClosing = false;
 
@@ -61,14 +61,14 @@ public class SplashForm : Form
         _exeDir = exeDir;
         _electronExe = electronExe;
 
-        // ConfiguraciÃ³n de ventana Splash sin bordes, centrada y de respuesta instantÃ¡nea (<30ms)
+        // Configuracion de ventana Splash sin bordes, centrada y de respuesta instantanea (<30ms)
         this.FormBorderStyle = FormBorderStyle.None;
         this.StartPosition = FormStartPosition.CenterScreen;
         this.Size = new Size(480, 280);
         this.BackColor = Color.FromArgb(13, 15, 20);
         this.DoubleBuffered = true;
         this.ShowInTaskbar = true;
-        this.Text = "PodcastStudio - Iniciando...";
+        this.Text = "PodcaStudio - Iniciando...";
 
         // Cargar icono oficial si existe
         string iconPath = Path.Combine(_exeDir, "icon.ico");
@@ -87,7 +87,7 @@ public class SplashForm : Form
             try { _appImage = Image.FromFile(pngPath); } catch {}
         }
 
-        // Timer de animaciÃ³n suave para la barra de carga dinÃ¡mica y el brillo (30ms = ~35fps)
+        // Timer de animacion suave para la barra de carga dinamica (28ms = ~35fps)
         _animTimer = new System.Windows.Forms.Timer();
         _animTimer.Interval = 28;
         _animTimer.Tick += (s, e) =>
@@ -106,14 +106,6 @@ public class SplashForm : Form
         {
             try
             {
-                // Limpiar posibles instancias colgadas previas de electron para arranque inmediato
-                try
-                {
-                    Process[] oldProcs = Process.GetProcessesByName("electron");
-                    // No matamos procesos a menos que lleven demasiado tiempo
-                }
-                catch {}
-
                 UpdateStatus("Cargando componentes del estudio...");
 
                 ProcessStartInfo psi = new ProcessStartInfo();
@@ -125,7 +117,7 @@ public class SplashForm : Form
 
                 Process electronProc = Process.Start(psi);
 
-                UpdateStatus("Conectando interfaz grÃ¡fica...");
+                UpdateStatus("Conectando interfaz gr\u00E1fica...");
 
                 // Esperar a que la ventana de Electron aparezca
                 int waitedMs = 0;
@@ -141,7 +133,7 @@ public class SplashForm : Form
                         electronProc.Refresh();
                         if (electronProc.MainWindowHandle != IntPtr.Zero)
                         {
-                            // La ventana principal de Electron ya estÃ¡ activa
+                            // La ventana principal de Electron ya esta activa
                             Thread.Sleep(700);
                             break;
                         }
@@ -162,8 +154,8 @@ public class SplashForm : Form
                 this.BeginInvoke(new Action(() =>
                 {
                     MessageBox.Show(
-                        "Error al inicializar PodcastStudio:\n\n" + ex.Message,
-                        "PodcastStudio",
+                        "Error al inicializar PodcaStudio:\n\n" + ex.Message,
+                        "PodcaStudio",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning
                     );
@@ -209,13 +201,13 @@ public class SplashForm : Form
             g.FillRectangle(bgBrush, this.ClientRectangle);
         }
 
-        // 2. Borde exterior elegante naranja/Ã¡mbar
+        // 2. Borde exterior elegante naranja/ambar
         using (Pen borderPen = new Pen(Color.FromArgb(234, 88, 12), 1.5f))
         {
             g.DrawRectangle(borderPen, 0, 0, this.Width - 1, this.Height - 1);
         }
 
-        // 3. Brillo circular de acento detrÃ¡s del logo
+        // 3. Brillo circular de acento detras del logo
         int logoCenterX = this.Width / 2;
         int logoCenterY = 72;
         using (GraphicsPath path = new GraphicsPath())
@@ -246,25 +238,25 @@ public class SplashForm : Form
             }
         }
 
-        // 5. TÃ­tulo Principal
-        using (Font titleFont = new Font("Segoe UI", 17f, FontStyle.Bold))
+        // 5. Titulo Principal exacto: "PodcaStudio" (sin AI)
+        using (Font titleFont = new Font("Segoe UI", 18f, FontStyle.Bold))
         using (SolidBrush textBrush = new SolidBrush(Color.White))
         {
-            string title = "PODCASTSTUDIO AI";
+            string title = "PodcaStudio";
             SizeF size = g.MeasureString(title, titleFont);
-            g.DrawString(title, titleFont, textBrush, (this.Width - size.Width) / 2, 130);
+            g.DrawString(title, titleFont, textBrush, (this.Width - size.Width) / 2, 128);
         }
 
-        // 6. SubtÃ­tulo Broadcast
+        // 6. Subtitulo Broadcast con tildes impecables
         using (Font subFont = new Font("Segoe UI", 8.5f, FontStyle.Bold))
         using (SolidBrush subBrush = new SolidBrush(Color.FromArgb(234, 88, 12)))
         {
-            string sub = "ESTUDIO PROFESIONAL DE TRANSMISIÃ“N & PRODUCCIÃ“N";
+            string sub = "ESTUDIO PROFESIONAL DE TRANSMISI\u00D3N & PRODUCCI\u00D3N";
             SizeF size = g.MeasureString(sub, subFont);
             g.DrawString(sub, subFont, subBrush, (this.Width - size.Width) / 2, 162);
         }
 
-        // 7. Texto de Estado DinÃ¡mico
+        // 7. Texto de Estado Dinamico con tildes impecables
         using (Font statusFont = new Font("Segoe UI", 9f, FontStyle.Regular))
         using (SolidBrush statusBrush = new SolidBrush(Color.FromArgb(148, 163, 184)))
         {
@@ -272,7 +264,7 @@ public class SplashForm : Form
             g.DrawString(_statusText, statusFont, statusBrush, (this.Width - size.Width) / 2, 198);
         }
 
-        // 8. Barra de Progreso Animada y DinÃ¡mica (Shimmer effect)
+        // 8. Barra de Progreso Animada y Dinamica (Shimmer effect)
         int barX = 40;
         int barY = 236;
         int barW = this.Width - 80;
@@ -305,11 +297,13 @@ public class SplashForm : Form
             }
         }
 
-        // 9. VersiÃ³n en la esquina inferior derecha
+        // 9. Version dinamica sincronizada en la esquina inferior derecha
+        string verText = "v" + typeof(Program).Assembly.GetName().Version.ToString();
         using (Font verFont = new Font("Segoe UI", 7.5f, FontStyle.Regular))
-        using (SolidBrush verBrush = new SolidBrush(Color.FromArgb(71, 85, 105)))
+        using (SolidBrush verBrush = new SolidBrush(Color.FromArgb(80, 95, 115)))
         {
-            g.DrawString("v1.0.6.0", verFont, verBrush, this.Width - 60, this.Height - 20);
+            SizeF verSize = g.MeasureString(verText, verFont);
+            g.DrawString(verText, verFont, verBrush, this.Width - verSize.Width - 14, this.Height - verSize.Height - 8);
         }
     }
 
