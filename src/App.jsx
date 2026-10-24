@@ -43,7 +43,21 @@ class ErrorBoundary extends Component {
   }
 }
 
-const VideoTile = React.forwardRef(({ stream, isLocal, muted, label, className, onClick, style, chromaKey, bgImage }, ref) => {
+const VideoTile = React.forwardRef(({ 
+  stream, 
+  isLocal, 
+  muted, 
+  label, 
+  speakerMuted, 
+  onToggleSpeaker, 
+  micMuted, 
+  onToggleMic, 
+  className, 
+  onClick, 
+  style, 
+  chromaKey, 
+  bgImage 
+}, ref) => {
   const internalRef = useRef(null);
   const videoRef = ref || internalRef;
 
@@ -78,7 +92,49 @@ const VideoTile = React.forwardRef(({ stream, isLocal, muted, label, className, 
           <span className="text-[10px] uppercase tracking-wider">Sin señal</span>
         </div>
       )}
-      {label && <div className="absolute top-2 left-2 bg-black/70 px-2 py-0.5 rounded text-[10px] font-bold z-20 border border-[#333] text-white">{label}</div>}
+      {label && <div className="absolute top-2 left-2 bg-black/70 px-2 py-0.5 rounded text-[10px] font-bold z-20 border border-[#333] text-white flex items-center gap-1">{label}</div>}
+
+      {/* CONTROLES VISIBLES DIRECTAMENTE EN LA PANTALLA/RECUADRO DE CADA CÁMARA */}
+      {(onToggleSpeaker || onToggleMic) && (
+        <div className="absolute top-2 right-2 flex items-center gap-1.5 z-20 pointer-events-auto">
+          {onToggleSpeaker && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleSpeaker();
+              }}
+              className={`p-1.5 rounded-full flex items-center justify-center transition-all backdrop-blur-md shadow-md cursor-pointer ${
+                speakerMuted
+                  ? 'bg-red-600/95 text-white border border-red-400 hover:bg-red-700 hover:scale-105'
+                  : 'bg-emerald-600/90 text-white border border-emerald-400 hover:bg-emerald-700 hover:scale-105'
+              }`}
+              title={speakerMuted ? 'Bocina silenciada en este recuadro · Clic para escuchar audio' : 'Bocina activa · Clic para silenciar y no viciar sonido'}
+            >
+              {speakerMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+            </button>
+          )}
+          {onToggleMic && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onToggleMic();
+              }}
+              className={`p-1.5 rounded-full flex items-center justify-center transition-all backdrop-blur-md shadow-md cursor-pointer ${
+                micMuted
+                  ? 'bg-red-600/95 text-white border border-red-400 hover:bg-red-700 hover:scale-105'
+                  : 'bg-black/70 text-emerald-400 border border-emerald-500/50 hover:bg-black/90 hover:scale-105'
+              }`}
+              title={micMuted ? 'Micrófono silenciado · Clic para activar' : 'Micrófono activo · Clic para silenciar'}
+            >
+              {micMuted ? <MicOff size={13} /> : <Mic size={13} />}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 });
@@ -103,6 +159,7 @@ function PodcastStudioApp() {
   const [camSlots, setCamSlots] = useState([1, 2, 3, 4]); 
   const [activeCam, setActiveCam] = useState(1);
   const [layoutMode, setLayoutMode] = useState('1'); 
+  const [pipCam, setPipCam] = useState(2); 
   const [editingCamId, setEditingCamId] = useState(1);
   const [camSettings, setCamSettings] = useState({
     1: { ...defaultCamSettings }, 2: { ...defaultCamSettings }, 3: { ...defaultCamSettings }, 4: { ...defaultCamSettings }
@@ -537,6 +594,7 @@ function PodcastStudioApp() {
     if (isStreaming || isRecording) {
       updateBroadcastState({
         activeCam,
+        pipCam,
         camSlots,
         layoutMode,
         chromaKeyActive,
@@ -552,7 +610,7 @@ function PodcastStudioApp() {
         camMuted,
       });
     }
-  }, [activeCam, camSlots, layoutMode, chromaKeyActive, virtualBg, logoBase64, cintillosVisible, cintillo, topic, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
+  }, [activeCam, pipCam, camSlots, layoutMode, chromaKeyActive, virtualBg, logoBase64, cintillosVisible, cintillo, topic, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
     const officialQr = 'https://www.podcastudio.mx/remote-cam?slot=2&room=studio_cam_2';
@@ -1196,11 +1254,42 @@ function PodcastStudioApp() {
     }
   };
 
+  const handleSelectMasterCam = (camId) => {
+    setActiveCam(camId);
+    if (layoutMode === 'pip') {
+      if (pipCam === camId) {
+        const altPip = camSlots.find(id => id !== camId) || (camId === 1 ? 2 : 1);
+        setPipCam(altPip);
+      }
+    } else {
+      setLayoutMode('1');
+    }
+  };
+
+  const handleTogglePip = (camId) => {
+    if (layoutMode === 'pip' && pipCam === camId) {
+      setLayoutMode('1');
+      return;
+    }
+    if (activeCam === camId) {
+      const altMaster = camSlots.find(id => id !== camId) || (camId === 1 ? 2 : 1);
+      setActiveCam(altMaster);
+    }
+    setPipCam(camId);
+    setLayoutMode('pip');
+  };
+
   const renderMonitorLayout = () => {
     const getTileProps = (id) => ({
+      camId: id,
       stream: getCamStream(id),
+      label: `CAM ${id}`,
       isLocal: id === 1,
       muted: Boolean(camSpeakerMuted[id]),
+      speakerMuted: Boolean(camSpeakerMuted[id]),
+      onToggleSpeaker: () => toggleSpeakerCam(id),
+      micMuted: Boolean(camMuted[id]),
+      onToggleMic: () => toggleCamAudio(id),
       style: getVideoStyle(id),
       chromaKey: chromaKeyActive,
       bgImage: virtualBg
@@ -1223,26 +1312,25 @@ function PodcastStudioApp() {
             ))}
           </div>
         );
-      case 'pip':
+      case 'pip': {
+        // La cámara Master activa (por default CAM 1 o la elegida como Master) ocupa la pantalla completa.
+        // La cámara con el botón PIP activo ocupa el recuadro flotante superior derecho.
+        const effectivePipCam = (pipCam && pipCam !== activeCam)
+          ? pipCam
+          : (camSlots.find(id => id !== activeCam) || (activeCam === 1 ? 2 : 1));
         return (
           <div className="w-full h-full relative overflow-hidden bg-[#050505]">
-            {camSlots.map((id) => (
-              <div
-                key={id}
-                className="absolute inset-0 w-full h-full"
-                style={{
-                  display: activeCam === id ? 'block' : 'none',
-                  zIndex: activeCam === id ? 5 : 0,
-                }}
-              >
-                <VideoTile {...getTileProps(id)} className="w-full h-full" />
-              </div>
-            ))}
-            <div className="absolute top-4 right-4 w-1/4 h-1/4 border-2 border-orange-500 rounded-lg z-20 overflow-hidden shadow-2xl">
-              <VideoTile {...getTileProps(camSlots[0])} className="w-full h-full" />
+            {/* Cámara Master activa (Fondo principal completo) */}
+            <div className="absolute inset-0 w-full h-full z-10">
+              <VideoTile {...getTileProps(activeCam)} className="w-full h-full" />
+            </div>
+            {/* Cámara PiP seleccionada (Recuadro superior derecho) */}
+            <div className="absolute top-4 right-4 w-1/4 h-1/4 border-2 border-orange-500 rounded-lg z-20 overflow-hidden shadow-2xl bg-black">
+              <VideoTile {...getTileProps(effectivePipCam)} className="w-full h-full" />
             </div>
           </div>
         );
+      }
       case '2': return (<div className="w-full h-full flex gap-2"><div className="w-1/2 h-full"><VideoTile {...getTileProps(camSlots[0])} className="w-full h-full" /></div><div className="w-1/2 h-full"><VideoTile {...getTileProps(camSlots[1])} className="w-full h-full" /></div></div>);
       case '3': return (<div className="w-full h-full flex gap-2"><div className="w-1/2 h-full"><VideoTile {...getTileProps(camSlots[0])} className="w-full h-full" /></div><div className="w-1/2 h-full flex flex-col gap-2"><div className="h-1/2"><VideoTile {...getTileProps(camSlots[1])} className="w-full h-full" /></div><div className="h-1/2"><VideoTile {...getTileProps(camSlots[2])} className="w-full h-full" /></div></div></div>);
       case '4': return (<div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-2">{camSlots.slice(0, 4).map(id => <div key={id}><VideoTile {...getTileProps(id)} className="w-full h-full" /></div>)}</div>);
@@ -1588,14 +1676,52 @@ function PodcastStudioApp() {
                     </button>
                   </div>
                 </div>
-                <div className="flex-1 relative overflow-hidden cursor-pointer" onClick={() => { setActiveCam(camId); setLayoutMode('1'); }}>
+                <div 
+                  className="flex-1 relative overflow-hidden cursor-pointer" 
+                  onClick={() => handleSelectMasterCam(camId)}
+                  title={`Seleccionar CAM ${camId} como Cámara Master`}
+                >
                    <VideoTile stream={camStream} isLocal={camId === 1} muted={true} className="w-full h-full opacity-80" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
                 </div>
-                <div className="flex p-0.5 bg-[#111]">
-                   <button onClick={() => { setActiveCam(camId); setLayoutMode('pip'); }} className="flex-1 text-[9px] text-gray-400 hover:text-white hover:bg-[#333] rounded">PIP</button>
-                   <button onClick={() => { setActiveCam(camId); setLayoutMode('2'); }} className="flex-1 text-[9px] text-gray-400 hover:text-white hover:bg-[#333] rounded">2</button>
-                   <button onClick={() => { setActiveCam(camId); setLayoutMode('3'); }} className="flex-1 text-[9px] text-gray-400 hover:text-white hover:bg-[#333] rounded">3</button>
-                   <button onClick={() => { setActiveCam(camId); setLayoutMode('4'); }} className="flex-1 text-[9px] text-gray-400 hover:text-white hover:bg-[#333] rounded">4</button>
+                <div className="flex p-0.5 bg-[#111] gap-0.5">
+                   <button 
+                     onClick={(e) => { e.stopPropagation(); handleTogglePip(camId); }} 
+                     className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                       layoutMode === 'pip' && pipCam === camId 
+                         ? 'bg-orange-600 text-white shadow-sm' 
+                         : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                     }`}
+                     title={`Colocar CAM ${camId} en recuadro PiP`}
+                   >
+                     PIP
+                   </button>
+                   <button 
+                     onClick={(e) => { e.stopPropagation(); setLayoutMode('2'); }} 
+                     className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                       layoutMode === '2' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                     }`}
+                     title="Modo pantalla dividida 2 cámaras"
+                   >
+                     2
+                   </button>
+                   <button 
+                     onClick={(e) => { e.stopPropagation(); setLayoutMode('3'); }} 
+                     className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                       layoutMode === '3' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                     }`}
+                     title="Modo pantalla 3 cámaras"
+                   >
+                     3
+                   </button>
+                   <button 
+                     onClick={(e) => { e.stopPropagation(); setLayoutMode('4'); }} 
+                     className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                       layoutMode === '4' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                     }`}
+                     title="Modo cuadrícula 4 cámaras"
+                   >
+                     4
+                   </button>
                 </div>
               </div>
             );

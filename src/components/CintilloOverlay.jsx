@@ -1,4 +1,5 @@
 import React from 'react'
+import { Eye, X } from 'lucide-react'
 import { getCintilloStyle } from '../config/cintilloStyles.js'
 import styles from './CintilloOverlay.module.css'
 
@@ -108,10 +109,10 @@ export default function CintilloOverlay({
   const extras = (liveOn || totalViewers > 0 || onClose) && !preview ? (
     <div className={styles.extras}>
       {liveOn && <span className={styles.liveBadge}><span className={styles.liveDot} />En vivo</span>}
-      {totalViewers > 0 && <span className={styles.viewers}><i className="ti ti-eye" /> {totalViewers.toLocaleString()}</span>}
+      {totalViewers > 0 && <span className={styles.viewers}><Eye size={12} style={{ marginRight: 4 }} /> {totalViewers.toLocaleString()}</span>}
       {onClose && (
         <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="Cerrar cintillo">
-          <i className="ti ti-x" />
+          <X size={14} />
         </button>
       )}
     </div>

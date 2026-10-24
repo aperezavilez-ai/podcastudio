@@ -1,4 +1,8 @@
 import React, { useMemo, useState } from 'react'
+import { 
+  Play, Pause, Square, Music, Wand2, Sparkles, Loader2, 
+  Volume2, VolumeX, Filter, Disc, CircleSlash, AlertCircle, Zap 
+} from 'lucide-react'
 import { MUSIC_GENRES, SFX_CATEGORIES } from '../config/musicTracks.js'
 import styles from './MusicBank.module.css'
 
@@ -52,14 +56,14 @@ export default function MusicBank({
           className={`${styles.tab} ${tab === 'songs' ? styles.tabActive : ''}`}
           onClick={() => setTab('songs')}
         >
-          <i className="ti ti-music" /> Canciones
+          <Music size={13} style={{ marginRight: 5 }} /> Canciones
         </button>
         <button
           type="button"
           className={`${styles.tab} ${tab === 'sfx' ? styles.tabActive : ''}`}
           onClick={() => setTab('sfx')}
         >
-          <i className="ti ti-wand" /> Efectos
+          <Sparkles size={13} style={{ marginRight: 5 }} /> Efectos
         </button>
       </div>
 
@@ -67,7 +71,11 @@ export default function MusicBank({
         <>
           <div className={styles.nowPlaying}>
             <div className={`${styles.nowIcon} ${playing ? styles.nowIconActive : ''}`}>
-              <i className={`ti ${loading ? 'ti-loader' : 'ti-music'}`} style={loading ? { animation: 'spin 1s linear infinite' } : {}} />
+              {loading ? (
+                <Loader2 size={16} className="animate-spin text-orange-400" />
+              ) : (
+                <Music size={16} className={playing ? "text-emerald-400" : "text-gray-400"} />
+              )}
             </div>
             <div className={styles.nowInfo}>
               <div className={styles.nowTitle}>{currentTrack?.name}</div>
@@ -76,13 +84,31 @@ export default function MusicBank({
                 {playing ? 'Reproduciendo fondo…' : error || currentTrack?.sub}
               </div>
             </div>
-            <button type="button" className={styles.iconBtn} onClick={onTogglePlay} title={playing ? 'Pausar' : 'Reproducir fondo'}>
-              <i className={`ti ${playing ? 'ti-player-pause' : 'ti-player-play'}`} />
+            {/* BOTÓN PLAY / PAUSE CON DIBUJO SVG NÍTIDO */}
+            <button 
+              type="button" 
+              className={styles.iconBtn} 
+              onClick={onTogglePlay} 
+              title={playing ? 'Pausar música' : 'Reproducir música'}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: playing ? '#4ade80' : '#ea580c',
+                border: playing ? '1px solid rgba(74, 222, 128, 0.4)' : '1px solid rgba(234, 88, 12, 0.4)',
+                background: playing ? 'rgba(74, 222, 128, 0.15)' : 'rgba(234, 88, 12, 0.15)',
+              }}
+            >
+              {playing ? (
+                <Pause size={17} fill="currentColor" strokeWidth={0} />
+              ) : (
+                <Play size={17} fill="currentColor" strokeWidth={0} style={{ marginLeft: 2 }} />
+              )}
             </button>
           </div>
 
           <div className={styles.filterRow}>
-            <i className="ti ti-filter" />
+            <Filter size={13} style={{ color: '#888' }} />
             <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)} aria-label="Filtrar por género">
               <option value="all">Todos los géneros</option>
               {genreOptions.filter((g) => g !== 'all').map((g) => (
@@ -102,7 +128,11 @@ export default function MusicBank({
                   onClick={() => onSelectTrack(track.id, true)}
                 >
                   <span className={styles.itemIcon}>
-                    <i className={`ti ${active && playing ? 'ti-volume' : 'ti-disc'}`} />
+                    {active && playing ? (
+                      <Volume2 size={16} className="text-emerald-400" />
+                    ) : (
+                      <Disc size={16} className={active ? "text-orange-400" : "text-gray-500"} />
+                    )}
                   </span>
                   <span className={styles.itemText}>
                     <strong>{track.name}</strong>
@@ -115,7 +145,7 @@ export default function MusicBank({
           </div>
 
           <div className={styles.volumeRow}>
-            <i className="ti ti-volume" />
+            <Volume2 size={15} style={{ color: '#888' }} />
             <input type="range" min={0} max={100} step={1} value={volume} onChange={(e) => onVolumeChange(+e.target.value)} />
             <span>{volume}%</span>
           </div>
@@ -140,7 +170,7 @@ export default function MusicBank({
               }}
               title="Atenúa la música automáticamente mientras el conductor habla para que la voz se entienda nítida"
             >
-              <i className={`ti ${duckingEnabled ? 'ti-wand' : 'ti-circle-off'}`} />
+              {duckingEnabled ? <Wand2 size={13} /> : <CircleSlash size={13} />}
               <span>Auto-Ducking de voz {duckingEnabled ? 'ON (-12dB)' : 'OFF'}</span>
             </button>
             <span style={{ fontSize: 10, color: 'var(--text-muted, #64748b)' }}>
@@ -157,7 +187,7 @@ export default function MusicBank({
           </p>
 
           <div className={styles.filterRow}>
-            <i className="ti ti-filter" />
+            <Filter size={13} style={{ color: '#888' }} />
             <select value={sfxFilter} onChange={(e) => setSfxFilter(e.target.value)} aria-label="Filtrar efectos">
               <option value="all">Todos los efectos</option>
               {sfxOptions.filter((c) => c !== 'all').map((c) => (
@@ -167,7 +197,9 @@ export default function MusicBank({
           </div>
 
           {sfxError && (
-            <div className={styles.sfxError}><i className="ti ti-alert-circle" /> {sfxError}</div>
+            <div className={styles.sfxError}>
+              <AlertCircle size={14} style={{ marginRight: 4 }} /> {sfxError}
+            </div>
           )}
 
           <div className={styles.list}>
@@ -181,7 +213,11 @@ export default function MusicBank({
                   onClick={() => onPlaySfx(sfx)}
                 >
                   <span className={styles.itemIcon}>
-                    <i className={`ti ${playingThis ? 'ti-loader' : 'ti-bolt'}`} style={playingThis ? { animation: 'spin 1s linear infinite' } : {}} />
+                    {playingThis ? (
+                      <Loader2 size={15} className="animate-spin text-orange-400" />
+                    ) : (
+                      <Zap size={15} className="text-yellow-400" />
+                    )}
                   </span>
                   <span className={styles.itemText}>
                     <strong>{sfx.name}</strong>

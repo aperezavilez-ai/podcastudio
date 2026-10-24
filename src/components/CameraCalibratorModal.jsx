@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { X } from 'lucide-react'
+import { 
+  X, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Crosshair, 
+  Sliders, VideoOff, Grid, Square, ZoomIn, Film, Move, Palette, 
+  Volume2, Camera, Info, Check, RotateCcw, Zap, Lock, Sun, Focus
+} from 'lucide-react'
 import styles from './CameraCalibratorModal.module.css'
 import { ZOOM_PRESETS } from '../hooks/useDynamicZoom.js'
 import { buildCanvasFilter } from '../utils/videoLook.js'
@@ -353,7 +357,7 @@ export default function CameraCalibratorModal({
         <div className={styles.header}>
           <div className={styles.titleArea}>
             <div className={styles.headerIcon}>
-              <i className="ti ti-adjustments-horizontal" />
+              <Sliders size={18} />
             </div>
             <div>
               <h2 className={styles.title}>
@@ -430,7 +434,7 @@ export default function CameraCalibratorModal({
                 />
               ) : (
                 <div className={styles.noSignal}>
-                  <i className="ti ti-video-off" />
+                  <VideoOff size={32} />
                   <span>Sin señal en {slotName}</span>
                 </div>
               )}
@@ -471,21 +475,21 @@ export default function CameraCalibratorModal({
                 className={`${styles.guideBtn} ${showGrid ? styles.guideBtnActive : ''}`}
                 onClick={() => setShowGrid(g => !g)}
               >
-                <i className="ti ti-grid-dots" /> Regla de Tercios
+                <Grid size={13} style={{ marginRight: 4 }} /> Regla de Tercios
               </button>
               <button
                 type="button"
                 className={`${styles.guideBtn} ${showSafeArea ? styles.guideBtnActive : ''}`}
                 onClick={() => setShowSafeArea(s => !s)}
               >
-                <i className="ti ti-frame" /> Margen Seguro
+                <Square size={13} style={{ marginRight: 4 }} /> Margen Seguro
               </button>
               <button
                 type="button"
                 className={`${styles.guideBtn} ${showCrosshair ? styles.guideBtnActive : ''}`}
                 onClick={() => setShowCrosshair(c => !c)}
               >
-                <i className="ti ti-crosshair" /> Centro
+                <Crosshair size={13} style={{ marginRight: 4 }} /> Centro
               </button>
             </div>
           </div>
@@ -496,7 +500,7 @@ export default function CameraCalibratorModal({
             <div className={styles.section}>
               <div className={styles.sectionHeader}>
                 <div className={styles.sectionTitle}>
-                  <i className="ti ti-zoom-in" />
+                  <ZoomIn size={15} style={{ marginRight: 6 }} />
                   Zoom Óptico / Digital Independiente
                 </div>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#e8612a' }}>
@@ -542,7 +546,7 @@ export default function CameraCalibratorModal({
                   className={`${styles.guideBtn} ${pushIn ? styles.guideBtnActive : ''}`}
                   onClick={() => setPushIn(p => !p)}
                 >
-                  <i className="ti ti-movie" /> {pushIn ? 'Activado' : 'Desactivado'}
+                  <Film size={13} style={{ marginRight: 4 }} /> {pushIn ? 'Activado' : 'Desactivado'}
                 </button>
               </div>
             </div>
@@ -551,31 +555,31 @@ export default function CameraCalibratorModal({
             <div className={styles.section}>
               <div className={styles.sectionHeader}>
                 <div className={styles.sectionTitle}>
-                  <i className="ti ti-arrows-maximize" />
+                  <Move size={15} style={{ marginRight: 6 }} />
                   Encuadre y Panorámica (Eje X / Y)
                 </div>
               </div>
 
               <div className={styles.panWrapper}>
-                {/* D-PAD INTERACTIVO */}
+                {/* D-PAD INTERACTIVO CON FLECHAS SVG CLARAS */}
                 <div className={styles.dpad}>
                   <div />
                   <button type="button" className={styles.dpadBtn} onClick={() => handleNudge(0, -0.05)} title="Arriba">
-                    <i className="ti ti-chevron-up" />
+                    <ChevronUp size={22} strokeWidth={2.6} />
                   </button>
                   <div />
                   <button type="button" className={styles.dpadBtn} onClick={() => handleNudge(-0.05, 0)} title="Izquierda">
-                    <i className="ti ti-chevron-left" />
+                    <ChevronLeft size={22} strokeWidth={2.6} />
                   </button>
                   <button type="button" className={styles.dpadBtn} onClick={() => { setFocusX(0.5); setFocusY(0.42) }} title="Centrar">
-                    <i className="ti ti-target" />
+                    <Crosshair size={18} strokeWidth={2.4} />
                   </button>
                   <button type="button" className={styles.dpadBtn} onClick={() => handleNudge(0.05, 0)} title="Derecha">
-                    <i className="ti ti-chevron-right" />
+                    <ChevronRight size={22} strokeWidth={2.6} />
                   </button>
                   <div />
                   <button type="button" className={styles.dpadBtn} onClick={() => handleNudge(0, 0.05)} title="Abajo">
-                    <i className="ti ti-chevron-down" />
+                    <ChevronDown size={22} strokeWidth={2.6} />
                   </button>
                   <div />
                 </div>
@@ -615,7 +619,7 @@ export default function CameraCalibratorModal({
             <div className={styles.section}>
               <div className={styles.sectionHeader}>
                 <div className={styles.sectionTitle}>
-                  <i className="ti ti-palette" />
+                  <Palette size={15} style={{ marginRight: 6 }} />
                   Corrección de Color y Temperatura
                 </div>
               </div>
@@ -710,7 +714,7 @@ export default function CameraCalibratorModal({
             <div className={styles.section}>
               <div className={styles.sectionHeader}>
                 <div className={styles.sectionTitle}>
-                  <i className="ti ti-volume" />
+                  <Volume2 size={15} style={{ marginRight: 6 }} />
                   Audio y Ganancia de Entrada
                 </div>
                 {stream?.getAudioTracks()?.length > 0 ? (
@@ -749,7 +753,7 @@ export default function CameraCalibratorModal({
             <div className={styles.section}>
               <div className={styles.sectionHeader}>
                 <div className={styles.sectionTitle}>
-                  <i className="ti ti-aperture" />
+                  <Camera size={15} style={{ marginRight: 6 }} />
                   Sensor y Hardware de Cámara (UVC)
                 </div>
                 <span style={{ fontSize: 10, color: 'var(--accent, #e8612a)', fontWeight: 600 }}>
@@ -767,7 +771,7 @@ export default function CameraCalibratorModal({
                   onClick={() => handleToggleHardwareMode('exposureMode', exposureMode === 'manual' ? 'continuous' : 'manual')}
                   title="Bloquea la exposición fija para que el brillo no cambie al moverte"
                 >
-                  <i className={`ti ${exposureMode === 'manual' ? 'ti-lock' : 'ti-sun'}`} style={{ fontSize: 14 }} />
+                  {exposureMode === 'manual' ? <Lock size={14} style={{ marginRight: 4 }} /> : <Sun size={14} style={{ marginRight: 4 }} />}
                   <span style={{ fontSize: 10 }}>{exposureMode === 'manual' ? 'Luz Bloqueada' : 'Luz Auto'}</span>
                 </button>
 
@@ -777,7 +781,7 @@ export default function CameraCalibratorModal({
                   onClick={() => handleToggleHardwareMode('whiteBalanceMode', whiteBalanceMode === 'manual' ? 'continuous' : 'manual')}
                   title="Bloquea el balance de blancos para evitar cambios de color entre azul y naranja"
                 >
-                  <i className={`ti ${whiteBalanceMode === 'manual' ? 'ti-lock' : 'ti-color-filter'}`} style={{ fontSize: 14 }} />
+                  {whiteBalanceMode === 'manual' ? <Lock size={14} style={{ marginRight: 4 }} /> : <Palette size={14} style={{ marginRight: 4 }} />}
                   <span style={{ fontSize: 10 }}>{whiteBalanceMode === 'manual' ? 'Color Fijo' : 'Color Auto'}</span>
                 </button>
 
@@ -787,14 +791,14 @@ export default function CameraCalibratorModal({
                   onClick={() => handleToggleHardwareMode('focusMode', focusMode === 'manual' ? 'continuous' : 'manual')}
                   title="Bloquea la distancia de enfoque para eliminar el respirado de lente"
                 >
-                  <i className={`ti ${focusMode === 'manual' ? 'ti-lock' : 'ti-focus-2'}`} style={{ fontSize: 14 }} />
+                  {focusMode === 'manual' ? <Lock size={14} style={{ marginRight: 4 }} /> : <Focus size={14} style={{ marginRight: 4 }} />}
                   <span style={{ fontSize: 10 }}>{focusMode === 'manual' ? 'Foco Fijo' : 'Foco Auto'}</span>
                 </button>
               </div>
 
               {uvcMsg && (
                 <div style={{ marginTop: 6, fontSize: 10, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <i className="ti ti-info-circle" />
+                  <Info size={14} />
                   <span>{uvcMsg}</span>
                 </div>
               )}
@@ -806,12 +810,12 @@ export default function CameraCalibratorModal({
         <div className={styles.footer}>
           {saveToast ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#4ade80', fontWeight: 600, fontSize: 13, background: 'rgba(34, 197, 94, 0.12)', border: '1px solid rgba(34, 197, 94, 0.3)', padding: '6px 14px', borderRadius: 8 }}>
-              <i className="ti ti-check" style={{ fontSize: 16 }} />
+              <Check size={16} />
               <span>{saveToast}</span>
             </div>
           ) : (
             <button type="button" className={styles.resetBtn} onClick={handleReset} title="Restablecer valores predeterminados">
-              <i className="ti ti-rotate" />
+              <RotateCcw size={14} style={{ marginRight: 4 }} />
               Restablecer
             </button>
           )}
@@ -823,7 +827,7 @@ export default function CameraCalibratorModal({
               onClick={handleSave}
               title="Guarda los ajustes para esta cámara en el switcher"
             >
-              <i className="ti ti-check" />
+              <Check size={15} style={{ marginRight: 4 }} />
               Guardar Calibración
             </button>
 
@@ -833,7 +837,7 @@ export default function CameraCalibratorModal({
               onClick={handlePromoteAndClose}
               title="Guarda y manda inmediatamente esta cámara con sus ajustes a Master"
             >
-              <i className="ti ti-bolt" />
+              <Zap size={15} style={{ marginRight: 4 }} />
               ★ Mandar a Master (Al Aire)
             </button>
           </div>

@@ -227,8 +227,9 @@ function renderFrame() {
     const pipW = 460;
     const pipH = 260;
     const pipX = width - pipW - 40;
-    const pipY = 40;
-    const pipCamId = slots[0] || 1;
+    const pipCamId = (currentState.pipCam && currentState.pipCam !== activeCam)
+      ? currentState.pipCam
+      : (slots.find(id => id !== activeCam) || (activeCam === 1 ? 2 : 1));
     const pipVideo = videoElements.get(pipCamId);
 
     ctx.save();

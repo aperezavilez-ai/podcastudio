@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { Type, X, Palette, Sparkles, Upload, Bot, Edit3, Radio, Save, Loader2 } from 'lucide-react'
 import CintilloOverlay from './CintilloOverlay.jsx'
 import { CINTILLO_STYLES } from '../config/cintilloStyles.js'
 import styles from './CintilloEditorModal.module.css'
@@ -223,7 +224,7 @@ export default function CintilloEditorModal({
         <div className={styles.header}>
           <div className={styles.titleWrap}>
             <div className={styles.headerIcon}>
-              <i className="ti ti-typography" />
+              <Type size={18} />
             </div>
             <div>
               <h2 className={styles.title}>Cintillos Profesionales Broadcast</h2>
@@ -233,7 +234,7 @@ export default function CintilloEditorModal({
             </div>
           </div>
           <button type="button" className={styles.closeBtn} onClick={onClose}>
-            <i className="ti ti-x" />
+            <X size={18} />
           </button>
         </div>
 
@@ -244,7 +245,7 @@ export default function CintilloEditorModal({
             className={`${styles.tabBtn} ${activeTab === 'editor' ? styles.tabBtnActive : ''}`}
             onClick={() => setActiveTab('editor')}
           >
-            <i className="ti ti-palette" />
+            <Palette size={14} style={{ marginRight: 6 }} />
             <span>Diseñar Cintillo</span>
           </button>
           <button
@@ -252,7 +253,7 @@ export default function CintilloEditorModal({
             className={`${styles.tabBtn} ${activeTab === 'ai' ? styles.tabBtnActive : ''}`}
             onClick={() => setActiveTab('ai')}
           >
-            <i className="ti ti-sparkles" style={{ color: 'var(--accent)' }} />
+            <Sparkles size={14} style={{ marginRight: 6, color: 'var(--accent)' }} />
             <span>Generar con IA</span>
           </button>
         </div>
@@ -330,12 +331,12 @@ export default function CintilloEditorModal({
                       <div className={styles.logoThumbWrap}>
                         <img src={logoUrl} alt="Logo" className={styles.logoThumb} />
                         <button type="button" className={styles.removeLogoBtn} onClick={() => setLogoUrl(null)}>
-                          <i className="ti ti-x" /> Quitar
+                          <X size={12} style={{ marginRight: 4 }} /> Quitar
                         </button>
                       </div>
                     ) : (
                       <label className={styles.uploadBtn}>
-                        <i className="ti ti-cloud-upload" />
+                        <Upload size={14} style={{ marginRight: 6 }} />
                         Subir PNG / Foto
                         <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: 'none' }} />
                       </label>
@@ -392,7 +393,7 @@ export default function CintilloEditorModal({
         {activeTab === 'ai' && (
           <div className={styles.body}>
             <div className={styles.aiHeader}>
-              <i className="ti ti-robot" style={{ fontSize: 24, color: 'var(--accent)' }} />
+              <Bot size={24} style={{ color: 'var(--accent)' }} />
               <div>
                 <strong style={{ display: 'block', fontSize: 13, color: '#fff' }}>
                   Generador de Cintillos Broadcast con IA
@@ -444,7 +445,7 @@ export default function CintilloEditorModal({
               onClick={handleGenerateWithAI}
               disabled={aiGenerating}
             >
-              <i className={`ti ${aiGenerating ? 'ti-loader' : 'ti-sparkles'}`} style={{ animation: aiGenerating ? 'spin 1s linear infinite' : undefined }} />
+              {aiGenerating ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
               <span>{aiGenerating ? 'Generando propuestas...' : '✨ Generar Propuestas Broadcast'}</span>
             </button>
 
@@ -471,7 +472,7 @@ export default function CintilloEditorModal({
                         onClick={() => handleSelectProposal(prop, false)}
                         title="Personalizar colores o logo"
                       >
-                        <i className="ti ti-edit" /> Editar
+                        <Edit3 size={13} style={{ marginRight: 4 }} /> Editar
                       </button>
                       <button
                         type="button"
@@ -479,7 +480,7 @@ export default function CintilloEditorModal({
                         onClick={() => handleSelectProposal(prop, true)}
                         title="Lanzar inmediatamente a pantalla Master"
                       >
-                        <i className="ti ti-broadcast" /> Al Aire
+                        <Radio size={13} style={{ marginRight: 4 }} /> Al Aire
                       </button>
                     </div>
                   </div>
@@ -501,7 +502,7 @@ export default function CintilloEditorModal({
               onClick={handleSave}
               disabled={!text.trim()}
             >
-              <i className="ti ti-device-floppy" /> Guardar en Lista
+              <Save size={14} style={{ marginRight: 5 }} /> Guardar en Lista
             </button>
             <button
               type="button"
@@ -509,7 +510,7 @@ export default function CintilloEditorModal({
               onClick={handleLaunchLive}
               disabled={!text.trim()}
             >
-              <i className="ti ti-broadcast" /> 🔴 Lanzar al Aire (Master)
+              <Radio size={14} style={{ marginRight: 5 }} /> 🔴 Lanzar al Aire (Master)
             </button>
           </div>
         </div>
