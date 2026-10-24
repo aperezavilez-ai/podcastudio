@@ -344,10 +344,13 @@ function PodcastStudioApp() {
     masterPosition: cintilloPosition
   });
 
-  // Activar cintillo de conductor al iniciar la app
+  // Activar cintillo de conductor al iniciar la app y notificar a Electron que la UI está 100% montada
   useEffect(() => {
     if (cintillosVisible && !cintillo.active) {
       showManual('host');
+    }
+    if (window.api && window.api.signalReady) {
+      window.api.signalReady();
     }
   }, []);
 
@@ -1289,53 +1292,88 @@ function PodcastStudioApp() {
       speakerMuted: Boolean(camSpeakerMuted[id]),
       onToggleSpeaker: () => toggleSpeakerCam(id),
       micMuted: Boolean(camMuted[id]),
-      onToggleMic: () => toggleCamAudio(id),
+      onToggleMic: () => toggleMuteCam(id),
       style: getVideoStyle(id),
       chromaKey: chromaKeyActive,
       bgImage: virtualBg
     });
-    switch (layoutMode) {
-      case '1':
-        return (
-          <div className="w-full h-full relative overflow-hidden bg-[#050505]">
-            {camSlots.map((id) => (
-              <div
-                key={id}
-                className="absolute inset-0 w-full h-full"
-                style={{
-                  display: activeCam === id ? 'block' : 'none',
-                  zIndex: activeCam === id ? 10 : 0,
-                }}
-              >
-                <VideoTile {...getTileProps(id)} className="w-full h-full" />
-              </div>
-            ))}
-          </div>
-        );
-      case 'pip': {
-        // La cámara Master activa (por default CAM 1 o la elegida como Master) ocupa la pantalla completa.
-        // La cámara con el botón PIP activo ocupa el recuadro flotante superior derecho.
-        const effectivePipCam = (pipCam && pipCam !== activeCam)
-          ? pipCam
-          : (camSlots.find(id => id !== activeCam) || (activeCam === 1 ? 2 : 1));
-        return (
-          <div className="w-full h-full relative overflow-hidden bg-[#050505]">
-            {/* Cámara Master activa (Fondo principal completo) */}
-            <div className="absolute inset-0 w-full h-full z-10">
-              <VideoTile {...getTileProps(activeCam)} className="w-full h-full" />
+
+    const effectivePipCam = (pipCam && pipCam !== activeCam)
+      ? pipCam
+      : (camSlots.find(id => id !== activeCam) || (activeCam === 1 ? 2 : 1));
+
+    return (
+      <div className="w-full h-full relative overflow-hidden bg-[#050505]">
+        {camSlots.map((id) => {
+          let tileClass = "absolute transition-none";
+          let tileStyle = {};
+
+          if (layoutMode === '1') {
+            if (id === activeCam) {
+              tileClass += " inset-0 w-full h-full z-10 pointer-events-auto opacity-100";
+            } else {
+              // Mantenemos el elemento montado y decodificando en GPU sin display:none para cambio 100% instantáneo
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+            }
+          } else if (layoutMode === 'pip') {
+            if (id === activeCam) {
+              // Cámara Master completa en el fondo
+              tileClass += " inset-0 w-full h-full z-10 pointer-events-auto opacity-100";
+            } else if (id === effectivePipCam) {
+              // Cámara PiP flotante en esquina superior derecha
+              tileClass += " top-4 right-4 w-1/4 h-1/4 border-2 border-orange-500 rounded-lg z-20 overflow-hidden shadow-2xl pointer-events-auto opacity-100 bg-black";
+            } else {
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+            }
+          } else if (layoutMode === '2') {
+            const idx = camSlots.indexOf(id);
+            if (idx === 0) {
+              tileClass += " left-0 top-0 w-[calc(50%-4px)] h-full z-10 pointer-events-auto opacity-100";
+            } else if (idx === 1) {
+              tileClass += " right-0 top-0 w-[calc(50%-4px)] h-full z-10 pointer-events-auto opacity-100";
+            } else {
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+            }
+          } else if (layoutMode === '3') {
+            const idx = camSlots.indexOf(id);
+            if (idx === 0) {
+              tileClass += " left-0 top-0 w-[calc(50%-4px)] h-full z-10 pointer-events-auto opacity-100";
+            } else if (idx === 1) {
+              tileClass += " right-0 top-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+            } else if (idx === 2) {
+              tileClass += " right-0 bottom-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+            } else {
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+            }
+          } else if (layoutMode === '4') {
+            const idx = camSlots.indexOf(id);
+            if (idx === 0) {
+              tileClass += " left-0 top-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+            } else if (idx === 1) {
+              tileClass += " right-0 top-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+            } else if (idx === 2) {
+              tileClass += " left-0 bottom-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+            } else if (idx === 3) {
+              tileClass += " right-0 bottom-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+            } else {
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+            }
+          } else {
+            if (id === activeCam) {
+              tileClass += " inset-0 w-full h-full z-10 pointer-events-auto opacity-100";
+            } else {
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+            }
+          }
+
+          return (
+            <div key={`cam-persistent-slot-${id}`} className={tileClass} style={tileStyle}>
+              <VideoTile {...getTileProps(id)} className="w-full h-full" />
             </div>
-            {/* Cámara PiP seleccionada (Recuadro superior derecho) */}
-            <div className="absolute top-4 right-4 w-1/4 h-1/4 border-2 border-orange-500 rounded-lg z-20 overflow-hidden shadow-2xl bg-black">
-              <VideoTile {...getTileProps(effectivePipCam)} className="w-full h-full" />
-            </div>
-          </div>
-        );
-      }
-      case '2': return (<div className="w-full h-full flex gap-2"><div className="w-1/2 h-full"><VideoTile {...getTileProps(camSlots[0])} className="w-full h-full" /></div><div className="w-1/2 h-full"><VideoTile {...getTileProps(camSlots[1])} className="w-full h-full" /></div></div>);
-      case '3': return (<div className="w-full h-full flex gap-2"><div className="w-1/2 h-full"><VideoTile {...getTileProps(camSlots[0])} className="w-full h-full" /></div><div className="w-1/2 h-full flex flex-col gap-2"><div className="h-1/2"><VideoTile {...getTileProps(camSlots[1])} className="w-full h-full" /></div><div className="h-1/2"><VideoTile {...getTileProps(camSlots[2])} className="w-full h-full" /></div></div></div>);
-      case '4': return (<div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-2">{camSlots.slice(0, 4).map(id => <div key={id}><VideoTile {...getTileProps(id)} className="w-full h-full" /></div>)}</div>);
-      default: return <VideoTile {...getTileProps(activeCam)} className="w-full h-full" />;
-    }
+          );
+        })}
+      </div>
+    );
   };
 
   const handleApplyCintilloFromModal = (data) => {

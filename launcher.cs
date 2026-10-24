@@ -100,12 +100,25 @@ public class SplashForm : Form
         this.Shown += (s, e) => StartElectronLaunch();
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
     private void StartElectronLaunch()
     {
         _workerThread = new Thread(() =>
         {
             try
             {
+                // Limpiar procesos huÃ©rfanos previos de electron para arranque instantÃ¡neo (<1s)
+                try
+                {
+                    foreach (Process p in Process.GetProcessesByName("electron"))
+                    {
+                        try { p.Kill(); } catch {}
+                    }
+                }
+                catch {}
+
                 UpdateStatus("Cargando componentes del estudio...");
 
                 ProcessStartInfo psi = new ProcessStartInfo();
@@ -119,22 +132,23 @@ public class SplashForm : Form
 
                 UpdateStatus("Conectando interfaz gr\u00E1fica...");
 
-                // Esperar a que la ventana de Electron aparezca
+                // Esperar a que la ventana de Electron estÃ© REALMENTE visible con su interfaz renderizada
                 int waitedMs = 0;
-                while (waitedMs < 14000)
+                while (waitedMs < 35000)
                 {
-                    Thread.Sleep(250);
-                    waitedMs += 250;
+                    Thread.Sleep(150);
+                    waitedMs += 150;
 
                     if (electronProc.HasExited) break;
 
                     try
                     {
                         electronProc.Refresh();
-                        if (electronProc.MainWindowHandle != IntPtr.Zero)
+                        IntPtr hWnd = electronProc.MainWindowHandle;
+                        if (hWnd != IntPtr.Zero && IsWindowVisible(hWnd))
                         {
-                            // La ventana principal de Electron ya esta activa
-                            Thread.Sleep(700);
+                            // La ventana principal de Electron ya estÃ¡ activa y visible en pantalla
+                            Thread.Sleep(300);
                             break;
                         }
                     }

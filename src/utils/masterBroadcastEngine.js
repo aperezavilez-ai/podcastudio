@@ -306,17 +306,42 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
       audioDestination = audioContext.createMediaStreamDestination();
     }
 
-    // Si se pasa camStreamsMap, conectar todos los streams activos respetando mute
+    // 1. EL MICRÓFONO MASTER (CAM 1 / MICRÓFONO EXTERNO DEL ESTUDIO) SIEMPRE TIENE PRIORIDAD Y NUNCA SE DESCONECTA
+    const masterAudioStream = (camStreamsMap && camStreamsMap[1]) || localStream;
+    const isMasterMuted = Boolean(camMutedMap[1]);
+    if (masterAudioStream && masterAudioStream.getAudioTracks().length > 0) {
+      const masterTrack = masterAudioStream.getAudioTracks()[0];
+      masterTrack.enabled = !isMasterMuted;
+      const masterKey = 'master_cam_1_' + masterTrack.id;
+      if (!isMasterMuted) {
+        if (!connectedAudioSources.has(masterKey)) {
+          try {
+            const src = audioContext.createMediaStreamSource(masterAudioStream);
+            src.connect(audioDestination);
+            connectedAudioSources.set(masterKey, src);
+          } catch (e) {}
+        }
+      } else {
+        if (connectedAudioSources.has(masterKey)) {
+          try { connectedAudioSources.get(masterKey).disconnect(); } catch (e) {}
+          connectedAudioSources.delete(masterKey);
+        }
+      }
+    }
+
+    // 2. CONECTAR DEMÁS CÁMARAS (CAM 2, 3, 4...) RESPETANDO ESTRICTAMENTE SU ESTADO INDIVIDUAL DEL PANEL
     if (camStreamsMap && Object.keys(camStreamsMap).length > 0) {
       Object.entries(camStreamsMap).forEach(([camIdStr, stream]) => {
         const camId = Number(camIdStr);
-        const isMuted = Boolean(camMutedMap[camId]);
+        if (camId === 1) return; // Ya garantizado como Master arriba
+
+        const isCamMuted = Boolean(camMutedMap[camId]);
         if (stream && stream.getAudioTracks().length > 0) {
           const track = stream.getAudioTracks()[0];
-          track.enabled = !isMuted;
+          track.enabled = !isCamMuted;
 
           const key = `cam_${camId}_${track.id}`;
-          if (!isMuted) {
+          if (!isCamMuted) {
             if (!connectedAudioSources.has(key)) {
               try {
                 const src = audioContext.createMediaStreamSource(stream);
@@ -325,44 +350,40 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
               } catch (e) {}
             }
           } else {
-            // Silenciado: desconectar fuente si existía
             if (connectedAudioSources.has(key)) {
-              try {
-                connectedAudioSources.get(key).disconnect();
-              } catch (e) {}
+              try { connectedAudioSources.get(key).disconnect(); } catch (e) {}
               connectedAudioSources.delete(key);
             }
           }
         }
       });
-    } else {
-      // Conectar micrófono local si no está silenciado
-      if (localStream && localStream.getAudioTracks().length > 0) {
-        const trackId = localStream.getAudioTracks()[0].id;
-        if (!connectedAudioSources.has('local_' + trackId)) {
-          try {
-            const src = audioContext.createMediaStreamSource(localStream);
-            src.connect(audioDestination);
-            connectedAudioSources.set('local_' + trackId, src);
-          } catch (e) {}
-        }
-      }
+    }
 
-      // Conectar micrófonos remotos (celulares WebRTC)
-      if (Array.isArray(remoteCams)) {
-        remoteCams.forEach((rc) => {
-          if (rc.stream && rc.stream.getAudioTracks().length > 0) {
-            const trackId = rc.stream.getAudioTracks()[0].id;
-            if (!connectedAudioSources.has('remote_' + rc.id + '_' + trackId)) {
+    // 3. Respaldo para cámaras remotas WebRTC si no estaban en el mapa
+    if (Array.isArray(remoteCams)) {
+      remoteCams.forEach((rc) => {
+        const rcCamId = rc.slot ? rc.slot + 1 : 2;
+        const isMuted = Boolean(camMutedMap[rcCamId]);
+        if (rc.stream && rc.stream.getAudioTracks().length > 0) {
+          const track = rc.stream.getAudioTracks()[0];
+          track.enabled = !isMuted;
+          const key = `remote_${rc.id}_${track.id}`;
+          if (!isMuted) {
+            if (!connectedAudioSources.has(key)) {
               try {
                 const src = audioContext.createMediaStreamSource(rc.stream);
                 src.connect(audioDestination);
-                connectedAudioSources.set('remote_' + rc.id + '_' + trackId, src);
+                connectedAudioSources.set(key, src);
               } catch (e) {}
             }
+          } else {
+            if (connectedAudioSources.has(key)) {
+              try { connectedAudioSources.get(key).disconnect(); } catch (e) {}
+              connectedAudioSources.delete(key);
+            }
           }
-        });
-      }
+        }
+      });
     }
 
     return audioDestination.stream.getAudioTracks()[0];

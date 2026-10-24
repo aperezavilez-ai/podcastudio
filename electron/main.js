@@ -120,9 +120,12 @@ function createWindow() {
     }
   };
 
-  mainWindow.once('ready-to-show', showWindowSafely);
-  // Failsafe: Forzar aparición de ventana en máximo 2.5s para arranque instantáneo garantizado
-  setTimeout(showWindowSafely, 2500);
+  // Solo mostrar la ventana cuando la interfaz de React esté 100% montada y renderizada (0% pantalla negra)
+  ipcMain.once('app-ui-ready', showWindowSafely);
+  mainWindow.once('ready-to-show', () => {
+    // Failsafe seguro: si por alguna razón tarda más de 8s, mostrar para no bloquear
+    setTimeout(showWindowSafely, 8000);
+  });
 
   if (process.env.NODE_ENV !== 'development') {
     mainWindow.webContents.on('devtools-opened', () => {

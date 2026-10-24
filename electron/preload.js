@@ -20,5 +20,6 @@ contextBridge.exposeInMainWorld('api', {
   onRemoteCandidate: (cb) => ipcRenderer.on('remote-candidate', (e, data) => cb(data)),
   onRemoteDisconnected: (cb) => ipcRenderer.on('remote-disconnected', (e, id) => cb(id)),
   sendAnswer: (id, answer) => ipcRenderer.send('send-answer', { id, answer }),
-  sendCandidate: (id, candidate) => ipcRenderer.send('send-candidate', { id, candidate })
+  sendCandidate: (id, candidate) => ipcRenderer.send('send-candidate', { id, candidate }),
+  signalReady: () => ipcRenderer.send('app-ui-ready')
 });
