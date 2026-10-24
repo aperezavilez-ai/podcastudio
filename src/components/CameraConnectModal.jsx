@@ -136,6 +136,7 @@ export default function CameraConnectModal({
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [useCloudDomain, setUseCloudDomain] = useState(true);
   const [copiedSlotNumber, setCopiedSlotNumber] = useState(null);
+  const [autoAssignMode, setAutoAssignMode] = useState(true);
 
   // Encontrar el siguiente slot disponible (libre de señal y metadatos)
   const getNextAvailableSlot = useCallback((preferredSlot) => {
@@ -221,6 +222,12 @@ export default function CameraConnectModal({
       return localQrUrl;
     }
     const base = 'https://www.podcastudio.mx/remote-cam';
+    if (autoAssignMode) {
+      const params = new URLSearchParams({ auto: 'true' });
+      if (guestName.trim()) params.set('name', guestName.trim());
+      if (guestRole && guestRole !== 'guest') params.set('role', guestRole);
+      return `${base}?${params.toString()}`;
+    }
     const params = new URLSearchParams({
       slot: String(slotIdx + 1),
       room: `studio_cam_${slotIdx + 1}`,
@@ -228,7 +235,7 @@ export default function CameraConnectModal({
     if (guestName.trim()) params.set('name', guestName.trim());
     if (guestRole && guestRole !== 'guest') params.set('role', guestRole);
     return `${base}?${params.toString()}`;
-  }, [guestName, guestRole, useCloudDomain, localQrUrl]);
+  }, [guestName, guestRole, useCloudDomain, localQrUrl, autoAssignMode]);
 
   const remoteUrl = useMemo(() => generateRemoteUrl(targetSlot), [generateRemoteUrl, targetSlot]);
 
@@ -1280,6 +1287,46 @@ Instrucciones:
                     </div>
                   </div>
 
+                  {/* SELECTOR DE MODO DE ASIGNACIÓN */}
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 12 }}>
+                    <button
+                      type="button"
+                      onClick={() => setAutoAssignMode(true)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 20,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        background: autoAssignMode ? '#ea580c' : 'rgba(255,255,255,0.06)',
+                        color: autoAssignMode ? '#fff' : '#94a3b8',
+                        border: autoAssignMode ? '1px solid #ea580c' : '1px solid rgba(255,255,255,0.1)',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title="Permite que varios celulares escaneen el mismo QR y cada uno se conecte a la siguiente cámara libre"
+                    >
+                      ⚡ Auto-Asignación (Recomendado)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAutoAssignMode(false)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 20,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        background: !autoAssignMode ? '#0284c7' : 'rgba(255,255,255,0.06)',
+                        color: !autoAssignMode ? '#fff' : '#94a3b8',
+                        border: !autoAssignMode ? '1px solid #0284c7' : '1px solid rgba(255,255,255,0.1)',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title={`Fijar este enlace únicamente para entrar en CAM ${targetSlot + 1}`}
+                    >
+                      🎯 Fijo a CAM {targetSlot + 1}
+                    </button>
+                  </div>
+
                   {/* QR IMAGE */}
                   <div className={styles.qrWrap}>
                     {qrCodeDataUrl ? (
@@ -1292,7 +1339,11 @@ Instrucciones:
                   </div>
 
                   <div className={styles.remoteText}>
-                    Escanea con la cámara de tu <strong>iPhone o Android</strong>. No necesitas instalar nada; se abrirá automáticamente la cámara de tu teléfono y se conectará en vivo a <strong>CAM {targetSlot + 1}</strong>.
+                    {autoAssignMode ? (
+                      <span>Escanea con tu celular o tablet. Si conectas varios dispositivos con este mismo código, cada uno tomará <strong>la siguiente ranura libre (CAM 2, 3, 4...)</strong> sin pisarse.</span>
+                    ) : (
+                      <span>Escanea con tu smartphone. Se abrirá la cámara de tu teléfono y se conectará exclusivamente a <strong>CAM {targetSlot + 1}</strong>.</span>
+                    )}
                   </div>
 
                   {/* ACCIONES DE COMPARTIR */}

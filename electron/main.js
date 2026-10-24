@@ -540,8 +540,13 @@ ipcMain.on('send-candidate', (event, { id, candidate }) => {
 
 ipcMain.on('open-external', (event, url) => shell.openExternal(url));
 
-ipcMain.on('open-recordings-folder', () => {
-  const recDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'grabaciones');
+ipcMain.on('open-recordings-folder', (event, projectName) => {
+  const cleanProjectName = projectName ? String(projectName).replace(/[/\\?%*:|"<>]/g, '_').trim() : '';
+  let recDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos');
+  if (cleanProjectName) {
+    const subDir = path.join(recDir, cleanProjectName);
+    if (fs.existsSync(subDir)) recDir = subDir;
+  }
   if (!fs.existsSync(recDir)) {
     try { fs.mkdirSync(recDir, { recursive: true }); } catch (e) {}
   }
@@ -553,16 +558,23 @@ let streamDestinations = [];
 let activeStreamWorkers = [];
 
 // ============================================================================
-// GRABACIÓN BROADCAST MASTER (MP4 LIMPIO + AUDIO MEZCLADO - 0 CONGELAMIENTO)
+// GRABACIÓN BROADCAST MASTER (MP4 LIMPIO + AUDIO MEZCLADO - EN CARPETA DE PROYECTO)
 // ============================================================================
-ipcMain.handle('start-recording', async () => {
+ipcMain.handle('start-recording', async (event, options = {}) => {
   return new Promise((resolve) => {
-    const dir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'grabaciones');
+    const rawProjectName = (typeof options === 'string' ? options : options?.projectName) || 'Proyecto_General';
+    // Sanitizar nombre de proyecto para carpeta válida en Windows
+    const cleanProjectName = rawProjectName.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Proyecto_General';
+    
+    // Carpeta raíz estructurada: D:\PROGRAMAS IA\PODCASTUDIO\proyectos\[NombreProyecto]\
+    const projectDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos', cleanProjectName);
     try {
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
     } catch (e) {}
 
-    currentRecordingPath = path.join(dir, `Grabacion_${Date.now()}.mp4`);
+    const now = new Date();
+    const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+    currentRecordingPath = path.join(projectDir, `${timestamp}_Master_1080p.mp4`);
 
     if (ffmpegRecordProcess) {
       try {

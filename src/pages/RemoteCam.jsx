@@ -53,10 +53,16 @@ function applyAudioSenderParams(sender) {
 
 export default function RemoteCam() {
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const slot = searchParams.get('slot') || '1'
-  const room = searchParams.get('room') || `pcd_cam_${slot}`
-  const guestName = searchParams.get('name') || ''
-  const sessionRole = searchParams.get('role') || 'guest'
+  const explicitSlot = searchParams.get('slot');
+  const explicitRoom = searchParams.get('room');
+  const isAuto = searchParams.get('auto') === 'true' || (!explicitSlot && !explicitRoom);
+
+  const [slot, setSlot] = useState(explicitSlot || '2');
+  const [room, setRoom] = useState(explicitRoom || (explicitSlot ? `studio_cam_${explicitSlot}` : 'studio_cam_2'));
+  const [guestName, setGuestName] = useState(searchParams.get('name') || '');
+  const sessionRole = searchParams.get('role') || 'guest';
+  const [isAssigning, setIsAssigning] = useState(isAuto);
+  const deviceSessionIdRef = useRef('phone_' + Math.random().toString(36).substring(2, 9));
 
   const [active, setActive] = useState(false)
   const [status, setStatus] = useState('idle')
@@ -179,6 +185,48 @@ export default function RemoteCam() {
       adaptTimerRef.current = null
     }
   }, [])
+
+  // NEGOCIACIÓN AUTOMÁTICA DEL SIGUIENTE SLOT LIBRE EN EL ESTUDIO
+  useEffect(() => {
+    if (!supabase || !isAuto) return;
+
+    const dispatchChannel = supabase.channel('remotecam_auto_dispatch', {
+      config: { broadcast: { self: false } },
+    });
+
+    dispatchChannel.on('broadcast', { event: 'assign-slot' }, (ev) => {
+      const payload = ev?.payload;
+      if (payload && payload.targetDeviceId === deviceSessionIdRef.current) {
+        console.log('[RemoteCam] Slot auto-asignado por Master:', payload.slot, payload.room);
+        setSlot(String(payload.slot));
+        setRoom(payload.room || `studio_cam_${payload.slot}`);
+        setIsAssigning(false);
+      }
+    });
+
+    dispatchChannel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        dispatchChannel.send({
+          type: 'broadcast',
+          event: 'request-slot',
+          payload: {
+            deviceId: deviceSessionIdRef.current,
+            guestName: guestName.trim() || undefined,
+          },
+        }).catch(() => {});
+      }
+    });
+
+    // Fallback: Si el estudio no responde en 2.5s, continuar con el slot por defecto
+    const fallbackTimer = setTimeout(() => {
+      setIsAssigning(false);
+    }, 2500);
+
+    return () => {
+      clearTimeout(fallbackTimer);
+      dispatchChannel.unsubscribe().catch(() => {});
+    };
+  }, [isAuto, guestName]);
 
   useEffect(() => {
     if (!supabase) return
@@ -304,6 +352,17 @@ export default function RemoteCam() {
         channelRef.current.unsubscribe()
       } catch {}
       channelRef.current = null
+    }
+
+    if (supabase) {
+      try {
+        const autoChan = supabase.channel('remotecam_auto_dispatch')
+        autoChan.send({
+          type: 'broadcast',
+          event: 'release-slot',
+          payload: { deviceId: deviceSessionIdRef.current, slot },
+        }).catch(() => {})
+      } catch {}
     }
 
     if (handshakeTimerRef.current) {
@@ -829,9 +888,45 @@ export default function RemoteCam() {
           <div className={styles.iconHero}>
             <Smartphone size={54} className="text-sky-400" />
           </div>
-          <span className={styles.slotBadgeLarge}>
-            {sessionRole === 'student' ? 'AULA VIRTUAL' : sessionRole === 'cohost' ? 'CO-PRESENTADOR' : 'INVITADO EN VIVO'} • CANAL CAM {slot}
-          </span>
+          {isAssigning ? (
+            <div style={{ padding: '6px 14px', borderRadius: 9999, background: 'rgba(234, 88, 12, 0.25)', border: '1px solid #ea580c', color: '#ffedd5', fontSize: 11, fontWeight: 700, margin: '6px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Zap size={14} className="animate-pulse text-orange-400" />
+              <span>Asignando cámara libre en Master...</span>
+            </div>
+          ) : (
+            <span className={styles.slotBadgeLarge}>
+              {sessionRole === 'student' ? 'AULA VIRTUAL' : sessionRole === 'cohost' ? 'CO-PRESENTADOR' : 'INVITADO EN VIVO'} • CANAL CAM {slot}
+            </span>
+          )}
+
+          {/* SELECTOR DE CANAL MANUAL EN CASO DE PREFERENCIA */}
+          <div style={{ display: 'flex', gap: 6, margin: '4px 0 14px', justifyContent: 'center', alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>Canal:</span>
+            {['2', '3', '4'].map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => {
+                  setSlot(s);
+                  setRoom(`studio_cam_${s}`);
+                }}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  border: String(slot) === s ? '1px solid #ea580c' : '1px solid rgba(255,255,255,0.12)',
+                  background: String(slot) === s ? '#ea580c' : 'rgba(255,255,255,0.06)',
+                  color: String(slot) === s ? '#fff' : '#94a3b8',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                CAM {s}
+              </button>
+            ))}
+          </div>
+
           <h1 className={styles.title}>{guestName ? `¡Hola, ${guestName}!` : 'Cámara Móvil Inalámbrica'}</h1>
           <p className={styles.desc}>
             {guestName ? 'Conéctate con video HD fluido y audio en vivo.' : 'Conecta la cámara de tu smartphone en tiempo real sin instalar nada.'}

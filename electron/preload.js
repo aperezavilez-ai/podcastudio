@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
-  startRecording: () => ipcRenderer.invoke('start-recording'),
+  startRecording: (options) => ipcRenderer.invoke('start-recording', options),
   sendRecordChunk: (chunk) => ipcRenderer.send('record-chunk', chunk),
   stopRecording: () => ipcRenderer.invoke('stop-recording'),
 
@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('api', {
   getQrUrl: () => ipcRenderer.invoke('get-qr-url'),
   scanNetworkCameras: () => ipcRenderer.invoke('scan-network-cameras'),
   openExternal: (url) => ipcRenderer.send('open-external', url),
-  openRecordingsFolder: () => ipcRenderer.send('open-recordings-folder'),
+  openRecordingsFolder: (projectName) => ipcRenderer.send('open-recordings-folder', projectName),
 
   onMobileWsConnected: (cb) => ipcRenderer.on('mobile-ws-connected', (e, id) => cb(id)),
   onRemoteOffer: (cb) => ipcRenderer.on('remote-offer', (e, data) => cb(data)),

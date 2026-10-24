@@ -33,6 +33,7 @@ import { useBackgroundMusic } from './hooks/useBackgroundMusic.js';
 import { useSoundEffect } from './hooks/useSoundEffect.js';
 import { startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, getInitHeader } from './utils/masterBroadcastEngine.js';
 import { createStreamTransport } from './utils/streamTransport.js';
+import { supabase } from './lib/supabase.js';
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -176,6 +177,15 @@ function PodcastStudioApp() {
   const [cameraDevices, setCameraDevices] = useState([]);
   const [cameraMeta, setCameraMeta] = useState({});
   const [slotStreams, setSlotStreams] = useState({});
+  const slotStreamsRef = useRef(slotStreams);
+  useEffect(() => { slotStreamsRef.current = slotStreams; }, [slotStreams]);
+
+  const [showRemoteControlModal, setShowRemoteControlModal] = useState(false);
+  const [remoteControlQrImage, setRemoteControlQrImage] = useState('');
+  const remoteControlUrl = 'https://www.podcastudio.mx/control?room=master_studio';
+
+  const assignedSlotsRef = useRef({});
+  const controlChannelRef = useRef(null);
 
   // CALIBRADOR Y MONITOR PREVIEW (PVW) INDEPENDIENTE
   const [showCalibratorModal, setShowCalibratorModal] = useState(false);
@@ -363,6 +373,8 @@ function PodcastStudioApp() {
   const [showKey, setShowKey] = useState(false);
 
   const [localStream, setLocalStream] = useState(null);
+  const localStreamRef = useRef(localStream);
+  useEffect(() => { localStreamRef.current = localStream; }, [localStream]);
   const [remoteCams, setRemoteCams] = useState([]); 
   const peerConnections = useRef({}); 
   const candidateBuffers = useRef({}); 
@@ -551,8 +563,23 @@ function PodcastStudioApp() {
 
   useEffect(() => {
     let timer;
-    if (isRecording) timer = setInterval(() => setRecordingTime(prev => prev + 1), 1000);
-    else setRecordingTime(0);
+    if (isRecording) {
+      timer = setInterval(() => {
+        setRecordingTime(prev => {
+          const next = prev + 1;
+          if (controlChannelRef.current) {
+            controlChannelRef.current.send({
+              type: 'broadcast',
+              event: 'studio_state',
+              payload: { type: 'REC_TICK', recordingTime: next }
+            }).catch(() => {});
+          }
+          return next;
+        });
+      }, 1000);
+    } else {
+      setRecordingTime(0);
+    }
     return () => clearInterval(timer);
   }, [isRecording]);
 
@@ -616,9 +643,12 @@ function PodcastStudioApp() {
   }, [activeCam, pipCam, camSlots, layoutMode, chromaKeyActive, virtualBg, logoBase64, cintillosVisible, cintillo, topic, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
-    const officialQr = 'https://www.podcastudio.mx/remote-cam?slot=2&room=studio_cam_2';
+    const officialQr = 'https://www.podcastudio.mx/remote-cam?auto=true';
     setQrCodeUrl(officialQr);
     QRCode.toDataURL(officialQr, { width: 250, margin: 2 }).then(img => setQrCodeImage(img)).catch(() => {});
+
+    // Generar código QR para el Control Remoto iPad
+    QRCode.toDataURL(remoteControlUrl, { width: 250, margin: 2 }).then(img => setRemoteControlQrImage(img)).catch(() => {});
 
     // Conectar receptor en la nube de cámaras remotas de celular (Supabase WebRTC)
     let cloudTransport = null;
@@ -637,6 +667,7 @@ function PodcastStudioApp() {
         });
         cloudTransport.on('streamDisconnected', slotIdx => {
           console.log(`[Cloud WebRTC] Cámara desconectada en slot ${slotIdx + 1}`);
+          delete assignedSlotsRef.current[slotIdx];
           setSlotStreams(prev => {
             const next = { ...prev };
             delete next[slotIdx];
@@ -648,6 +679,63 @@ function PodcastStudioApp() {
       });
     } catch (e) {
       console.warn('Transporte cloud:', e);
+    }
+
+    // Auto-asignación dinámica de cámaras en la nube (Supabase)
+    let dispatchChannel = null;
+    if (supabase) {
+      try {
+        dispatchChannel = supabase.channel('remotecam_auto_dispatch', {
+          config: { broadcast: { self: false } }
+        });
+
+        dispatchChannel.on('broadcast', { event: 'request-slot' }, (ev) => {
+          const { deviceId, guestName } = ev?.payload || {};
+          if (!deviceId) return;
+
+          let targetSlot = null;
+          for (let s = 1; s <= 3; s++) {
+            const isBusy = Boolean(slotStreamsRef.current[s]) || (assignedSlotsRef.current[s] && assignedSlotsRef.current[s] !== deviceId);
+            if (!isBusy) {
+              targetSlot = s;
+              break;
+            }
+          }
+          if (targetSlot === null && !localStreamRef.current && !slotStreamsRef.current[0]) {
+            targetSlot = 0;
+          }
+          if (targetSlot === null) targetSlot = 1;
+
+          assignedSlotsRef.current[targetSlot] = deviceId;
+          const assignedCam = targetSlot + 1;
+          const assignedRoom = `studio_cam_${assignedCam}`;
+          console.log(`[Auto-Dispatch Master] Asignando CAM ${assignedCam} (${assignedRoom}) a ${deviceId}`);
+
+          dispatchChannel.send({
+            type: 'broadcast',
+            event: 'assign-slot',
+            payload: {
+              targetDeviceId: deviceId,
+              slot: assignedCam,
+              room: assignedRoom
+            }
+          }).catch(() => {});
+        });
+
+        dispatchChannel.on('broadcast', { event: 'release-slot' }, (ev) => {
+          const { deviceId, slot } = ev?.payload || {};
+          if (slot != null) {
+            const s = parseInt(slot, 10) - 1;
+            if (assignedSlotsRef.current[s] === deviceId) {
+              delete assignedSlotsRef.current[s];
+            }
+          }
+        });
+
+        dispatchChannel.subscribe();
+      } catch (err) {
+        console.warn('Error configurando auto-dispatch:', err);
+      }
     }
 
     if (window.api) {
@@ -840,7 +928,7 @@ function PodcastStudioApp() {
         setCountdown(null);
 
         if (window.api) {
-          const res = await window.api.startRecording();
+          const res = await window.api.startRecording({ projectName: topic || 'Proyecto_General' });
           if (res.success) {
             isRecordingRef.current = true;
             setIsRecording(true);
@@ -1282,6 +1370,74 @@ function PodcastStudioApp() {
     setLayoutMode('pip');
   };
 
+  // SINCRONIZACIÓN Y BROADCAST EN VIVO CON CONTROL REMOTO IPAD
+  const broadcastStudioState = useCallback(() => {
+    if (!controlChannelRef.current) return;
+    try {
+      controlChannelRef.current.send({
+        type: 'broadcast',
+        event: 'studio_state',
+        payload: {
+          type: 'STATE_UPDATE',
+          activeCam,
+          pipCam,
+          layoutMode,
+          isRecording: isRecordingRef.current,
+          recordingTime,
+          topic,
+          cintillosVisible,
+          cintillo,
+          camSlots,
+        }
+      }).catch(() => {});
+    } catch {}
+  }, [activeCam, pipCam, layoutMode, recordingTime, topic, cintillosVisible, cintillo, camSlots]);
+
+  useEffect(() => {
+    broadcastStudioState();
+  }, [broadcastStudioState]);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    const channelName = 'studio_control_master_studio';
+    const channel = supabase.channel(channelName, {
+      config: { broadcast: { self: false } }
+    });
+    controlChannelRef.current = channel;
+
+    channel.on('broadcast', { event: 'studio_command' }, (event) => {
+      const payload = event?.payload;
+      if (!payload) return;
+
+      if (payload.type === 'REQUEST_STATE') {
+        broadcastStudioState();
+      } else if (payload.type === 'SET_ACTIVE_CAM' && payload.camId) {
+        handleSelectMasterCam(payload.camId);
+      } else if (payload.type === 'TOGGLE_PIP') {
+        handleTogglePip(payload.camId || pipCam);
+      } else if (payload.type === 'SET_LAYOUT' && payload.mode) {
+        setLayoutMode(payload.mode);
+      } else if (payload.type === 'TOGGLE_RECORD') {
+        handleRecord();
+      } else if (payload.type === 'TOGGLE_CINTILLO') {
+        setCintillosVisible(v => !v);
+      } else if (payload.type === 'SET_CINTILLO_PRESET' && payload.presetId) {
+        showManual(payload.presetId);
+      }
+    });
+
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        broadcastStudioState();
+      }
+    });
+
+    return () => {
+      channel.unsubscribe().catch(() => {});
+    };
+  }, [broadcastStudioState]);
+
   const renderMonitorLayout = () => {
     const getTileProps = (id) => ({
       camId: id,
@@ -1404,7 +1560,7 @@ function PodcastStudioApp() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#0a0a0a] text-[#e0e0e0] font-sans overflow-hidden text-[13px] select-none">
+    <div className="flex flex-col min-h-screen h-screen h-[100dvh] w-screen max-w-full bg-[#0a0a0a] text-[#e0e0e0] font-sans overflow-hidden text-[13px] select-none">
       
       {/* ÁREA DE TRABAJO PRINCIPAL */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
@@ -1412,10 +1568,10 @@ function PodcastStudioApp() {
         
         {/* TOP BAR */}
         <div 
-          className="flex justify-between items-center bg-[#0a0a0a] px-4 py-2 border-b border-[#222] shrink-0"
+          className="flex justify-between items-center bg-[#0a0a0a] px-3 sm:px-4 py-2 border-b border-[#222] shrink-0"
           style={{ WebkitAppRegion: 'drag' }}
         >
-          <div className="flex items-center gap-6" style={{ WebkitAppRegion: 'no-drag' }}>
+          <div className="flex items-center gap-3 sm:gap-6" style={{ WebkitAppRegion: 'no-drag' }}>
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-md shadow-orange-500/20 border border-orange-400/30 flex-shrink-0">
                 <Mic size={15} className="text-white" />
@@ -1423,26 +1579,36 @@ function PodcastStudioApp() {
               <h1 className="text-base font-extrabold tracking-tight text-white">Podcast<span className="text-orange-500">Studio</span></h1>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-xs" style={{ WebkitAppRegion: 'no-drag' }}>
+          <div className="flex items-center gap-2 sm:gap-3 text-xs" style={{ WebkitAppRegion: 'no-drag' }}>
             {music.playing && (
-              <div className="flex items-center gap-1.5 bg-orange-950/40 border border-orange-500/40 text-orange-400 px-2 py-0.5 rounded text-[11px] animate-pulse">
+              <div className="hidden sm:flex items-center gap-1.5 bg-orange-950/40 border border-orange-500/40 text-orange-400 px-2 py-0.5 rounded text-[11px] animate-pulse">
                 <Music size={12} /> <span className="font-semibold">{music.currentTrack?.name}</span>
                 {music.duckingEnabled && micLevel > 14 && <span className="text-[9px] bg-orange-600 text-white px-1 rounded ml-1">Ducking</span>}
               </div>
             )}
-            <span className="text-gray-400">CALIDAD:</span>
-            <span className="text-orange-500 border border-orange-500 rounded px-2 py-0.5 font-bold">1080p · 30fps</span>
+            <span className="hidden md:inline text-gray-400">CALIDAD:</span>
+            <span className="text-orange-500 border border-orange-500 rounded px-2 py-0.5 font-bold text-[11px] sm:text-xs">1080p · 30fps</span>
 
             {/* ZOOM DINÁMICO FUERA DE LA PANTALLA */}
-            <div className="flex items-center gap-1.5 bg-[#141417] px-2.5 py-1 rounded border border-[#2a2a32] text-xs">
+            <div className="hidden md:flex items-center gap-1.5 bg-[#141417] px-2.5 py-1 rounded border border-[#2a2a32] text-xs">
               <span className="text-orange-500 font-bold">ZOOM DINÁMICO</span>
               <span className="px-1.5 py-0.2 rounded bg-orange-600 text-white font-bold text-[10px]">1.0x</span>
             </div>
 
+            {/* BOTÓN DE CONTROL REMOTO IPAD / TABLETS */}
+            <button
+              onClick={() => setShowRemoteControlModal(true)}
+              className="px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1.5 bg-[#18181b] hover:bg-[#27272a] text-amber-400 border border-amber-500/40 transition-all cursor-pointer shadow-sm"
+              title="Abrir consola de control remoto táctil para iPad, Tablets o Teléfonos"
+            >
+              <Smartphone size={13} className="text-amber-400" />
+              <span className="hidden sm:inline">Control iPad</span>
+            </button>
+
             {/* BOTÓN DE CUADRÍCULA DE ENCUADRE MASTER */}
             <button
               onClick={() => setShowMasterGrid(prev => !prev)}
-              className={`px-3 py-1 rounded text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              className={`px-2.5 sm:px-3 py-1 rounded text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                 showMasterGrid
                   ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-400/60 shadow-[0_0_10px_rgba(6,182,212,0.3)]'
                   : 'bg-[#18181b] hover:bg-[#27272a] text-gray-300 border border-[#333]'
@@ -1450,10 +1616,10 @@ function PodcastStudioApp() {
               title="Activar / Desactivar cuadrícula y guías de encuadre en el Master"
             >
               <Grid size={13} className={showMasterGrid ? 'text-cyan-400' : 'text-gray-400'} />
-              <span>{showMasterGrid ? 'Cuadrícula Activa' : 'Cuadrícula'}</span>
+              <span className="hidden sm:inline">{showMasterGrid ? 'Cuadrícula Activa' : 'Cuadrícula'}</span>
             </button>
           </div>
-          <div className="flex gap-2 items-center pr-32" style={{ WebkitAppRegion: 'no-drag' }}>
+          <div className="flex gap-2 items-center pr-2 lg:pr-32" style={{ WebkitAppRegion: 'no-drag' }}>
              {/* INDICADOR DE GRABACIÓN MASTER A LA DERECHA */}
              {isRecording && (
                <button
@@ -1587,7 +1753,7 @@ function PodcastStudioApp() {
         </div>
 
         {/* BOTTOM MULTI-CAM BAR */}
-        <div className="bg-[#111] border-t border-[#222] p-2 flex flex-wrap gap-2 min-h-[115px] shrink-0">
+        <div className="bg-[#111] border-t border-[#222] p-2 flex items-center gap-2 min-h-[115px] shrink-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {camSlots.map((camId) => {
             const isActive = activeCam === camId;
             const camStream = getCamStream(camId);
@@ -2722,6 +2888,65 @@ function PodcastStudioApp() {
                 {qrCodeImage ? <img src={qrCodeImage} className="w-[200px] h-[200px]" alt="QR Code" /> : <div className="w-[200px] h-[200px] flex items-center justify-center text-black">Generando QR...</div>}
               </div>
               {mobileStatus && <p className="text-xs text-green-400 font-semibold">{mobileStatus}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CONTROL REMOTO IPAD / TABLETS */}
+      {showRemoteControlModal && (
+        <div 
+          className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowRemoteControlModal(false); }}
+        >
+          <div className="bg-[#14161b] border border-[#262832] rounded-2xl w-full max-w-[480px] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-[#262832] bg-[#0d0f13]">
+              <div className="flex items-center gap-2.5 text-base font-extrabold text-white">
+                <Smartphone size={18} className="text-amber-400" />
+                <span>Control Remoto iPad y Tablets</span>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowRemoteControlModal(false)} 
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-[#252834] transition-all cursor-pointer"
+                title="Cerrar ventana (Esc)"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-6 flex flex-col items-center text-center gap-4">
+              <div className="bg-white p-3 rounded-2xl shadow-xl border-4 border-amber-500/30">
+                {remoteControlQrImage ? (
+                  <img src={remoteControlQrImage} className="w-[210px] h-[210px]" alt="QR Control Remoto iPad" />
+                ) : (
+                  <div className="w-[210px] h-[210px] flex items-center justify-center text-black text-xs font-bold">Generando QR...</div>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-sm font-bold text-gray-100 mb-1">
+                  Escanea con la cámara de tu iPad o Tablet
+                </h4>
+                <p className="text-xs text-gray-400 leading-relaxed max-w-sm">
+                  Abre la consola en Safari o Chrome. Podrás alternar cámaras al aire, activar PiP y controlar la grabación local en esta PC en tiempo real.
+                </p>
+              </div>
+
+              <div className="w-full flex items-center gap-2 bg-[#0b0c10] border border-[#222530] p-2 rounded-xl text-xs text-gray-300">
+                <span className="truncate flex-1 font-mono text-[11px] text-gray-400">{remoteControlUrl}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(remoteControlUrl);
+                    alert('¡Enlace del Control Remoto copiado al portapapeles!');
+                  }}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg shrink-0 flex items-center gap-1.5 cursor-pointer shadow"
+                >
+                  <Copy size={13} />
+                  <span>Copiar Enlace</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
