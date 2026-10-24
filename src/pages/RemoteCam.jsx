@@ -7,17 +7,15 @@ import styles from './RemoteCam.module.css'
 const RTC_CONFIG = getWebRtcConfig()
 
 
-// TIERS CORREGIDOS: 720p30 es el estándar broadcast de oro para móviles.
-// Evita el motion blur y la saturación del encoder.
-// TIERS BROADCAST HD PRO: Bitrates optimizados hasta 6 Mbps y maintain-resolution para evitar pixelado en movimiento
+// TIERS BROADCAST HD ULTRA-BAJA LATENCIA (30 FPS FIJOS)
+// Evita bufferbloat, retrasos en movimiento y desincronización labial
 const QUALITY_TIERS = [
-  { label: 'HD 720p Pro', maxBitrate: 4500000, width: 1280, height: 720, frameRate: 30 },
-  { label: 'Full HD 1080p', maxBitrate: 6000000, width: 1920, height: 1080, frameRate: 30 },
-  { label: 'HD 720p', maxBitrate: 3000000, width: 1280, height: 720, frameRate: 30 },
-  { label: 'SD+ 540p', maxBitrate: 1800000, width: 960, height: 540, frameRate: 30 },
+  { label: 'HD 720p Fluido', maxBitrate: 2500000, width: 1280, height: 720, frameRate: 30 },
+  { label: 'HD 720p Balanceado', maxBitrate: 2000000, width: 1280, height: 720, frameRate: 30 },
+  { label: 'SD+ 540p Rápido', maxBitrate: 1400000, width: 960, height: 540, frameRate: 30 },
 ]
-const RTT_DEGRADE_MS = 300     
-const RTT_HEALTHY_MS = 120     
+const RTT_DEGRADE_MS = 250     
+const RTT_HEALTHY_MS = 100     
 const HEALTHY_CHECKS_TO_RISE = 3
 
 function applyVideoSenderParams(sender, tier) {
@@ -28,13 +26,14 @@ function applyVideoSenderParams(sender, tier) {
     const e = params.encodings[0]
     
     e.maxBitrate = tier.maxBitrate
-    e.maxFramerate = tier.frameRate
+    e.maxFramerate = 30
     e.priority = 'high'
     e.networkPriority = 'high'
     
-    // CLAVE: maintain-resolution evita que se degrade en macrobloques o pixeles al mover la toma
+    // CLAVE BROADCAST: maintain-framerate prioriza fluidez de 30 FPS en movimiento de cámara,
+    // eliminando acumulación de buffer, barrido de imagen y retraso de 2 segundos.
     if ('degradationPreference' in params) {
-      params.degradationPreference = 'maintain-resolution'
+      params.degradationPreference = 'maintain-framerate'
     }
     sender.setParameters(params).catch(() => {})
   } catch {}
@@ -478,7 +477,7 @@ export default function RemoteCam() {
 
         let finalSdp = offer.sdp || ''
         if (finalSdp && !finalSdp.includes('x-google-min-bitrate')) {
-          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:3500\r\nb=TIAS:3500000\r\n')
+          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:2500\r\nb=TIAS:2500000\r\n')
         }
 
         await channel.send({
@@ -599,13 +598,13 @@ export default function RemoteCam() {
 
       let stream = null
       try {
-        // CORREGIDO: 720p a 30fps para eliminar el desenfoque de movimiento y saturación
+        // CORREGIDO: 720p a 30fps fijos (min 25) para eliminar el barrido de imagen por obturación lenta
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: targetFacing },
             width: { ideal: 1280, max: 1280 },
             height: { ideal: 720, max: 720 },
-            frameRate: { ideal: 30, max: 30 },
+            frameRate: { ideal: 30, min: 25, max: 30 },
           },
           audio: audioConstraints,
         })
@@ -616,7 +615,7 @@ export default function RemoteCam() {
               facingMode: { ideal: targetFacing },
               width: { ideal: 960, max: 1280 },
               height: { ideal: 540, max: 720 },
-              frameRate: { ideal: 30, max: 30 },
+              frameRate: { ideal: 30, min: 25, max: 30 },
             },
             audio: true,
           })
@@ -903,128 +902,105 @@ export default function RemoteCam() {
 
           <div className={styles.bottomOverlay}>
             <div className={styles.actionPill}>
-              {/* BOTÓN GIRAR CÁMARA */}
-              <button type="button" className={styles.flipBtn} onClick={handleFlipCamera}>
-                <RotateCw size={18} strokeWidth={2.5} />
-                <span style={{ fontSize: 11, fontWeight: 800 }}>GIRAR</span>
+              {/* 1. GIRAR CÁMARA (SOLO ÍCONO) */}
+              <button 
+                type="button" 
+                className={styles.flipBtn} 
+                onClick={handleFlipCamera}
+                title="Girar cámara (Frontal / Trasera)"
+              >
+                <RotateCw size={20} strokeWidth={2.4} />
               </button>
 
-              {/* BOTÓN BOCINA (MUTEADA POR DEFAULT PARA EVITAR ACOPLE/VICIO CON EL MICRÓFONO) */}
+              {/* 2. BOCINA / ALTAVOZ (SOLO ÍCONO - MUTEADA POR DEFAULT) */}
               <button
                 type="button"
                 className={styles.controlBtn}
                 onClick={handleToggleSpeaker}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '6px 10px',
-                  borderRadius: 23,
-                  width: 'auto',
                   color: speakerMuted ? '#f87171' : '#4ade80',
                   border: speakerMuted ? '1.5px solid rgba(239,68,68,0.7)' : '1.5px solid rgba(34,197,94,0.7)',
-                  background: speakerMuted ? 'rgba(239,68,68,0.25)' : 'rgba(34,197,94,0.2)',
-                  boxShadow: speakerMuted ? 'none' : '0 0 10px rgba(34,197,94,0.35)',
+                  background: speakerMuted ? 'rgba(239,68,68,0.22)' : 'rgba(34,197,94,0.22)',
+                  boxShadow: speakerMuted ? 'none' : '0 0 10px rgba(34,197,94,0.4)',
                 }}
-                title={speakerMuted ? 'Bocina silenciada (Evita acople/vicio) • Toca para activar' : 'Bocina activa • Toca para silenciar'}
+                title={speakerMuted ? 'Bocina silenciada (Toca para activar)' : 'Bocina activa (Toca para silenciar)'}
               >
-                {speakerMuted ? <VolumeX size={18} className="text-red-400" /> : <Volume2 size={18} className="text-emerald-400" />}
-                <span style={{ fontSize: 9, fontWeight: 800 }}>{speakerMuted ? 'BOCINA MUTE' : 'BOCINA ON'}</span>
+                {speakerMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
               </button>
 
-              {/* BOTÓN MICRÓFONO */}
+              {/* 3. MICRÓFONO (SOLO ÍCONO) */}
               <button 
                 type="button" 
                 className={styles.controlBtn} 
                 onClick={handleToggleMic} 
                 style={{ 
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '6px 10px',
-                  borderRadius: 23,
-                  width: 'auto',
                   color: micMuted ? '#ef4444' : '#22c55e', 
-                  border: micMuted ? '1.5px solid rgba(239,68,68,0.6)' : '1.5px solid rgba(34,197,94,0.5)', 
-                  background: micMuted ? 'rgba(239,68,68,0.22)' : 'rgba(34,197,94,0.18)'
+                  border: micMuted ? '1.5px solid rgba(239,68,68,0.7)' : '1.5px solid rgba(34,197,94,0.6)', 
+                  background: micMuted ? 'rgba(239,68,68,0.22)' : 'rgba(34,197,94,0.18)',
+                  boxShadow: micMuted ? 'none' : '0 0 10px rgba(34,197,94,0.3)',
                 }}
                 title={micMuted ? 'Micrófono silenciado' : 'Micrófono activo'}
               >
-                {micMuted ? <MicOff size={18} className="text-red-400" /> : <Mic size={18} className="text-emerald-400" />}
-                <span style={{ fontSize: 9, fontWeight: 800 }}>{micMuted ? 'MUTE' : 'MIC'}</span>
+                {micMuted ? <MicOff size={20} /> : <Mic size={20} />}
               </button>
 
-              {/* BOTÓN PAUSAR VIDEO */}
+              {/* 4. PAUSAR VIDEO (SOLO ÍCONO) */}
               <button 
                 type="button" 
                 className={`${styles.controlBtn} ${videoPaused ? styles.controlBtnActive : ''}`} 
                 onClick={handleTogglePause}
+                style={{
+                  color: videoPaused ? '#ef4444' : '#ffffff',
+                  border: videoPaused ? '1.5px solid rgba(239,68,68,0.7)' : '1.5px solid rgba(255,255,255,0.15)',
+                  background: videoPaused ? 'rgba(239,68,68,0.22)' : 'rgba(255,255,255,0.08)',
+                }}
                 title={videoPaused ? 'Reanudar video' : 'Pausar video'}
               >
-                {videoPaused ? <VideoOff size={18} className="text-red-400" /> : <Video size={18} className="text-white" />}
+                {videoPaused ? <VideoOff size={20} /> : <Video size={20} />}
               </button>
 
-              {/* BOTÓN LINTERNA (SI ESTÁ SOPORTADA) */}
+              {/* 5. LINTERNA (SOLO ÍCONO SI ESTÁ SOPORTADA) */}
               {torchSupported && (
                 <button 
                   type="button" 
-                  className={`${styles.controlBtn} ${torchOn ? styles.controlBtnActive : ''}`} 
+                  className={styles.controlBtn} 
                   onClick={handleToggleTorch}
+                  style={{
+                    color: torchOn ? '#facc15' : '#ffffff',
+                    border: torchOn ? '1.5px solid rgba(250,204,21,0.7)' : '1.5px solid rgba(255,255,255,0.15)',
+                    background: torchOn ? 'rgba(250,204,21,0.22)' : 'rgba(255,255,255,0.08)',
+                    boxShadow: torchOn ? '0 0 10px rgba(250,204,21,0.4)' : 'none',
+                  }}
                   title={torchOn ? 'Apagar linterna' : 'Encender linterna'}
                 >
-                  <Zap size={18} className={torchOn ? "text-yellow-400" : "text-white"} />
+                  <Zap size={20} />
                 </button>
               )}
 
-              {/* BOTÓN GRABACIÓN LOCAL DE RESPALDO */}
+              {/* 6. GRABACIÓN LOCAL DE RESPALDO (SOLO ÍCONO) */}
               <button
                 type="button"
-                className={`${styles.controlBtn} ${localBackupActive ? styles.controlBtnActive : ''}`}
+                className={styles.controlBtn}
                 onClick={localBackupActive ? stopLocalBackup : startLocalBackup}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '6px 10px',
-                  borderRadius: 23,
-                  width: 'auto',
                   color: localBackupActive ? '#ef4444' : '#38bdf8',
                   border: localBackupActive ? '1.5px solid #ef4444' : '1.5px solid rgba(56,189,248,0.4)',
                   background: localBackupActive ? 'rgba(239,68,68,0.25)' : 'rgba(56,189,248,0.15)',
+                  boxShadow: localBackupActive ? '0 0 10px rgba(239,68,68,0.5)' : 'none',
                 }}
-                title={localBackupActive ? 'Detener copia local' : 'Grabar copia local de respaldo en este dispositivo'}
+                title={localBackupActive ? `Detener respaldo local (${localBackupDuration}s)` : 'Grabar respaldo local en dispositivo'}
               >
-                <Disc size={18} className={localBackupActive ? "text-red-400 animate-spin" : "text-sky-400"} />
-                <span style={{ fontSize: 9, fontWeight: 800 }}>
-                  {localBackupActive ? `${localBackupDuration}s` : 'BACKUP'}
-                </span>
+                <Disc size={20} className={localBackupActive ? 'animate-spin' : ''} />
               </button>
 
-              {/* BOTÓN ROJO DE DESCONECTAR / STOP (CON DIBUJO E INDICADOR CLARO) */}
+              {/* 7. SALIR / DESCONECTAR (SOLO ÍCONO ROJO) */}
               <button 
                 type="button" 
                 className={styles.disconnectBtn} 
                 onClick={stopAll}
-                title="Desconectar señal y salir"
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: '#dc2626',
-                  border: '2px solid #ef4444',
-                  boxShadow: '0 0 14px rgba(239, 68, 68, 0.8)',
-                  width: 48,
-                  height: 48,
-                  borderRadius: '50%',
-                  cursor: 'pointer',
-                  color: '#ffffff',
-                  flexShrink: 0,
-                  padding: 0,
-                }}
+                title="Desconectar y salir"
               >
-                <PhoneOff size={20} strokeWidth={2.5} className="text-white" />
-                <span style={{ fontSize: 8, fontWeight: 900, color: '#ffffff', letterSpacing: 0.5, marginTop: 1 }}>SALIR</span>
+                <PhoneOff size={20} strokeWidth={2.4} />
               </button>
             </div>
           </div>

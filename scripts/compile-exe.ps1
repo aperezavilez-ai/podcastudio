@@ -41,7 +41,7 @@ if (-not (Test-Path $cscPath)) {
 }
 
 $iconPath = Join-Path $projectDir "icon.ico"
-$cscArgs = @("/target:winexe", "/win32icon:$iconPath", "/out:$exePath", $launcherPath)
+$cscArgs = @("/target:winexe", "/win32icon:$iconPath", "/r:System.dll", "/r:System.Drawing.dll", "/r:System.Windows.Forms.dll", "/out:$exePath", $launcherPath)
 & $cscPath $cscArgs
 
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exePath)) {

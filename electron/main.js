@@ -113,9 +113,16 @@ function createWindow() {
     try { mainWindow.setIcon(iconPath); } catch (e) {}
   }
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-  });
+  const showWindowSafely = () => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  };
+
+  mainWindow.once('ready-to-show', showWindowSafely);
+  // Failsafe: Forzar aparición de ventana en máximo 2.5s para arranque instantáneo garantizado
+  setTimeout(showWindowSafely, 2500);
 
   if (process.env.NODE_ENV !== 'development') {
     mainWindow.webContents.on('devtools-opened', () => {
@@ -506,7 +513,9 @@ if (!gotTheLock) {
   });
   app.whenReady().then(() => {
     createWindow();
-    startMediaServer();
+    setImmediate(() => {
+      startMediaServer();
+    });
   });
 }
 
