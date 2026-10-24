@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { RotateCw, Mic, MicOff, Video, VideoOff, Volume2, VolumeX, PhoneOff, Disc, Zap, Radio, Smartphone, Camera, AlertTriangle } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { getWebRtcConfig } from '../utils/rtcConfig.js'
 import styles from './RemoteCam.module.css'
@@ -66,6 +67,8 @@ export default function RemoteCam() {
   const [torchSupported, setTorchSupported] = useState(false)
   const [videoPaused, setVideoPaused] = useState(false)
   const [micMuted, setMicMuted] = useState(false)
+  // Bocina / Altavoz del celular: MUTEADA POR DEFAULT para evitar que vicie/acople con su propio micrófono
+  const [speakerMuted, setSpeakerMuted] = useState(true)
   const [qualityLabel, setQualityLabel] = useState('HD 720p')
 
   // FASE 4: Grabación Local de Respaldo en Celular (Local Backup)
@@ -322,6 +325,7 @@ export default function RemoteCam() {
     setStatus('idle')
     setTorchOn(false)
     setMicMuted(false)
+    setSpeakerMuted(true)
     setQualityLabel('HD 720p')
   }, [releaseWakeLock, stopAdaptationEngine, slot])
 
@@ -720,29 +724,42 @@ export default function RemoteCam() {
     }
   }
 
+  const handleToggleSpeaker = () => {
+    setSpeakerMuted(prev => {
+      const next = !prev
+      if (videoRef.current) {
+        videoRef.current.muted = next
+        if (!next && videoRef.current.paused) {
+          videoRef.current.play().catch(() => {})
+        }
+      }
+      return next
+    })
+  }
+
   const setVideoEl = useCallback((node) => {
     videoRef.current = node
     if (node && streamRef.current) {
       node.setAttribute('playsinline', 'true')
       node.setAttribute('webkit-playsinline', 'true')
-      node.muted = true
+      node.muted = speakerMuted
       if (node.srcObject !== streamRef.current) {
         node.srcObject = streamRef.current
       }
       node.play().catch(() => {})
     }
-  }, [])
+  }, [speakerMuted])
 
   useEffect(() => {
     if (active && videoRef.current && streamRef.current) {
       const v = videoRef.current
       v.setAttribute('playsinline', 'true')
       v.setAttribute('webkit-playsinline', 'true')
-      v.muted = true
+      v.muted = speakerMuted
       if (v.srcObject !== streamRef.current) v.srcObject = streamRef.current
       v.play().catch(() => {})
     }
-  }, [active])
+  }, [active, speakerMuted])
 
   useEffect(() => {
     const handleVisibilityChange = async () => {
@@ -807,10 +824,12 @@ export default function RemoteCam() {
       {!active ? (
         <div className={styles.startScreen}>
           <div className={styles.logoBadge}>
-            <i className="ti ti-broadcast" />
+            <Radio size={16} className="text-orange-400" />
             <span>PODCASTUDIO REMOTO</span>
           </div>
-          <div className={styles.iconHero}><i className="ti ti-device-mobile" /></div>
+          <div className={styles.iconHero}>
+            <Smartphone size={54} className="text-sky-400" />
+          </div>
           <span className={styles.slotBadgeLarge}>
             {sessionRole === 'student' ? 'AULA VIRTUAL' : sessionRole === 'cohost' ? 'CO-PRESENTADOR' : 'INVITADO EN VIVO'} • CANAL CAM {slot}
           </span>
@@ -843,15 +862,28 @@ export default function RemoteCam() {
           </div>
 
           <button type="button" className={styles.startBtn} onClick={() => startCamera(facingMode)}>
-            <i className="ti ti-camera" />
+            <Camera size={20} />
             <span>Activar Cámara y Conectar</span>
           </button>
 
-          {errorMsg && <div className={styles.errorCard}><i className="ti ti-alert-triangle" style={{ marginRight: 6 }} />{errorMsg}</div>}
+          {errorMsg && (
+            <div className={styles.errorCard}>
+              <AlertTriangle size={16} style={{ marginRight: 6, flexShrink: 0 }} />
+              <span>{errorMsg}</span>
+            </div>
+          )}
         </div>
       ) : (
         <div className={styles.cameraView}>
-          <video ref={setVideoEl} className={styles.videoElement} autoPlay playsInline webkit-playsinline="true" muted onLoadedMetadata={(e) => e.target.play().catch(() => {})} />
+          <video 
+            ref={setVideoEl} 
+            className={styles.videoElement} 
+            autoPlay 
+            playsInline 
+            webkit-playsinline="true" 
+            muted={speakerMuted} 
+            onLoadedMetadata={(e) => e.target.play().catch(() => {})} 
+          />
           <div className={styles.topOverlay}>
             <div className={`${styles.tallyPill} ${status === 'connected' ? styles.tallyLive : styles.tallyConnecting}`}>
               <div className={status === 'connected' ? styles.dotLive : styles.dotConnecting} />
@@ -871,47 +903,128 @@ export default function RemoteCam() {
 
           <div className={styles.bottomOverlay}>
             <div className={styles.actionPill}>
+              {/* BOTÓN GIRAR CÁMARA */}
               <button type="button" className={styles.flipBtn} onClick={handleFlipCamera}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}>
-                  <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
-                  <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
-                </svg>
+                <RotateCw size={18} strokeWidth={2.5} />
                 <span style={{ fontSize: 11, fontWeight: 800 }}>GIRAR</span>
               </button>
-              {torchSupported && (
-                <button type="button" className={`${styles.controlBtn} ${torchOn ? styles.controlBtnActive : ''}`} onClick={handleToggleTorch}>
-                  <i className="ti ti-flare" />
-                </button>
-              )}
-              <button type="button" className={`${styles.controlBtn} ${micMuted ? styles.controlBtnActive : ''}`} onClick={handleToggleMic} style={{ color: micMuted ? '#ef4444' : '#22c55e', border: micMuted ? '1px solid rgba(239,68,68,0.5)' : '1px solid rgba(34,197,94,0.4)', background: micMuted ? 'rgba(239,68,68,0.2)' : 'rgba(34,197,94,0.15)', padding: '6px 12px' }}>
-                <i className={micMuted ? 'ti ti-microphone-off' : 'ti ti-microphone'} />
-                <span style={{ fontSize: 10, fontWeight: 800 }}>{micMuted ? 'MUTE' : 'MIC'}</span>
-              </button>
-              <button type="button" className={`${styles.controlBtn} ${videoPaused ? styles.controlBtnActive : ''}`} onClick={handleTogglePause}>
-                <i className={videoPaused ? 'ti ti-video-off' : 'ti ti-video'} />
+
+              {/* BOTÓN BOCINA (MUTEADA POR DEFAULT PARA EVITAR ACOPLE/VICIO CON EL MICRÓFONO) */}
+              <button
+                type="button"
+                className={styles.controlBtn}
+                onClick={handleToggleSpeaker}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '6px 10px',
+                  borderRadius: 23,
+                  width: 'auto',
+                  color: speakerMuted ? '#f87171' : '#4ade80',
+                  border: speakerMuted ? '1.5px solid rgba(239,68,68,0.7)' : '1.5px solid rgba(34,197,94,0.7)',
+                  background: speakerMuted ? 'rgba(239,68,68,0.25)' : 'rgba(34,197,94,0.2)',
+                  boxShadow: speakerMuted ? 'none' : '0 0 10px rgba(34,197,94,0.35)',
+                }}
+                title={speakerMuted ? 'Bocina silenciada (Evita acople/vicio) • Toca para activar' : 'Bocina activa • Toca para silenciar'}
+              >
+                {speakerMuted ? <VolumeX size={18} className="text-red-400" /> : <Volume2 size={18} className="text-emerald-400" />}
+                <span style={{ fontSize: 9, fontWeight: 800 }}>{speakerMuted ? 'BOCINA MUTE' : 'BOCINA ON'}</span>
               </button>
 
-              {/* Botón Grabación Local de Respaldo */}
+              {/* BOTÓN MICRÓFONO */}
+              <button 
+                type="button" 
+                className={styles.controlBtn} 
+                onClick={handleToggleMic} 
+                style={{ 
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  padding: '6px 10px',
+                  borderRadius: 23,
+                  width: 'auto',
+                  color: micMuted ? '#ef4444' : '#22c55e', 
+                  border: micMuted ? '1.5px solid rgba(239,68,68,0.6)' : '1.5px solid rgba(34,197,94,0.5)', 
+                  background: micMuted ? 'rgba(239,68,68,0.22)' : 'rgba(34,197,94,0.18)'
+                }}
+                title={micMuted ? 'Micrófono silenciado' : 'Micrófono activo'}
+              >
+                {micMuted ? <MicOff size={18} className="text-red-400" /> : <Mic size={18} className="text-emerald-400" />}
+                <span style={{ fontSize: 9, fontWeight: 800 }}>{micMuted ? 'MUTE' : 'MIC'}</span>
+              </button>
+
+              {/* BOTÓN PAUSAR VIDEO */}
+              <button 
+                type="button" 
+                className={`${styles.controlBtn} ${videoPaused ? styles.controlBtnActive : ''}`} 
+                onClick={handleTogglePause}
+                title={videoPaused ? 'Reanudar video' : 'Pausar video'}
+              >
+                {videoPaused ? <VideoOff size={18} className="text-red-400" /> : <Video size={18} className="text-white" />}
+              </button>
+
+              {/* BOTÓN LINTERNA (SI ESTÁ SOPORTADA) */}
+              {torchSupported && (
+                <button 
+                  type="button" 
+                  className={`${styles.controlBtn} ${torchOn ? styles.controlBtnActive : ''}`} 
+                  onClick={handleToggleTorch}
+                  title={torchOn ? 'Apagar linterna' : 'Encender linterna'}
+                >
+                  <Zap size={18} className={torchOn ? "text-yellow-400" : "text-white"} />
+                </button>
+              )}
+
+              {/* BOTÓN GRABACIÓN LOCAL DE RESPALDO */}
               <button
                 type="button"
                 className={`${styles.controlBtn} ${localBackupActive ? styles.controlBtnActive : ''}`}
                 onClick={localBackupActive ? stopLocalBackup : startLocalBackup}
                 style={{
-                  color: localBackupActive ? '#ef4444' : '#38bdf8',
-                  border: localBackupActive ? '1px solid #ef4444' : '1px solid rgba(56,189,248,0.4)',
-                  background: localBackupActive ? 'rgba(239,68,68,0.2)' : 'rgba(56,189,248,0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
                   padding: '6px 10px',
+                  borderRadius: 23,
+                  width: 'auto',
+                  color: localBackupActive ? '#ef4444' : '#38bdf8',
+                  border: localBackupActive ? '1.5px solid #ef4444' : '1.5px solid rgba(56,189,248,0.4)',
+                  background: localBackupActive ? 'rgba(239,68,68,0.25)' : 'rgba(56,189,248,0.15)',
                 }}
                 title={localBackupActive ? 'Detener copia local' : 'Grabar copia local de respaldo en este dispositivo'}
               >
-                <i className={localBackupActive ? 'ti ti-player-record-filled' : 'ti ti-device-floppy'} />
-                <span style={{ fontSize: 10, fontWeight: 800 }}>
+                <Disc size={18} className={localBackupActive ? "text-red-400 animate-spin" : "text-sky-400"} />
+                <span style={{ fontSize: 9, fontWeight: 800 }}>
                   {localBackupActive ? `${localBackupDuration}s` : 'BACKUP'}
                 </span>
               </button>
 
-              <button type="button" className={styles.disconnectBtn} onClick={stopAll}>
-                <i className="ti ti-phone-off" />
+              {/* BOTÓN ROJO DE DESCONECTAR / STOP (CON DIBUJO E INDICADOR CLARO) */}
+              <button 
+                type="button" 
+                className={styles.disconnectBtn} 
+                onClick={stopAll}
+                title="Desconectar señal y salir"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#dc2626',
+                  border: '2px solid #ef4444',
+                  boxShadow: '0 0 14px rgba(239, 68, 68, 0.8)',
+                  width: 48,
+                  height: 48,
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  color: '#ffffff',
+                  flexShrink: 0,
+                  padding: 0,
+                }}
+              >
+                <PhoneOff size={20} strokeWidth={2.5} className="text-white" />
+                <span style={{ fontSize: 8, fontWeight: 900, color: '#ffffff', letterSpacing: 0.5, marginTop: 1 }}>SALIR</span>
               </button>
             </div>
           </div>

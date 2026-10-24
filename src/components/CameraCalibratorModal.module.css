@@ -79,19 +79,30 @@
 
 .closeBtn {
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: #8c97ab;
-  font-size: 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  padding: 6px;
-  border-radius: 6px;
-  line-height: 1;
-  transition: all 0.15s ease;
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
 }
 
 .closeBtn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.6) !important;
+  transform: scale(1.08);
+}
+
+.closeBtn:active {
+  background: #dc2626 !important;
+  transform: scale(0.95);
 }
 
 /* CAMERA SLOTS BAR */

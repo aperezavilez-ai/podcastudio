@@ -536,9 +536,10 @@ Instrucciones:
           <button 
             type="button" 
             className={styles.closeBtn} 
+            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onClose?.(); }}
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose?.(); }} 
             aria-label="Cerrar ventana"
-            title="Cerrar"
+            title="Cerrar ventana (Esc)"
           >
             <X size={18} />
           </button>

@@ -67,23 +67,32 @@
 }
 
 .closeBtn {
-  width: 30px;
-  height: 30px;
-  border-radius: 7px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   background: transparent;
   border: 1px solid transparent;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted, #94a3b8);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 16px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
 }
 
 .closeBtn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: #ef4444 !important;
+  color: #ffffff !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.6) !important;
+  transform: scale(1.08);
+}
+
+.closeBtn:active {
+  background: #dc2626 !important;
+  transform: scale(0.95);
 }
 
 /* TABS */

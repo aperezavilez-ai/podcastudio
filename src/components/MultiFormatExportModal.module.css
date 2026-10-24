@@ -61,18 +61,30 @@
 
 .closeBtn {
   background: transparent;
-  border: none;
+  border: 1px solid transparent;
   color: #83889e;
-  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  padding: 4px;
-  border-radius: 6px;
-  transition: all 0.15s;
+  transition: all 0.12s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
 }
 
 .closeBtn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff !important;
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.6) !important;
+  transform: scale(1.08);
+}
+
+.closeBtn:active {
+  background: #dc2626 !important;
+  transform: scale(0.95);
 }
 
 .scrollBody {

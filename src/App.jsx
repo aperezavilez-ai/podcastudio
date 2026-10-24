@@ -2103,9 +2103,10 @@ function PodcastStudioApp() {
               </div>
               <button 
                 type="button" 
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setShowSocialsModal(false); }}
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowSocialsModal(false); }} 
-                className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-[#222] transition-colors"
-                title="Cerrar ventana"
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-red-600 transition-all duration-100 hover:scale-105 cursor-pointer"
+                title="Cerrar ventana (Esc)"
                 aria-label="Cerrar"
               >
                 <X size={18} />
@@ -2370,9 +2371,10 @@ function PodcastStudioApp() {
               </div>
               <button 
                 type="button"
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setShowSettingsModal(false); }}
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowSettingsModal(false); }} 
-                className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-[#222] transition-colors"
-                title="Cerrar ventana"
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-red-600 transition-all duration-100 hover:scale-105 cursor-pointer"
+                title="Cerrar ventana (Esc)"
                 aria-label="Cerrar"
               >
                 <X size={20} />
@@ -2402,9 +2404,10 @@ function PodcastStudioApp() {
               <div className="flex items-center gap-3"><div className="p-2 bg-red-600/20 rounded-lg text-red-500"><Share2 size={24} /></div><div><h2 className="text-lg font-bold text-white">Transmisión En Vivo Multi-Streaming</h2><p className="text-[11px] text-gray-400">Emite tu señal Master simultáneamente en YouTube, Facebook y TikTok.</p></div></div>
               <button 
                 type="button" 
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setShowStreamModal(false); }}
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowStreamModal(false); }} 
-                className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-[#222] transition-colors"
-                title="Cerrar ventana"
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-red-600 transition-all duration-100 hover:scale-105 cursor-pointer"
+                title="Cerrar ventana (Esc)"
                 aria-label="Cerrar"
               >
                 <X size={20} />
@@ -2541,9 +2544,10 @@ function PodcastStudioApp() {
               <div className="flex items-center gap-2 text-lg font-bold text-white"><Video size={18} className="text-orange-500" /> Conectar Celular</div>
               <button 
                 type="button"
+                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setShowQRModal(false); }}
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowQRModal(false); }} 
-                className="text-gray-400 hover:text-white p-1.5 rounded hover:bg-[#222] transition-colors"
-                title="Cerrar ventana"
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-red-600 transition-all duration-100 hover:scale-105 cursor-pointer"
+                title="Cerrar ventana (Esc)"
                 aria-label="Cerrar"
               >
                 <X size={20} />

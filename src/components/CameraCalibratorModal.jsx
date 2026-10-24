@@ -368,8 +368,9 @@ export default function CameraCalibratorModal({
           <button 
             type="button" 
             className={styles.closeBtn} 
+            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onClose?.(); }}
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose?.(); }} 
-            title="Cerrar ventana"
+            title="Cerrar ventana (Esc)"
             aria-label="Cerrar"
           >
             <X size={18} />
