@@ -4,7 +4,26 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.0.2 (Producción Oficial - Release Estable)
+## 🚀 Versión Actual: v1.0.8 (Producción Oficial - Release Estable)
+- **Auto-Generación y Descarga de Miniaturas HD (.jpg)**:
+  - Captura instantánea a 1080p directamente desde el canvas maestro (`captureMasterCanvasSnapshot()`) sin retraso ni dependencias de decodificación WebM.
+  - Descarga automática de la miniatura oficial al descargar el archivo MP4 master o recortes para redes sociales.
+  - Visualización real de la imagen en las tarjetas de previsualización del modal de exportación multi-formato.
+  - Guardado de archivo de miniatura físico en el disco local (`[Timestamp]_Master_1080p_Thumbnail.jpg`).
+- **Organización Centralizada de Proyectos**:
+  - Almacenamiento estructurado en `D:\PROGRAMAS IA\PODCASTUDIO\proyectos\[NombreProyecto]\` con acceso directo desde la interfaz.
+- **Transmisión y Grabación con Audio Master Prioritario**:
+  - Micrófono de estudio principal (CAM 1 / interfaz de audio) protegido contra cortes durante cambios de cámara y control independiente de retorno.
+  - Transición fluida entre cámaras sin cuadros negros.
+- **Consola Remota Responsive para iPad y Tablets**:
+  - Interfaz webRTC adaptativa para control táctil desde Safari / iPad.
+  - Asignación libre y continua para cámaras móviles invitadas.
+- **Compilación Nativa `PodcastStudio.exe` v1.0.8.0**:
+  - Ejecutable de alta velocidad con icono oficial preservado (285 KB).
+
+---
+
+## 📦 Versión Anterior: v1.0.2
 - **Búsqueda Automática de Cámaras Wi-Fi en Red Local**:
   - Sondeo en tiempo real de la red local Wi-Fi sin cambios de pestaña involuntarios ni saltos a la pestaña QR.
   - Detección de celulares iPhone/Android remotos, cámaras IP, presets de GoPro, cámaras de acción chinas y drivers de software (DroidCam, Iriun, Camo, OBS Virtual).

@@ -645,6 +645,33 @@ ipcMain.handle('stop-recording', async () => {
             ffmpegRecordProcess.kill('SIGINT');
             ffmpegRecordProcess = null;
           }
+
+          // Generar miniatura JPG de alta resolución desde el video recién grabado con FFmpeg
+          if (currentRecordingPath && fs.existsSync(currentRecordingPath)) {
+            const thumbPath = currentRecordingPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
+            try {
+              const thumbProcess = spawn(ffmpegPath, [
+                '-y',
+                '-ss', '00:00:00.800',
+                '-i', currentRecordingPath,
+                '-vframes', '1',
+                '-q:v', '2',
+                thumbPath
+              ]);
+              thumbProcess.on('close', () => {
+                resolve({ success: true, path: currentRecordingPath, thumbnailPath: thumbPath });
+              });
+              thumbProcess.on('error', () => {
+                resolve({ success: true, path: currentRecordingPath });
+              });
+              setTimeout(() => resolve({ success: true, path: currentRecordingPath, thumbnailPath: thumbPath }), 1200);
+              return;
+            } catch (e) {
+              resolve({ success: true, path: currentRecordingPath });
+              return;
+            }
+          }
+
           resolve({ success: true, path: currentRecordingPath });
         }, 800);
       } catch (e) {
@@ -654,6 +681,30 @@ ipcMain.handle('stop-recording', async () => {
       resolve({ success: false });
     }
   });
+});
+
+ipcMain.handle('save-recording-thumbnail', async (event, { base64Data, targetPath, projectName }) => {
+  try {
+    if (!base64Data) return { success: false };
+    const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(cleanBase64, 'base64');
+    let dest = targetPath || (currentRecordingPath ? currentRecordingPath.replace(/\.mp4$/i, '_Thumbnail.jpg') : null);
+    if (!dest) {
+      const cleanProjectName = projectName ? String(projectName).replace(/[/\\?%*:|"<>]/g, '_').trim() : 'Proyecto_General';
+      const projectDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos', cleanProjectName);
+      if (!fs.existsSync(projectDir)) {
+        try { fs.mkdirSync(projectDir, { recursive: true }); } catch (e) {}
+      }
+      dest = path.join(projectDir, `Thumbnail_${Date.now()}.jpg`);
+    }
+    if (dest) {
+      fs.writeFileSync(dest, buffer);
+      return { success: true, path: dest };
+    }
+    return { success: false };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 ipcMain.handle('scan-network-cameras', async () => {

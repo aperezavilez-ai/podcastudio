@@ -79,7 +79,7 @@ export default function MultiFormatExportModal({
     setGeneratingThumbs(true)
     setThumbError(null)
 
-    const mediaSource = recording.blob || recording.url
+    const mediaSource = recording.snapshotCanvas || recording.thumbnailDataUrl || recording.blob || recording.url
     if (!mediaSource) {
       setGeneratingThumbs(false)
       return
@@ -182,6 +182,9 @@ export default function MultiFormatExportModal({
       a.download = filename
       a.click()
       URL.revokeObjectURL(url)
+
+      // Descargar automáticamente la miniatura JPG correspondiente junto con el video
+      downloadThumbnailForPreset(preset)
     } catch (err) {
       if (!cancelRef.current) {
         console.error('Error al exportar formato:', err)
@@ -240,6 +243,9 @@ export default function MultiFormatExportModal({
         console.error(`Error procesando ${preset.label}:`, err)
       }
     }
+
+    // Descargar automáticamente el pack de miniaturas correspondiente
+    handleDownloadAllThumbnails()
 
     setPackProgress(null)
     setProgress(0)
@@ -369,18 +375,44 @@ export default function MultiFormatExportModal({
                   {preset.network}
                 </div>
 
-                <div className={styles.ratioPreviewWrap}>
-                  <div
-                    className={styles.ratioBox}
-                    style={{
-                      aspectRatio: (preset.baseFormat || preset.key).replace(':', ' / '),
-                      maxHeight: 70,
-                    }}
-                  >
-                    <span>{preset.baseFormat || preset.key}</span>
-                  </div>
-                  <span className={styles.resLabel}>{preset.width}x{preset.height}</span>
-                </div>
+                {(() => {
+                  const matchingThumb = thumbnails.find(t => t.id === preset.id)
+                  return (
+                    <div className={styles.ratioPreviewWrap}>
+                      <div
+                        className={styles.ratioBox}
+                        style={{
+                          aspectRatio: (preset.baseFormat || preset.key).replace(':', ' / '),
+                          maxHeight: 70,
+                          position: 'relative',
+                          overflow: 'hidden',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: '#090d16',
+                          borderRadius: 6,
+                          border: isSelected ? `1px solid ${preset.color}60` : '1px solid rgba(255,255,255,0.1)'
+                        }}
+                      >
+                        {matchingThumb?.dataUrl ? (
+                          <img
+                            src={matchingThumb.dataUrl}
+                            alt={preset.label}
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              display: 'block'
+                            }}
+                          />
+                        ) : (
+                          <span>{preset.baseFormat || preset.key}</span>
+                        )}
+                      </div>
+                      <span className={styles.resLabel}>{preset.width}x{preset.height}</span>
+                    </div>
+                  )
+                })()}
 
                 {/* BARRA DE PORCENTAJE (0% AL 100%) INLINE EN CADA CUADRO */}
                 {isThisConverting && (

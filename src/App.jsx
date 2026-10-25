@@ -31,7 +31,7 @@ import MusicBank from './components/MusicBank.jsx';
 import { MUSIC_TRACKS, MUSIC_SFX, MUSIC_GENRES, SFX_CATEGORIES } from './config/musicTracks.js';
 import { useBackgroundMusic } from './hooks/useBackgroundMusic.js';
 import { useSoundEffect } from './hooks/useSoundEffect.js';
-import { startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, getInitHeader } from './utils/masterBroadcastEngine.js';
+import { startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, getInitHeader, captureMasterCanvasSnapshot } from './utils/masterBroadcastEngine.js';
 import { createStreamTransport } from './utils/streamTransport.js';
 import { supabase } from './lib/supabase.js';
 
@@ -979,10 +979,28 @@ function PodcastStudioApp() {
     } else {
       isRecordingRef.current = false;
       setIsRecording(false);
+
+      // Capturar miniatura en alta resolución directamente del canvas maestro en vivo
+      const snapshotCanvas = captureMasterCanvasSnapshot();
+      let thumbnailDataUrl = null;
+      if (snapshotCanvas) {
+        try {
+          thumbnailDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.92);
+        } catch (e) {
+          console.warn('[handleRecord] No se pudo obtener toDataURL del canvas:', e);
+        }
+      }
+
       let stopRes = null;
       if (window.api) {
         try {
           stopRes = await window.api.stopRecording();
+          if (thumbnailDataUrl && window.api.saveRecordingThumbnail) {
+            window.api.saveRecordingThumbnail({
+              projectName: topic || 'Proyecto_General',
+              base64Data: thumbnailDataUrl
+            }).catch(e => console.warn('[App] Error guardando miniatura:', e));
+          }
         } catch (e) {
           console.warn('Error parando grabación FFmpeg:', e);
         }
@@ -993,11 +1011,14 @@ function PodcastStudioApp() {
       const recBlob = chunks.length > 0 ? new Blob(chunks, { type: 'video/webm' }) : null;
       const recUrl = recBlob ? URL.createObjectURL(recBlob) : null;
 
+      const cleanTopicName = (topic || 'Episodio').replace(/[^\w\d-_]/g, '_');
       setRecordedVideoData({
         blob: recBlob,
         url: recUrl,
+        snapshotCanvas,
+        thumbnailDataUrl,
         filePath: stopRes?.path || null,
-        name: `PodcastStudio_Episodio_${Date.now()}`,
+        name: `PodcaStudio_${cleanTopicName}_${Date.now()}`,
         duration: recordingTime || 1,
       });
       setShowExportModal(true);
@@ -2962,11 +2983,21 @@ function PodcastStudioApp() {
             const url = URL.createObjectURL(rec.blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${rec.name || 'PodcastStudio_Master'}.mp4`;
+            a.download = `${rec.name || 'PodcaStudio_Master'}.mp4`;
             a.click();
             URL.revokeObjectURL(url);
-          } else if (window.api?.openRecordingsFolder) {
-            window.api.openRecordingsFolder();
+          }
+          // Descargar automáticamente la miniatura oficial en alta definición
+          if (rec?.thumbnailDataUrl) {
+            setTimeout(() => {
+              const aThumb = document.createElement('a');
+              aThumb.href = rec.thumbnailDataUrl;
+              aThumb.download = `${rec.name || 'PodcaStudio_Master'}_Miniatura.jpg`;
+              aThumb.click();
+            }, 300);
+          }
+          if (window.api?.openRecordingsFolder) {
+            window.api.openRecordingsFolder(topic || 'Proyecto_General');
           }
         }}
       />

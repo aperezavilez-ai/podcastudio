@@ -522,6 +522,23 @@ export function updateBroadcastState(updates) {
 }
 
 /**
+ * Captura un fotograma instantáneo en 1080p prístino del Master en vivo
+ */
+export function captureMasterCanvasSnapshot() {
+  if (!canvas) return null;
+  try {
+    const snap = document.createElement('canvas');
+    snap.width = canvas.width || 1920;
+    snap.height = canvas.height || 1080;
+    const sCtx = snap.getContext('2d');
+    sCtx.drawImage(canvas, 0, 0);
+    return snap;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
  * Detiene el motor de broadcast y libera recursos
  */
 export function stopBroadcastEngine() {

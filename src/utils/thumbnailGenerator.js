@@ -62,6 +62,29 @@ export const SOCIAL_THUMBNAIL_PRESETS = [
  * @returns {Promise<HTMLCanvasElement>}
  */
 export async function captureVideoFrame(sourceMedia, seekTimeSec = 2) {
+  if (sourceMedia instanceof HTMLCanvasElement) {
+    return sourceMedia;
+  }
+  if (sourceMedia && typeof sourceMedia === 'object' && sourceMedia.snapshotCanvas instanceof HTMLCanvasElement) {
+    return sourceMedia.snapshotCanvas;
+  }
+  if (sourceMedia && typeof sourceMedia === 'object' && sourceMedia.thumbnailDataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth || 1920;
+        c.height = img.naturalHeight || 1080;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        resolve(c);
+      };
+      img.onerror = () => reject(new Error('Error al procesar miniatura base64'));
+      img.src = sourceMedia.thumbnailDataUrl;
+    });
+  }
+
   return new Promise((resolve, reject) => {
     const video = document.createElement('video')
     video.crossOrigin = 'anonymous'
@@ -69,14 +92,15 @@ export async function captureVideoFrame(sourceMedia, seekTimeSec = 2) {
     video.muted = true
     video.preload = 'auto'
 
-    const blobUrl = sourceMedia instanceof Blob ? URL.createObjectURL(sourceMedia) : sourceMedia
+    const mediaObj = (sourceMedia && sourceMedia.blob) ? sourceMedia.blob : ((sourceMedia && sourceMedia.url) ? sourceMedia.url : sourceMedia)
+    const blobUrl = mediaObj instanceof Blob ? URL.createObjectURL(mediaObj) : mediaObj
     video.src = blobUrl
 
     let cleaned = false
     const cleanup = () => {
       if (cleaned) return
       cleaned = true
-      if (sourceMedia instanceof Blob) {
+      if (mediaObj instanceof Blob) {
         URL.revokeObjectURL(blobUrl)
       }
       try { video.pause() } catch {}
@@ -84,14 +108,8 @@ export async function captureVideoFrame(sourceMedia, seekTimeSec = 2) {
       video.remove()
     }
 
-    const onLoadedMetadata = () => {
-      const duration = video.duration || 10
-      // Capturar al segundo solicitado o al 15% de la sesión si es menor
-      const targetTime = Math.min(Math.max(0.5, seekTimeSec), Math.max(0.5, duration * 0.15))
-      video.currentTime = targetTime
-    }
-
     const onSeeked = () => {
+      if (cleaned) return
       try {
         const vw = video.videoWidth || 1920
         const vh = video.videoHeight || 1080
@@ -108,22 +126,47 @@ export async function captureVideoFrame(sourceMedia, seekTimeSec = 2) {
       }
     }
 
+    const onLoadedMetadata = () => {
+      const duration = video.duration || 10
+      // Capturar al segundo solicitado o al 15% de la sesión si es menor
+      const targetTime = Math.min(Math.max(0.5, seekTimeSec), Math.max(0.5, duration * 0.15))
+      try {
+        video.currentTime = targetTime
+      } catch {
+        onSeeked()
+      }
+    }
+
+    const onLoadedData = () => {
+      // Respaldo de seguridad si seeked no dispara en WebM
+      setTimeout(() => {
+        if (!cleaned && video.readyState >= 2) {
+          onSeeked()
+        }
+      }, 1200)
+    }
+
     const onError = (e) => {
       cleanup()
       reject(new Error('No se pudo cargar el video para generar la miniatura'))
     }
 
     video.addEventListener('loadedmetadata', onLoadedMetadata, { once: true })
+    video.addEventListener('loadeddata', onLoadedData, { once: true })
     video.addEventListener('seeked', onSeeked, { once: true })
     video.addEventListener('error', onError, { once: true })
 
     // Timeout de seguridad en caso de fallo de códec
     setTimeout(() => {
       if (!cleaned) {
-        cleanup()
-        reject(new Error('Timeout extrayendo fotograma del video'))
+        if (video.readyState >= 2) {
+          onSeeked()
+        } else {
+          cleanup()
+          reject(new Error('Timeout extrayendo fotograma del video'))
+        }
       }
-    }, 8000)
+    }, 6000)
   })
 }
 
