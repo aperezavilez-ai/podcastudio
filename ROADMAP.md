@@ -12,9 +12,12 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 - **Monitor Master 100% Limpio de Indicadores**:
   - Eliminados el badge `CAM 1` y los botones flotantes de micrófono/bocina de la pantalla grande del Master para evitar obstrucciones con logotipos y cintillos.
   - Controles de micrófono y bocina mantenidos exclusivamente en los recuadros inferiores de cámaras.
-- **Zoom Dinámico Inteligente con Rueda del Mouse en Pantalla Master**:
+- **Zoom Dinámico & Encuadre Interactivo 1:1 con el Mouse en Pantalla Master**:
   - Control de zoom interactivo y progresivo mediante la rueda del ratón (scroll) directamente sobre la pantalla grande del Master (paso de 0.04x).
-  - Transición fluida y progresiva tipo smartphone con indicador HUD flotante y botón de reinicio en un clic.
+  - **Mover y Centrar la Toma (Pan / Drag)**: Al mantener presionado el botón izquierdo del mouse sobre la pantalla Master, la imagen se recorre con seguimiento 1:1 pixel exacto como una ventana de Windows para centrar al conductor o a los invitados sin importar el nivel de ampliación.
+  - El cursor cambia automáticamente a mano abierta (`grab`) y cerrada (`grabbing`) mientras se arrastra la toma.
+  - Actualización reactiva instantánea sin desfase (`transition: none` durante el arrastre) y sincronización directa con el canvas master (`masterBroadcastEngine`) para grabación y streaming sin cortes.
+  - HUD translúcido en pantalla con telemetría en tiempo real y botón de reinicio instantáneo `[ Reset 1.0x ]` en la barra superior.
 - **Biblioteca de Efectos de Sonido Expandida**:
   - Nuevos efectos SFX integrados: Puertas abriéndose con chirrido, Cristales quebrándose, Personas carcajeándose / risas de público, Ring tones y llamadas telefónicas, Bocinas cómicas.
 - **Nuevo Panel de Modulación y Efectos de Voz (Web Audio DSP en Tiempo Real)**:

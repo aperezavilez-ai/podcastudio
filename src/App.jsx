@@ -214,9 +214,14 @@ function PodcastStudioApp() {
   // Control de retorno de audio local (bocina / parlante de monitoreo en estudio para cada cámara)
   const [camSpeakerMuted, setCamSpeakerMuted] = useState({ 1: true, 2: false, 3: false, 4: false });
 
-  // ZOOM DINÁMICO INTELIGENTE EN MONITOR MASTER
+  // ZOOM DINÁMICO & ENCUADRE DE CÁMARA (PAN/DRAG) EN MONITOR MASTER
   const [zoomHud, setZoomHud] = useState({ visible: false, zoom: 1.0 });
   const zoomHudTimeoutRef = useRef(null);
+  const [panHud, setPanHud] = useState({ visible: false, x: 50, y: 50 });
+  const panHudTimeoutRef = useRef(null);
+  const [isDraggingMaster, setIsDraggingMaster] = useState(false);
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef(null);
   const masterMonitorRef = useRef(null);
 
   // TELEPROMPTER
@@ -474,11 +479,12 @@ function PodcastStudioApp() {
     }));
   };
 
-  // ZOOM DINÁMICO INTELIGENTE CON RUEDA DEL MOUSE (SCROLL) EN PANTALLA MASTER
+  // ZOOM DINÁMICO & ENCUADRE DE CÁMARA (PAN / DRAG 1:1) CON EL MOUSE EN PANTALLA MASTER
   useEffect(() => {
     const el = masterMonitorRef.current;
     if (!el) return;
 
+    // 1. Zoom dinámico suave y gradual con la rueda del ratón (Scroll)
     const onWheelHandler = (e) => {
       if (Math.abs(e.deltaY) < 1) return;
       e.preventDefault();
@@ -493,24 +499,24 @@ function PodcastStudioApp() {
       targetZoom = Math.max(1.0, Math.min(4.0, targetZoom));
 
       if (Math.abs(targetZoom - currentZoom) > 0.001) {
-        // Enfoque inteligente: si se hace zoom, orientar hacia donde apunta el mouse suavemente
-        const rect = el.getBoundingClientRect();
-        const mouseRelX = Math.max(0.1, Math.min(0.9, (e.clientX - rect.left) / rect.width));
-        const mouseRelY = Math.max(0.1, Math.min(0.9, (e.clientY - rect.top) / rect.height));
+        const curFocusX = currentCrop.focusX ?? (camSettings[activeCam]?.panX != null ? camSettings[activeCam].panX / 100 : 0.5);
+        const curFocusY = currentCrop.focusY ?? (camSettings[activeCam]?.panY != null ? camSettings[activeCam].panY / 100 : 0.42);
 
-        const curFocusX = currentCrop.focusX ?? 0.5;
-        const curFocusY = currentCrop.focusY ?? 0.42;
-        const nextFocusX = targetZoom > 1.0 ? (curFocusX * 0.85 + mouseRelX * 0.15) : 0.5;
-        const nextFocusY = targetZoom > 1.0 ? (curFocusY * 0.85 + mouseRelY * 0.15) : 0.42;
+        // Si se regresa al 1.0x, centrar automáticamente la toma; si tiene zoom, respetar el encuadre actual
+        const nextFocusX = targetZoom > 1.01 ? curFocusX : 0.5;
+        const nextFocusY = targetZoom > 1.01 ? curFocusY : 0.42;
 
         const updatedProfile = {
           ...currentCrop,
           zoom: targetZoom,
-          focusX: Math.round(nextFocusX * 100) / 100,
-          focusY: Math.round(nextFocusY * 100) / 100,
+          focusX: nextFocusX,
+          focusY: nextFocusY,
         };
 
         handleSaveSlotProfile(slotIdx, updatedProfile);
+        updateBroadcastState({
+          cameraCrops: { ...cameraCrops, [slotIdx]: updatedProfile }
+        });
 
         // Mostrar HUD temporal del zoom tipo smartphone
         setZoomHud({ visible: true, zoom: targetZoom });
@@ -521,10 +527,125 @@ function PodcastStudioApp() {
       }
     };
 
+    // 2. Encuadre interactivo: Clic izquierdo presionado y arrastrar (mover/centrar imagen como ventana de Windows)
+    const onMouseDownHandler = (e) => {
+      if (e.button !== 0) return; // Exclusivo botón izquierdo
+
+      const slotIdx = activeCam - 1;
+      const currentCrop = cameraCrops[slotIdx] || {};
+      const currentZoom = currentCrop.zoom ?? camSettings[activeCam]?.zoom ?? 1.0;
+
+      // Si no tiene zoom previo (1.0x) y el usuario hace clic para encuadrar, activamos zoom base de 1.25x
+      const activeZoom = currentZoom > 1.01 ? currentZoom : 1.25;
+
+      const curFocusX = currentCrop.focusX ?? (camSettings[activeCam]?.panX != null ? camSettings[activeCam].panX / 100 : 0.5);
+      const curFocusY = currentCrop.focusY ?? (camSettings[activeCam]?.panY != null ? camSettings[activeCam].panY / 100 : 0.42);
+
+      isDraggingRef.current = true;
+      setIsDraggingMaster(true);
+      dragStartRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startFocusX: curFocusX,
+        startFocusY: curFocusY,
+        zoom: activeZoom,
+        slotIdx,
+        currentCrop
+      };
+
+      if (currentZoom <= 1.01) {
+        const initialProfile = {
+          ...currentCrop,
+          zoom: activeZoom,
+          focusX: curFocusX,
+          focusY: curFocusY
+        };
+        handleSaveSlotProfile(slotIdx, initialProfile);
+        updateBroadcastState({
+          cameraCrops: { ...cameraCrops, [slotIdx]: initialProfile }
+        });
+        setZoomHud({ visible: true, zoom: activeZoom });
+      }
+
+      setPanHud({
+        visible: true,
+        x: Math.round(curFocusX * 100),
+        y: Math.round(curFocusY * 100)
+      });
+
+      e.preventDefault();
+    };
+
+    const onMouseMoveHandler = (e) => {
+      if (!isDraggingRef.current || !dragStartRef.current) return;
+      e.preventDefault();
+
+      const { startX, startY, startFocusX, startFocusY, zoom, slotIdx, currentCrop } = dragStartRef.current;
+      const rect = el.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+
+      const deltaX = e.clientX - startX;
+      const deltaY = e.clientY - startY;
+
+      // Cálculo de desplazamiento 1:1 pixel exacto con el ratón
+      const effectiveZoom = Math.max(1.05, zoom);
+      const shiftRangeX = rect.width * (1 - 1 / effectiveZoom);
+      const shiftRangeY = rect.height * (1 - 1 / effectiveZoom);
+
+      // Jalar hacia la izquierda (deltaX < 0) despliega el lado derecho -> focusX aumenta
+      // Jalar hacia arriba (deltaY < 0) despliega la parte inferior -> focusY aumenta
+      const deltaFocusX = shiftRangeX > 0 ? - (deltaX / shiftRangeX) : 0;
+      const deltaFocusY = shiftRangeY > 0 ? - (deltaY / shiftRangeY) : 0;
+
+      let nextFocusX = Math.max(0.0, Math.min(1.0, startFocusX + deltaFocusX));
+      let nextFocusY = Math.max(0.0, Math.min(1.0, startFocusY + deltaFocusY));
+
+      nextFocusX = Math.round(nextFocusX * 1000) / 1000;
+      nextFocusY = Math.round(nextFocusY * 1000) / 1000;
+
+      const updatedProfile = {
+        ...currentCrop,
+        zoom,
+        focusX: nextFocusX,
+        focusY: nextFocusY,
+      };
+
+      handleSaveSlotProfile(slotIdx, updatedProfile);
+      updateBroadcastState({
+        cameraCrops: { ...cameraCrops, [slotIdx]: updatedProfile }
+      });
+
+      setPanHud({
+        visible: true,
+        x: Math.round(nextFocusX * 100),
+        y: Math.round(nextFocusY * 100)
+      });
+    };
+
+    const onMouseUpHandler = () => {
+      if (isDraggingRef.current) {
+        isDraggingRef.current = false;
+        setIsDraggingMaster(false);
+        dragStartRef.current = null;
+        if (panHudTimeoutRef.current) clearTimeout(panHudTimeoutRef.current);
+        panHudTimeoutRef.current = setTimeout(() => {
+          setPanHud(prev => ({ ...prev, visible: false }));
+        }, 1200);
+      }
+    };
+
     el.addEventListener('wheel', onWheelHandler, { passive: false });
+    el.addEventListener('mousedown', onMouseDownHandler);
+    window.addEventListener('mousemove', onMouseMoveHandler);
+    window.addEventListener('mouseup', onMouseUpHandler);
+
     return () => {
       el.removeEventListener('wheel', onWheelHandler);
+      el.removeEventListener('mousedown', onMouseDownHandler);
+      window.removeEventListener('mousemove', onMouseMoveHandler);
+      window.removeEventListener('mouseup', onMouseUpHandler);
       if (zoomHudTimeoutRef.current) clearTimeout(zoomHudTimeoutRef.current);
+      if (panHudTimeoutRef.current) clearTimeout(panHudTimeoutRef.current);
     };
   }, [activeCam, cameraCrops, camSettings]);
   
@@ -547,8 +668,8 @@ function PodcastStudioApp() {
     const isZoomed = zoom > 1.01 || Math.abs(focusX - 0.5) > 0.02 || Math.abs(focusY - 0.42) > 0.03;
     return {
       transform: isZoomed ? `scale(${zoom})` : 'scale(1)',
-      transformOrigin: `${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}%`,
-      transition: isMaster ? 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
+      transformOrigin: `${(focusX * 100).toFixed(2)}% ${(focusY * 100).toFixed(2)}%`,
+      transition: (isMaster && !isDraggingMaster) ? 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
       filter: filter !== 'none' ? filter : undefined,
     };
   }; 
@@ -1689,13 +1810,13 @@ function PodcastStudioApp() {
             <span className="hidden md:inline text-gray-400">CALIDAD:</span>
             <span className="text-orange-500 border border-orange-500 rounded px-2 py-0.5 font-bold text-[11px] sm:text-xs">1080p · 30fps</span>
 
-            {/* ZOOM DINÁMICO FUERA DE LA PANTALLA */}
+            {/* ZOOM DINÁMICO & ENCUADRE FUERA DE LA PANTALLA */}
             {(() => {
               const currentActiveZoom = ((cameraCrops[activeCam - 1]?.zoom) || 1.0);
               return (
                 <div 
                   className="hidden md:flex items-center gap-1.5 bg-[#141417] px-2.5 py-1 rounded border border-[#2a2a32] text-xs select-none"
-                  title="Control de Zoom Dinámico Inteligente: Usa la rueda del mouse (Scroll) sobre la pantalla Master para acercar o alejar suavemente"
+                  title="Control de Zoom Dinámico & Encuadre: Usa la rueda del mouse para Zoom, y arrastra con clic izquierdo para mover la imagen"
                 >
                   <Search size={12} className="text-orange-500" />
                   <span className="text-orange-500 font-bold">ZOOM DINÁMICO</span>
@@ -1703,14 +1824,23 @@ function PodcastStudioApp() {
                     {currentActiveZoom.toFixed(1)}x
                   </span>
                   {currentActiveZoom > 1.01 && (
-                    <button
-                      type="button"
-                      onClick={() => handleSaveSlotProfile(activeCam - 1, { ...(cameraCrops[activeCam - 1] || {}), zoom: 1.0, focusX: 0.5, focusY: 0.42 })}
-                      className="text-[9px] text-gray-400 hover:text-white underline ml-0.5 cursor-pointer"
-                      title="Restablecer zoom a 1.0x"
-                    >
-                      1.0x
-                    </button>
+                    <div className="flex items-center gap-1.5 ml-1 pl-1.5 border-l border-[#333]">
+                      <span className="text-[10px] text-gray-400 font-medium hidden lg:inline">
+                        Arrastra para centrar
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const resetProfile = { ...(cameraCrops[activeCam - 1] || {}), zoom: 1.0, focusX: 0.5, focusY: 0.42 };
+                          handleSaveSlotProfile(activeCam - 1, resetProfile);
+                          updateBroadcastState({ cameraCrops: { ...cameraCrops, [activeCam - 1]: resetProfile } });
+                        }}
+                        className="px-1.5 py-0.5 rounded bg-[#222] hover:bg-orange-950/80 hover:text-orange-300 text-gray-300 font-bold text-[9px] cursor-pointer transition-all border border-[#3a3a42]"
+                        title="Restablecer zoom a 1.0x y centrar toma"
+                      >
+                        Reset 1.0x
+                      </button>
+                    </div>
                   )}
                 </div>
               );
@@ -1796,19 +1926,26 @@ function PodcastStudioApp() {
         <div className="flex-1 bg-black relative flex p-3 min-h-0">
           <div 
             ref={masterMonitorRef}
-            className="w-full h-full relative rounded-lg overflow-hidden flex items-center justify-center bg-[#050505] border border-[#333]"
-            title="Pantalla Master: Usa la rueda del mouse (Scroll) para acercar o alejar el Zoom Dinámico suavemente"
+            className={`w-full h-full relative rounded-lg overflow-hidden flex items-center justify-center bg-[#050505] border border-[#333] select-none ${
+              isDraggingMaster 
+                ? 'cursor-grabbing' 
+                : (((cameraCrops[activeCam - 1]?.zoom) || 1.0) > 1.01 ? 'cursor-grab' : 'cursor-default')
+            }`}
+            title="Pantalla Master: Gira la rueda del mouse para Zoom, y arrastra con clic izquierdo presionado para mover y centrar la toma como una ventana"
           >
             {renderMonitorLayout()}
 
-            {/* HUD INTELIGENTE DE ZOOM DINÁMICO (TIPO TELÉFONO) */}
-            {zoomHud.visible && (
+            {/* HUD INTELIGENTE DE ZOOM DINÁMICO & ENCUADRE INTERACTIVO */}
+            {(zoomHud.visible || panHud.visible || isDraggingMaster) && (
               <div className="absolute top-4 right-4 z-40 bg-black/85 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-orange-500/60 text-white shadow-2xl flex items-center gap-2 pointer-events-none transition-all animate-in fade-in zoom-in-95 duration-150">
                 <Search size={13} className="text-orange-400" />
                 <span className="text-xs font-black tracking-wide text-orange-400 font-mono">
-                  {zoomHud.zoom.toFixed(1)}x
+                  {((cameraCrops[activeCam - 1]?.zoom) || zoomHud.zoom || 1.0).toFixed(1)}x
                 </span>
-                <span className="text-[10px] text-gray-300 font-medium">Zoom Dinámico</span>
+                <span className="text-gray-500 text-[10px]">•</span>
+                <span className="text-[10px] text-gray-200 font-medium">
+                  {isDraggingMaster ? 'Encuadrando toma...' : 'Scroll = Zoom · Arrastra = Centrar'}
+                </span>
               </div>
             )}
             
@@ -2623,7 +2760,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.0.2</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.0.9</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>
