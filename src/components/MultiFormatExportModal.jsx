@@ -156,16 +156,16 @@ export default function MultiFormatExportModal({
     try {
       // 1. SI ESTAMOS EN LA APP DE ESCRITORIO (ELECTRON) Y EXISTE EL MASTER ORIGINAL
       if (window.api?.exportSocialFormat && recording?.filePath) {
-        setProgress(30)
+        setProgress(40)
         const res = await window.api.exportSocialFormat({
           sourcePath: recording.filePath,
           formatKey: preset.key,
-          projectName: recording.name || 'Proyecto_General',
+          projectName: recording.projectName || 'Proyecto_General',
         })
         setProgress(100)
         if (res.success) {
-          // Descargar también la miniatura JPG oficial
-          downloadThumbnailForPreset(preset)
+          // Guardado directamente en la carpeta del proyecto en disco sin abrir diálogos del navegador
+          setConvertingKey(null)
           return
         }
       }
@@ -200,8 +200,10 @@ export default function MultiFormatExportModal({
       a.click()
       URL.revokeObjectURL(url)
 
-      // Descargar automáticamente la miniatura JPG correspondiente junto con el video
-      downloadThumbnailForPreset(preset)
+      // En navegador web, descargar miniatura correspondiente
+      if (!window.api) {
+        downloadThumbnailForPreset(preset)
+      }
     } catch (err) {
       if (!cancelRef.current) {
         console.error('Error al exportar formato:', err)
@@ -231,7 +233,7 @@ export default function MultiFormatExportModal({
           await window.api.exportSocialFormat({
             sourcePath: recording.filePath,
             formatKey: preset.key,
-            projectName: recording.name || 'Proyecto_General',
+            projectName: recording.projectName || 'Proyecto_General',
           })
           setProgress(100)
         } else {
@@ -265,14 +267,16 @@ export default function MultiFormatExportModal({
             URL.revokeObjectURL(u)
           }
         }
-        await new Promise(r => setTimeout(r, 600))
+        await new Promise(r => setTimeout(r, 400))
       } catch (err) {
         console.error(`Error procesando ${preset.label}:`, err)
       }
     }
 
-    // Descargar automáticamente el pack de miniaturas correspondiente
-    handleDownloadAllThumbnails()
+    // Solo descargar miniaturas en el navegador; en Electron ya se guardan en disco
+    if (!window.api) {
+      handleDownloadAllThumbnails()
+    }
 
     setPackProgress(null)
     setProgress(0)
@@ -640,12 +644,12 @@ export default function MultiFormatExportModal({
               <button
                 type="button"
                 className={styles.mp4Btn}
-                onClick={() => window.api.openRecordingsFolder()}
+                onClick={() => window.api.openRecordingsFolder(recording.projectName || 'Proyecto_General')}
                 style={{ borderColor: 'rgba(249, 115, 22, 0.5)', background: 'rgba(249, 115, 22, 0.15)', color: '#fb923c', display: 'flex', alignItems: 'center', gap: 6 }}
-                title="Abrir carpeta de grabaciones en Windows"
+                title="Abrir carpeta raíz del proyecto en Windows Explorer"
               >
                 <FolderOpen size={14} />
-                <span>Abrir Carpeta en Windows</span>
+                <span>Abrir Carpeta de Proyecto</span>
               </button>
             )}
 

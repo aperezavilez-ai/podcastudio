@@ -1,6 +1,6 @@
 {
   "name": "podcaststudio",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",

@@ -116,6 +116,7 @@ export default function CameraConnectModal({
   onDisconnect,
   onRenameSlot,
   localQrUrl = '',
+  onOpenRemoteControl,
 }) {
   const [targetSlot, setTargetSlot] = useState(initialSlot);
   const [activeTab, setActiveTab] = useState('usb');
@@ -137,6 +138,17 @@ export default function CameraConnectModal({
   const [useCloudDomain, setUseCloudDomain] = useState(true);
   const [copiedSlotNumber, setCopiedSlotNumber] = useState(null);
   const [autoAssignMode, setAutoAssignMode] = useState(true);
+  const [ipadRemoteQrUrl, setIpadRemoteQrUrl] = useState('');
+  const ipadRemoteLink = 'https://www.podcastudio.mx/control?room=master_studio';
+  const [copiedIpadRemote, setCopiedIpadRemote] = useState(false);
+
+  useEffect(() => {
+    QRCode.toDataURL(ipadRemoteLink, { width: 220, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
+      .then(url => setIpadRemoteQrUrl(url))
+      .catch(() => {
+        setIpadRemoteQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(ipadRemoteLink)}`);
+      });
+  }, [ipadRemoteLink]);
 
   // Encontrar el siguiente slot disponible (libre de señal y metadatos)
   const getNextAvailableSlot = useCallback((preferredSlot) => {
@@ -703,6 +715,19 @@ Instrucciones:
           </button>
           <button
             type="button"
+            className={`${styles.tabBtn} ${activeTab === 'ipad_remote' ? styles.tabActive : ''}`}
+            onClick={() => setActiveTab('ipad_remote')}
+            style={{
+              background: activeTab === 'ipad_remote' ? 'linear-gradient(135deg, rgba(245,158,11,0.25), rgba(234,88,12,0.25))' : 'rgba(245,158,11,0.08)',
+              borderColor: '#f59e0b',
+              color: '#fbbf24',
+              fontWeight: 700
+            }}
+          >
+            <Smartphone size={14} /> 🎮 Mando iPad / Switcher
+          </button>
+          <button
+            type="button"
             className={`${styles.tabBtn} ${activeTab === 'settings' ? styles.tabActive : ''}`}
             onClick={() => setActiveTab('settings')}
           >
@@ -1119,6 +1144,79 @@ Instrucciones:
                 </div>
               ) : (
                 <>
+                  {/* BANNER DISTINTIVO PARA MANDO IPAD / SWITCHER */}
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: '12px 16px',
+                      borderRadius: 12,
+                      background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(234, 88, 12, 0.18))',
+                      border: '1.5px solid rgba(245, 158, 11, 0.55)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      textAlign: 'left',
+                      boxShadow: '0 4px 16px rgba(245, 158, 11, 0.1)',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 10,
+                          background: 'rgba(245, 158, 11, 0.3)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#fbbf24',
+                          fontSize: 20,
+                          flexShrink: 0,
+                          border: '1px solid rgba(245, 158, 11, 0.4)',
+                        }}
+                      >
+                        🎮
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#fef08a' }}>
+                          ¿Quieres usar tu iPad como MANDO para controlar cámaras?
+                        </div>
+                        <div style={{ fontSize: 11, color: '#e2e8f0', lineHeight: 1.35 }}>
+                          Cambia las cámaras al aire y pon efectos desde tu iPad mientras los videos se guardan en esta PC.
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenRemoteControl) {
+                          onOpenRemoteControl();
+                        } else {
+                          setActiveTab('ipad_remote');
+                        }
+                      }}
+                      style={{
+                        padding: '8px 14px',
+                        background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                        border: 'none',
+                        borderRadius: 8,
+                        color: '#000',
+                        fontWeight: 800,
+                        fontSize: 12,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                        boxShadow: '0 2px 10px rgba(245, 158, 11, 0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      <span>Abrir Mando iPad</span>
+                      <span>→</span>
+                    </button>
+                  </div>
+
                   {/* PERSONALIZACIÓN DE INVITACIÓN */}
                   <div
                     style={{
@@ -1411,6 +1509,165 @@ Instrucciones:
                   </div>
                 </>
               )}
+            </div>
+          )}
+
+          {/* TAB MANDO IPAD / TABLET */}
+          {activeTab === 'ipad_remote' && (
+            <div className={styles.remoteBox} style={{ textAlign: 'center' }}>
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, rgba(245,158,11,0.12), rgba(234,88,12,0.12))',
+                  border: '1px solid rgba(245,158,11,0.4)',
+                  borderRadius: 14,
+                  padding: '16px 20px',
+                  marginBottom: 16,
+                  textAlign: 'left',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <div style={{ fontSize: 24 }}>🎮</div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: '#fef08a' }}>
+                      Mando a Distancia para iPad, Tablets o Celulares
+                    </h3>
+                    <p style={{ margin: '2px 0 0', fontSize: 12, color: '#cbd5e1' }}>
+                      Controla tu estudio desde tu iPad mientras la grabación en alta calidad y los archivos se guardan en esta PC.
+                    </p>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.5, background: 'rgba(0,0,0,0.3)', padding: 10, borderRadius: 8 }}>
+                  ✅ <strong>Cero consumo en tu iPad:</strong> Esta PC procesa todo el video Full HD, los audios y los efectos.<br/>
+                  ✅ <strong>Control instantáneo:</strong> Toca cualquier cámara en tu iPad y el Master de esta computadora cambiará de inmediato sin demoras.<br/>
+                  ✅ <strong>Archivos en tu PC:</strong> Las grabaciones se guardan directamente en tu carpeta de proyecto en esta máquina.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, margin: '10px 0 16px' }}>
+                <div
+                  style={{
+                    padding: 12,
+                    background: '#ffffff',
+                    borderRadius: 16,
+                    boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+                    border: '3px solid #f59e0b',
+                    display: 'inline-block'
+                  }}
+                >
+                  {ipadRemoteQrUrl ? (
+                    <img src={ipadRemoteQrUrl} alt="QR Mando iPad" style={{ width: 190, height: 190, display: 'block' }} />
+                  ) : (
+                    <div style={{ width: 190, height: 190, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', fontSize: 12, fontWeight: 700 }}>
+                      Generando código QR...
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc' }}>
+                  1. Abre la cámara de tu iPad y enfoca este código QR
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.12)',
+                  borderRadius: 10,
+                  padding: '8px 12px',
+                  maxWidth: 520,
+                  margin: '0 auto 16px',
+                }}
+              >
+                <input
+                  type="text"
+                  readOnly
+                  value={ipadRemoteLink}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#94a3b8',
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    flex: 1,
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const ok = await copyTextToClipboard(ipadRemoteLink);
+                    if (ok) {
+                      setCopiedIpadRemote(true);
+                      setTimeout(() => setCopiedIpadRemote(false), 2500);
+                    }
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    background: copiedIpadRemote ? '#22c55e' : '#f59e0b',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {copiedIpadRemote ? <Check size={12} /> : <Copy size={12} />}
+                  {copiedIpadRemote ? '¡Copiado!' : 'Copiar Enlace'}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => openExternalLink(ipadRemoteLink)}
+                  style={{
+                    padding: '8px 16px',
+                    background: 'rgba(255,255,255,0.08)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    color: '#fff',
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <ExternalLink size={13} /> Abrir en Navegador
+                </button>
+                {onOpenRemoteControl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenRemoteControl();
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                      border: 'none',
+                      color: '#000',
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    <Smartphone size={13} /> Abrir Consola Flotante
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

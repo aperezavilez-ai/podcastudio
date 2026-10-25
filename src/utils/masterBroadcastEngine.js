@@ -530,7 +530,7 @@ export function startBroadcastEngine(initialState, onChunk) {
   try {
     mediaRecorder = new MediaRecorder(masterStream, {
       mimeType: chosenMime,
-      videoBitsPerSecond: 3500000, // 3.5 Mbps Full HD
+      videoBitsPerSecond: 10000000, // 10 Mbps Broadcast Full HD nítido
     });
 
     mediaRecorder.ondataavailable = async (e) => {

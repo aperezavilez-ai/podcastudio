@@ -535,8 +535,8 @@ function PodcastStudioApp() {
       const currentCrop = cameraCrops[slotIdx] || {};
       const currentZoom = currentCrop.zoom ?? camSettings[activeCam]?.zoom ?? 1.0;
 
-      // Si no tiene zoom previo (1.0x) y el usuario hace clic para encuadrar, activamos zoom base de 1.25x
-      const activeZoom = currentZoom > 1.01 ? currentZoom : 1.25;
+      // Respetar el zoom actual suavemente sin brincos bruscos
+      const activeZoom = currentZoom;
 
       const curFocusX = currentCrop.focusX ?? (camSettings[activeCam]?.panX != null ? camSettings[activeCam].panX / 100 : 0.5);
       const curFocusY = currentCrop.focusY ?? (camSettings[activeCam]?.panY != null ? camSettings[activeCam].panY / 100 : 0.42);
@@ -552,20 +552,6 @@ function PodcastStudioApp() {
         slotIdx,
         currentCrop
       };
-
-      if (currentZoom <= 1.01) {
-        const initialProfile = {
-          ...currentCrop,
-          zoom: activeZoom,
-          focusX: curFocusX,
-          focusY: curFocusY
-        };
-        handleSaveSlotProfile(slotIdx, initialProfile);
-        updateBroadcastState({
-          cameraCrops: { ...cameraCrops, [slotIdx]: initialProfile }
-        });
-        setZoomHud({ visible: true, zoom: activeZoom });
-      }
 
       setPanHud({
         visible: true,
@@ -653,9 +639,9 @@ function PodcastStudioApp() {
     const s = camSettings[camId] || defaultCamSettings;
     const crop = cameraCrops[camId - 1] || {};
 
-    const zoom = crop.zoom ?? s.zoom ?? 1.0;
-    const focusX = crop.focusX ?? (s.panX != null ? s.panX / 100 : 0.5);
-    const focusY = crop.focusY ?? (s.panY != null ? s.panY / 100 : 0.42);
+    const zoom = Math.max(1.0, crop.zoom ?? s.zoom ?? 1.0);
+    const focusX = crop.focusX != null ? crop.focusX : (s.panX != null ? s.panX / 100 : 0.5);
+    const focusY = crop.focusY != null ? crop.focusY : (s.panY != null ? s.panY / 100 : 0.42);
 
     const filter = buildCanvasFilter({
       brightness: crop.brightness ?? s.brightness,
@@ -665,11 +651,18 @@ function PodcastStudioApp() {
       tint: crop.tint ?? 0,
     });
 
-    const isZoomed = zoom > 1.01 || Math.abs(focusX - 0.5) > 0.02 || Math.abs(focusY - 0.42) > 0.03;
+    // Panning relativo al zoom con centro fijo al 50%: elimina al 100% cualquier brinco visual
+    const panPercentX = (0.5 - focusX) * (zoom - 1) * 100;
+    const panPercentY = (0.42 - focusY) * (zoom - 1) * 100;
+
+    const isZoomed = zoom > 1.001 || Math.abs(panPercentX) > 0.05 || Math.abs(panPercentY) > 0.05;
+
     return {
-      transform: isZoomed ? `scale(${zoom})` : 'scale(1)',
-      transformOrigin: `${(focusX * 100).toFixed(2)}% ${(focusY * 100).toFixed(2)}%`,
-      transition: (isMaster && !isDraggingMaster) ? 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
+      transformOrigin: '50% 50%',
+      transform: isZoomed 
+        ? `translate3d(${panPercentX.toFixed(2)}%, ${panPercentY.toFixed(2)}%, 0) scale(${zoom.toFixed(3)})` 
+        : 'translate3d(0, 0, 0) scale(1)',
+      transition: (isMaster && !isDraggingMaster) ? 'transform 0.15s ease-out' : 'none',
       filter: filter !== 'none' ? filter : undefined,
     };
   }; 
@@ -678,11 +671,18 @@ function PodcastStudioApp() {
     const startCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { width: { ideal: 1280 }, height: { ideal: 720 } }, 
+          video: { 
+            width: { ideal: 1920, min: 1280 }, 
+            height: { ideal: 1080, min: 720 },
+            frameRate: { ideal: 30, min: 24 }
+          }, 
           audio: true 
         }).catch(async () => {
           return await navigator.mediaDevices.getUserMedia({ 
-            video: { width: { ideal: 1280 }, height: { ideal: 720 } } 
+            video: { 
+              width: { ideal: 1920, min: 1280 }, 
+              height: { ideal: 1080, min: 720 } 
+            } 
           });
         });
 
@@ -1217,6 +1217,7 @@ function PodcastStudioApp() {
         snapshotCanvas,
         thumbnailDataUrl,
         filePath: stopRes?.path || null,
+        projectName: stopRes?.projectName || topic || 'Proyecto_General',
         name: `PodcaStudio_${cleanTopicName}_${Date.now()}`,
         duration: recordingTime || 1,
       });
@@ -1380,10 +1381,10 @@ function PodcastStudioApp() {
 
     let stream = null;
     const attempts = [
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true },
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-      { video: { deviceId: deviceId }, audio: true },
-      { video: { deviceId: deviceId }, audio: false },
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } }, audio: true },
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } }, audio: false },
+      { video: { deviceId: deviceId, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: true },
+      { video: { deviceId: deviceId, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
       { video: true, audio: false }
     ];
 
@@ -1849,11 +1850,11 @@ function PodcastStudioApp() {
             {/* BOTÓN DE CONTROL REMOTO IPAD / TABLETS */}
             <button
               onClick={() => setShowRemoteControlModal(true)}
-              className="px-2.5 py-1 rounded text-xs font-bold flex items-center gap-1.5 bg-[#18181b] hover:bg-[#27272a] text-amber-400 border border-amber-500/40 transition-all cursor-pointer shadow-sm"
-              title="Abrir consola de control remoto táctil para iPad, Tablets o Teléfonos"
+              className="px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 bg-gradient-to-r from-amber-500/25 to-orange-500/25 hover:from-amber-500/40 hover:to-orange-500/40 text-amber-300 border border-amber-500/70 transition-all cursor-pointer shadow-[0_0_12px_rgba(245,158,11,0.25)]"
+              title="Conectar iPad, Tablet o Móvil como Mando Switcher a distancia"
             >
-              <Smartphone size={13} className="text-amber-400" />
-              <span className="hidden sm:inline">Control iPad</span>
+              <Smartphone size={14} className="text-amber-400" />
+              <span>🎮 Mando iPad</span>
             </button>
 
             {/* BOTÓN DE CUADRÍCULA DE ENCUADRE MASTER */}
@@ -2696,7 +2697,7 @@ function PodcastStudioApp() {
                 )}
               </div>
 
-              {/* BOTÓN DIRECTO: CONFIGURAR ENTRADA DE VIDEO (DEBAJO DE ESCENARIOS VIRTUALES - SIN FLECHA NI DUPLICADOS) */}
+              {/* BOTÓN DIRECTO: CONFIGURAR ENTRADA DE VIDEO */}
               <button 
                 onClick={() => { 
                   setConnectModalSlot(activeCam - 1); 
@@ -2711,6 +2712,21 @@ function PodcastStudioApp() {
                 </span>
                 <span className="text-[10px] bg-blue-950/60 text-blue-300 border border-blue-800/50 px-2 py-0.5 rounded font-semibold">
                   Abrir
+                </span>
+              </button>
+
+              {/* BOTÓN DIRECTO: MANDO IPAD / TABLETS (SWITCHER) */}
+              <button 
+                onClick={() => setShowRemoteControlModal(true)} 
+                className="w-full p-2.5 bg-gradient-to-r from-[#1c1608] to-[#261c0a] hover:from-[#2a200e] hover:to-[#382810] border border-amber-500/50 hover:border-amber-400 rounded flex items-center justify-between text-xs font-bold text-amber-300 transition-all cursor-pointer shadow-md group"
+                title="Abrir código QR y enlace para controlar el switcher de cámaras desde tu iPad o Tablet"
+              >
+                <span className="flex items-center gap-2">
+                  <Smartphone size={15} className="text-amber-400 group-hover:scale-110 transition-transform"/>
+                  <span>🎮 Mando iPad (Switcher)</span>
+                </span>
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded font-semibold">
+                  Abrir Mando
                 </span>
               </button>
 
@@ -3223,6 +3239,10 @@ function PodcastStudioApp() {
         onDisconnect={handleDisconnectSlot}
         onRenameSlot={handleRenameSlot}
         localQrUrl={qrCodeUrl}
+        onOpenRemoteControl={() => {
+          setShowConnectModal(false);
+          setShowRemoteControlModal(true);
+        }}
       />
 
       {/* MODAL MONITOR PREVIEW (PVW) Y CALIBRADOR DE CÁMARAS INDEPENDIENTES (Importado de PODCASTUDIO) */}
@@ -3336,25 +3356,12 @@ function PodcastStudioApp() {
         onClose={() => setShowExportModal(false)}
         recording={recordedVideoData}
         onDownloadMp4={async (rec) => {
-          if (window.api?.saveToDownloads && rec?.filePath) {
-            await window.api.saveToDownloads({
-              sourcePath: rec.filePath,
-              filename: `${rec.name || 'PodcaStudio_Master'}.mp4`,
-            });
-            if (rec?.thumbnailDataUrl) {
-              setTimeout(() => {
-                const aThumb = document.createElement('a');
-                aThumb.href = rec.thumbnailDataUrl;
-                aThumb.download = `${rec.name || 'PodcaStudio_Master'}_Miniatura.jpg`;
-                aThumb.click();
-              }, 300);
-            }
-            if (window.api?.openRecordingsFolder) {
-              window.api.openRecordingsFolder(topic || 'Proyecto_General');
-            }
+          if (window.api?.openRecordingsFolder) {
+            window.api.openRecordingsFolder(rec?.projectName || topic || 'Proyecto_General');
             return;
           }
 
+          // Fallback solo para navegador web puro
           if (rec?.blob) {
             const url = URL.createObjectURL(rec.blob);
             const a = document.createElement('a');
@@ -3362,18 +3369,6 @@ function PodcastStudioApp() {
             a.download = `${rec.name || 'PodcaStudio_Master'}.mp4`;
             a.click();
             URL.revokeObjectURL(url);
-          }
-          // Descargar automáticamente la miniatura oficial en alta definición
-          if (rec?.thumbnailDataUrl) {
-            setTimeout(() => {
-              const aThumb = document.createElement('a');
-              aThumb.href = rec.thumbnailDataUrl;
-              aThumb.download = `${rec.name || 'PodcaStudio_Master'}_Miniatura.jpg`;
-              aThumb.click();
-            }, 300);
-          }
-          if (window.api?.openRecordingsFolder) {
-            window.api.openRecordingsFolder(topic || 'Proyecto_General');
           }
         }}
       />

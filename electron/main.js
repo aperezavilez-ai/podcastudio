@@ -557,15 +557,24 @@ let currentRecordingPath = null;
 let streamDestinations = [];
 let activeStreamWorkers = [];
 
+let currentRecordingPath = null;
+let currentRecordingProjectName = 'Proyecto_General';
+
 // ============================================================================
 // GRABACIÓN BROADCAST MASTER (MP4 LIMPIO + AUDIO MEZCLADO - EN CARPETA DE PROYECTO)
 // ============================================================================
 ipcMain.handle('start-recording', async (event, options = {}) => {
   return new Promise((resolve) => {
     const rawProjectName = (typeof options === 'string' ? options : options?.projectName) || 'Proyecto_General';
-    // Sanitizar nombre de proyecto para carpeta válida en Windows
-    const cleanProjectName = rawProjectName.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Proyecto_General';
+    // Sanitizar nombre de proyecto: remover prefijos PodcaStudio_ y timestamps para mantener una sola carpeta limpia
+    let cleanProjectName = String(rawProjectName)
+      .replace(/^PodcaStudio_/i, '')
+      .replace(/_\d{10,}$/, '')
+      .replace(/[/\\?%*:|"<>]/g, '_')
+      .trim() || 'Proyecto_General';
     
+    currentRecordingProjectName = cleanProjectName;
+
     // Carpeta raíz estructurada: D:\PROGRAMAS IA\PODCASTUDIO\proyectos\[NombreProyecto]\
     const projectDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos', cleanProjectName);
     try {
@@ -585,17 +594,21 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
     }
 
     try {
+      // Configuración de codificación de calidad broadcast Full HD 1080p real a 30fps sin pixelación
       ffmpegRecordProcess = spawn(ffmpegPath, [
         '-probesize', '32M',
         '-analyzeduration', '0',
         '-f', 'webm',
         '-i', 'pipe:0',
         '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-tune', 'zerolatency',
-        '-crf', '18',
+        '-preset', 'veryfast',
+        '-crf', '17',
+        '-maxrate', '12M',
+        '-bufsize', '24M',
         '-pix_fmt', 'yuv420p',
         '-r', '30',
+        '-g', '60',
+        '-keyint_min', '30',
         '-c:a', 'aac',
         '-b:a', '192k',
         '-ar', '48000',
@@ -614,7 +627,7 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
         ffmpegRecordProcess = null;
       });
 
-      resolve({ success: true, path: currentRecordingPath });
+      resolve({ success: true, path: currentRecordingPath, projectName: cleanProjectName });
     } catch (err) {
       console.error('Fallo al iniciar grabación FFmpeg:', err);
       resolve({ success: false, error: err.message });
@@ -731,8 +744,12 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
       return resolve({ success: false, error: 'Archivo de video original no encontrado' });
     }
 
-    const cleanProjectName = projectName ? String(projectName).replace(/[/\\?%*:|"<>]/g, '_').trim() : 'Proyecto_General';
-    const projectDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos', cleanProjectName);
+    // Guardar SIEMPRE en la misma carpeta del video master para no duplicar carpetas
+    let projectDir = (sourcePath && fs.existsSync(sourcePath)) ? path.dirname(sourcePath) : null;
+    if (!projectDir) {
+      const cleanProjectName = currentRecordingProjectName || (projectName ? String(projectName).replace(/^PodcaStudio_/i, '').replace(/_\d{10,}$/, '').replace(/[/\\?%*:|"<>]/g, '_').trim() : 'Proyecto_General');
+      projectDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos', cleanProjectName);
+    }
     if (!fs.existsSync(projectDir)) {
       try { fs.mkdirSync(projectDir, { recursive: true }); } catch (e) {}
     }

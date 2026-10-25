@@ -4,7 +4,28 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.0.9 (Producción Oficial - Release Estable)
+## 🚀 Versión Actual: v1.0.10 (Producción Oficial - Release Ultra Calidad & Mando iPad)
+- **Calidad de Video 1080p Prístina y Reproducción Continua sin Pausas**:
+  - Parámetros de captura de cámara (`getUserMedia`) elevados a Full HD 1080p real (`width: 1920, height: 1080, 30fps`). El zoom ahora mantiene nitidez y detalle cristalino sin pixelación ni desenfoque.
+  - Flujo de grabación de canvas en `masterBroadcastEngine` optimizado a 10.0 Mbps con códec WebM/VP9 y audio estéreo a 192 kbps.
+  - Motor de transcodificación FFmpeg en Electron rediseñado: eliminado `-tune zerolatency` (causante de macrobloques y degradación), configurado a `-preset veryfast -crf 17 -maxrate 12M -bufsize 24M` con GOP de cadencia regular (`-g 60 -keyint_min 30`) para garantizar fluidez absoluta de reproducción sin congelamientos, saltos o tartamudeo en Windows Media Player ni dispositivos móviles.
+- **Eliminación Total del Brinco en Zoom Dinámico y Encuadre**:
+  - Eliminado el salto abrupto a 1.25x en clic de ratón.
+  - Origen de transformación anclado a `50% 50%` fijo con traslación y escala unificadas en `translate3d(panPercentX, panPercentY, 0) scale(zoom)`, garantizando transiciones suaves y paneo 1:1 estilo ventana de Windows.
+- **Visibilidad Inmediata del Mando iPad / Tablet (Switcher Móvil)**:
+  - Botón de acceso directo en la barra superior: `[ 🎮 Mando iPad ]` en alto contraste y siempre visible sin importar la resolución de la pantalla.
+  - Pestaña dedicada `🎮 Mando iPad / Switcher` en el modal de configuración de cámaras (`CameraConnectModal`) con código QR, enlace directo y guía paso a paso.
+  - Banner distintivo en la pestaña Móvil / Remota QR para diferenciar al instante el control switcher de la cámara remota.
+  - Botón directo en la barra lateral derecha para abrir el código QR y enlace del mando sin tener que navegar por menús.
+- **Estructura Limpia en Carpeta Raíz de Proyectos sin Duplicados ni Diálogos Web**:
+  - Desinfección completa de prefijos y timestamps en nombres de proyectos: todos los videos (Master, miniatura y formatos para redes sociales) se guardan en una única carpeta limpia: `D:\PROGRAMAS IA\PODCASTUDIO\proyectos\[NombreProyecto]\`.
+  - Supresión de descargas del navegador y diálogos de guardado de Windows: los archivos se escriben directamente a disco local y el botón "Abrir Carpeta" abre el Explorador de Windows exactamente en la carpeta del proyecto.
+- **Compilación Nativa `PodcastStudio.exe` v1.0.10.0**:
+  - Binario ejecutable rápido y portable en la raíz con icono oficial de alta definición (285 KB) intacto.
+
+---
+
+## 📦 Versión Anterior: v1.0.9 (Producción Oficial)
 - **Solución Definitiva de Reproducción de Video Master y Exportaciones (Fix Error `0xc00d36c4`)**:
   - Cierre ordenado y seguro de FFmpeg (`proc.stdin.end()`) que garantiza la escritura completa de la cabecera del contenedor, tablas de índices y atom `moov` con flag `+faststart`.
   - Descarga de archivos MP4 100% funcionales en resolución 1080p prístina sin trabas ni errores en Windows Media Player, reproductores móviles ni editores NLE.
