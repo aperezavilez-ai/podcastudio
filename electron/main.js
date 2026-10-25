@@ -636,50 +636,171 @@ ipcMain.on('record-chunk', (event, chunkBuffer) => {
 ipcMain.handle('stop-recording', async () => {
   return new Promise((resolve) => {
     if (ffmpegRecordProcess) {
-      try {
-        if (ffmpegRecordProcess.stdin && !ffmpegRecordProcess.stdin.destroyed) {
-          ffmpegRecordProcess.stdin.end();
+      const proc = ffmpegRecordProcess;
+      const recPath = currentRecordingPath;
+      let finished = false;
+
+      const finishAndGenerateThumb = () => {
+        if (finished) return;
+        finished = true;
+        ffmpegRecordProcess = null;
+
+        if (recPath && fs.existsSync(recPath)) {
+          const stats = fs.statSync(recPath);
+          console.log(`[FFmpeg Grabación] Master MP4 finalizado: ${recPath} (${stats.size} bytes)`);
+          const thumbPath = recPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
+          try {
+            const thumbProcess = spawn(ffmpegPath, [
+              '-y',
+              '-ss', '00:00:00.800',
+              '-i', recPath,
+              '-vframes', '1',
+              '-q:v', '2',
+              thumbPath
+            ]);
+            thumbProcess.on('close', () => {
+              resolve({ success: true, path: recPath, thumbnailPath: thumbPath });
+            });
+            thumbProcess.on('error', () => {
+              resolve({ success: true, path: recPath, thumbnailPath: thumbPath });
+            });
+            setTimeout(() => resolve({ success: true, path: recPath, thumbnailPath: thumbPath }), 1500);
+            return;
+          } catch (e) {
+            resolve({ success: true, path: recPath });
+            return;
+          }
         }
-        setTimeout(() => {
-          if (ffmpegRecordProcess) {
-            ffmpegRecordProcess.kill('SIGINT');
-            ffmpegRecordProcess = null;
-          }
+        resolve({ success: true, path: recPath });
+      };
 
-          // Generar miniatura JPG de alta resolución desde el video recién grabado con FFmpeg
-          if (currentRecordingPath && fs.existsSync(currentRecordingPath)) {
-            const thumbPath = currentRecordingPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
-            try {
-              const thumbProcess = spawn(ffmpegPath, [
-                '-y',
-                '-ss', '00:00:00.800',
-                '-i', currentRecordingPath,
-                '-vframes', '1',
-                '-q:v', '2',
-                thumbPath
-              ]);
-              thumbProcess.on('close', () => {
-                resolve({ success: true, path: currentRecordingPath, thumbnailPath: thumbPath });
-              });
-              thumbProcess.on('error', () => {
-                resolve({ success: true, path: currentRecordingPath });
-              });
-              setTimeout(() => resolve({ success: true, path: currentRecordingPath, thumbnailPath: thumbPath }), 1200);
-              return;
-            } catch (e) {
-              resolve({ success: true, path: currentRecordingPath });
-              return;
-            }
-          }
+      proc.on('close', (code) => {
+        console.log('[FFmpeg Grabación] Proceso cerrado limpiamente con código:', code);
+        finishAndGenerateThumb();
+      });
 
-          resolve({ success: true, path: currentRecordingPath });
-        }, 800);
-      } catch (e) {
-        resolve({ success: true, path: currentRecordingPath });
-      }
+      // Señalizar fin de stream a FFmpeg para que escriba las cabeceras completas y faststart
+      try {
+        if (proc.stdin && !proc.stdin.destroyed) {
+          proc.stdin.end();
+        }
+      } catch (e) {}
+
+      // Tiempo de gracia para permitir a FFmpeg escribir el moov atom
+      setTimeout(() => {
+        if (!finished) {
+          console.warn('[FFmpeg Grabación] Forzando cierre tras timeout de finalización');
+          try { proc.kill(); } catch (e) {}
+          finishAndGenerateThumb();
+        }
+      }, 4000);
     } else {
       resolve({ success: false });
     }
+  });
+});
+
+// COPIAR GRABACIÓN Y MINIATURA OFICIAL DIRECTAMENTE A LA CARPETA DE DESCARGAS DE WINDOWS
+ipcMain.handle('save-to-downloads', async (event, { sourcePath, filename }) => {
+  try {
+    if (!sourcePath || !fs.existsSync(sourcePath)) {
+      return { success: false, error: 'El archivo de video master no existe en disco' };
+    }
+    const downloadsFolder = app.getPath('downloads');
+    const finalFilename = filename ? (filename.endsWith('.mp4') ? filename : `${filename}.mp4`) : path.basename(sourcePath);
+    const destPath = path.join(downloadsFolder, finalFilename);
+    fs.copyFileSync(sourcePath, destPath);
+
+    // Copiar también la miniatura oficial JPG de alta resolución
+    const thumbSrc = sourcePath.replace(/\.mp4$/i, '_Thumbnail.jpg');
+    if (fs.existsSync(thumbSrc)) {
+      const thumbDest = destPath.replace(/\.mp4$/i, '_Miniatura.jpg');
+      try { fs.copyFileSync(thumbSrc, thumbDest); } catch (e) {}
+    }
+
+    return { success: true, path: destPath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// EXPORTACIÓN MULTI-FORMATO NATIVA CON FFMPEG (TIKTOK 9:16, INSTAGRAM 1:1, FACEBOOK 16:9) A 1080P REAL
+ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, projectName }) => {
+  return new Promise((resolve) => {
+    if (!sourcePath || !fs.existsSync(sourcePath)) {
+      return resolve({ success: false, error: 'Archivo de video original no encontrado' });
+    }
+
+    const cleanProjectName = projectName ? String(projectName).replace(/[/\\?%*:|"<>]/g, '_').trim() : 'Proyecto_General';
+    const projectDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos', cleanProjectName);
+    if (!fs.existsSync(projectDir)) {
+      try { fs.mkdirSync(projectDir, { recursive: true }); } catch (e) {}
+    }
+
+    let filter = '';
+    let suffix = '16x9';
+
+    if (formatKey === '9:16') {
+      suffix = 'TikTok_Reels_9x16';
+      filter = 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920';
+    } else if (formatKey === '1:1') {
+      suffix = 'Instagram_Feed_1x1';
+      filter = 'crop=ih:ih:(iw-ih)/2:0,scale=1080:1080';
+    } else if (formatKey === '4:5') {
+      suffix = 'Facebook_Feed_4x5';
+      filter = 'crop=ih*4/5:ih:(iw-ih*4/5)/2:0,scale=1080:1350';
+    } else {
+      suffix = 'Facebook_YouTube_16x9';
+      filter = 'scale=1920:1080';
+    }
+
+    const baseName = path.basename(sourcePath, '.mp4');
+    const outFilename = `${baseName}_${suffix}.mp4`;
+    const outPath = path.join(projectDir, outFilename);
+
+    const args = [
+      '-y',
+      '-i', sourcePath,
+      '-vf', filter,
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '18',
+      '-pix_fmt', 'yuv420p',
+      '-c:a', 'copy',
+      '-movflags', '+faststart',
+      outPath
+    ];
+
+    const convertProc = spawn(ffmpegPath, args);
+    convertProc.on('close', (code) => {
+      if (code === 0 && fs.existsSync(outPath)) {
+        // Copiar a la carpeta Downloads del usuario automáticamente
+        const downloadsFolder = app.getPath('downloads');
+        const dlPath = path.join(downloadsFolder, outFilename);
+        try { fs.copyFileSync(outPath, dlPath); } catch (e) {}
+
+        // Generar miniatura JPG para el formato exportado
+        const thumbPath = outPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
+        try {
+          const tProc = spawn(ffmpegPath, ['-y', '-ss', '00:00:00.800', '-i', outPath, '-vframes', '1', '-q:v', '2', thumbPath]);
+          tProc.on('close', () => {
+            const dlThumb = dlPath.replace(/\.mp4$/i, '_Miniatura.jpg');
+            try { fs.copyFileSync(thumbPath, dlThumb); } catch (e) {}
+            resolve({ success: true, path: outPath, downloadPath: dlPath });
+          });
+          setTimeout(() => resolve({ success: true, path: outPath, downloadPath: dlPath }), 1200);
+          return;
+        } catch (e) {}
+
+        resolve({ success: true, path: outPath, downloadPath: dlPath });
+      } else {
+        resolve({ success: false, error: 'Error en proceso de conversión FFmpeg' });
+      }
+    });
+
+    convertProc.on('error', (err) => {
+      resolve({ success: false, error: err.message });
+    });
   });
 });
 

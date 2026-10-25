@@ -154,6 +154,23 @@ export default function MultiFormatExportModal({
     setConvertingKey(preset.key)
     setProgress(0)
     try {
+      // 1. SI ESTAMOS EN LA APP DE ESCRITORIO (ELECTRON) Y EXISTE EL MASTER ORIGINAL
+      if (window.api?.exportSocialFormat && recording?.filePath) {
+        setProgress(30)
+        const res = await window.api.exportSocialFormat({
+          sourcePath: recording.filePath,
+          formatKey: preset.key,
+          projectName: recording.name || 'Proyecto_General',
+        })
+        setProgress(100)
+        if (res.success) {
+          // Descargar también la miniatura JPG oficial
+          downloadThumbnailForPreset(preset)
+          return
+        }
+      }
+
+      // 2. EN NAVEGADOR WEB O FALLBACK
       let outputBlob = null
       if (preset.baseFormat === '16:9' || preset.key === '16:9' || preset.key === '16:9_yt') {
         outputBlob = recording.blob
@@ -209,36 +226,46 @@ export default function MultiFormatExportModal({
       setProgress(0)
 
       try {
-        let outputBlob = null
-        if (preset.baseFormat === '16:9' || preset.key === '16:9' || preset.key === '16:9_yt') {
-          outputBlob = recording.blob
-          if (outputBlob && !outputBlob.type?.includes('mp4')) {
-            const durMs = Math.max(1000, Math.round((recording.duration || 1) * 1000))
-            try {
-              outputBlob = await fixWebmDuration(outputBlob, durMs)
-            } catch {}
-          }
-        } else {
-          outputBlob = await convertVideoToFormat(recording.blob, preset.key, {
-            mode: cropMode,
-            duration: recording.duration,
-            onProgress: (pct) => setProgress(pct),
+        if (window.api?.exportSocialFormat && recording?.filePath) {
+          setProgress(50)
+          await window.api.exportSocialFormat({
+            sourcePath: recording.filePath,
+            formatKey: preset.key,
+            projectName: recording.name || 'Proyecto_General',
           })
-        }
+          setProgress(100)
+        } else {
+          let outputBlob = null
+          if (preset.baseFormat === '16:9' || preset.key === '16:9' || preset.key === '16:9_yt') {
+            outputBlob = recording.blob
+            if (outputBlob && !outputBlob.type?.includes('mp4')) {
+              const durMs = Math.max(1000, Math.round((recording.duration || 1) * 1000))
+              try {
+                outputBlob = await fixWebmDuration(outputBlob, durMs)
+              } catch {}
+            }
+          } else {
+            outputBlob = await convertVideoToFormat(recording.blob, preset.key, {
+              mode: cropMode,
+              duration: recording.duration,
+              onProgress: (pct) => setProgress(pct),
+            })
+          }
 
-        if (cancelRef.current) break
+          if (cancelRef.current) break
 
-        if (outputBlob) {
-          const actualExt = (outputBlob.type && outputBlob.type.includes('mp4')) ? 'mp4' : 'webm'
-          const fn = buildFormatFilename(recording.name, preset.key, actualExt)
-          const u = URL.createObjectURL(outputBlob)
-          const a = document.createElement('a')
-          a.href = u
-          a.download = fn
-          a.click()
-          URL.revokeObjectURL(u)
+          if (outputBlob) {
+            const actualExt = (outputBlob.type && outputBlob.type.includes('mp4')) ? 'mp4' : 'webm'
+            const fn = buildFormatFilename(recording.name, preset.key, actualExt)
+            const u = URL.createObjectURL(outputBlob)
+            const a = document.createElement('a')
+            a.href = u
+            a.download = fn
+            a.click()
+            URL.revokeObjectURL(u)
+          }
         }
-        await new Promise(r => setTimeout(r, 900))
+        await new Promise(r => setTimeout(r, 600))
       } catch (err) {
         console.error(`Error procesando ${preset.label}:`, err)
       }

@@ -10,6 +10,8 @@
  * - Mezcla de audio en tiempo real (Micrófonos locales + Celulares WebRTC + Música + SFX)
  */
 
+import { applyVoiceEffectChain } from './voiceEffectsProcessor.js';
+
 let canvas = null;
 let ctx = null;
 let animFrameId = null;
@@ -18,6 +20,7 @@ let masterStream = null;
 let audioContext = null;
 let audioDestination = null;
 let connectedAudioSources = new Map();
+let activeVoiceFxNodes = new Map();
 let isRunning = false;
 
 // Estado reactivo del compositor
@@ -31,6 +34,8 @@ let currentState = {
   cintillosVisible: true,
   cintillo: null,
   topic: '',
+  voiceEffect: 'normal',
+  voiceTarget: 'all',
   getCamStream: null,
   localStream: null,
   remoteCams: [],
@@ -89,7 +94,7 @@ function updateImages() {
   }
 }
 
-function drawCameraCover(video, x, y, w, h) {
+function drawCameraCover(video, x, y, w, h, camId = null) {
   if (video && video.readyState >= 2) {
     const vw = video.videoWidth || 1280;
     const vh = video.videoHeight || 720;
@@ -103,6 +108,27 @@ function drawCameraCover(video, x, y, w, h) {
     } else {
       sh = vw / targetRatio;
       sy = (vh - sh) / 2;
+    }
+
+    // Aplicar Zoom dinámico y punto focal si existen para este camId
+    if (camId && currentState.cameraCrops) {
+      const crop = currentState.cameraCrops[camId - 1];
+      if (crop) {
+        const zoom = Math.max(1.0, crop.zoom || 1.0);
+        const focusX = crop.focusX != null ? crop.focusX : 0.5;
+        const focusY = crop.focusY != null ? crop.focusY : 0.42;
+
+        if (zoom > 1.01) {
+          const origSw = sw;
+          const origSh = sh;
+          sw = origSw / zoom;
+          sh = origSh / zoom;
+          const maxShiftX = origSw - sw;
+          const maxShiftY = origSh - sh;
+          sx += maxShiftX * focusX;
+          sy += maxShiftY * focusY;
+        }
+      }
     }
 
     ctx.drawImage(video, sx, sy, sw, sh, x, y, w, h);
@@ -221,7 +247,7 @@ function renderFrame() {
   if (mode === 'pip') {
     // Fondo: Cámara activa
     const mainVideo = videoElements.get(activeCam);
-    drawCameraCover(mainVideo, 0, 0, width, height);
+    drawCameraCover(mainVideo, 0, 0, width, height, activeCam);
 
     // PIP superior derecho
     const pipW = 460;
@@ -240,14 +266,14 @@ function renderFrame() {
     ctx.strokeRect(pipX, pipY, pipW, pipH);
     ctx.restore();
 
-    drawCameraCover(pipVideo, pipX, pipY, pipW, pipH);
+    drawCameraCover(pipVideo, pipX, pipY, pipW, pipH, pipCamId);
   } else if (mode === '2') {
     const gap = 12;
     const halfW = (width - gap) / 2;
     const v1 = videoElements.get(slots[0] || 1);
     const v2 = videoElements.get(slots[1] || 2);
-    drawCameraCover(v1, 0, 0, halfW, height);
-    drawCameraCover(v2, halfW + gap, 0, halfW, height);
+    drawCameraCover(v1, 0, 0, halfW, height, slots[0] || 1);
+    drawCameraCover(v2, halfW + gap, 0, halfW, height, slots[1] || 2);
   } else if (mode === '3') {
     const gap = 12;
     const halfW = (width - gap) / 2;
@@ -255,9 +281,9 @@ function renderFrame() {
     const v1 = videoElements.get(slots[0] || 1);
     const v2 = videoElements.get(slots[1] || 2);
     const v3 = videoElements.get(slots[2] || 3);
-    drawCameraCover(v1, 0, 0, halfW, height);
-    drawCameraCover(v2, halfW + gap, 0, halfW, halfH);
-    drawCameraCover(v3, halfW + gap, halfH + gap, halfW, halfH);
+    drawCameraCover(v1, 0, 0, halfW, height, slots[0] || 1);
+    drawCameraCover(v2, halfW + gap, 0, halfW, halfH, slots[1] || 2);
+    drawCameraCover(v3, halfW + gap, halfH + gap, halfW, halfH, slots[2] || 3);
   } else if (mode === '4') {
     const gap = 12;
     const halfW = (width - gap) / 2;
@@ -266,14 +292,14 @@ function renderFrame() {
     const v2 = videoElements.get(slots[1] || 2);
     const v3 = videoElements.get(slots[2] || 3);
     const v4 = videoElements.get(slots[3] || 4);
-    drawCameraCover(v1, 0, 0, halfW, halfH);
-    drawCameraCover(v2, halfW + gap, 0, halfW, halfH);
-    drawCameraCover(v3, 0, halfH + gap, halfW, halfH);
-    drawCameraCover(v4, halfW + gap, halfH + gap, halfW, halfH);
+    drawCameraCover(v1, 0, 0, halfW, halfH, slots[0] || 1);
+    drawCameraCover(v2, halfW + gap, 0, halfW, halfH, slots[1] || 2);
+    drawCameraCover(v3, 0, halfH + gap, halfW, halfH, slots[2] || 3);
+    drawCameraCover(v4, halfW + gap, halfH + gap, halfW, halfH, slots[3] || 4);
   } else {
     // Modo 1 (Cámara Principal a Pantalla Completa)
     const v = videoElements.get(activeCam);
-    drawCameraCover(v, 0, 0, width, height);
+    drawCameraCover(v, 0, 0, width, height, activeCam);
   }
 
   // 3. Logo Oficial del Proyecto (Superior Izquierda)
@@ -290,6 +316,59 @@ function renderFrame() {
   }
 
   animFrameId = requestAnimationFrame(renderFrame);
+}
+
+function disconnectAudioSource(key) {
+  if (connectedAudioSources.has(key)) {
+    const entry = connectedAudioSources.get(key);
+    try {
+      if (entry?.src) entry.src.disconnect();
+    } catch (e) {}
+    connectedAudioSources.delete(key);
+  }
+
+  if (activeVoiceFxNodes.has(key)) {
+    const nodes = activeVoiceFxNodes.get(key);
+    if (Array.isArray(nodes)) {
+      nodes.forEach((n) => {
+        try { n.disconnect(); } catch (e) {}
+        if (typeof n.stop === 'function') {
+          try { n.stop(); } catch (e) {}
+        }
+      });
+    }
+    activeVoiceFxNodes.delete(key);
+  }
+}
+
+function connectAudioSourceWithFx(key, stream, isMasterCam = false) {
+  disconnectAudioSource(key);
+
+  try {
+    const src = audioContext.createMediaStreamSource(stream);
+    const shouldApplyFx = currentState.voiceEffect && currentState.voiceEffect !== 'normal' &&
+      (currentState.voiceTarget === 'all' || (currentState.voiceTarget === 'master' && isMasterCam));
+
+    if (shouldApplyFx) {
+      const fxNodes = applyVoiceEffectChain(audioContext, src, audioDestination, currentState.voiceEffect);
+      activeVoiceFxNodes.set(key, fxNodes);
+    } else {
+      src.connect(audioDestination);
+    }
+    connectedAudioSources.set(key, { src, stream, isMasterCam });
+  } catch (e) {
+    console.warn('[masterBroadcastEngine] Error connecting audio track:', key, e);
+  }
+}
+
+function reapplyVoiceEffects() {
+  if (!audioContext || !audioDestination) return;
+  const currentEntries = Array.from(connectedAudioSources.entries());
+  currentEntries.forEach(([key, entry]) => {
+    if (entry && entry.stream) {
+      connectAudioSourceWithFx(key, entry.stream, entry.isMasterCam);
+    }
+  });
 }
 
 function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedMap = {}) {
@@ -315,17 +394,10 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
       const masterKey = 'master_cam_1_' + masterTrack.id;
       if (!isMasterMuted) {
         if (!connectedAudioSources.has(masterKey)) {
-          try {
-            const src = audioContext.createMediaStreamSource(masterAudioStream);
-            src.connect(audioDestination);
-            connectedAudioSources.set(masterKey, src);
-          } catch (e) {}
+          connectAudioSourceWithFx(masterKey, masterAudioStream, true);
         }
       } else {
-        if (connectedAudioSources.has(masterKey)) {
-          try { connectedAudioSources.get(masterKey).disconnect(); } catch (e) {}
-          connectedAudioSources.delete(masterKey);
-        }
+        disconnectAudioSource(masterKey);
       }
     }
 
@@ -343,17 +415,10 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
           const key = `cam_${camId}_${track.id}`;
           if (!isCamMuted) {
             if (!connectedAudioSources.has(key)) {
-              try {
-                const src = audioContext.createMediaStreamSource(stream);
-                src.connect(audioDestination);
-                connectedAudioSources.set(key, src);
-              } catch (e) {}
+              connectAudioSourceWithFx(key, stream, false);
             }
           } else {
-            if (connectedAudioSources.has(key)) {
-              try { connectedAudioSources.get(key).disconnect(); } catch (e) {}
-              connectedAudioSources.delete(key);
-            }
+            disconnectAudioSource(key);
           }
         }
       });
@@ -370,17 +435,10 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
           const key = `remote_${rc.id}_${track.id}`;
           if (!isMuted) {
             if (!connectedAudioSources.has(key)) {
-              try {
-                const src = audioContext.createMediaStreamSource(rc.stream);
-                src.connect(audioDestination);
-                connectedAudioSources.set(key, src);
-              } catch (e) {}
+              connectAudioSourceWithFx(key, rc.stream, false);
             }
           } else {
-            if (connectedAudioSources.has(key)) {
-              try { connectedAudioSources.get(key).disconnect(); } catch (e) {}
-              connectedAudioSources.delete(key);
-            }
+            disconnectAudioSource(key);
           }
         }
       });
@@ -506,8 +564,15 @@ export function startBroadcastEngine(initialState, onChunk) {
  * Actualiza en vivo cualquier parámetro del switcher sin detener la transmisión
  */
 export function updateBroadcastState(updates) {
+  const voiceUpdated = (updates.voiceEffect !== undefined && updates.voiceEffect !== currentState.voiceEffect) ||
+                       (updates.voiceTarget !== undefined && updates.voiceTarget !== currentState.voiceTarget);
+
   currentState = { ...currentState, ...updates };
   updateImages();
+
+  if (voiceUpdated) {
+    reapplyVoiceEffects();
+  }
 
   // Si cambiaron los streams o el estado de silencio de cámaras, sincronizar la mezcla de audio y videos
   if (updates.localStream || updates.remoteCams || updates.camStreamsMap || updates.camMuted || updates.camSlots || updates.getCamStream) {
@@ -564,6 +629,12 @@ export function stopBroadcastEngine() {
     v.srcObject = null;
   });
   videoElements.clear();
+
+  const keys = Array.from(connectedAudioSources.keys());
+  keys.forEach((k) => disconnectAudioSource(k));
+  connectedAudioSources.clear();
+  activeVoiceFxNodes.clear();
+
   chunkListeners.clear();
   cachedInitHeader = null;
 }

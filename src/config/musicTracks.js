@@ -130,7 +130,11 @@ export function mixkitSfxUrl(id) {
 export const SFX_CATEGORIES = {
   applause: 'Aplausos',
   ovation: 'Ovaciones',
-  laughter: 'Risas',
+  laughter: 'Carcajadas y Risas',
+  doors: 'Puertas y Entornos',
+  glass: 'Cristales y Choques',
+  phone: 'Teléfonos y Ring Tones',
+  comedy: 'Comedia y Bocinas',
   transition: 'Transiciones',
   impact: 'Impactos',
   intro: 'Intros',
@@ -139,6 +143,28 @@ export const SFX_CATEGORIES = {
 }
 
 const SFX_RAW = [
+  // Puertas y Entornos
+  { id: 'sfx-door-01', name: 'Puerta abriéndose chirriante', sub: 'Suspenso / Entrada dramática', category: 'doors', mixkitId: 2573 },
+  { id: 'sfx-door-02', name: 'Puerta abriéndose de golpe', sub: 'Llegada de invitado / Sorpresa', category: 'doors', mixkitId: 2574 },
+
+  // Cristales y Choques
+  { id: 'sfx-glass-01', name: 'Cristales quebrándose', sub: 'Impacto fuerte / Vidrio roto', category: 'glass', mixkitId: 2788 },
+  { id: 'sfx-glass-02', name: 'Cristal rompiéndose en pedazos', sub: 'Error garrafal / Chocadero', category: 'glass', mixkitId: 2789 },
+
+  // Carcajadas y Risas
+  { id: 'sfx-laugh-02', name: 'Personas carcajeándose', sub: 'Momento muy cómico / Carcajadas', category: 'laughter', mixkitId: 460 },
+  { id: 'sfx-laugh-01', name: 'Risa de público en estudio', sub: 'Chiste o momento cómico', category: 'laughter', mixkitId: 424 },
+  { id: 'sfx-laugh-03', name: 'Carcajadas con aplausos', sub: 'Show de stand-up / comedia', category: 'laughter', mixkitId: 512 },
+  { id: 'sfx-laugh-04', name: 'Risas de grupo en cabina', sub: 'Charla divertida entre amigos', category: 'laughter', mixkitId: 423 },
+
+  // Teléfonos y Ring Tones
+  { id: 'sfx-phone-01', name: 'Ring tone de llamada clásica', sub: 'Llamada telefónica entrante', category: 'phone', mixkitId: 1354 },
+  { id: 'sfx-phone-02', name: 'Ring tone de oficina / cabina', sub: 'Timbre de teléfono en vivo', category: 'phone', mixkitId: 1356 },
+
+  // Comedia y Bocinas
+  { id: 'sfx-com-01', name: 'Bocina de aire / Corneta', sub: 'Celebración / Fiesta / Desmadre', category: 'comedy', mixkitId: 740 },
+  { id: 'sfx-com-02', name: 'Grillos de silencio incómodo', sub: 'Chiste malo / Silencio total', category: 'comedy', mixkitId: 407 },
+
   // Aplausos reales
   { id: 'sfx-appl-01', name: 'Aplauso de estudio', sub: 'Público en vivo', category: 'applause', mixkitId: 528 },
   { id: 'sfx-appl-02', name: 'Ovación y palmas', sub: 'Entrada de invitado', category: 'applause', mixkitId: 529 },
@@ -151,12 +177,6 @@ const SFX_RAW = [
   { id: 'sfx-ovat-02', name: 'Vítores y celebración', sub: 'Celebración en cabina', category: 'ovation', mixkitId: 462 },
   { id: 'sfx-ovat-03', name: 'Silbidos y aplausos', sub: 'Reconocimiento especial', category: 'ovation', mixkitId: 610 },
   { id: 'sfx-ovat-04', name: 'Euforia total', sub: 'Público masivo', category: 'ovation', mixkitId: 363 },
-
-  // Risas naturales de estudio
-  { id: 'sfx-laugh-01', name: 'Risa de público', sub: 'Chiste o momento cómico', category: 'laughter', mixkitId: 424 },
-  { id: 'sfx-laugh-02', name: 'Gran carcajada', sub: 'Momento muy divertido', category: 'laughter', mixkitId: 460 },
-  { id: 'sfx-laugh-03', name: 'Risa con aplausos', sub: 'Show de stand-up / comedia', category: 'laughter', mixkitId: 512 },
-  { id: 'sfx-laugh-04', name: 'Risas de grupo', sub: 'Charla divertida', category: 'laughter', mixkitId: 423 },
 
   // Transiciones de cabina
   { id: 'sfx-trans-01', name: 'Whoosh broadcast', sub: 'Cambio de tema / cámara', category: 'transition', mixkitId: 2568 },

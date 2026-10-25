@@ -4,7 +4,36 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.0.8 (Producción Oficial - Release Estable)
+## 🚀 Versión Actual: v1.0.9 (Producción Oficial - Release Estable)
+- **Solución Definitiva de Reproducción de Video Master y Exportaciones (Fix Error `0xc00d36c4`)**:
+  - Cierre ordenado y seguro de FFmpeg (`proc.stdin.end()`) que garantiza la escritura completa de la cabecera del contenedor, tablas de índices y atom `moov` con flag `+faststart`.
+  - Descarga de archivos MP4 100% funcionales en resolución 1080p prístina sin trabas ni errores en Windows Media Player, reproductores móviles ni editores NLE.
+  - Guardado directo del video master junto a su foto miniatura (`_Miniatura.jpg`) en la carpeta `Descargas` y `proyectos\`.
+- **Monitor Master 100% Limpio de Indicadores**:
+  - Eliminados el badge `CAM 1` y los botones flotantes de micrófono/bocina de la pantalla grande del Master para evitar obstrucciones con logotipos y cintillos.
+  - Controles de micrófono y bocina mantenidos exclusivamente en los recuadros inferiores de cámaras.
+- **Zoom Dinámico Inteligente con Rueda del Mouse en Pantalla Master**:
+  - Control de zoom interactivo y progresivo mediante la rueda del ratón (scroll) directamente sobre la pantalla grande del Master (paso de 0.04x).
+  - Transición fluida y progresiva tipo smartphone con indicador HUD flotante y botón de reinicio en un clic.
+- **Biblioteca de Efectos de Sonido Expandida**:
+  - Nuevos efectos SFX integrados: Puertas abriéndose con chirrido, Cristales quebrándose, Personas carcajeándose / risas de público, Ring tones y llamadas telefónicas, Bocinas cómicas.
+- **Nuevo Panel de Modulación y Efectos de Voz (Web Audio DSP en Tiempo Real)**:
+  - Nueva sección desplegable en la barra lateral derecha para transformar la voz de los participantes en vivo:
+    - *Voz Natural*: Sonido original de estudio sin procesar.
+    - *Locutor Radio FM*: Compresión broadcast cálida + realce de presencia vocal.
+    - *Estadio / Auditorio*: Reverberación espacial expansiva de graderías.
+    - *Eco de Cabina*: Delay rítmico espaciado con retroalimentación.
+    - *Marciano / Alien Robot*: Modulador en anillo cibernético a 72 Hz.
+    - *Llamada Telefónica*: Filtro paso banda de 400Hz a 3.3kHz estilo celular antiguo.
+    - *Voz Grave / Monstruo*: Filtro paso bajo y realce de frecuencias sub-graves.
+    - *Ardilla / Agudo Cómico*: Realce hiperagudo estilo caricatura.
+  - Selector de objetivo: aplicación a "Todos los micrófonos" o "Solo Master (CAM 1)".
+- **Compilación Nativa `PodcastStudio.exe` v1.0.9.0**:
+  - Binario ejecutable rápido y portable en la raíz con icono oficial de alta definición (285 KB) intacto.
+
+---
+
+## 📦 Versión Anterior: v1.0.8 (Producción Oficial)
 - **Auto-Generación y Descarga de Miniaturas HD (.jpg)**:
   - Captura instantánea a 1080p directamente desde el canvas maestro (`captureMasterCanvasSnapshot()`) sin retraso ni dependencias de decodificación WebM.
   - Descarga automática de la miniatura oficial al descargar el archivo MP4 master o recortes para redes sociales.
@@ -18,8 +47,6 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 - **Consola Remota Responsive para iPad y Tablets**:
   - Interfaz webRTC adaptativa para control táctil desde Safari / iPad.
   - Asignación libre y continua para cámaras móviles invitadas.
-- **Compilación Nativa `PodcastStudio.exe` v1.0.8.0**:
-  - Ejecutable de alta velocidad con icono oficial preservado (285 KB).
 
 ---
 

@@ -32,6 +32,7 @@ import { MUSIC_TRACKS, MUSIC_SFX, MUSIC_GENRES, SFX_CATEGORIES } from './config/
 import { useBackgroundMusic } from './hooks/useBackgroundMusic.js';
 import { useSoundEffect } from './hooks/useSoundEffect.js';
 import { startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, getInitHeader, captureMasterCanvasSnapshot } from './utils/masterBroadcastEngine.js';
+import { VOICE_EFFECTS } from './utils/voiceEffectsProcessor.js';
 import { createStreamTransport } from './utils/streamTransport.js';
 import { supabase } from './lib/supabase.js';
 
@@ -156,6 +157,18 @@ function PodcastStudioApp() {
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
   const [activePanel, setActivePanel] = useState('');
   const togglePanel = (panel) => setActivePanel(activePanel === panel ? '' : panel);
+  const [voiceEffect, setVoiceEffect] = useState('normal');
+  const [voiceTarget, setVoiceTarget] = useState('all'); // 'all' | 'master'
+
+  const handleSelectVoiceEffect = (effectId) => {
+    setVoiceEffect(effectId);
+    updateBroadcastState({ voiceEffect: effectId, voiceTarget });
+  };
+
+  const handleSelectVoiceTarget = (target) => {
+    setVoiceTarget(target);
+    updateBroadcastState({ voiceEffect, voiceTarget: target });
+  };
 
   const [camSlots, setCamSlots] = useState([1, 2, 3, 4]); 
   const [activeCam, setActiveCam] = useState(1);
@@ -200,6 +213,11 @@ function PodcastStudioApp() {
   const [camMuted, setCamMuted] = useState({ 1: false, 2: false, 3: false, 4: false });
   // Control de retorno de audio local (bocina / parlante de monitoreo en estudio para cada cámara)
   const [camSpeakerMuted, setCamSpeakerMuted] = useState({ 1: true, 2: false, 3: false, 4: false });
+
+  // ZOOM DINÁMICO INTELIGENTE EN MONITOR MASTER
+  const [zoomHud, setZoomHud] = useState({ visible: false, zoom: 1.0 });
+  const zoomHudTimeoutRef = useRef(null);
+  const masterMonitorRef = useRef(null);
 
   // TELEPROMPTER
   const [teleprompterText, setTeleprompterText] = useState('Hoy hablamos de: El futuro del podcasting y la IA\n\nCon nosotros: Invitado Especial\n\nIntroduce el tema, desarrolla los puntos clave y cierra con una llamada a la acción.');
@@ -455,8 +473,62 @@ function PodcastStudioApp() {
       [camId]: !Boolean(prev[camId])
     }));
   };
+
+  // ZOOM DINÁMICO INTELIGENTE CON RUEDA DEL MOUSE (SCROLL) EN PANTALLA MASTER
+  useEffect(() => {
+    const el = masterMonitorRef.current;
+    if (!el) return;
+
+    const onWheelHandler = (e) => {
+      if (Math.abs(e.deltaY) < 1) return;
+      e.preventDefault();
+
+      const slotIdx = activeCam - 1;
+      const currentCrop = cameraCrops[slotIdx] || {};
+      const currentZoom = currentCrop.zoom ?? camSettings[activeCam]?.zoom ?? 1.0;
+
+      // Subir o bajar lento y gradual como en los teléfonos (0.04x por paso de scroll)
+      const deltaStep = e.deltaY < 0 ? 0.04 : -0.04;
+      let targetZoom = Math.round((currentZoom + deltaStep) * 100) / 100;
+      targetZoom = Math.max(1.0, Math.min(4.0, targetZoom));
+
+      if (Math.abs(targetZoom - currentZoom) > 0.001) {
+        // Enfoque inteligente: si se hace zoom, orientar hacia donde apunta el mouse suavemente
+        const rect = el.getBoundingClientRect();
+        const mouseRelX = Math.max(0.1, Math.min(0.9, (e.clientX - rect.left) / rect.width));
+        const mouseRelY = Math.max(0.1, Math.min(0.9, (e.clientY - rect.top) / rect.height));
+
+        const curFocusX = currentCrop.focusX ?? 0.5;
+        const curFocusY = currentCrop.focusY ?? 0.42;
+        const nextFocusX = targetZoom > 1.0 ? (curFocusX * 0.85 + mouseRelX * 0.15) : 0.5;
+        const nextFocusY = targetZoom > 1.0 ? (curFocusY * 0.85 + mouseRelY * 0.15) : 0.42;
+
+        const updatedProfile = {
+          ...currentCrop,
+          zoom: targetZoom,
+          focusX: Math.round(nextFocusX * 100) / 100,
+          focusY: Math.round(nextFocusY * 100) / 100,
+        };
+
+        handleSaveSlotProfile(slotIdx, updatedProfile);
+
+        // Mostrar HUD temporal del zoom tipo smartphone
+        setZoomHud({ visible: true, zoom: targetZoom });
+        if (zoomHudTimeoutRef.current) clearTimeout(zoomHudTimeoutRef.current);
+        zoomHudTimeoutRef.current = setTimeout(() => {
+          setZoomHud(prev => ({ ...prev, visible: false }));
+        }, 1300);
+      }
+    };
+
+    el.addEventListener('wheel', onWheelHandler, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheelHandler);
+      if (zoomHudTimeoutRef.current) clearTimeout(zoomHudTimeoutRef.current);
+    };
+  }, [activeCam, cameraCrops, camSettings]);
   
-  const getVideoStyle = (camId) => {
+  const getVideoStyle = (camId, isMaster = false) => {
     const s = camSettings[camId] || defaultCamSettings;
     const crop = cameraCrops[camId - 1] || {};
 
@@ -472,10 +544,11 @@ function PodcastStudioApp() {
       tint: crop.tint ?? 0,
     });
 
-    const isZoomed = zoom > 1.02 || Math.abs(focusX - 0.5) > 0.02 || Math.abs(focusY - 0.42) > 0.03;
+    const isZoomed = zoom > 1.01 || Math.abs(focusX - 0.5) > 0.02 || Math.abs(focusY - 0.42) > 0.03;
     return {
-      transform: isZoomed ? `scale(${zoom})` : 'none',
+      transform: isZoomed ? `scale(${zoom})` : 'scale(1)',
       transformOrigin: `${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}%`,
+      transition: isMaster ? 'transform 0.25s cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
       filter: filter !== 'none' ? filter : undefined,
     };
   }; 
@@ -626,6 +699,7 @@ function PodcastStudioApp() {
         activeCam,
         pipCam,
         camSlots,
+        cameraCrops,
         layoutMode,
         chromaKeyActive,
         virtualBg,
@@ -633,6 +707,8 @@ function PodcastStudioApp() {
         cintillosVisible,
         cintillo,
         topic,
+        voiceEffect,
+        voiceTarget,
         getCamStream,
         localStream,
         remoteCams,
@@ -640,7 +716,7 @@ function PodcastStudioApp() {
         camMuted,
       });
     }
-  }, [activeCam, pipCam, camSlots, layoutMode, chromaKeyActive, virtualBg, logoBase64, cintillosVisible, cintillo, topic, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
+  }, [activeCam, pipCam, camSlots, cameraCrops, layoutMode, chromaKeyActive, virtualBg, logoBase64, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
     const officialQr = 'https://www.podcastudio.mx/remote-cam?auto=true';
@@ -937,6 +1013,7 @@ function PodcastStudioApp() {
             startBroadcastEngine({
               activeCam,
               camSlots,
+              cameraCrops,
               layoutMode,
               chromaKeyActive,
               virtualBg,
@@ -961,6 +1038,7 @@ function PodcastStudioApp() {
           startBroadcastEngine({
             activeCam,
             camSlots,
+            cameraCrops,
             layoutMode,
             chromaKeyActive,
             virtualBg,
@@ -1054,6 +1132,7 @@ function PodcastStudioApp() {
       startBroadcastEngine({
         activeCam,
         camSlots,
+        cameraCrops,
         layoutMode,
         chromaKeyActive,
         virtualBg,
@@ -1463,14 +1542,14 @@ function PodcastStudioApp() {
     const getTileProps = (id) => ({
       camId: id,
       stream: getCamStream(id),
-      label: `CAM ${id}`,
+      label: null, // ELIMINADO de la pantalla master para no estorbar logos ni cintillos
       isLocal: id === 1,
       muted: Boolean(camSpeakerMuted[id]),
-      speakerMuted: Boolean(camSpeakerMuted[id]),
-      onToggleSpeaker: () => toggleSpeakerCam(id),
-      micMuted: Boolean(camMuted[id]),
-      onToggleMic: () => toggleMuteCam(id),
-      style: getVideoStyle(id),
+      speakerMuted: undefined,
+      onToggleSpeaker: null, // ELIMINADO de la pantalla master (los controles van en los recuadros inferiores)
+      micMuted: undefined,
+      onToggleMic: null, // ELIMINADO de la pantalla master (los controles van en los recuadros inferiores)
+      style: getVideoStyle(id, true),
       chromaKey: chromaKeyActive,
       bgImage: virtualBg
     });
@@ -1597,7 +1676,7 @@ function PodcastStudioApp() {
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center shadow-md shadow-orange-500/20 border border-orange-400/30 flex-shrink-0">
                 <Mic size={15} className="text-white" />
               </div>
-              <h1 className="text-base font-extrabold tracking-tight text-white">Podcast<span className="text-orange-500">Studio</span></h1>
+              <h1 className="text-base font-extrabold tracking-tight text-white">Podca<span className="text-orange-500">Studio</span></h1>
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 text-xs" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -1611,10 +1690,31 @@ function PodcastStudioApp() {
             <span className="text-orange-500 border border-orange-500 rounded px-2 py-0.5 font-bold text-[11px] sm:text-xs">1080p · 30fps</span>
 
             {/* ZOOM DINÁMICO FUERA DE LA PANTALLA */}
-            <div className="hidden md:flex items-center gap-1.5 bg-[#141417] px-2.5 py-1 rounded border border-[#2a2a32] text-xs">
-              <span className="text-orange-500 font-bold">ZOOM DINÁMICO</span>
-              <span className="px-1.5 py-0.2 rounded bg-orange-600 text-white font-bold text-[10px]">1.0x</span>
-            </div>
+            {(() => {
+              const currentActiveZoom = ((cameraCrops[activeCam - 1]?.zoom) || 1.0);
+              return (
+                <div 
+                  className="hidden md:flex items-center gap-1.5 bg-[#141417] px-2.5 py-1 rounded border border-[#2a2a32] text-xs select-none"
+                  title="Control de Zoom Dinámico Inteligente: Usa la rueda del mouse (Scroll) sobre la pantalla Master para acercar o alejar suavemente"
+                >
+                  <Search size={12} className="text-orange-500" />
+                  <span className="text-orange-500 font-bold">ZOOM DINÁMICO</span>
+                  <span className="px-1.5 py-0.2 rounded bg-orange-600 text-white font-bold text-[10px]">
+                    {currentActiveZoom.toFixed(1)}x
+                  </span>
+                  {currentActiveZoom > 1.01 && (
+                    <button
+                      type="button"
+                      onClick={() => handleSaveSlotProfile(activeCam - 1, { ...(cameraCrops[activeCam - 1] || {}), zoom: 1.0, focusX: 0.5, focusY: 0.42 })}
+                      className="text-[9px] text-gray-400 hover:text-white underline ml-0.5 cursor-pointer"
+                      title="Restablecer zoom a 1.0x"
+                    >
+                      1.0x
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* BOTÓN DE CONTROL REMOTO IPAD / TABLETS */}
             <button
@@ -1694,8 +1794,23 @@ function PodcastStudioApp() {
 
         {/* MONITOR PRINCIPAL / PGM */}
         <div className="flex-1 bg-black relative flex p-3 min-h-0">
-          <div className="w-full h-full relative rounded-lg overflow-hidden flex items-center justify-center bg-[#050505] border border-[#333]">
+          <div 
+            ref={masterMonitorRef}
+            className="w-full h-full relative rounded-lg overflow-hidden flex items-center justify-center bg-[#050505] border border-[#333]"
+            title="Pantalla Master: Usa la rueda del mouse (Scroll) para acercar o alejar el Zoom Dinámico suavemente"
+          >
             {renderMonitorLayout()}
+
+            {/* HUD INTELIGENTE DE ZOOM DINÁMICO (TIPO TELÉFONO) */}
+            {zoomHud.visible && (
+              <div className="absolute top-4 right-4 z-40 bg-black/85 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-orange-500/60 text-white shadow-2xl flex items-center gap-2 pointer-events-none transition-all animate-in fade-in zoom-in-95 duration-150">
+                <Search size={13} className="text-orange-400" />
+                <span className="text-xs font-black tracking-wide text-orange-400 font-mono">
+                  {zoomHud.zoom.toFixed(1)}x
+                </span>
+                <span className="text-[10px] text-gray-300 font-medium">Zoom Dinámico</span>
+              </div>
+            )}
             
             {countdown !== null && <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center"><span className="text-white text-9xl font-bold animate-ping">{countdown}</span></div>}
             
@@ -2269,7 +2384,112 @@ function PodcastStudioApp() {
                 )}
               </div>
 
-              {/* PANEL 3: TELEPROMPTER */}
+              {/* PANEL 3: MODULADOR & EFECTOS DE VOZ (DSP) */}
+              <div className="border border-[#222] rounded bg-[#161616] overflow-hidden">
+                <button onClick={() => togglePanel('voz')} className="w-full p-2.5 flex justify-between items-center text-xs hover:bg-[#2a2a2a] transition-colors">
+                  <span className="flex items-center gap-2 font-bold text-white"><AudioLines size={15} className="text-purple-400"/> Efectos de Voz & Modulador</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[9px] px-2 py-0.5 rounded font-bold ${voiceEffect !== 'normal' ? 'bg-purple-900 text-purple-200' : 'bg-[#222] text-gray-400'}`}>
+                      {VOICE_EFFECTS.find(v => v.id === voiceEffect)?.name || 'Natural'}
+                    </span>
+                    <ChevronDown size={14} className={`text-gray-400 transition-transform ${activePanel === 'voz' ? 'rotate-180' : ''}`} />
+                  </div>
+                </button>
+                {activePanel === 'voz' && (
+                  <div className="p-3 border-t border-[#222] bg-[#0f0f0f] space-y-3">
+                    {/* Destino de modulación */}
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-gray-400 block mb-1.5">
+                        Aplicar Efecto Vocal En:
+                      </label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleSelectVoiceTarget('all')}
+                          className={`py-1.5 px-2 text-[11px] rounded font-semibold border flex items-center justify-center gap-1.5 transition-all ${
+                            voiceTarget === 'all'
+                              ? 'bg-purple-950/80 border-purple-500 text-purple-200'
+                              : 'bg-[#181818] border-[#333] text-gray-400 hover:bg-[#222]'
+                          }`}
+                        >
+                          <Users size={12} /> Todos los micros
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectVoiceTarget('master')}
+                          className={`py-1.5 px-2 text-[11px] rounded font-semibold border flex items-center justify-center gap-1.5 transition-all ${
+                            voiceTarget === 'master'
+                              ? 'bg-purple-950/80 border-purple-500 text-purple-200'
+                              : 'bg-[#181818] border-[#333] text-gray-400 hover:bg-[#222]'
+                          }`}
+                        >
+                          <Mic size={12} /> Solo Master (CAM 1)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Selector de efectos vocales */}
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-gray-400 block mb-1.5">
+                        Efectos Disponibles (DSP Tiempo Real):
+                      </label>
+                      <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                        {VOICE_EFFECTS.map((fx) => {
+                          const isSelected = voiceEffect === fx.id;
+                          return (
+                            <button
+                              key={fx.id}
+                              type="button"
+                              onClick={() => handleSelectVoiceEffect(fx.id)}
+                              className={`w-full text-left p-2 rounded-lg border transition-all flex items-start gap-2.5 ${
+                                isSelected
+                                  ? 'bg-gradient-to-r from-purple-950/70 to-[#1e1333] border-purple-500 shadow-sm shadow-purple-950'
+                                  : 'bg-[#181818] border-[#2c2c2c] hover:border-[#444] hover:bg-[#202020]'
+                              }`}
+                            >
+                              <div
+                                className="w-7 h-7 rounded flex items-center justify-center shrink-0 mt-0.5"
+                                style={{ backgroundColor: `${fx.color}22`, border: `1px solid ${fx.color}55` }}
+                              >
+                                {fx.id === 'normal' && <Mic size={14} style={{ color: fx.color }} />}
+                                {fx.id === 'radio' && <Radio size={14} style={{ color: fx.color }} />}
+                                {fx.id === 'stadium' && <Tv size={14} style={{ color: fx.color }} />}
+                                {fx.id === 'echo' && <AudioLines size={14} style={{ color: fx.color }} />}
+                                {fx.id === 'martian' && <Sparkles size={14} style={{ color: fx.color }} />}
+                                {fx.id === 'telephone' && <Smartphone size={14} style={{ color: fx.color }} />}
+                                {fx.id === 'monster' && <Sliders size={14} style={{ color: fx.color }} />}
+                                {fx.id === 'chipmunk' && <Music size={14} style={{ color: fx.color }} />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between">
+                                  <span className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-200'}`}>
+                                    {fx.name}
+                                  </span>
+                                  {isSelected && (
+                                    <span className="text-[9px] px-1.5 py-0.2 bg-purple-600 text-white rounded font-bold uppercase tracking-wider">
+                                      ACTIVO
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-gray-400 truncate mt-0.5">
+                                  {fx.desc}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="p-2 rounded bg-purple-950/20 border border-purple-900/40 text-[10px] text-purple-300 flex items-center gap-2">
+                      <AudioLines size={14} className="shrink-0 text-purple-400" />
+                      <span>Modulación DSP activa en tiempo real para transmisión en vivo y grabación Master.</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* PANEL 4: TELEPROMPTER */}
               <div className="border border-[#222] rounded bg-[#161616] overflow-hidden">
                 <button onClick={() => togglePanel('teleprompter')} className="w-full p-2.5 flex justify-between items-center text-xs hover:bg-[#2a2a2a] transition-colors">
                   <span className="flex items-center gap-2 font-bold text-white"><BookOpen size={15} className="text-blue-400"/> Teleprompter</span>
@@ -2978,7 +3198,26 @@ function PodcastStudioApp() {
         open={showExportModal}
         onClose={() => setShowExportModal(false)}
         recording={recordedVideoData}
-        onDownloadMp4={(rec) => {
+        onDownloadMp4={async (rec) => {
+          if (window.api?.saveToDownloads && rec?.filePath) {
+            await window.api.saveToDownloads({
+              sourcePath: rec.filePath,
+              filename: `${rec.name || 'PodcaStudio_Master'}.mp4`,
+            });
+            if (rec?.thumbnailDataUrl) {
+              setTimeout(() => {
+                const aThumb = document.createElement('a');
+                aThumb.href = rec.thumbnailDataUrl;
+                aThumb.download = `${rec.name || 'PodcaStudio_Master'}_Miniatura.jpg`;
+                aThumb.click();
+              }, 300);
+            }
+            if (window.api?.openRecordingsFolder) {
+              window.api.openRecordingsFolder(topic || 'Proyecto_General');
+            }
+            return;
+          }
+
           if (rec?.blob) {
             const url = URL.createObjectURL(rec.blob);
             const a = document.createElement('a');
