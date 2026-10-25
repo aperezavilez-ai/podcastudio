@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, Component } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback, Component } from 'react';
 import { 
   Video, Mic, MicOff, Sparkles, Settings, Play, Square, QrCode, Share2, Camera, 
   Sliders, Volume2, Users, LayoutGrid, Plus, Headphones, Wifi, Search, 
