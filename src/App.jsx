@@ -6,7 +6,7 @@ import {
   CheckCircle, Download, UploadCloud, Image as ImageIcon, FileVideo, AudioLines, Monitor,
   BookOpen, Type, Layers, Music, ChevronRight, ChevronLeft, PanelRight, ChevronDown,
   PlayCircle, PauseCircle, Upload, Facebook, Youtube, Instagram, VolumeX, Sparkle, RefreshCw,
-  Radio, Tv, Trash2, Loader2
+  Radio, Tv, Trash2, Loader2, Pencil, HelpCircle, RotateCcw, Zap, FlipHorizontal, Tablet
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import mammoth from 'mammoth';
@@ -19,6 +19,8 @@ import CintilloEditorModal from './components/CintilloEditorModal.jsx';
 import CameraConnectModal from './components/CameraConnectModal.jsx';
 import CameraCalibratorModal from './components/CameraCalibratorModal.jsx';
 import MultiFormatExportModal from './components/MultiFormatExportModal.jsx';
+import AudioMixerDesk from './components/AudioMixerDesk.jsx';
+import { BROADCAST_LAYOUTS } from './config/cameraSlots.js';
 import { useCameraAudioLevels } from './hooks/useCameraAudioLevels.js';
 import { buildCanvasFilter } from './utils/videoLook.js';
 import { CINTILLO_STYLES, getCintilloStyle } from './config/cintilloStyles.js';
@@ -31,10 +33,37 @@ import MusicBank from './components/MusicBank.jsx';
 import { MUSIC_TRACKS, MUSIC_SFX, MUSIC_GENRES, SFX_CATEGORIES } from './config/musicTracks.js';
 import { useBackgroundMusic } from './hooks/useBackgroundMusic.js';
 import { useSoundEffect } from './hooks/useSoundEffect.js';
-import { startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, getInitHeader, captureMasterCanvasSnapshot } from './utils/masterBroadcastEngine.js';
+import { 
+  startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, 
+  getInitHeader, captureMasterCanvasSnapshot, getMasterCanvas,
+  setVoiceMonitor, syncStudioAudio
+} from './utils/masterBroadcastEngine.js';
 import { VOICE_EFFECTS } from './utils/voiceEffectsProcessor.js';
 import { createStreamTransport } from './utils/streamTransport.js';
 import { supabase } from './lib/supabase.js';
+
+// Componentes y Configuración de Fase P1 (Workspaces y Telemetría)
+import { WORKSPACES, getWorkspaceById } from './config/workspaces.js';
+import WorkspaceSelector from './components/WorkspaceSelector.jsx';
+import StreamingTelemetryPill from './components/StreamingTelemetryPill.jsx';
+import { useNumpadSfx } from './hooks/useNumpadSfx.js';
+
+// Componentes y Configuración de Fase P2.4 / P3.1 (Hardware Tally Lights & Live Highlights)
+import TallySettingsModal from './components/TallySettingsModal.jsx';
+import { useLiveHighlights } from './hooks/useLiveHighlights.js';
+
+// Componentes y Configuración de Fase P3.2 (Teleprompter Broadcast & Soundboard Pad)
+import BroadcastTeleprompter from './components/BroadcastTeleprompter.jsx';
+import SoundboardQuickPad from './components/SoundboardQuickPad.jsx';
+
+// Componentes y Configuración de Fase P3.3 (Sala Multi-Invitados & Auto-Cintillo por Voz)
+import MultiGuestRoomModal from './components/MultiGuestRoomModal.jsx';
+import { useAutoSpeakerCintillo } from './hooks/useAutoSpeakerCintillo.js';
+
+// Componentes y Configuración de Fase P4.3 & P4.4 (Instant Replay & Salida LAN Program / OBS Feed)
+import { useInstantReplay } from './hooks/useInstantReplay.js';
+import InstantReplayControl from './components/InstantReplayControl.jsx';
+import LanProgramOutputModal from './components/LanProgramOutputModal.jsx';
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -159,6 +188,15 @@ function PodcastStudioApp() {
   const togglePanel = (panel) => setActivePanel(activePanel === panel ? '' : panel);
   const [voiceEffect, setVoiceEffect] = useState('normal');
   const [voiceTarget, setVoiceTarget] = useState('all'); // 'all' | 'master'
+  const [voiceMonitorActive, setVoiceMonitorActive] = useState(false);
+
+  const toggleVoiceMonitor = () => {
+    setVoiceMonitorActive(prev => {
+      const next = !prev;
+      setVoiceMonitor(next);
+      return next;
+    });
+  };
 
   const handleSelectVoiceEffect = (effectId) => {
     setVoiceEffect(effectId);
@@ -174,6 +212,32 @@ function PodcastStudioApp() {
   const [activeCam, setActiveCam] = useState(1);
   const [layoutMode, setLayoutMode] = useState('1'); 
   const [pipCam, setPipCam] = useState(2); 
+
+  // CONSOLA DE AUDIO BROADCAST PROFESIONAL (P0.4)
+  const [showAudioMixerModal, setShowAudioMixerModal] = useState(false);
+
+  // MODO DUAL PREVIEW (PVW) / PROGRAM (PGM) BROADCAST SWITCHER (P0.3)
+  const [dualMonitorMode, setDualMonitorMode] = useState(false);
+  const [pvwCam, setPvwCam] = useState(2);
+  const [transitionDuration, setTransitionDuration] = useState(500); // 500ms
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [tBarPosition, setTBarPosition] = useState(0); // 0 a 1
+
+  // HARDWARE & LAN TALLY LIGHTS (P2.4)
+  const [showTallyModal, setShowTallyModal] = useState(false);
+
+  // TELEPROMPTER BROADCAST & SOUNDBOARD EN CABINA (P3.2)
+  const [showFloatingPrompter, setShowFloatingPrompter] = useState(false);
+  const [showSoundboardPad, setShowSoundboardPad] = useState(false);
+
+  // SALA MULTI-INVITADOS & AUTO-CINTILLO (P3.3)
+  const [showMultiGuestModal, setShowMultiGuestModal] = useState(false);
+  const [autoSpeakerCintilloEnabled, setAutoSpeakerCintilloEnabled] = useState(false);
+
+  // GRABACIÓN ISO MULTICANAL (PISTAS INDEPENDIENTES POR CÁMARA) (P4.1)
+  const [isoRecordingEnabled, setIsoRecordingEnabled] = useState(true);
+  const isoRecordersRef = useRef(new Map()); // slotNum -> MediaRecorder
+
   const [editingCamId, setEditingCamId] = useState(1);
   const [camSettings, setCamSettings] = useState({
     1: { ...defaultCamSettings }, 2: { ...defaultCamSettings }, 3: { ...defaultCamSettings }, 4: { ...defaultCamSettings }
@@ -195,7 +259,23 @@ function PodcastStudioApp() {
 
   const [showRemoteControlModal, setShowRemoteControlModal] = useState(false);
   const [remoteControlQrImage, setRemoteControlQrImage] = useState('');
-  const remoteControlUrl = 'https://www.podcastudio.mx/control?room=master_studio';
+  const [remoteControlUrl, setRemoteControlUrl] = useState('https://www.podcastudio.mx/control?room=master_studio');
+
+  useEffect(() => {
+    if (window.api?.getLocalControlUrl) {
+      window.api.getLocalControlUrl().then(url => {
+        if (url) setRemoteControlUrl(url);
+      }).catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    if (remoteControlUrl) {
+      QRCode.toDataURL(remoteControlUrl, { width: 250, margin: 2 })
+        .then(img => setRemoteControlQrImage(img))
+        .catch(() => {});
+    }
+  }, [remoteControlUrl]);
 
   const assignedSlotsRef = useRef({});
   const controlChannelRef = useRef(null);
@@ -224,14 +304,20 @@ function PodcastStudioApp() {
   const dragStartRef = useRef(null);
   const masterMonitorRef = useRef(null);
 
-  // TELEPROMPTER
+  // TELEPROMPTER BROADCAST PROFESIONAL (ESTRUCTURA HUD COMPLETA EN PANEL DERECHO)
   const [teleprompterText, setTeleprompterText] = useState('Hoy hablamos de: El futuro del podcasting y la IA\n\nCon nosotros: Invitado Especial\n\nIntroduce el tema, desarrolla los puntos clave y cierra con una llamada a la acción.');
   const [isTeleprompterPlaying, setIsTeleprompterPlaying] = useState(false);
   const [teleprompterHideInRec, setTeleprompterHideInRec] = useState(true);
-  const [teleprompterSpeed, setTeleprompterSpeed] = useState(2);
-  const [teleprompterFontSize, setTeleprompterFontSize] = useState(40);
+  const [teleprompterSpeed, setTeleprompterSpeed] = useState(2.0);
+  const [teleprompterFontSize, setTeleprompterFontSize] = useState(36);
+  const [prompterEditMode, setPrompterEditMode] = useState(false);
+  const [prompterMirrorH, setPrompterMirrorH] = useState(false);
+  const [prompterEyeline, setPrompterEyeline] = useState(true);
+  const [prompterCopiedLink, setPrompterCopiedLink] = useState(false);
   const teleprompterTextRef = useRef(null);
   const teleprompterYRef = useRef(0);
+  const rightPrompterScrollRef = useRef(null);
+  const rightPrompterScrollPos = useRef(0);
 
   // CONFIGURACIÓN DE STREAMING Y MULTI-STREAM
   const [streamConfigs, setStreamConfigs] = useState(() => {
@@ -260,8 +346,25 @@ function PodcastStudioApp() {
   const isRecordingRef = useRef(false);
 
   // SISTEMA DE AUDIO & EFECTOS (Importado de PODCASTUDIO)
-  const music = useBackgroundMusic(MUSIC_TRACKS, 25, { micLevel });
+  const [customTracks, setCustomTracks] = useState([]);
+  const [customSfx, setCustomSfx] = useState([]);
+
+  const combinedTracks = useMemo(() => [...customTracks, ...MUSIC_TRACKS], [customTracks]);
+  const combinedSfx = useMemo(() => [...customSfx, ...MUSIC_SFX], [customSfx]);
+
+  const music = useBackgroundMusic(combinedTracks, 25, { micLevel });
   const { playSfx, stopSfx, playingSfxId, sfxError } = useSoundEffect();
+
+  const handleAddCustomTrack = (track) => {
+    setCustomTracks(prev => [track, ...prev]);
+    setTimeout(() => {
+      music.selectTrackById(track.id, true);
+    }, 50);
+  };
+
+  const handleAddCustomSfx = (sfxItem) => {
+    setCustomSfx(prev => [sfxItem, ...prev]);
+  };
 
   // SISTEMA DE CINTILLOS Y GRÁFICOS BROADCAST (Importado de PODCASTUDIO)
   const [cintillosVisible, setCintillosVisible] = useState(true);
@@ -410,8 +513,204 @@ function PodcastStudioApp() {
   const updateSetting = (key, value) => { setCamSettings(prev => ({ ...prev, [editingCamId]: { ...prev[editingCamId], [key]: value } })); };
   const resetSettings = () => { setCamSettings(prev => ({ ...prev, [editingCamId]: { ...defaultCamSettings } })); };
 
-  const addCam = () => { const nextId = Math.max(...camSlots, 0) + 1; setCamSlots([...camSlots, nextId]); setCamSettings({ ...camSettings, [nextId]: { ...defaultCamSettings } }); };
-  const removeCam = (id) => { if (id === 1) return; setCamSlots(camSlots.filter(c => c !== id)); if (activeCam === id) setActiveCam(1); };
+  const addCam = () => { 
+    if (camSlots.length >= 12) return;
+    const nextCount = camSlots.length + 1;
+    const newSlots = Array.from({ length: nextCount }, (_, i) => i + 1);
+    setCamSlots(newSlots); 
+    setCamSettings(prev => ({ ...prev, [nextCount]: { ...defaultCamSettings } })); 
+    updateBroadcastState({ camSlots: newSlots });
+  };
+
+  const removeCam = (id) => { 
+    if (id === 1 || camSlots.length <= 1) return;
+    const removeIdx = id - 1;
+
+    // 1. Detener pistas del stream de la ranura eliminada
+    if (slotStreams[removeIdx]) {
+      try { slotStreams[removeIdx].getTracks().forEach(t => t.stop()); } catch (e) {}
+    }
+
+    // 2. Re-indexar streams consecutivos desplazando slots posteriores
+    setSlotStreams(prev => {
+      const next = {};
+      let targetIdx = 0;
+      for (let i = 0; i < camSlots.length; i++) {
+        if (i === removeIdx) continue;
+        if (prev[i]) next[targetIdx] = prev[i];
+        targetIdx++;
+      }
+      return next;
+    });
+
+    // 3. Re-indexar configuración de cámaras consecutivas
+    setCamSettings(prev => {
+      const next = {};
+      let targetId = 1;
+      for (let i = 1; i <= camSlots.length; i++) {
+        if (i === id) continue;
+        next[targetId] = prev[i] || { ...defaultCamSettings };
+        targetId++;
+      }
+      return next;
+    });
+
+    // 4. Re-indexar encuadres / crops de cámaras
+    setCameraCrops(prev => {
+      const next = {};
+      let targetIdx = 0;
+      for (let i = 0; i < camSlots.length; i++) {
+        if (i === removeIdx) continue;
+        if (prev[i]) next[targetIdx] = prev[i];
+        targetIdx++;
+      }
+      return next;
+    });
+
+    // 5. Re-indexar metadatos y etiquetas
+    setCameraMeta(prev => {
+      const next = {};
+      let targetIdx = 0;
+      for (let i = 0; i < camSlots.length; i++) {
+        if (i === removeIdx) continue;
+        if (prev[i]) next[targetIdx] = prev[i];
+        targetIdx++;
+      }
+      return next;
+    });
+
+    // 6. Re-indexar estados de silencio (mute)
+    setCamMuted(prev => {
+      const next = {};
+      let targetId = 1;
+      for (let i = 1; i <= camSlots.length; i++) {
+        if (i === id) continue;
+        next[targetId] = prev[i];
+        targetId++;
+      }
+      return next;
+    });
+    setCamSpeakerMuted(prev => {
+      const next = {};
+      let targetId = 1;
+      for (let i = 1; i <= camSlots.length; i++) {
+        if (i === id) continue;
+        next[targetId] = prev[i];
+        targetId++;
+      }
+      return next;
+    });
+
+    // 7. Re-numerar ranuras consecutivamente 1..N sin huecos
+    const newCount = camSlots.length - 1;
+    const newSlots = Array.from({ length: newCount }, (_, i) => i + 1);
+
+    let nextActiveCam = activeCam;
+    if (activeCam === id) {
+      nextActiveCam = 1;
+    } else if (activeCam > id) {
+      nextActiveCam = activeCam - 1;
+    }
+    setActiveCam(nextActiveCam);
+
+    let nextPvwCam = pvwCam;
+    if (pvwCam === id) {
+      nextPvwCam = nextActiveCam === 1 ? (newSlots.length > 1 ? 2 : 1) : 1;
+    } else if (pvwCam > id) {
+      nextPvwCam = pvwCam - 1;
+    }
+    setPvwCam(nextPvwCam);
+
+    setCamSlots(newSlots);
+    updateBroadcastState({
+      camSlots: newSlots,
+      activeCam: nextActiveCam,
+      pvwCam: nextPvwCam
+    });
+  };
+
+  // Transición instantánea CUT (conmuta PVW y PGM tanto en UI como en Master Canvas)
+  const handleCutTransition = useCallback(() => {
+    const fromPgm = activeCam;
+    const toPgm = pvwCam;
+    setActiveCam(toPgm);
+    setPvwCam(fromPgm);
+    setTBarPosition(0);
+    updateBroadcastState({
+      activeCam: toPgm,
+      pvwCam: fromPgm,
+      transitionProgress: 0,
+      transitionFromCam: null,
+      transitionToCam: null,
+    });
+  }, [activeCam, pvwCam]);
+
+  // Transición suave AUTO (Disolvencia / Mix real en Master Canvas y grabación)
+  const handleAutoTransition = useCallback(() => {
+    if (isTransitioning) return;
+    setIsTransitioning(true);
+    const start = performance.now();
+    const duration = transitionDuration;
+    const fromPgm = activeCam;
+    const toPgm = pvwCam;
+
+    const step = (now) => {
+      const elapsed = now - start;
+      const progress = Math.min(1.0, elapsed / duration);
+      setTBarPosition(progress);
+
+      // Suministrar el progreso exacto al compositor broadcast para mezcla alfa continua
+      updateBroadcastState({
+        transitionProgress: progress,
+        transitionFromCam: fromPgm,
+        transitionToCam: toPgm,
+      });
+
+      if (progress < 1.0) {
+        requestAnimationFrame(step);
+      } else {
+        setActiveCam(toPgm);
+        setPvwCam(fromPgm);
+        setTBarPosition(0);
+        updateBroadcastState({
+          activeCam: toPgm,
+          pvwCam: fromPgm,
+          transitionProgress: 0,
+          transitionFromCam: null,
+          transitionToCam: null,
+        });
+        setIsTransitioning(false);
+      }
+    };
+    requestAnimationFrame(step);
+  }, [isTransitioning, transitionDuration, activeCam, pvwCam]);
+
+  // Control manual palanca T-Bar con mezcla proporcional real en Master Canvas
+  const handleTBarChange = useCallback((val) => {
+    const clamped = Math.max(0, Math.min(1.0, val));
+    setTBarPosition(clamped);
+
+    if (clamped >= 0.98) {
+      const fromPgm = activeCam;
+      const toPgm = pvwCam;
+      setActiveCam(toPgm);
+      setPvwCam(fromPgm);
+      setTBarPosition(0);
+      updateBroadcastState({
+        activeCam: toPgm,
+        pvwCam: fromPgm,
+        transitionProgress: 0,
+        transitionFromCam: null,
+        transitionToCam: null,
+      });
+    } else {
+      updateBroadcastState({
+        transitionProgress: clamped,
+        transitionFromCam: activeCam,
+        transitionToCam: pvwCam,
+      });
+    }
+  }, [activeCam, pvwCam]);
   
   const getCamStream = (id) => { 
     const slotIdx = id - 1;
@@ -431,6 +730,130 @@ function PodcastStudioApp() {
 
   // Hook de niveles de percepción de micrófono y estado de silencio por cámara
   const camAudioLevels = useCameraAudioLevels(camStreamsMap, camMuted);
+
+  // Hook de reconocimiento automático de orador y activación de cintillos (Fase P3.3)
+  const {
+    autoCintilloActive,
+    activeSpeakerSlot,
+    isSpeakerHolding,
+  } = useAutoSpeakerCintillo({
+    enabled: autoSpeakerCintilloEnabled,
+    cameraLevels: camAudioLevels,
+    cameraMeta,
+    hostName,
+    hostRole,
+    guestName,
+    guestRole,
+    cintillosVisible,
+    showManual,
+    showCustom,
+    hide: hideCintillo,
+    sensitivityThreshold: 18,
+    holdSeconds: 4.5,
+  });
+
+  // GESTIÓN DE ESPACIOS DE TRABAJO (WORKSPACES) (Fase P1.1)
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState('podcast');
+
+  const handleSelectWorkspace = useCallback((ws) => {
+    setCurrentWorkspaceId(ws.id);
+    if (ws.defaultLayout) setLayoutMode(ws.defaultLayout);
+    if (ws.camSlotCount) {
+      const slots = Array.from({ length: ws.camSlotCount }, (_, i) => i + 1);
+      setCamSlots(slots);
+    }
+    if (typeof ws.dualMonitorDefault === 'boolean') {
+      setDualMonitorMode(ws.dualMonitorDefault);
+    }
+    if (ws.activePanelDefault !== undefined) {
+      setActivePanel(ws.activePanelDefault);
+    }
+    if (typeof ws.cintillosVisibleDefault === 'boolean') {
+      setCintillosVisible(ws.cintillosVisibleDefault);
+    }
+    if (ws.pipCamDefault) setPipCam(ws.pipCamDefault);
+    if (ws.activeCamDefault) setActiveCam(ws.activeCamDefault);
+
+    updateBroadcastState({
+      layoutMode: ws.defaultLayout || layoutMode,
+      cintillosVisible: ws.cintillosVisibleDefault ?? cintillosVisible,
+      camSlots: Array.from({ length: ws.camSlotCount || 4 }, (_, i) => i + 1)
+    });
+  }, [layoutMode, cintillosVisible]);
+
+  // GESTIÓN DE HIGHLIGHTS Y CLIPS VIRALES EN VIVO (P3.1)
+  const {
+    highlights,
+    addHighlight,
+    removeHighlight,
+    clearHighlights,
+    count: highlightCount
+  } = useLiveHighlights({
+    isRecording,
+    recordingDuration: recordingTime,
+    projectName: topic || 'Proyecto_General'
+  });
+
+  // CARTUCHERA DE EFECTOS POR TECLADO NUMÉRICO NUMPAD (Fase P2.3)
+  useNumpadSfx({
+    onPlaySfx: (id) => {
+      playSfx(id);
+      if (isRecording && (id === 'applause' || id === 'cheering')) {
+        addHighlight('Aplausos / Ovación [SFX]', 'sfx_applause');
+      }
+    },
+    onStopSfx: () => stopSfx(),
+    enabled: true
+  });
+
+  // VISUALIZADOR DE ESPECTRO EN MODO RADIO VIRTUAL (Fase P2.3)
+  useEffect(() => {
+    updateBroadcastState({
+      showAudioVisualizer: currentWorkspaceId === 'radio'
+    });
+  }, [currentWorkspaceId]);
+
+  // REPETICIÓN INSTANTÁNEA EN VIVO CON BÚFER CIRCULAR (Fase P4.3)
+  const instantReplay = useInstantReplay();
+  const [showInstantReplayControl, setShowInstantReplayControl] = useState(false);
+
+  // SALIDA LAN PROGRAM & VIRTUAL FEED OBS / VMIX (Fase P4.4)
+  const [showLanProgramModal, setShowLanProgramModal] = useState(false);
+  const [lanProgramUrl, setLanProgramUrl] = useState('');
+
+  useEffect(() => {
+    if (window.api?.getProgramFeedUrl) {
+      window.api.getProgramFeedUrl().then(url => {
+        if (url) setLanProgramUrl(url);
+      }).catch(() => {});
+    }
+  }, []);
+
+  // Emisión continua de fotogramas PGM al servidor HTTP/WS para clientes OBS/vMix e iPad en LAN (P4.4)
+  useEffect(() => {
+    let timer = null;
+    let isBroadcasting = true;
+
+    const streamLoop = () => {
+      if (!isBroadcasting) return;
+      if (window.api?.sendProgramFeedFrame) {
+        const c = getMasterCanvas();
+        if (c && c.width > 0 && c.height > 0) {
+          try {
+            const dataUrl = c.toDataURL('image/jpeg', 0.82);
+            window.api.sendProgramFeedFrame(dataUrl);
+          } catch(e) {}
+        }
+      }
+      timer = setTimeout(streamLoop, 60);
+    };
+
+    streamLoop();
+    return () => {
+      isBroadcasting = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   // Guardar calibración de cámara (zoom, pan, color, LUT, audio)
   const handleSaveSlotProfile = (slotIndex, profile) => {
@@ -813,10 +1236,18 @@ function PodcastStudioApp() {
     }
   }, []);
 
-  // Sincronización en tiempo real del Master Compositor mientras se graba o transmite
+  // Sincronización en tiempo real del Master Compositor y Audio Engine
   useEffect(() => {
-    if (isStreaming || isRecording) {
-      updateBroadcastState({
+    // Sincronizar siempre el audio del estudio y los efectos de voz en vivo
+    syncStudioAudio(localStream, remoteCams, camStreamsMap, camMuted);
+    updateBroadcastState({
+      voiceEffect,
+      voiceTarget,
+      voiceMonitor: voiceMonitorActive,
+      localStream,
+      camStreamsMap,
+      camMuted,
+      ...(isStreaming || isRecording ? {
         activeCam,
         pipCam,
         camSlots,
@@ -828,16 +1259,11 @@ function PodcastStudioApp() {
         cintillosVisible,
         cintillo,
         topic,
-        voiceEffect,
-        voiceTarget,
         getCamStream,
-        localStream,
         remoteCams,
-        camStreamsMap,
-        camMuted,
-      });
-    }
-  }, [activeCam, pipCam, camSlots, cameraCrops, layoutMode, chromaKeyActive, virtualBg, logoBase64, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
+      } : {})
+    });
+  }, [activeCam, pipCam, camSlots, cameraCrops, layoutMode, chromaKeyActive, virtualBg, logoBase64, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
     const officialQr = 'https://www.podcastudio.mx/remote-cam?auto=true';
@@ -1142,12 +1568,56 @@ function PodcastStudioApp() {
               cintillosVisible,
               cintillo,
               topic,
+              voiceEffect,
+              voiceTarget,
               getCamStream,
               localStream,
               remoteCams,
               camStreamsMap,
               camMuted,
             }, handleMasterChunk);
+
+            // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
+            if (isoRecordingEnabled && window.api?.startIsoRecording) {
+              const activeSlots = [];
+              Object.entries(camStreamsMap).forEach(([slotStr, stream]) => {
+                const sNum = Number(slotStr);
+                const vTracks = stream?.getVideoTracks?.() || [];
+                if (vTracks.length > 0 && vTracks[0].readyState === 'live') {
+                  activeSlots.push(sNum);
+                }
+              });
+
+              if (activeSlots.length > 0) {
+                window.api.startIsoRecording({
+                  slots: activeSlots,
+                  projectName: topic || 'Proyecto_General',
+                }).then(isoRes => {
+                  if (isoRes?.success) {
+                    activeSlots.forEach(sNum => {
+                      const stream = camStreamsMap[sNum];
+                      if (!stream) return;
+                      try {
+                        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+                          ? 'video/webm;codecs=vp8,opus'
+                          : 'video/webm';
+                        const rec = new MediaRecorder(stream, { mimeType });
+                        rec.ondataavailable = async (e) => {
+                          if (e.data && e.data.size > 0 && window.api?.sendIsoChunk) {
+                            const buf = await e.data.arrayBuffer();
+                            window.api.sendIsoChunk({ slot: sNum, chunk: buf });
+                          }
+                        };
+                        rec.start(1000);
+                        isoRecordersRef.current.set(sNum, rec);
+                      } catch (err) {
+                        console.warn(`[ISO] Error iniciando recorder para CAM ${sNum}:`, err);
+                      }
+                    });
+                  }
+                }).catch(e => console.warn('[ISO] Fallo al iniciar ISO:', e));
+              }
+            }
           } else {
             isRecordingRef.current = false;
             if (!isStreamingRef.current) stopBroadcastEngine();
@@ -1167,6 +1637,8 @@ function PodcastStudioApp() {
             cintillosVisible,
             cintillo,
             topic,
+            voiceEffect,
+            voiceTarget,
             getCamStream,
             localStream,
             remoteCams,
@@ -1187,6 +1659,21 @@ function PodcastStudioApp() {
           thumbnailDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.92);
         } catch (e) {
           console.warn('[handleRecord] No se pudo obtener toDataURL del canvas:', e);
+        }
+      }
+
+      // Detener y finalizar grabadores ISO multicanal (P4.1)
+      isoRecordersRef.current.forEach((rec, sNum) => {
+        try {
+          if (rec.state !== 'inactive') rec.stop();
+        } catch (e) {}
+      });
+      isoRecordersRef.current.clear();
+      if (window.api?.stopIsoRecording) {
+        try {
+          await window.api.stopIsoRecording();
+        } catch (e) {
+          console.warn('[ISO] Error al detener grabación ISO:', e);
         }
       }
 
@@ -1262,6 +1749,8 @@ function PodcastStudioApp() {
         cintillosVisible,
         cintillo,
         topic,
+        voiceEffect,
+        voiceTarget,
         getCamStream,
         localStream,
         remoteCams,
@@ -1302,30 +1791,68 @@ function PodcastStudioApp() {
     }
   };
 
-  const handleWordUpload = (e) => {
+  const handleTeleprompterFileUpload = (e) => {
     const file = e.target.files[0];
-    if (file) {
+    if (!file) return;
+    if (file.name.endsWith('.txt')) {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const content = evt.target.result || '';
+        setTeleprompterText(content);
+        setIsTeleprompterPlaying(false);
+        rightPrompterScrollPos.current = 0;
+        if (rightPrompterScrollRef.current) rightPrompterScrollRef.current.scrollTop = 0;
+        teleprompterYRef.current = window.innerHeight;
+      };
+      reader.readAsText(file);
+    } else {
       const reader = new FileReader();
       reader.onload = async (evt) => {
         const arrayBuffer = evt.target.result;
         try {
           const result = await mammoth.extractRawText({ arrayBuffer });
-          setTeleprompterText(result.value);
+          setTeleprompterText(result.value || '');
           setIsTeleprompterPlaying(false);
+          rightPrompterScrollPos.current = 0;
+          if (rightPrompterScrollRef.current) rightPrompterScrollRef.current.scrollTop = 0;
           teleprompterYRef.current = window.innerHeight;
-          if (teleprompterTextRef.current) {
-              teleprompterTextRef.current.style.transform = `translateY(${window.innerHeight}px)`;
-          }
-        } catch (error) { alert("Error al leer Word."); }
+        } catch (error) { alert("Error al leer archivo Word (.docx)."); }
       };
       reader.readAsArrayBuffer(file);
-      e.target.value = null; 
+    }
+    e.target.value = null; 
+  };
+
+  const handleWordUpload = handleTeleprompterFileUpload;
+
+  const handlePrompterReset = () => {
+    rightPrompterScrollPos.current = 0;
+    if (rightPrompterScrollRef.current) {
+      rightPrompterScrollRef.current.scrollTop = 0;
+    }
+    teleprompterYRef.current = window.innerHeight;
+    if (teleprompterTextRef.current) {
+      teleprompterTextRef.current.style.transform = `translateY(${window.innerHeight}px)`;
+    }
+  };
+
+  const handleCopyPrompterLink = () => {
+    const targetUrl = qrCodeUrl || `http://${window.location.hostname || 'localhost'}:3001/control`;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(targetUrl).then(() => {
+        setPrompterCopiedLink(true);
+        setTimeout(() => setPrompterCopiedLink(false), 2000);
+      }).catch(() => {});
     }
   };
 
   const handleClearTeleprompter = () => {
     setTeleprompterText('');
     setIsTeleprompterPlaying(false);
+    rightPrompterScrollPos.current = 0;
+    if (rightPrompterScrollRef.current) {
+      rightPrompterScrollRef.current.scrollTop = 0;
+    }
     teleprompterYRef.current = window.innerHeight;
     if (teleprompterTextRef.current) {
       teleprompterTextRef.current.style.transform = `translateY(${window.innerHeight}px)`;
@@ -1553,21 +2080,17 @@ function PodcastStudioApp() {
   };
 
   const handleDeleteOrDisconnectCam = (camId) => {
-    const slotIdx = camId - 1;
-    const stream = getCamStream(camId);
-    if (stream) {
-      // Si la cámara tiene señal activa, apagarla y desconectarla inmediatamente
-      handleDisconnectSlot(slotIdx);
-    } else if (camId !== 1) {
-      // Si ya está "Sin señal" y es ranura secundaria (CAM 2, 3, 4...), eliminar la ranura
-      removeCam(camId);
-    } else {
-      // Si es CAM 1 y está sin señal, limpiar cualquier residuo
+    if (camId === 1) {
+      // CAM 1 es Master / Host: si tiene señal se apaga, pero la ranura principal se conserva
       handleDisconnectSlot(0);
+      return;
     }
+    // Ranuras secundarias: detener stream, eliminar ranura y renumerar consecutivamente (CAM 1, CAM 2, CAM 3...)
+    removeCam(camId);
   };
 
-  const handleSelectMasterCam = (camId) => {
+  const handleSelectMasterCam = (rawCamId) => {
+    const camId = Number(rawCamId);
     setActiveCam(camId);
     if (layoutMode === 'pip') {
       if (pipCam === camId) {
@@ -1579,7 +2102,8 @@ function PodcastStudioApp() {
     }
   };
 
-  const handleTogglePip = (camId) => {
+  const handleTogglePip = (rawCamId) => {
+    const camId = Number(rawCamId);
     if (layoutMode === 'pip' && pipCam === camId) {
       setLayoutMode('1');
       return;
@@ -1592,32 +2116,119 @@ function PodcastStudioApp() {
     setLayoutMode('pip');
   };
 
-  // SINCRONIZACIÓN Y BROADCAST EN VIVO CON CONTROL REMOTO IPAD
+  // SINCRONIZACIÓN Y BROADCAST EN VIVO CON CONTROL REMOTO IPAD (LAN WEBSOCKET & SUPABASE)
   const broadcastStudioState = useCallback(() => {
-    if (!controlChannelRef.current) return;
-    try {
-      controlChannelRef.current.send({
-        type: 'broadcast',
-        event: 'studio_state',
-        payload: {
-          type: 'STATE_UPDATE',
-          activeCam,
-          pipCam,
-          layoutMode,
-          isRecording: isRecordingRef.current,
-          recordingTime,
-          topic,
-          cintillosVisible,
-          cintillo,
-          camSlots,
-        }
-      }).catch(() => {});
-    } catch {}
-  }, [activeCam, pipCam, layoutMode, recordingTime, topic, cintillosVisible, cintillo, camSlots]);
+    const statePayload = {
+      type: 'STATE_UPDATE',
+      activeCam,
+      pvwCam,
+      pipCam,
+      layoutMode,
+      isRecording: isRecordingRef.current,
+      recordingTime,
+      topic,
+      cintillosVisible,
+      cintillo,
+      camSlots,
+      tBarPosition,
+      isReplaying: !!instantReplay.isReplaying,
+      musicPlaying: !!music.isPlaying,
+      camMuted
+    };
+
+    // 1. Enviar a través de Electron IPC a clientes de la Red Local (iPad / Tablets vía WebSocket LAN)
+    if (window.api?.sendStudioState) {
+      window.api.sendStudioState(statePayload);
+    }
+
+    // 2. Enviar a través de canal Supabase si está disponible
+    if (controlChannelRef.current) {
+      try {
+        controlChannelRef.current.send({
+          type: 'broadcast',
+          event: 'studio_state',
+          payload: statePayload
+        }).catch(() => {});
+      } catch {}
+    }
+  }, [activeCam, pvwCam, pipCam, layoutMode, recordingTime, topic, cintillosVisible, cintillo, camSlots, tBarPosition, music.isPlaying, camMuted]);
+
+  // DISPATCHER UNIFICADO DE COMANDOS DE CONTROL REMOTO
+  const handleRemoteStudioCommand = useCallback((payload) => {
+    if (!payload || !payload.type) return;
+    const cmd = String(payload.type).toUpperCase();
+
+    if (cmd === 'REQUEST_STATE') {
+      broadcastStudioState();
+    } else if (cmd === 'SET_ACTIVE_CAM' || cmd === 'SET-ACTIVE-CAM') {
+      if (payload.camId !== undefined) handleSelectMasterCam(Number(payload.camId));
+    } else if (cmd === 'SET_PVW_CAM' || cmd === 'SET-PVW-CAM') {
+      if (payload.camId !== undefined) setPvwCam(Number(payload.camId));
+    } else if (cmd === 'TRIGGER_CUT' || cmd === 'CUT') {
+      handleCutTransition();
+    } else if (cmd === 'TRIGGER_AUTO' || cmd === 'AUTO') {
+      handleAutoTransition();
+    } else if (cmd === 'SET_TBAR' || cmd === 'SET-TBAR') {
+      if (typeof payload.position === 'number') handleTBarChange(payload.position);
+    } else if (cmd === 'TOGGLE_PIP') {
+      handleTogglePip(Number(payload.camId || pipCam));
+    } else if (cmd === 'SET_LAYOUT' || cmd === 'SET-LAYOUT') {
+      if (payload.mode) setLayoutMode(payload.mode);
+    } else if (cmd === 'TOGGLE_RECORD') {
+      handleRecord();
+    } else if (cmd === 'START_RECORD') {
+      if (!isRecordingRef.current) handleRecord();
+    } else if (cmd === 'STOP_RECORD') {
+      if (isRecordingRef.current) handleRecord();
+    } else if (cmd === 'TOGGLE_CINTILLO') {
+      setCintillosVisible(v => !v);
+    } else if (cmd === 'SET_CINTILLO_PRESET') {
+      if (payload.presetId) {
+        showManual(payload.presetId);
+        setCintillosVisible(true);
+      }
+    } else if (cmd === 'SET_CUSTOM_CINTILLO') {
+      if (payload.text) {
+        setCintillo({
+          active: true,
+          text: payload.text,
+          subtitle: payload.subtitle || '',
+          tag: payload.tag || 'EN VIVO',
+          color: '#e8612a'
+        });
+        setCintillosVisible(true);
+      }
+    } else if (cmd === 'TRIGGER_SFX') {
+      const sfxId = payload.sfxId || payload.id;
+      const sfxItem = (combinedSfx || []).find(s => s.id === sfxId || s.category === payload.category) ||
+                      (MUSIC_SFX || []).find(s => s.id === sfxId || s.category === payload.category);
+      if (sfxItem) playSfx(sfxItem);
+    } else if (cmd === 'TOGGLE_MUSIC') {
+      music.toggle();
+    } else if (cmd === 'TOGGLE_MIC_MUTE') {
+      const cId = Number(payload.camId || 1);
+      setCamMuted(prev => ({ ...prev, [cId]: !prev[cId] }));
+    }
+
+    setTimeout(() => {
+      broadcastStudioState();
+    }, 40);
+  }, [broadcastStudioState, handleSelectMasterCam, handleCutTransition, handleAutoTransition, handleTBarChange, handleTogglePip, pipCam, handleRecord, showManual, combinedSfx, playSfx, music]);
+
 
   useEffect(() => {
     broadcastStudioState();
   }, [broadcastStudioState]);
+
+  // Listener para comandos de red local LAN provenientes de Electron WebSocket
+  useEffect(() => {
+    if (window.api?.onRemoteStudioCommand) {
+      const unsub = window.api.onRemoteStudioCommand((cmd) => {
+        handleRemoteStudioCommand(cmd);
+      });
+      return () => { if (unsub) unsub(); };
+    }
+  }, [handleRemoteStudioCommand]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -1630,23 +2241,7 @@ function PodcastStudioApp() {
 
     channel.on('broadcast', { event: 'studio_command' }, (event) => {
       const payload = event?.payload;
-      if (!payload) return;
-
-      if (payload.type === 'REQUEST_STATE') {
-        broadcastStudioState();
-      } else if (payload.type === 'SET_ACTIVE_CAM' && payload.camId) {
-        handleSelectMasterCam(payload.camId);
-      } else if (payload.type === 'TOGGLE_PIP') {
-        handleTogglePip(payload.camId || pipCam);
-      } else if (payload.type === 'SET_LAYOUT' && payload.mode) {
-        setLayoutMode(payload.mode);
-      } else if (payload.type === 'TOGGLE_RECORD') {
-        handleRecord();
-      } else if (payload.type === 'TOGGLE_CINTILLO') {
-        setCintillosVisible(v => !v);
-      } else if (payload.type === 'SET_CINTILLO_PRESET' && payload.presetId) {
-        showManual(payload.presetId);
-      }
+      if (payload) handleRemoteStudioCommand(payload);
     });
 
     channel.subscribe((status) => {
@@ -1658,9 +2253,10 @@ function PodcastStudioApp() {
     return () => {
       channel.unsubscribe().catch(() => {});
     };
-  }, [broadcastStudioState]);
+  }, [broadcastStudioState, handleRemoteStudioCommand]);
 
-  const renderMonitorLayout = () => {
+  const renderMonitorLayout = (overrideCam = null) => {
+    const effectiveActiveCam = overrideCam || activeCam;
     const getTileProps = (id) => ({
       camId: id,
       stream: getCamStream(id),
@@ -1676,68 +2272,167 @@ function PodcastStudioApp() {
       bgImage: virtualBg
     });
 
-    const effectivePipCam = (pipCam && pipCam !== activeCam)
+    const effectivePipCam = (pipCam && pipCam !== effectiveActiveCam)
       ? pipCam
-      : (camSlots.find(id => id !== activeCam) || (activeCam === 1 ? 2 : 1));
+      : (camSlots.find(id => id !== effectiveActiveCam) || (effectiveActiveCam === 1 ? 2 : 1));
 
     return (
       <div className="w-full h-full relative overflow-hidden bg-[#050505]">
         {camSlots.map((id) => {
           let tileClass = "absolute transition-none";
           let tileStyle = {};
+          const idx = camSlots.indexOf(id);
 
           if (layoutMode === '1') {
-            if (id === activeCam) {
+            if (id === effectiveActiveCam) {
               tileClass += " inset-0 w-full h-full z-10 pointer-events-auto opacity-100";
+            } else if (id === pvwCam && tBarPosition > 0 && !overrideCam) {
+              tileClass += " inset-0 w-full h-full z-20 pointer-events-auto";
+              tileStyle.opacity = tBarPosition;
             } else {
-              // Mantenemos el elemento montado y decodificando en GPU sin display:none para cambio 100% instantáneo
               tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
             }
           } else if (layoutMode === 'pip') {
-            if (id === activeCam) {
-              // Cámara Master completa en el fondo
+            if (id === effectiveActiveCam) {
               tileClass += " inset-0 w-full h-full z-10 pointer-events-auto opacity-100";
             } else if (id === effectivePipCam) {
-              // Cámara PiP flotante en esquina superior derecha
-              tileClass += " top-4 right-4 w-1/4 h-1/4 border-2 border-orange-500 rounded-lg z-20 overflow-hidden shadow-2xl pointer-events-auto opacity-100 bg-black";
+              tileClass += " top-[3.7%] right-[2.1%] w-[24%] aspect-video border-2 border-orange-500 rounded-lg z-20 overflow-hidden shadow-2xl pointer-events-auto opacity-100 bg-black";
             } else {
               tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
             }
           } else if (layoutMode === '2') {
-            const idx = camSlots.indexOf(id);
             if (idx === 0) {
-              tileClass += " left-0 top-0 w-[calc(50%-4px)] h-full z-10 pointer-events-auto opacity-100";
+              tileClass += " left-0 top-0 w-[calc(50%-3px)] h-full z-10 pointer-events-auto opacity-100";
             } else if (idx === 1) {
-              tileClass += " right-0 top-0 w-[calc(50%-4px)] h-full z-10 pointer-events-auto opacity-100";
+              tileClass += " right-0 top-0 w-[calc(50%-3px)] h-full z-10 pointer-events-auto opacity-100";
+            } else {
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+            }
+          } else if (layoutMode === 'two-shot') {
+            if (idx === 0) {
+              tileClass += " left-[2%] top-[8%] w-[47%] h-[84%] rounded-xl overflow-hidden shadow-2xl border border-orange-500/40 z-10 pointer-events-auto opacity-100";
+            } else if (idx === 1) {
+              tileClass += " right-[2%] top-[8%] w-[47%] h-[84%] rounded-xl overflow-hidden shadow-2xl border border-orange-500/40 z-10 pointer-events-auto opacity-100";
             } else {
               tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
             }
           } else if (layoutMode === '3') {
-            const idx = camSlots.indexOf(id);
             if (idx === 0) {
-              tileClass += " left-0 top-0 w-[calc(50%-4px)] h-full z-10 pointer-events-auto opacity-100";
+              tileClass += " left-0 top-0 w-[calc(50%-3px)] h-full z-10 pointer-events-auto opacity-100";
             } else if (idx === 1) {
-              tileClass += " right-0 top-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+              tileClass += " right-0 top-0 w-[calc(50%-3px)] h-[calc(50%-3px)] z-10 pointer-events-auto opacity-100";
             } else if (idx === 2) {
-              tileClass += " right-0 bottom-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+              tileClass += " right-0 bottom-0 w-[calc(50%-3px)] h-[calc(50%-3px)] z-10 pointer-events-auto opacity-100";
             } else {
               tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
             }
           } else if (layoutMode === '4') {
-            const idx = camSlots.indexOf(id);
             if (idx === 0) {
-              tileClass += " left-0 top-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+              tileClass += " left-0 top-0 w-[calc(50%-3px)] h-[calc(50%-3px)] z-10 pointer-events-auto opacity-100";
             } else if (idx === 1) {
-              tileClass += " right-0 top-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+              tileClass += " right-0 top-0 w-[calc(50%-3px)] h-[calc(50%-3px)] z-10 pointer-events-auto opacity-100";
             } else if (idx === 2) {
-              tileClass += " left-0 bottom-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+              tileClass += " left-0 bottom-0 w-[calc(50%-3px)] h-[calc(50%-3px)] z-10 pointer-events-auto opacity-100";
             } else if (idx === 3) {
-              tileClass += " right-0 bottom-0 w-[calc(50%-4px)] h-[calc(50%-4px)] z-10 pointer-events-auto opacity-100";
+              tileClass += " right-0 bottom-0 w-[calc(50%-3px)] h-[calc(50%-3px)] z-10 pointer-events-auto opacity-100";
             } else {
               tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
             }
+          } else if (layoutMode === '6') {
+            if (idx < 6) {
+              const col = idx % 3;
+              const row = Math.floor(idx / 3);
+              tileStyle = {
+                left: `calc(${col * 33.333}% + ${col > 0 ? 2 : 0}px)`,
+                top: row === 0 ? 0 : 'calc(50% + 2px)',
+                width: 'calc(33.333% - 3px)',
+                height: 'calc(50% - 3px)'
+              };
+              tileClass += " z-10 pointer-events-auto opacity-100";
+            } else {
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+            }
+          } else if (layoutMode === '6-lead') {
+            if (idx === 0) {
+              tileClass += " left-0 top-0 w-[calc(60%-3px)] h-full z-10 pointer-events-auto opacity-100";
+            } else if (idx >= 1 && idx <= 5) {
+              const sub = idx - 1;
+              const col = sub % 2;
+              const row = Math.floor(sub / 2);
+              tileStyle = {
+                left: `calc(60% + ${col * 20}% + 2px)`,
+                top: `calc(${row * 33.333}% + ${row > 0 ? 2 : 0}px)`,
+                width: 'calc(20% - 3px)',
+                height: 'calc(33.333% - 3px)'
+              };
+              tileClass += " z-10 pointer-events-auto opacity-100";
+            } else {
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+            }
+          } else if (layoutMode === '8') {
+            if (idx < 8) {
+              const col = idx % 4;
+              const row = Math.floor(idx / 4);
+              tileStyle = {
+                left: `calc(${col * 25}% + ${col > 0 ? 2 : 0}px)`,
+                top: row === 0 ? 0 : 'calc(50% + 2px)',
+                width: 'calc(25% - 3px)',
+                height: 'calc(50% - 3px)'
+              };
+              tileClass += " z-10 pointer-events-auto opacity-100";
+            } else {
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+            }
+          } else if (layoutMode === '10') {
+            if (idx < 10) {
+              const col = idx % 5;
+              const row = Math.floor(idx / 5);
+              tileStyle = {
+                left: `calc(${col * 20}% + ${col > 0 ? 2 : 0}px)`,
+                top: row === 0 ? 0 : 'calc(50% + 2px)',
+                width: 'calc(20% - 3px)',
+                height: 'calc(50% - 3px)'
+              };
+              tileClass += " z-10 pointer-events-auto opacity-100";
+            } else {
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+            }
+          } else if (layoutMode === 'speaker') {
+            if (id === effectiveActiveCam) {
+              tileClass += " left-0 top-0 w-full h-[76%] z-10 pointer-events-auto opacity-100";
+            } else {
+              const other = camSlots.filter(c => c !== effectiveActiveCam);
+              const oIdx = other.indexOf(id);
+              if (oIdx >= 0) {
+                const w = 100 / Math.max(1, other.length);
+                tileStyle = {
+                  left: `${oIdx * w}%`,
+                  bottom: 0,
+                  width: `calc(${w}% - 2px)`,
+                  height: '24%'
+                };
+                tileClass += " z-15 pointer-events-auto opacity-100 border border-[#333]";
+              } else {
+                tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              }
+            }
+          } else if (layoutMode === 'gallery') {
+            const count = camSlots.length;
+            const cols = count <= 2 ? count : count <= 4 ? 2 : count <= 6 ? 3 : count <= 8 ? 4 : 5;
+            const rows = Math.ceil(count / cols);
+            const col = idx % cols;
+            const row = Math.floor(idx / cols);
+            const colW = 100 / cols;
+            const rowH = 100 / rows;
+            tileStyle = {
+              left: `${col * colW}%`,
+              top: `${row * rowH}%`,
+              width: `calc(${colW}% - 2px)`,
+              height: `calc(${rowH}% - 2px)`
+            };
+            tileClass += " z-10 pointer-events-auto opacity-100 border border-[#222]";
           } else {
-            if (id === activeCam) {
+            if (id === effectiveActiveCam) {
               tileClass += " inset-0 w-full h-full z-10 pointer-events-auto opacity-100";
             } else {
               tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
@@ -1800,23 +2495,25 @@ function PodcastStudioApp() {
               </div>
               <h1 className="text-base font-extrabold tracking-tight text-white">Podca<span className="text-orange-500">Studio</span></h1>
             </div>
+
+
           </div>
-          <div className="flex items-center gap-2 sm:gap-3 text-xs" style={{ WebkitAppRegion: 'no-drag' }}>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap shrink-0 text-xs" style={{ WebkitAppRegion: 'no-drag' }}>
             {music.playing && (
-              <div className="hidden sm:flex items-center gap-1.5 bg-orange-950/40 border border-orange-500/40 text-orange-400 px-2 py-0.5 rounded text-[11px] animate-pulse">
+              <div className="hidden sm:flex items-center gap-1.5 bg-orange-950/40 border border-orange-500/40 text-orange-400 px-2 py-0.5 rounded text-[11px] animate-pulse shrink-0">
                 <Music size={12} /> <span className="font-semibold">{music.currentTrack?.name}</span>
                 {music.duckingEnabled && micLevel > 14 && <span className="text-[9px] bg-orange-600 text-white px-1 rounded ml-1">Ducking</span>}
               </div>
             )}
-            <span className="hidden md:inline text-gray-400">CALIDAD:</span>
-            <span className="text-orange-500 border border-orange-500 rounded px-2 py-0.5 font-bold text-[11px] sm:text-xs">1080p · 30fps</span>
+            <span className="hidden md:inline text-gray-400 shrink-0">CALIDAD:</span>
+            <span className="text-orange-500 border border-orange-500 rounded px-2 py-0.5 font-bold text-[11px] sm:text-xs shrink-0">1080p · 30fps</span>
 
             {/* ZOOM DINÁMICO & ENCUADRE FUERA DE LA PANTALLA */}
             {(() => {
               const currentActiveZoom = ((cameraCrops[activeCam - 1]?.zoom) || 1.0);
               return (
                 <div 
-                  className="hidden md:flex items-center gap-1.5 bg-[#141417] px-2.5 py-1 rounded border border-[#2a2a32] text-xs select-none"
+                  className="hidden md:flex items-center gap-1.5 bg-[#141417] px-2.5 py-1 rounded border border-[#2a2a32] text-xs select-none shrink-0"
                   title="Control de Zoom Dinámico & Encuadre: Usa la rueda del mouse para Zoom, y arrastra con clic izquierdo para mover la imagen"
                 >
                   <Search size={12} className="text-orange-500" />
@@ -1847,28 +2544,65 @@ function PodcastStudioApp() {
               );
             })()}
 
+            {/* BOTÓN CONSOLA DE AUDIO BROADCAST MULTICANAL (P0.4) */}
+            <button
+              onClick={() => setShowAudioMixerModal(true)}
+              className="px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/35 hover:to-orange-500/35 text-amber-300 border border-amber-500/60 transition-all cursor-pointer shadow-sm shrink-0"
+              title="Abrir Consola de Audio Broadcast Multicanal (Faders, Trim, Mute, Solo, Vúmetros 60 FPS)"
+            >
+              <Sliders size={14} className="text-amber-400" />
+              <span>🎛️ Consola Audio</span>
+            </button>
+
+            {/* BOTÓN TALLY LIGHTS BROADCAST (P2.4) */}
+            <button
+              onClick={() => setShowTallyModal(true)}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 bg-[#18181b] hover:bg-[#25252b] text-gray-200 border border-[#333] hover:border-red-500/60 transition-all cursor-pointer shadow-sm shrink-0"
+              title="Configurar Tally Lights Broadcast (Móviles Wi-Fi y Puertos Seriales USB)"
+            >
+              <Radio size={14} className="text-red-500 animate-pulse" />
+              <span className="hidden sm:inline">Tally Lights</span>
+              <span className="px-1.5 py-0.2 rounded text-[9.5px] font-black bg-red-600/30 text-red-300 border border-red-500/40">
+                P{activeCam}
+              </span>
+            </button>
+
+            {/* BOTÓN OCULTAR / MOSTRAR PANEL LATERAL DERECHO */}
+            <button
+              onClick={() => setIsRightPanelOpen(p => !p)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 ${
+                isRightPanelOpen
+                  ? 'bg-orange-950/70 text-orange-300 border-orange-500/70 shadow-[0_0_10px_rgba(249,115,22,0.25)]'
+                  : 'bg-[#18181b] hover:bg-[#25252b] text-gray-300 border-[#333]'
+              }`}
+              title={isRightPanelOpen ? "Ocultar panel lateral derecho" : "Mostrar panel lateral derecho"}
+            >
+              <PanelRight size={14} className={isRightPanelOpen ? 'text-orange-400' : 'text-gray-400'} />
+              <span className="hidden sm:inline">{isRightPanelOpen ? 'Ocultar Panel' : 'Mostrar Panel'}</span>
+            </button>
+
+            {/* BOTÓN SALIDA LAN PROGRAM & OBS VIRTUAL FEED (P4.4) */}
+            <button
+              onClick={() => setShowLanProgramModal(true)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 ${
+                showLanProgramModal
+                  ? 'bg-purple-950/80 text-purple-300 border-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.35)]'
+                  : 'bg-[#18181b] hover:bg-[#25252b] text-gray-200 border-[#333]'
+              }`}
+              title="Abrir enlace de transmisión de señal limpia 1080p para OBS Studio, vMix y Smart TVs"
+            >
+              <Tv size={14} className={showLanProgramModal ? 'text-purple-400' : 'text-gray-400'} />
+              <span className="hidden sm:inline">Salida LAN / OBS</span>
+            </button>
+
             {/* BOTÓN DE CONTROL REMOTO IPAD / TABLETS */}
             <button
               onClick={() => setShowRemoteControlModal(true)}
-              className="px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 bg-gradient-to-r from-amber-500/25 to-orange-500/25 hover:from-amber-500/40 hover:to-orange-500/40 text-amber-300 border border-amber-500/70 transition-all cursor-pointer shadow-[0_0_12px_rgba(245,158,11,0.25)]"
+              className="px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 bg-gradient-to-r from-amber-500/25 to-orange-500/25 hover:from-amber-500/40 hover:to-orange-500/40 text-amber-300 border border-amber-500/70 transition-all cursor-pointer shadow-[0_0_12px_rgba(245,158,11,0.25)] shrink-0"
               title="Conectar iPad, Tablet o Móvil como Mando Switcher a distancia"
             >
               <Smartphone size={14} className="text-amber-400" />
               <span>🎮 Mando iPad</span>
-            </button>
-
-            {/* BOTÓN DE CUADRÍCULA DE ENCUADRE MASTER */}
-            <button
-              onClick={() => setShowMasterGrid(prev => !prev)}
-              className={`px-2.5 sm:px-3 py-1 rounded text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                showMasterGrid
-                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-400/60 shadow-[0_0_10px_rgba(6,182,212,0.3)]'
-                  : 'bg-[#18181b] hover:bg-[#27272a] text-gray-300 border border-[#333]'
-              }`}
-              title="Activar / Desactivar cuadrícula y guías de encuadre en el Master"
-            >
-              <Grid size={13} className={showMasterGrid ? 'text-cyan-400' : 'text-gray-400'} />
-              <span className="hidden sm:inline">{showMasterGrid ? 'Cuadrícula Activa' : 'Cuadrícula'}</span>
             </button>
           </div>
           <div className="flex gap-2 items-center pr-2 lg:pr-32" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -1882,6 +2616,23 @@ function PodcastStudioApp() {
                  <div className="w-2 h-2 bg-white rounded-full"></div>
                  <span>REC MASTER</span>
                  <span className="font-mono bg-black/40 px-1.5 py-0.5 rounded text-[11px]">{formatTime(recordingTime)}</span>
+               </button>
+             )}
+
+             {/* BOTÓN MARCAR HIGHLIGHT EN VIVO (P3.1) */}
+             {isRecording && (
+               <button
+                 onClick={() => addHighlight('Highlight Manual [Conductor]', 'manual', 30)}
+                 className="flex items-center gap-1.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white px-2.5 py-1.5 rounded font-extrabold text-xs shadow-md shadow-orange-900/40 cursor-pointer border border-amber-400/50 transition-transform active:scale-95"
+                 title="Marcar momento destacado (Atajo: tecla [H] o [M])"
+               >
+                 <Sparkles size={13} className="text-amber-200" />
+                 <span>HIGHLIGHT</span>
+                 {highlightCount > 0 && (
+                   <span className="font-mono bg-black/50 text-amber-300 px-1.5 py-0.2 rounded text-[10px]">
+                     {highlightCount}
+                   </span>
+                 )}
                </button>
              )}
 
@@ -1923,122 +2674,278 @@ function PodcastStudioApp() {
           </div>
         </div>
 
-        {/* MONITOR PRINCIPAL / PGM */}
-        <div className="flex-1 bg-black relative flex p-3 min-h-0">
+        {/* ÁREA DE MONITOREO Y SWITCHING (DUAL PVW/PGM O MASTER ÚNICO) */}
+        <div className="flex-1 bg-black relative flex p-2.5 min-h-0 gap-2.5">
+          {dualMonitorMode && (
+            <>
+              {/* MONITOR PREVIEW (PVW) */}
+              <div className="flex-1 h-full relative rounded-lg overflow-hidden flex flex-col bg-[#07090d] border-2 border-emerald-500/80 shadow-lg shadow-emerald-950/20 select-none">
+                {/* Header PVW con Tally Verde y Selector de Cámaras */}
+                <div className="flex items-center justify-between px-3 py-1.5 bg-[#0e1612] border-b border-emerald-500/40 text-emerald-300">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]" />
+                    <span className="text-[11px] font-black uppercase tracking-wider">PREVIEW (PVW)</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {camSlots.map(cid => (
+                      <button
+                        key={`pvw-sel-${cid}`}
+                        onClick={() => setPvwCam(cid)}
+                        className={`px-2 py-0.5 rounded text-[10px] font-black transition-colors ${
+                          pvwCam === cid
+                            ? 'bg-emerald-500 text-black font-extrabold shadow-sm'
+                            : 'bg-[#15231c] text-emerald-300/70 hover:text-emerald-200 hover:bg-[#1e3228]'
+                        }`}
+                        title={`Seleccionar CAM ${cid} en Preview`}
+                      >
+                        CAM {cid}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Video PVW */}
+                <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-black">
+                  <VideoTile
+                    camId={pvwCam}
+                    stream={getCamStream(pvwCam)}
+                    label={null}
+                    isLocal={pvwCam === 1}
+                    muted={true}
+                    style={getVideoStyle(pvwCam, true)}
+                    chromaKey={chromaKeyActive}
+                    bgImage={virtualBg}
+                    className="w-full h-full"
+                  />
+                  <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/75 border border-emerald-500/50 text-emerald-300 text-[10px] font-bold">
+                    PRÓXIMA TOMA: CAM {pvwCam}
+                  </div>
+                </div>
+              </div>
+
+              {/* CONSOLA CENTRAL DE TRANSICIÓN: CUT, AUTO, T-BAR */}
+              <div className="w-[110px] h-full flex flex-col items-center justify-between bg-[#0e1017] border border-[#232738] rounded-lg p-2 shadow-2xl shrink-0 select-none z-30">
+                <div className="w-full text-center border-b border-[#202434] pb-1.5">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-gray-400 block">Switcher</span>
+                  <span className="text-[8px] text-amber-400 font-mono">T-Bar Mix</span>
+                </div>
+
+                {/* Botón CUT */}
+                <button
+                  type="button"
+                  onClick={handleCutTransition}
+                  className="w-full py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-red-600/30 active:scale-95 transition-all border border-red-400 cursor-pointer"
+                  title="Corte Directo Instantáneo (Conmuta PVW y PGM)"
+                >
+                  CUT
+                </button>
+
+                {/* Botón AUTO con Duración */}
+                <button
+                  type="button"
+                  onClick={handleAutoTransition}
+                  disabled={isTransitioning}
+                  className={`w-full py-2.5 rounded-lg text-white font-black text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all border cursor-pointer ${
+                    isTransitioning 
+                      ? 'bg-amber-600 border-amber-300 animate-pulse' 
+                      : 'bg-amber-500 hover:bg-amber-400 border-amber-300 shadow-amber-500/30'
+                  }`}
+                  title="Disolvencia Automática (Mix suave)"
+                >
+                  {isTransitioning ? 'MIXING' : 'AUTO'}
+                </button>
+
+                {/* Selector de Tiempo de AUTO */}
+                <div className="w-full grid grid-cols-3 gap-0.5 bg-[#161822] p-0.5 rounded border border-[#252a3a]">
+                  {[300, 500, 1000].map(dur => (
+                    <button
+                      key={dur}
+                      type="button"
+                      onClick={() => setTransitionDuration(dur)}
+                      className={`text-[8.5px] py-0.5 rounded font-bold cursor-pointer ${
+                        transitionDuration === dur
+                          ? 'bg-amber-500 text-black'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      {dur === 1000 ? '1s' : `${dur}m`}
+                    </button>
+                  ))}
+                </div>
+
+                {/* T-BAR VERTICAL BROADCAST INTERACTIVO */}
+                <div className="flex-1 w-full flex flex-col items-center justify-center my-1.5 min-h-[140px]">
+                  <span className="text-[8px] font-mono text-emerald-400 mb-0.5 font-bold">PVW</span>
+                  <div className="h-28 flex items-center relative">
+                    <input
+                      type="range"
+                      orient="vertical"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                      value={tBarPosition}
+                      onChange={(e) => handleTBarChange(parseFloat(e.target.value))}
+                      className="h-24 w-6 cursor-pointer accent-orange-500 bg-[#161822] rounded appearance-none"
+                      style={{ WebkitAppearance: 'slider-vertical' }}
+                    />
+                  </div>
+                  <span className="text-[8px] font-mono text-red-400 mt-0.5 font-bold">PGM</span>
+                </div>
+
+                <div className="w-full text-center pt-1 border-t border-[#202434]">
+                  <span className="text-[8px] text-gray-400 font-mono">
+                    {Math.round(tBarPosition * 100)}%
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* MONITOR PROGRAM (PGM) / PRINCIPAL */}
           <div 
             ref={masterMonitorRef}
-            className={`w-full h-full relative rounded-lg overflow-hidden flex items-center justify-center bg-[#050505] border border-[#333] select-none ${
+            className={`flex-1 h-full relative rounded-lg overflow-hidden flex flex-col bg-[#050505] select-none ${
+              dualMonitorMode 
+                ? 'border-2 border-red-600/90 shadow-lg shadow-red-950/20' 
+                : 'w-full border border-[#333]'
+            } ${
               isDraggingMaster 
                 ? 'cursor-grabbing' 
                 : (((cameraCrops[activeCam - 1]?.zoom) || 1.0) > 1.01 ? 'cursor-grab' : 'cursor-default')
             }`}
             title="Pantalla Master: Gira la rueda del mouse para Zoom, y arrastra con clic izquierdo presionado para mover y centrar la toma como una ventana"
           >
-            {renderMonitorLayout()}
-
-            {/* HUD INTELIGENTE DE ZOOM DINÁMICO & ENCUADRE INTERACTIVO */}
-            {(zoomHud.visible || panHud.visible || isDraggingMaster) && (
-              <div className="absolute top-4 right-4 z-40 bg-black/85 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-orange-500/60 text-white shadow-2xl flex items-center gap-2 pointer-events-none transition-all animate-in fade-in zoom-in-95 duration-150">
-                <Search size={13} className="text-orange-400" />
-                <span className="text-xs font-black tracking-wide text-orange-400 font-mono">
-                  {((cameraCrops[activeCam - 1]?.zoom) || zoomHud.zoom || 1.0).toFixed(1)}x
-                </span>
-                <span className="text-gray-500 text-[10px]">•</span>
-                <span className="text-[10px] text-gray-200 font-medium">
-                  {isDraggingMaster ? 'Encuadrando toma...' : 'Scroll = Zoom · Arrastra = Centrar'}
-                </span>
-              </div>
-            )}
-            
-            {countdown !== null && <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center"><span className="text-white text-9xl font-bold animate-ping">{countdown}</span></div>}
-            
-            {/* CUADRÍCULA PROFESIONAL DE ENCUADRE Y REGLA DE TERCIOS */}
-            {showMasterGrid && (
-              <div className="absolute inset-0 pointer-events-none z-30 select-none">
-                {/* Líneas verticales regla de tercios */}
-                <div className="absolute top-0 bottom-0 left-1/3 w-px border-l border-dashed border-cyan-400/40"></div>
-                <div className="absolute top-0 bottom-0 left-2/3 w-px border-l border-dashed border-cyan-400/40"></div>
-                {/* Líneas horizontales regla de tercios */}
-                <div className="absolute left-0 right-0 top-1/3 h-px border-t border-dashed border-cyan-400/40"></div>
-                <div className="absolute left-0 right-0 top-2/3 h-px border-t border-dashed border-cyan-400/40"></div>
-                {/* Margen Seguro de Broadcast */}
-                <div className="absolute inset-[6%] border border-dotted border-cyan-300/35 rounded-sm"></div>
-                {/* Cruz central de centrado de rostro/toma */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 pointer-events-none">
-                  <div className="absolute top-1/2 left-0 right-0 h-px bg-cyan-400/70"></div>
-                  <div className="absolute left-1/2 top-0 bottom-0 w-px bg-cyan-400/70"></div>
-                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full border border-cyan-400/80"></div>
+            {dualMonitorMode && (
+              <div className="flex items-center justify-between px-3 py-1.5 bg-[#1a0e0e] border-b border-red-500/40 text-red-300 shrink-0 z-30">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse shadow-[0_0_8px_#ef4444]" />
+                  <span className="text-[11px] font-black uppercase tracking-wider">PROGRAM (PGM) · AL AIRE</span>
                 </div>
-                {/* Badge en esquina superior */}
-                <div className="absolute top-3 right-3 bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded shadow pointer-events-none">
-                  GUÍA DE ENCUADRE MASTER
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.2 text-[9px] font-bold bg-red-950/80 border border-red-600/60 text-red-200 rounded uppercase">
+                    Layout: {layoutMode}
+                  </span>
+                  <span className="text-[10px] font-black text-white bg-red-600 px-2 py-0.2 rounded shadow">
+                    CAM {activeCam}
+                  </span>
                 </div>
               </div>
             )}
-            
-            {/* LOGO SUPERIOR IZQUIERDO OFICIAL DEL PROYECTO */}
-            {logoBase64 && typeof logoBase64 === 'string' && logoBase64.trim() && (
-              <img 
-                src={logoBase64} 
-                alt="Logo Oficial del Proyecto" 
-                onError={(e) => { e.currentTarget.style.display = 'none'; }} 
-                className="absolute top-4 left-4 h-16 object-contain z-30 drop-shadow-lg" 
-              />
-            )}
-            
-            {/* CINTILLO BROADCAST TRANSLÚCIDO 3D CON 13 ESTILOS Y ANIMACIONES */}
-            {cintillosVisible && cintillo?.active && (
-              <CintilloOverlay
-                styleId={cintilloStyle}
-                tag={cintillo.tag || 'TEMA'}
-                text={cintillo.text || topic}
-                subtitle={cintillo.subtitle || ''}
-                accentColor={cintillo.color}
-                logoUrl={cintillo.logoUrl || null}
-                presetId={cintillo.presetId}
-                position={cintilloPosition}
-                size="large"
-                format="16:9"
-                liveOn={isStreaming || isRecording}
-                animPhase={animPhase}
-                animKey={animKey}
-                onClose={() => setCintillosVisible(false)}
-              />
-            )}
 
-            {/* TELEPROMPTER FLUIDO */}
-            {activePanel === 'teleprompter' && (!isRecording || !teleprompterHideInRec) && (
-                <div className="absolute inset-0 overflow-hidden z-30 pointer-events-none">
-                  <div 
-                    ref={teleprompterTextRef}
-                    className="absolute top-0 w-[90%] left-[5%] text-center font-bold text-white whitespace-pre-wrap leading-relaxed"
-                    style={{ 
-                      textShadow: '2px 2px 6px rgba(0,0,0,0.9)',
-                      fontSize: `${teleprompterFontSize}px`,
-                      transform: `translateY(100vh)`
-                    }}
-                  >
-                    {teleprompterText}
+            <div className="flex-1 w-full h-full relative overflow-hidden flex items-center justify-center p-2 bg-[#050505]">
+              {/* CONTENEDOR MAESTRO 16:9 CALIBRADO EXACTO A LA SALIDA DE VIDEO (1080p) */}
+              <div className="relative aspect-video max-w-full max-h-full w-full h-auto mx-auto my-auto shadow-2xl rounded-lg overflow-hidden bg-black flex items-center justify-center border border-[#1f2026]">
+                {renderMonitorLayout()}
+                
+                {countdown !== null && <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center"><span className="text-white text-9xl font-bold animate-ping">{countdown}</span></div>}
+              
+              {/* CUADRÍCULA PROFESIONAL DE ENCUADRE Y REGLA DE TERCIOS */}
+              {showMasterGrid && (
+                <div className="absolute inset-0 pointer-events-none z-30 select-none">
+                  {/* Líneas verticales regla de tercios */}
+                  <div className="absolute top-0 bottom-0 left-1/3 w-px border-l border-dashed border-cyan-400/40"></div>
+                  <div className="absolute top-0 bottom-0 left-2/3 w-px border-l border-dashed border-cyan-400/40"></div>
+                  {/* Líneas horizontales regla de tercios */}
+                  <div className="absolute left-0 right-0 top-1/3 h-px border-t border-dashed border-cyan-400/40"></div>
+                  <div className="absolute left-0 right-0 top-2/3 h-px border-t border-dashed border-cyan-400/40"></div>
+                  {/* Margen Seguro de Broadcast */}
+                  <div className="absolute inset-[6%] border border-dotted border-cyan-300/35 rounded-sm"></div>
+                  {/* Cruz central de centrado de rostro/toma */}
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 pointer-events-none">
+                    <div className="absolute top-1/2 left-0 right-0 h-px bg-cyan-400/70"></div>
+                    <div className="absolute left-1/2 top-0 bottom-0 w-px bg-cyan-400/70"></div>
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full border border-cyan-400/80"></div>
+                  </div>
+                  {/* Badge en esquina superior */}
+                  <div className="absolute top-3 right-3 bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded shadow pointer-events-none">
+                    GUÍA DE ENCUADRE MASTER
                   </div>
                 </div>
-            )}
+              )}
+              
+              {/* LOGO SUPERIOR IZQUIERDO OFICIAL DEL PROYECTO */}
+              {logoBase64 && typeof logoBase64 === 'string' && logoBase64.trim() && (
+                <img 
+                  src={logoBase64} 
+                  alt="Logo Oficial del Proyecto" 
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+                  className="absolute top-4 left-4 h-16 object-contain z-30 drop-shadow-lg" 
+                />
+              )}
 
+
+              {/* CINTILLO BROADCAST TRANSLÚCIDO 3D CON 13 ESTILOS Y ANIMACIONES */}
+              {cintillosVisible && cintillo?.active && (
+                <CintilloOverlay
+                  styleId={cintilloStyle}
+                  tag={cintillo.tag || 'TEMA'}
+                  text={cintillo.text || topic}
+                  subtitle={cintillo.subtitle || ''}
+                  accentColor={cintillo.color}
+                  logoUrl={cintillo.logoUrl || null}
+                  presetId={cintillo.presetId}
+                  position={cintilloPosition}
+                  size="large"
+                  format="16:9"
+                  liveOn={isStreaming || isRecording}
+                  animPhase={animPhase}
+                  animKey={animKey}
+                  onClose={() => setCintillosVisible(false)}
+                />
+              )}
+
+              {/* TELEPROMPTER FLUIDO */}
+              {activePanel === 'teleprompter' && (!isRecording || !teleprompterHideInRec) && (
+                  <div className="absolute inset-0 overflow-hidden z-30 pointer-events-none">
+                    <div 
+                      ref={teleprompterTextRef}
+                      className="absolute top-0 w-[90%] left-[5%] text-center font-bold text-white whitespace-pre-wrap leading-relaxed"
+                      style={{ 
+                        textShadow: '2px 2px 6px rgba(0,0,0,0.9)',
+                        fontSize: `${teleprompterFontSize}px`,
+                        transform: `translateY(100vh)`
+                      }}
+                    >
+                      {teleprompterText}
+                    </div>
+                  </div>
+              )}
+              </div>
             </div>
+          </div>
         </div>
 
-        {/* BOTTOM MULTI-CAM BAR */}
-        <div className="bg-[#111] border-t border-[#222] p-2 flex items-center gap-2 min-h-[115px] shrink-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {/* BOTTOM MULTI-CAM BAR (ENVUELVE ABAJO AL LLENARSE EL ANCHO PARA MOSTRAR TODAS LAS CÁMARAS Y EL BOTÓN +) */}
+        <div className="bg-[#111] border-t border-[#222] p-2 flex flex-wrap items-center gap-2 min-h-[125px] max-h-[265px] overflow-y-auto shrink-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {camSlots.map((camId) => {
             const isActive = activeCam === camId;
+            const isPvw = pvwCam === camId;
             const camStream = getCamStream(camId);
             const style = getVideoStyle(camId);
             return (
-              <div key={camId} className={`w-[195px] h-[108px] rounded-lg border-2 flex flex-col shrink-0 relative group transition-all ${isActive ? 'border-orange-500 bg-[#1a1a1a] shadow-md shadow-orange-950/20' : 'border-[#262626] bg-[#0c0c0c]'}`}>
+              <div 
+                key={camId} 
+                className={`w-[195px] h-[108px] rounded-lg border-2 flex flex-col shrink-0 relative group transition-all ${
+                  isActive 
+                    ? 'border-red-500 bg-[#1c1212] shadow-md shadow-red-950/30' 
+                    : (dualMonitorMode && isPvw ? 'border-emerald-500 bg-[#121c16] shadow-md shadow-emerald-950/30' : 'border-[#262626] bg-[#0c0c0c]')
+                }`}
+              >
                 <div className="flex justify-between items-center px-1.5 py-0.5 bg-black/60 border-b border-[#222]">
-                  {/* CAM IDENTIFIER */}
-                  <div className="flex items-center gap-1">
-                    <span className={`text-[10px] font-black ${isActive ? 'text-orange-400' : 'text-gray-300'}`}>CAM {camId}</span>
-                    {isActive && <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" title="Al Aire (Master)"></span>}
+                  {/* CAM IDENTIFIER CON TALLY BROADCAST */}
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-black ${isActive ? 'text-red-400' : (dualMonitorMode && isPvw ? 'text-emerald-400' : 'text-gray-300')}`}>
+                      CAM {camId}
+                    </span>
+                    {isActive ? (
+                      <span className="px-1.5 py-0.2 rounded bg-red-600 text-white text-[8px] font-black tracking-wider uppercase shadow-sm">
+                        PGM
+                      </span>
+                    ) : (dualMonitorMode && isPvw ? (
+                      <span className="px-1.5 py-0.2 rounded bg-emerald-600 text-white text-[8px] font-black tracking-wider uppercase shadow-sm">
+                        PVW
+                      </span>
+                    ) : null)}
                   </div>
 
                   {/* INDICADOR DE AUDIO, VUMETRO EN TIEMPO REAL Y BOTÓN DE MUTE */}
@@ -2156,55 +3063,115 @@ function PodcastStudioApp() {
                 </div>
                 <div 
                   className="flex-1 relative overflow-hidden cursor-pointer" 
-                  onClick={() => handleSelectMasterCam(camId)}
-                  title={`Seleccionar CAM ${camId} como Cámara Master`}
+                  onClick={() => {
+                    if (dualMonitorMode) {
+                      setPvwCam(camId);
+                    } else {
+                      handleSelectMasterCam(camId);
+                    }
+                  }}
+                  title={dualMonitorMode ? `Seleccionar CAM ${camId} en PREVIEW (PVW) · Clic en CUT para conmutar a PROGRAM` : `Seleccionar CAM ${camId} como Cámara Master`}
                 >
                    <VideoTile stream={camStream} isLocal={camId === 1} muted={true} className="w-full h-full opacity-80" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
                 </div>
                 <div className="flex p-0.5 bg-[#111] gap-0.5">
-                   <button 
-                     onClick={(e) => { e.stopPropagation(); handleTogglePip(camId); }} 
-                     className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
-                       layoutMode === 'pip' && pipCam === camId 
-                         ? 'bg-orange-600 text-white shadow-sm' 
-                         : 'text-gray-400 hover:text-white hover:bg-[#333]'
-                     }`}
-                     title={`Colocar CAM ${camId} en recuadro PiP`}
-                   >
-                     PIP
-                   </button>
-                   <button 
-                     onClick={(e) => { e.stopPropagation(); setLayoutMode('2'); }} 
-                     className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
-                       layoutMode === '2' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
-                     }`}
-                     title="Modo pantalla dividida 2 cámaras"
-                   >
-                     2
-                   </button>
-                   <button 
-                     onClick={(e) => { e.stopPropagation(); setLayoutMode('3'); }} 
-                     className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
-                       layoutMode === '3' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
-                     }`}
-                     title="Modo pantalla 3 cámaras"
-                   >
-                     3
-                   </button>
-                   <button 
-                     onClick={(e) => { e.stopPropagation(); setLayoutMode('4'); }} 
-                     className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
-                       layoutMode === '4' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
-                     }`}
-                     title="Modo cuadrícula 4 cámaras"
-                   >
-                     4
-                   </button>
+                  {dualMonitorMode ? (
+                    <>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setPvwCam(camId); }} 
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                          isPvw ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-400/80 hover:text-emerald-200 hover:bg-[#1a2920]'
+                        }`}
+                        title={`Poner CAM ${camId} en PREVIEW`}
+                      >
+                        PVW
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleSelectMasterCam(camId); }} 
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                          isActive ? 'bg-red-600 text-white shadow-sm' : 'text-red-400/80 hover:text-red-200 hover:bg-[#291a1a]'
+                        }`}
+                        title={`Poner CAM ${camId} directamente en PROGRAM (Al Aire)`}
+                      >
+                        PGM
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleTogglePip(camId); }} 
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                          layoutMode === 'pip' && pipCam === camId 
+                            ? 'bg-orange-600 text-white shadow-sm' 
+                            : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                        }`}
+                        title={`Colocar CAM ${camId} en recuadro PiP`}
+                      >
+                        PIP
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleTogglePip(camId); }} 
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                          layoutMode === 'pip' && pipCam === camId 
+                            ? 'bg-orange-600 text-white shadow-sm' 
+                            : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                        }`}
+                        title={`Colocar CAM ${camId} en recuadro PiP`}
+                      >
+                        PIP
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setLayoutMode('2'); }} 
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                          layoutMode === '2' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                        }`}
+                        title="Modo pantalla dividida 2 cámaras"
+                      >
+                        2
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setLayoutMode('3'); }} 
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                          layoutMode === '3' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                        }`}
+                        title="Modo pantalla 3 cámaras"
+                      >
+                        3
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setLayoutMode('4'); }} 
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                          layoutMode === '4' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                        }`}
+                        title="Modo cuadrícula 4 cámaras"
+                      >
+                        4
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             );
           })}
-          <button onClick={addCam} className="w-[100px] h-[100px] rounded border-2 border-[#222] border-dashed bg-[#0a0a0a] hover:bg-[#1a1a1a] flex flex-col items-center justify-center text-gray-600 shrink-0"><Plus size={20} className="mb-1" /><span className="text-[10px]">+ CAM</span></button>
+          {/* BOTÓN + CÁMARA (SIEMPRE DISPONIBLE Y VISIBLE, ENVUELVE ABAJO SI SE LLENA LA FILA) */}
+          <button 
+            onClick={addCam} 
+            disabled={camSlots.length >= 12}
+            className={`w-[195px] h-[108px] rounded-lg border-2 border-dashed flex flex-col items-center justify-center shrink-0 transition-all ${
+              camSlots.length >= 12
+                ? 'border-[#222] bg-[#0a0a0a] text-gray-600 cursor-not-allowed opacity-40'
+                : 'border-[#333] hover:border-orange-500/70 bg-[#0c0c0c] hover:bg-[#181818] text-gray-400 hover:text-white cursor-pointer shadow-sm group'
+            }`}
+            title={camSlots.length >= 12 ? 'Límite máximo de 12 cámaras alcanzado' : `Agregar ranura para CAM ${camSlots.length + 1}`}
+          >
+            <div className={`p-1.5 rounded-full mb-1 transition-transform group-hover:scale-110 ${camSlots.length >= 12 ? 'bg-[#181818] text-gray-600' : 'bg-orange-500/15 text-orange-400 border border-orange-500/30'}`}>
+              <Plus size={18} />
+            </div>
+            <span className="text-[11px] font-black tracking-wider uppercase">
+              {camSlots.length >= 12 ? 'MÁXIMO 12 CAMS' : `+ CÁMARA ${camSlots.length + 1}`}
+            </span>
+            <span className="text-[9px] text-gray-500 font-mono mt-0.5">({camSlots.length}/12 ranuras)</span>
+          </button>
         </div>
       </div>
 
@@ -2501,8 +3468,8 @@ function PodcastStudioApp() {
                 {activePanel === 'musica' && (
                   <div className="p-2 border-t border-[#222] bg-[#0f0f0f]">
                     <MusicBank
-                      tracks={MUSIC_TRACKS}
-                      sfxList={MUSIC_SFX}
+                      tracks={combinedTracks}
+                      sfxList={combinedSfx}
                       currentTrack={music.currentTrack}
                       playing={music.playing}
                       loading={music.loading}
@@ -2517,6 +3484,8 @@ function PodcastStudioApp() {
                       playingSfxId={playingSfxId}
                       sfxError={sfxError}
                       podcastGenre="general"
+                      onAddCustomTrack={handleAddCustomTrack}
+                      onAddCustomSfx={handleAddCustomSfx}
                     />
                   </div>
                 )}
@@ -2535,6 +3504,28 @@ function PodcastStudioApp() {
                 </button>
                 {activePanel === 'voz' && (
                   <div className="p-3 border-t border-[#222] bg-[#0f0f0f] space-y-3">
+                    {/* Botón de Retorno de Voz en Vivo con Efectos */}
+                    <button
+                      type="button"
+                      onClick={toggleVoiceMonitor}
+                      className={`w-full py-2 px-3 rounded-lg flex items-center justify-between text-xs font-bold border transition-all cursor-pointer ${
+                        voiceMonitorActive 
+                          ? 'bg-purple-900/60 border-purple-400 text-purple-200 shadow-md shadow-purple-950' 
+                          : 'bg-[#181818] border-[#333] text-gray-300 hover:text-white hover:bg-[#222]'
+                      }`}
+                      title="Escuchar en vivo tu voz modulada a través de tus auriculares (recomendado con audífonos)"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Headphones size={15} className={voiceMonitorActive ? 'text-purple-400 animate-pulse' : 'text-gray-400'} />
+                        <span>🎧 Retorno de Voz en Auriculares</span>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-black ${
+                        voiceMonitorActive ? 'bg-purple-600 text-white' : 'bg-[#2a2a2a] text-gray-400'
+                      }`}>
+                        {voiceMonitorActive ? 'ACTIVO' : 'OFF'}
+                      </span>
+                    </button>
+
                     {/* Destino de modulación */}
                     <div>
                       <label className="text-[10px] uppercase font-bold text-gray-400 block mb-1.5">
@@ -2627,50 +3618,183 @@ function PodcastStudioApp() {
                 )}
               </div>
 
-              {/* PANEL 4: TELEPROMPTER */}
+              {/* PANEL 4: TELEPROMPTER BROADCAST (ESTRUCTURA COMPLETA PROFESIONAL) */}
               <div className="border border-[#222] rounded bg-[#161616] overflow-hidden">
                 <button onClick={() => togglePanel('teleprompter')} className="w-full p-2.5 flex justify-between items-center text-xs hover:bg-[#2a2a2a] transition-colors">
-                  <span className="flex items-center gap-2 font-bold text-white"><BookOpen size={15} className="text-blue-400"/> Teleprompter</span>
+                  <span className="flex items-center gap-2 font-bold text-white"><BookOpen size={15} className="text-sky-400"/> Teleprompter Broadcast</span>
                   <div className="flex items-center gap-1.5">
-                    <span className={`text-[9px] px-2 py-0.5 rounded font-bold ${isTeleprompterPlaying ? 'bg-green-900 text-green-400' : 'bg-[#222] text-gray-400'}`}>{isTeleprompterPlaying ? 'Leyendo' : 'En Espera'}</span>
+                    <span className={`text-[9px] px-2 py-0.5 rounded font-bold ${isTeleprompterPlaying ? 'bg-green-900 text-green-400 border border-green-700/50' : 'bg-[#222] text-gray-400 border border-[#333]'}`}>{isTeleprompterPlaying ? 'Leyendo' : 'En Espera'}</span>
                     <ChevronDown size={14} className={`text-gray-400 transition-transform duration-200 ${activePanel === 'teleprompter' ? 'rotate-180' : ''}`}/>
                   </div>
                 </button>
                 {activePanel === 'teleprompter' && (
-                  <div className="p-3 border-t border-[#222] bg-[#0f0f0f] space-y-3">
-                    <div className="flex gap-2 items-center">
-                      <label className="flex-1 bg-[#222] hover:bg-[#2c2c2c] text-xs text-center py-2 px-3 rounded cursor-pointer flex items-center justify-center gap-1.5 border border-[#444] text-blue-400 font-bold transition-colors">
-                        <Upload size={14}/> Subir Word (.docx)
-                        <input type="file" accept=".docx" className="hidden" onChange={handleWordUpload} />
-                      </label>
-                      <button 
-                        onClick={handleClearTeleprompter} 
-                        disabled={!teleprompterText}
-                        title="Eliminar archivo / limpiar teleprompter"
-                        className={`py-2 px-3 rounded text-xs font-bold flex items-center justify-center gap-1.5 border transition-all ${
-                          teleprompterText 
-                            ? 'bg-red-950/40 hover:bg-red-900/60 text-red-400 hover:text-red-300 border-red-800/60 cursor-pointer' 
-                            : 'bg-[#181818] text-gray-600 border-[#2a2a2a] cursor-not-allowed opacity-50'
+                  <div className="p-3 border-t border-[#222] bg-[#0c0d12] space-y-3">
+                    {/* Barra de Estadísticas y Badge */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-gray-400 bg-black/50 border border-[#2a2e3d] px-2 py-0.5 rounded">
+                        {prompterWordCount} palabras • ~{prompterEstMins} min
+                      </span>
+                      <button
+                        onClick={() => setShowFloatingPrompter(p => !p)}
+                        className={`text-[10px] px-2 py-0.5 rounded font-bold border transition-colors flex items-center gap-1 cursor-pointer ${
+                          showFloatingPrompter 
+                            ? 'bg-sky-950 text-sky-400 border-sky-500' 
+                            : 'bg-[#181a22] text-gray-400 hover:text-white border-[#333]'
                         }`}
+                        title="Proyectar ventana HUD de lectura sobre la toma de cámara"
                       >
-                        <Trash2 size={13}/> Limpiar
+                        <Monitor size={10} /> {showFloatingPrompter ? 'HUD Activo' : 'HUD Cámara'}
                       </button>
                     </div>
-                    <div className="flex gap-1">
-                      <button onClick={handlePlayTeleprompter} className={`flex-1 py-1.5 rounded text-xs font-bold flex justify-center items-center gap-1 border ${isTeleprompterPlaying ? 'bg-green-600 text-white border-green-500' : 'bg-[#1a1a1a] text-green-500 border-green-900/50 hover:bg-[#222]'}`}><Monitor size={12}/> Play</button>
-                      <button onClick={() => setIsTeleprompterPlaying(false)} className={`flex-1 py-1.5 rounded text-xs font-bold flex justify-center items-center gap-1 border ${!isTeleprompterPlaying ? 'bg-red-700 text-white border-red-500' : 'bg-[#1a1a1a] text-red-500 border-red-900/50 hover:bg-[#222]'}`}><Square size={12}/> Stop</button>
+
+                    {/* Barra de Transporte Principal */}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setIsTeleprompterPlaying(p => !p)}
+                        className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all text-white shadow-md cursor-pointer ${
+                          isTeleprompterPlaying 
+                            ? 'bg-red-600 hover:bg-red-700 border border-red-500 shadow-red-950/50' 
+                            : 'bg-emerald-600 hover:bg-emerald-700 border border-emerald-500 shadow-emerald-950/50'
+                        }`}
+                        title="Iniciar o pausar desplazamiento del guión (Espacio)"
+                      >
+                        {isTeleprompterPlaying ? <Pause size={13} /> : <Play size={13} />}
+                        <span>{isTeleprompterPlaying ? 'PAUSAR' : 'INICIAR'}</span>
+                      </button>
+
+                      <button
+                        onClick={handlePrompterReset}
+                        title="Volver al inicio del guión (Tecla R)"
+                        className="p-1.5 px-2 rounded-lg bg-[#181a22] hover:bg-[#252834] text-gray-300 hover:text-white border border-[#2a2e3d] transition-colors cursor-pointer"
+                      >
+                        <RotateCcw size={13} />
+                      </button>
+
+                      <button
+                        onClick={() => setPrompterMirrorH(m => !m)}
+                        title="Modo Espejo Horizontal para cristal divisor (Beam Splitter)"
+                        className={`p-1.5 px-2 rounded-lg border transition-colors cursor-pointer ${
+                          prompterMirrorH 
+                            ? 'bg-sky-600 text-white border-sky-400' 
+                            : 'bg-[#181a22] hover:bg-[#252834] text-gray-300 border-[#2a2e3d]'
+                        }`}
+                      >
+                        <FlipHorizontal size={13} />
+                      </button>
+
+                      <button
+                        onClick={() => setPrompterEyeline(e => !e)}
+                        title="Alternar guía horizontal de contacto visual con la cámara"
+                        className={`p-1.5 px-2 rounded-lg border transition-colors cursor-pointer ${
+                          prompterEyeline 
+                            ? 'bg-sky-500/25 text-sky-400 border-sky-500/50' 
+                            : 'bg-[#181a22] hover:bg-[#252834] text-gray-300 border-[#2a2e3d]'
+                        }`}
+                      >
+                        <Eye size={13} />
+                      </button>
+
+                      <button
+                        onClick={() => setPrompterEditMode(e => !e)}
+                        title={prompterEditMode ? "Guardar y ver lectura" : "Editar guión"}
+                        className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-colors cursor-pointer ${
+                          prompterEditMode 
+                            ? 'bg-orange-600 text-white border-orange-500' 
+                            : 'bg-[#181a22] hover:bg-[#252834] text-gray-300 border-[#2a2e3d]'
+                        }`}
+                      >
+                        {prompterEditMode ? 'Listo' : 'Editar'}
+                      </button>
+
+                      <button
+                        onClick={handleClearTeleprompter}
+                        disabled={!teleprompterText}
+                        title="Limpiar texto del teleprompter"
+                        className="p-1.5 px-2 rounded-lg bg-red-950/40 hover:bg-red-900/60 text-red-400 border border-red-800/40 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     </div>
-                    <textarea 
-                      value={teleprompterText} 
-                      onChange={(e) => setTeleprompterText(e.target.value)} 
-                      placeholder="Escribe o pega aquí el guión del programa, o sube un archivo Word (.docx)..." 
-                      className="w-full bg-[#1a1a1a] border border-[#333] rounded p-2 text-sm text-gray-300 placeholder-gray-600 h-32 resize-none outline-none focus:border-orange-500" 
-                    />
-                    <div className="space-y-2 pt-2 border-t border-[#333]">
-                      <div className="flex items-center gap-2 text-[10px] text-gray-400"><span className="w-8">Vel.</span><input type="range" min="0.1" max="10" step="0.1" value={teleprompterSpeed} onChange={e => setTeleprompterSpeed(parseFloat(e.target.value))} className="flex-1 accent-orange-500" /><span className="w-8 text-right">{teleprompterSpeed.toFixed(1)}x</span></div>
-                      <div className="flex items-center gap-2 text-[10px] text-gray-400"><span className="w-8">Texto</span><input type="range" min="20" max="100" value={teleprompterFontSize} onChange={e => setTeleprompterFontSize(parseInt(e.target.value))} className="flex-1 accent-orange-500" /><span className="w-8 text-right">{teleprompterFontSize}px</span></div>
-                      <div className="flex justify-between items-center text-[10px] text-gray-400 mt-2"><span>Dirección</span><span className="bg-orange-900/30 text-orange-500 border border-orange-900/50 px-2 py-0.5 rounded"> Abajo  arriba</span></div>
+
+                    {/* Sliders de Ajuste Rápido: Velocidad y Tamaño de Letra */}
+                    <div className="space-y-1.5 pt-2 border-t border-[#222530]">
+                      <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                        <span className="w-12 text-gray-300">Velocidad:</span>
+                        <input
+                          type="range"
+                          min="0.5"
+                          max="8.0"
+                          step="0.1"
+                          value={teleprompterSpeed}
+                          onChange={e => setTeleprompterSpeed(parseFloat(e.target.value))}
+                          className="flex-1 accent-sky-400 cursor-pointer"
+                        />
+                        <span className="w-10 text-right font-extrabold text-sky-400 font-mono">{teleprompterSpeed.toFixed(1)}x</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                        <span className="w-12 text-gray-300">Letra:</span>
+                        <input
+                          type="range"
+                          min="18"
+                          max="60"
+                          step="2"
+                          value={teleprompterFontSize}
+                          onChange={e => setTeleprompterFontSize(parseInt(e.target.value))}
+                          className="flex-1 accent-sky-400 cursor-pointer"
+                        />
+                        <span className="w-10 text-right font-extrabold text-sky-400 font-mono">{teleprompterFontSize}px</span>
+                      </div>
                     </div>
+
+                    {/* Acciones de Archivo y Enlace a iPad / Tablet */}
+                    <div className="flex gap-2 items-center pt-2 border-t border-[#222530]">
+                      <label className="flex-1 bg-[#181a22] hover:bg-[#252834] text-[11px] font-bold py-1.5 px-2 rounded-lg cursor-pointer flex items-center justify-center gap-1.5 border border-[#2a2e3d] hover:border-sky-500/50 text-sky-400 transition-colors">
+                        <Upload size={12} />
+                        <span>Cargar .docx / .txt</span>
+                        <input type="file" accept=".docx,.txt" className="hidden" onChange={handleTeleprompterFileUpload} />
+                      </label>
+                      <button
+                        onClick={handleCopyPrompterLink}
+                        className="bg-[#181a22] hover:bg-[#252834] text-[11px] font-bold py-1.5 px-2.5 rounded-lg flex items-center justify-center gap-1.5 border border-[#2a2e3d] hover:border-sky-500/50 text-gray-200 transition-colors cursor-pointer"
+                        title="Copiar enlace para abrir el teleprompter en un iPad o tableta externa en la red LAN"
+                      >
+                        <Tablet size={12} className="text-sky-400" />
+                        <span>{prompterCopiedLink ? '¡Copiado!' : 'Link iPad/Tablet'}</span>
+                      </button>
+                    </div>
+
+                    {/* Área de Visualización / Edición del Guión */}
+                    {prompterEditMode ? (
+                      <textarea
+                        value={teleprompterText}
+                        onChange={(e) => setTeleprompterText(e.target.value)}
+                        placeholder="Escribe o pega aquí el guión del programa, o sube un archivo Word (.docx) o texto (.txt)..."
+                        className="w-full bg-[#0a0b10] border border-sky-500/40 focus:border-sky-400 rounded-lg p-2.5 text-xs text-gray-100 placeholder-gray-600 h-44 resize-none outline-none font-mono"
+                      />
+                    ) : (
+                      <div className="h-52 bg-[#07080c] border border-[#222530] rounded-xl overflow-hidden relative select-none flex flex-col shadow-inner">
+                        {prompterEyeline && (
+                          <div className="px-2 py-0.5 bg-sky-950/80 border-b border-sky-500/30 text-[9px] font-extrabold text-sky-300 text-center tracking-wider uppercase select-none z-10 shrink-0">
+                            ▲ MIRAR AQUÍ (LENTE DE CÁMARA)
+                          </div>
+                        )}
+                        <div
+                          ref={rightPrompterScrollRef}
+                          onClick={() => setIsTeleprompterPlaying(p => !p)}
+                          className="flex-1 overflow-y-auto p-4 text-center font-bold text-white leading-relaxed cursor-pointer [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                          style={{
+                            fontSize: `${teleprompterFontSize}px`,
+                            transform: prompterMirrorH ? 'scaleX(-1)' : 'none',
+                            textShadow: '0 2px 8px rgba(0,0,0,0.9)'
+                          }}
+                          title="Clic para pausar / reanudar lectura"
+                        >
+                          <div className="whitespace-pre-wrap py-2">
+                            {teleprompterText || 'Sin texto en el teleprompter. Haz clic en "Editar" o sube un archivo Word (.docx).'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2736,6 +3860,26 @@ function PodcastStudioApp() {
           {/* BOTÓN INFERIOR DE GRABACIÓN */}
           {!isRightPanelCollapsed && (
             <div className="p-3 border-t border-[#222] bg-[#0a0a0a] flex flex-col gap-2 shrink-0">
+              {/* TOGGLE GRABACIÓN ISO MULTICANAL (P4.1) */}
+              <div className="flex items-center justify-between px-1 text-[11px]">
+                <span className="text-gray-400 font-bold flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${isoRecordingEnabled ? 'bg-red-500 shadow-[0_0_6px_#ef4444]' : 'bg-gray-600'}`} />
+                  Grabación ISO Multicanal
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsoRecordingEnabled(v => !v)}
+                  className={`px-2 py-0.5 rounded text-[10px] font-black uppercase transition-all cursor-pointer border ${
+                    isoRecordingEnabled
+                      ? 'bg-red-950/80 border-red-500 text-red-300'
+                      : 'bg-[#18181b] border-[#333] text-gray-500 hover:text-gray-300'
+                  }`}
+                  title="Grabar pistas de video limpias e independientes por cada cámara para edición multicam en Premiere / DaVinci"
+                >
+                  {isoRecordingEnabled ? 'ISO ACTIVO' : 'ISO APAGADO'}
+                </button>
+              </div>
+
               <button 
                 onClick={handleRecord} 
                 className={`w-full py-3 rounded-lg font-bold flex items-center justify-center gap-2 text-xs transition-all cursor-pointer ${
@@ -2776,7 +3920,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.0.9</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.1.9</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>
@@ -3355,6 +4499,7 @@ function PodcastStudioApp() {
         open={showExportModal}
         onClose={() => setShowExportModal(false)}
         recording={recordedVideoData}
+        highlights={highlights}
         onDownloadMp4={async (rec) => {
           if (window.api?.openRecordingsFolder) {
             window.api.openRecordingsFolder(rec?.projectName || topic || 'Proyecto_General');
@@ -3371,6 +4516,94 @@ function PodcastStudioApp() {
             URL.revokeObjectURL(url);
           }
         }}
+      />
+
+      {/* CONSOLA DE AUDIO BROADCAST PROFESIONAL (P0.4) */}
+      <AudioMixerDesk
+        isOpen={showAudioMixerModal}
+        onClose={() => setShowAudioMixerModal(false)}
+        camSlots={camSlots}
+      />
+
+      {/* MODAL CONFIGURACIÓN TALLY LIGHTS BROADCAST (P2.4) */}
+      <TallySettingsModal
+        open={showTallyModal}
+        onClose={() => setShowTallyModal(false)}
+        activeCam={activeCam}
+        pvwCam={pvwCam}
+        dualMode={dualMonitorMode}
+        totalSlots={camSlots.length}
+        onSelectCam={(c) => { setActiveCam(c); updateBroadcastState({ activeCam: c }); }}
+        onSelectPvw={(c) => { setPvwCam(c); updateBroadcastState({ pvwCam: c }); }}
+      />
+
+      {/* TELEPROMPTER HUD FLOTANTE BROADCAST (P3.2) */}
+      <BroadcastTeleprompter
+        isOpen={showFloatingPrompter}
+        onClose={() => setShowFloatingPrompter(false)}
+        initialText={teleprompterText}
+        lanUrl={qrCodeUrl}
+      />
+
+
+
+      {/* SALA DE INVITADOS REMOTOS & RETORNO MIX-MINUS (P3.3) */}
+      <MultiGuestRoomModal
+        open={showMultiGuestModal}
+        onClose={() => setShowMultiGuestModal(false)}
+        localIp={qrCodeUrl ? (qrCodeUrl.match(/https?:\/\/([^:/]+)/) || [])[1] || 'localhost' : 'localhost'}
+        cameraSlots={camSlots}
+        cameraMeta={cameraMeta}
+        onUpdateCameraMeta={(slot, meta) => {
+          setCameraMeta(prev => ({
+            ...prev,
+            [slot]: meta,
+          }));
+        }}
+        cameraLevels={camAudioLevels}
+        slotStreams={slotStreams}
+        onDisconnectSlot={(slot) => {
+          if (slotStreams[slot]) {
+            slotStreams[slot].getTracks().forEach(t => t.stop());
+            setSlotStreams(prev => {
+              const copy = { ...prev };
+              delete copy[slot];
+              return copy;
+            });
+          }
+        }}
+        autoCintilloEnabled={autoSpeakerCintilloEnabled}
+        onToggleAutoCintillo={() => setAutoSpeakerCintilloEnabled(v => !v)}
+        onTriggerSpeakerCintillo={(slotNum) => {
+          if (slotNum === 1) {
+            showManual('host');
+          } else {
+            const meta = cameraMeta[slotNum] || cameraMeta[slotNum - 1];
+            const name = meta?.guestName || (slotNum === 2 ? guestName : `Invitado CAM ${slotNum}`);
+            const role = meta?.guestRole || (slotNum === 2 ? guestRole : 'Participante en Vivo');
+            showCustom({
+              tag: 'INVITADO',
+              text: name,
+              subtitle: role,
+              color: '#06b6d4',
+              presetId: 'guest',
+              targetSlot: slotNum - 1,
+            });
+          }
+        }}
+      />
+
+
+
+
+
+      {/* SALIDA LAN PROGRAM & ENRUTAMIENTO OBS / VMIX (P4.4) */}
+      <LanProgramOutputModal
+        open={showLanProgramModal}
+        onClose={() => setShowLanProgramModal(false)}
+        lanFeedUrl={lanProgramUrl}
+        activeCam={activeCam}
+        layoutMode={layoutMode}
       />
 
     </div>

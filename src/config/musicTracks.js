@@ -143,13 +143,6 @@ export const SFX_CATEGORIES = {
 }
 
 const SFX_RAW = [
-  // Puertas y Entornos
-  { id: 'sfx-door-01', name: 'Puerta abriéndose chirriante', sub: 'Suspenso / Entrada dramática', category: 'doors', mixkitId: 2573 },
-  { id: 'sfx-door-02', name: 'Puerta abriéndose de golpe', sub: 'Llegada de invitado / Sorpresa', category: 'doors', mixkitId: 2574 },
-
-  // Cristales y Choques
-  { id: 'sfx-glass-01', name: 'Cristales quebrándose', sub: 'Impacto fuerte / Vidrio roto', category: 'glass', mixkitId: 2788 },
-  { id: 'sfx-glass-02', name: 'Cristal rompiéndose en pedazos', sub: 'Error garrafal / Chocadero', category: 'glass', mixkitId: 2789 },
 
   // Carcajadas y Risas
   { id: 'sfx-laugh-02', name: 'Personas carcajeándose', sub: 'Momento muy cómico / Carcajadas', category: 'laughter', mixkitId: 460 },

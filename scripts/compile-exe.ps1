@@ -19,7 +19,7 @@ Write-Host "[1/4] Version del proyecto: $rawVersion ($fullVersion)" -ForegroundC
 # 2. Sincronizar versión en launcher.cs
 $launcherPath = Join-Path $projectDir "launcher.cs"
 if (Test-Path $launcherPath) {
-    $launcherCode = Get-Content $launcherPath -Raw
+    $launcherCode = Get-Content $launcherPath -Raw -Encoding UTF8
     $launcherCode = [System.Text.RegularExpressions.Regex]::Replace($launcherCode, '\[assembly:\s*System\.Reflection\.AssemblyVersion\("[^"]+"\)', "[assembly: System.Reflection.AssemblyVersion(`"$fullVersion`")")
     $launcherCode = [System.Text.RegularExpressions.Regex]::Replace($launcherCode, '\[assembly:\s*System\.Reflection\.AssemblyFileVersion\("[^"]+"\)', "[assembly: System.Reflection.AssemblyFileVersion(`"$fullVersion`")")
     $launcherCode = [System.Text.RegularExpressions.Regex]::Replace($launcherCode, '\[assembly:\s*System\.Reflection\.AssemblyInformationalVersion\("[^"]+"\)', "[assembly: System.Reflection.AssemblyInformationalVersion(`"$fullVersion`")")

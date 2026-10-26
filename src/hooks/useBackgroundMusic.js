@@ -1,4 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import {
+  connectBgmAudioElement,
+  setBgmVolume,
+  setBgmDucking,
+  setHostPriorityDucking,
+  getBroadcastAudioContext
+} from '../utils/masterBroadcastEngine.js'
 
 export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } = {}) {
   const audioRef = useRef(null)
@@ -36,9 +43,18 @@ export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } 
 
   useEffect(() => {
     const audio = new Audio()
+    audio.crossOrigin = 'anonymous'
     audio.loop = true
     audio.preload = 'auto'
     audioRef.current = audio
+
+    try {
+      connectBgmAudioElement(audio)
+      setBgmVolume(volume)
+    } catch (e) {
+      console.warn('[useBackgroundMusic] Fallo al enlazar con mixer broadcast:', e)
+    }
+
     return () => {
       audio.pause()
       audio.src = ''
@@ -54,6 +70,8 @@ export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } 
 
     if (!duckingEnabled || !playing) {
       audio.volume = baseVol
+      setBgmDucking(false)
+      setHostPriorityDucking(false)
       return
     }
 
@@ -63,6 +81,8 @@ export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } 
       isDuckingRef.current = true
       // Atenuación suave a un 25% del volumen normal (sensación broadcast)
       audio.volume = baseVol * 0.25
+      setBgmDucking(true, 0.25)
+      setHostPriorityDucking(true, { duckGuests: true, duckLevel: 0.38, duckMusic: true })
     } else if (isDuckingRef.current) {
       clearTimeout(duckReleaseTimerRef.current)
       duckReleaseTimerRef.current = setTimeout(() => {
@@ -70,9 +90,13 @@ export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } 
         if (audioRef.current) {
           audioRef.current.volume = baseVol
         }
-      }, 1000)
+        setBgmDucking(false)
+        setHostPriorityDucking(false)
+      }, 900)
     } else {
       audio.volume = baseVol
+      setBgmDucking(false)
+      setHostPriorityDucking(false)
     }
   }, [micLevel, volume, duckingEnabled, playing])
 
@@ -86,10 +110,13 @@ export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } 
     audio.pause()
     audio.src = track.url
     audio.volume = volume / 100
+    setBgmVolume(volume)
 
     const onCanPlay = () => {
       setLoading(false)
       if (playingRef.current) {
+        const ctx = getBroadcastAudioContext()
+        if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {})
         audio.play().catch(() => {
           setError('Haz clic en play para iniciar')
           setPlaying(false)
@@ -121,6 +148,7 @@ export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } 
     const audio = audioRef.current
     if (!audio) return
     audio.volume = volume / 100
+    setBgmVolume(volume)
   }, [volume])
 
   useEffect(() => {
@@ -129,6 +157,8 @@ export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } 
 
     if (playing) {
       setLoading(true)
+      const ctx = getBroadcastAudioContext()
+      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {})
       audio.play()
         .then(() => { setLoading(false); setError(null) })
         .catch(() => {

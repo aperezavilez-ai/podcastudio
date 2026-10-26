@@ -25,4 +25,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     {isStudioControl ? <StudioRemoteControl /> : isRemoteCam ? <RemoteCam /> : <App />}
   </React.StrictMode>,
-)
+);
+
+if (typeof window !== 'undefined' && window.api?.signalReady) {
+  window.api.signalReady();
+}

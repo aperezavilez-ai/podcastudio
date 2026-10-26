@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react'
 import { 
   Play, Pause, Square, Music, Wand2, Sparkles, Loader2, 
-  Volume2, VolumeX, Filter, Disc, CircleSlash, AlertCircle, Zap 
+  Volume2, VolumeX, Filter, Disc, CircleSlash, AlertCircle, Zap,
+  Upload, Plus
 } from 'lucide-react'
 import { MUSIC_GENRES, SFX_CATEGORIES } from '../config/musicTracks.js'
 import styles from './MusicBank.module.css'
@@ -23,6 +24,8 @@ export default function MusicBank({
   playingSfxId,
   sfxError,
   podcastGenre,
+  onAddCustomTrack,
+  onAddCustomSfx,
 }) {
   const [tab, setTab] = useState('songs')
   const [genreFilter, setGenreFilter] = useState('all')
@@ -40,12 +43,16 @@ export default function MusicBank({
 
   const genreOptions = useMemo(() => {
     const used = new Set(tracks.map((t) => t.genre))
-    return ['all', ...Object.keys(MUSIC_GENRES).filter((g) => used.has(g))]
+    const list = Object.keys(MUSIC_GENRES).filter((g) => used.has(g))
+    if (used.has('custom')) list.unshift('custom')
+    return ['all', ...list]
   }, [tracks])
 
   const sfxOptions = useMemo(() => {
     const used = new Set(sfxList.map((s) => s.category))
-    return ['all', ...Object.keys(SFX_CATEGORIES).filter((c) => used.has(c))]
+    const list = Object.keys(SFX_CATEGORIES).filter((c) => used.has(c))
+    if (used.has('custom')) list.unshift('custom')
+    return ['all', ...list]
   }, [sfxList])
 
   return (
@@ -107,12 +114,56 @@ export default function MusicBank({
             </button>
           </div>
 
+          {/* BOTÓN SUBIR MÚSICA PERSONALIZADA */}
+          <label 
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 7,
+              padding: '7px 10px',
+              background: 'rgba(234, 88, 12, 0.12)',
+              border: '1px dashed rgba(234, 88, 12, 0.5)',
+              borderRadius: 8,
+              color: '#fb923c',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+              marginBottom: 8,
+              transition: 'all 0.2s',
+            }}
+            title="Importa tus propias canciones o pistas en formato MP3, WAV, M4A o OGG"
+          >
+            <Upload size={13} />
+            <span>+ Cargar Música (.mp3, .wav)</span>
+            <input
+              type="file"
+              accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file && onAddCustomTrack) {
+                  const url = URL.createObjectURL(file);
+                  onAddCustomTrack({
+                    id: `custom-track-${Date.now()}`,
+                    name: file.name.replace(/\.[^/.]+$/, ""),
+                    sub: `Pista Local (${(file.size / (1024 * 1024)).toFixed(1)} MB)`,
+                    genre: 'custom',
+                    url,
+                    isCustom: true
+                  });
+                  e.target.value = '';
+                }
+              }}
+            />
+          </label>
+
           <div className={styles.filterRow}>
             <Filter size={13} style={{ color: '#888' }} />
             <select value={genreFilter} onChange={(e) => setGenreFilter(e.target.value)} aria-label="Filtrar por género">
               <option value="all">Todos los géneros</option>
               {genreOptions.filter((g) => g !== 'all').map((g) => (
-                <option key={g} value={g}>{MUSIC_GENRES[g]}</option>
+                <option key={g} value={g}>{MUSIC_GENRES[g] || (g === 'custom' ? '🎵 Mis Pistas Subidas' : g)}</option>
               ))}
             </select>
           </div>
@@ -186,12 +237,56 @@ export default function MusicBank({
             Aplausos, risas, ovaciones, choques, autos y más. Clic para preescuchar en el estudio.
           </p>
 
+          {/* BOTÓN SUBIR EFECTO PERSONALIZADO */}
+          <label 
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 7,
+              padding: '7px 10px',
+              background: 'rgba(234, 179, 8, 0.12)',
+              border: '1px dashed rgba(234, 179, 8, 0.5)',
+              borderRadius: 8,
+              color: '#facc15',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+              marginBottom: 8,
+              transition: 'all 0.2s',
+            }}
+            title="Importa tus propios efectos de sonido en formato MP3, WAV, M4A o OGG"
+          >
+            <Upload size={13} />
+            <span>+ Cargar Efecto de Sonido (.mp3, .wav)</span>
+            <input
+              type="file"
+              accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file && onAddCustomSfx) {
+                  const url = URL.createObjectURL(file);
+                  onAddCustomSfx({
+                    id: `custom-sfx-${Date.now()}`,
+                    name: file.name.replace(/\.[^/.]+$/, ""),
+                    sub: `Efecto Local (${(file.size / 1024).toFixed(0)} KB)`,
+                    category: 'custom',
+                    url,
+                    isCustom: true
+                  });
+                  e.target.value = '';
+                }
+              }}
+            />
+          </label>
+
           <div className={styles.filterRow}>
             <Filter size={13} style={{ color: '#888' }} />
             <select value={sfxFilter} onChange={(e) => setSfxFilter(e.target.value)} aria-label="Filtrar efectos">
               <option value="all">Todos los efectos</option>
               {sfxOptions.filter((c) => c !== 'all').map((c) => (
-                <option key={c} value={c}>{SFX_CATEGORIES[c]}</option>
+                <option key={c} value={c}>{SFX_CATEGORIES[c] || (c === 'custom' ? '⚡ Mis Efectos Subidos' : c)}</option>
               ))}
             </select>
           </div>

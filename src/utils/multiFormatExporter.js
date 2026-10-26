@@ -179,6 +179,21 @@ export async function convertVideoToFormat(sourceMedia, targetFormat = '9:16', o
             ctx.shadowBlur = 28
             ctx.drawImage(video, dx, dy, dw, dh)
             ctx.restore()
+          } else if (mode === 'split-stack' && targetFormat === '9:16') {
+            // Modo Vertical Split-Stack (Fase P2.2):
+            // Mitad superior: Lado izquierdo (Conductor / Orador)
+            // Mitad inferior: Lado derecho (Invitado / Presentación)
+            const halfH = finalH / 2
+            const quadW = vw / 2
+
+            // Orador arriba centrado
+            ctx.drawImage(video, 0, 0, quadW, vh, 0, 0, finalW, halfH)
+            // Invitado abajo centrado
+            ctx.drawImage(video, quadW, 0, quadW, vh, 0, halfH, finalW, halfH)
+
+            // Línea divisoria estética con acento naranja
+            ctx.fillStyle = '#ff6b00'
+            ctx.fillRect(0, halfH - 2, finalW, 4)
           } else {
             // CORREGIDO: Smart-crop y 16:9 respetan el ratio sin estirar la imagen
             const targetRatio = finalW / finalH

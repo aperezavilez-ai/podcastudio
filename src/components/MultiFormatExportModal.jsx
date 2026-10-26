@@ -26,7 +26,10 @@ import {
   Package,
   ShieldCheck,
   Check,
-  FileVideo
+  FileVideo,
+  Users,
+  Zap,
+  Scissors
 } from 'lucide-react'
 import styles from './MultiFormatExportModal.module.css'
 
@@ -42,6 +45,7 @@ export default function MultiFormatExportModal({
   open,
   onClose,
   recording,
+  highlights = [],
   selectedNetworks = ['facebook', 'youtube', 'tiktok', 'instagram'],
   onDownloadOriginal,
   onDownloadMp4,
@@ -50,6 +54,8 @@ export default function MultiFormatExportModal({
 }) {
   const [cropMode, setCropMode] = useState('smart-crop') // 'smart-crop' | 'blur-fill'
   const [convertingKey, setConvertingKey] = useState(null)
+  const [exportingClipId, setExportingClipId] = useState(null)
+  const [clipNotice, setClipNotice] = useState(null)
   const [progress, setProgress] = useState(0)
   const [packProgress, setPackProgress] = useState(null)
   const [thumbnails, setThumbnails] = useState([])
@@ -282,7 +288,41 @@ export default function MultiFormatExportModal({
     setProgress(0)
   }
 
-  const isBusy = convertingKey !== null || packProgress !== null
+  const allHighlights = (highlights && highlights.length > 0) ? highlights : (recording?.highlights || [])
+
+  const handleExportHighlight = async (hl, formatKey = '9:16') => {
+    const sourcePath = recording.diskPath || recording.masterPath || (recording.path && !recording.path.startsWith('blob:') ? recording.path : null)
+    if (window.api?.exportHighlightClip && sourcePath) {
+      setExportingClipId(`${hl.id}_${formatKey}`)
+      setClipNotice({ type: 'info', text: `Recortando clip "${hl.title}" en formato ${formatKey}...` })
+      try {
+        const res = await window.api.exportHighlightClip({
+          sourcePath,
+          startTime: hl.startSeconds || Math.max(0, (hl.timeSeconds || 0) - 6),
+          duration: hl.duration || 30,
+          formatKey,
+          title: hl.title,
+          projectName: recording.projectName || 'Proyecto_General'
+        })
+        if (res.success) {
+          setClipNotice({ type: 'success', text: `¡Clip guardado en disco y en tu carpeta Descargas!` })
+        } else {
+          setClipNotice({ type: 'error', text: `Error exportando clip: ${res.error}` })
+        }
+      } catch (err) {
+        setClipNotice({ type: 'error', text: err.message })
+      } finally {
+        setExportingClipId(null)
+      }
+    } else {
+      setClipNotice({
+        type: 'info',
+        text: `Clip marcado en ${hl.formattedStart || hl.formattedTime} (${hl.title}). En la versión nativa PodcastStudio.exe se genera con FFmpeg a 1080p real.`
+      })
+    }
+  }
+
+  const isBusy = convertingKey !== null || packProgress !== null || exportingClipId !== null
   const selectedCount = selectedKeys.length
 
   const handleModalClose = () => {
@@ -374,8 +414,166 @@ export default function MultiFormatExportModal({
               <strong>Fondo Desenfoque Broadcast</strong>
               <span>(Efecto TV sin cortes)</span>
             </button>
+            <button
+              type="button"
+              className={`${styles.modePill} ${cropMode === 'split-stack' ? styles.modePillActive : ''}`}
+              onClick={() => setCropMode('split-stack')}
+              disabled={isBusy}
+            >
+              <Users size={15} style={{ marginRight: 6 }} />
+              <strong>Split-Stack Vertical</strong>
+              <span>(Orador arriba + Invitado abajo)</span>
+            </button>
           </div>
         </div>
+
+        {/* Notificación de recorte de clips */}
+        {clipNotice && (
+          <div
+            style={{
+              margin: '0 0 16px 0',
+              padding: '10px 16px',
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 600,
+              background: clipNotice.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : (clipNotice.type === 'success' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(249, 115, 22, 0.15)'),
+              border: `1px solid ${clipNotice.type === 'error' ? '#ef4444' : (clipNotice.type === 'success' ? '#22c55e' : '#f97316')}`,
+              color: clipNotice.type === 'error' ? '#fca5a5' : (clipNotice.type === 'success' ? '#86efac' : '#fed7aa'),
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}
+          >
+            <span>{clipNotice.text}</span>
+            <button
+              onClick={() => setClipNotice(null)}
+              style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 2 }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* SECCIÓN AI HIGHLIGHTS & CLIPS AUTOMÁTICOS (P3.1) */}
+        {allHighlights && allHighlights.length > 0 && (
+          <div
+            style={{
+              marginBottom: 20,
+              padding: 14,
+              borderRadius: 12,
+              background: 'linear-gradient(135deg, rgba(255,107,0,0.12), rgba(15,15,20,0.8))',
+              border: '1px solid rgba(255,107,0,0.3)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.4)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Zap size={18} color="#ff6b00" />
+                <span style={{ fontSize: 14, fontWeight: 800, color: '#ffedd5' }}>
+                  Momentos Destacados Marcados en Vivo ({allHighlights.length})
+                </span>
+              </div>
+              <span style={{ fontSize: 11, color: '#fed7aa', background: 'rgba(255,107,0,0.25)', padding: '2px 10px', borderRadius: 999, fontWeight: 700 }}>
+                Recorte Automático con 1 Clic
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
+              {allHighlights.map((hl) => (
+                <div
+                  key={hl.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    background: 'rgba(10, 10, 14, 0.85)',
+                    borderRadius: 8,
+                    border: '1px solid rgba(255,255,255,0.08)'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 800,
+                        color: '#ff6b00',
+                        background: 'rgba(255,107,0,0.15)',
+                        border: '1px solid rgba(255,107,0,0.3)',
+                        padding: '3px 8px',
+                        borderRadius: 6
+                      }}
+                    >
+                      {hl.formattedStart || hl.formattedTime}
+                    </span>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>
+                        {hl.title}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                        {hl.label} &bull; Duración: {hl.duration || 30}s
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      onClick={() => handleExportHighlight(hl, '9:16')}
+                      disabled={isBusy}
+                      style={{
+                        background: '#ea580c',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        padding: '6px 12px',
+                        fontSize: 11,
+                        fontWeight: 800,
+                        cursor: isBusy ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 5,
+                        boxShadow: '0 2px 8px rgba(234,88,12,0.4)'
+                      }}
+                      title="Exportar clip vertical 9:16 para TikTok y Reels"
+                    >
+                      {exportingClipId === `${hl.id}_9:16` ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Film size={12} />
+                      )}
+                      <span>Clip 9:16</span>
+                    </button>
+                    <button
+                      onClick={() => handleExportHighlight(hl, '16:9')}
+                      disabled={isBusy}
+                      style={{
+                        background: 'rgba(255,255,255,0.08)',
+                        color: '#cbd5e1',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: 6,
+                        padding: '6px 10px',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: isBusy ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4
+                      }}
+                      title="Exportar clip horizontal 16:9 para YouTube"
+                    >
+                      {exportingClipId === `${hl.id}_16:9` ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Scissors size={12} />
+                      )}
+                      <span>16:9</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Formatos Cards */}
         <div className={styles.cardsGrid}>

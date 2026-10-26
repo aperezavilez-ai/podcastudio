@@ -4,28 +4,124 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.0.10 (Producción Oficial - Release Ultra Calidad & Mando iPad)
-- **Calidad de Video 1080p Prístina y Reproducción Continua sin Pausas**:
-  - Parámetros de captura de cámara (`getUserMedia`) elevados a Full HD 1080p real (`width: 1920, height: 1080, 30fps`). El zoom ahora mantiene nitidez y detalle cristalino sin pixelación ni desenfoque.
-  - Flujo de grabación de canvas en `masterBroadcastEngine` optimizado a 10.0 Mbps con códec WebM/VP9 y audio estéreo a 192 kbps.
-  - Motor de transcodificación FFmpeg en Electron rediseñado: eliminado `-tune zerolatency` (causante de macrobloques y degradación), configurado a `-preset veryfast -crf 17 -maxrate 12M -bufsize 24M` con GOP de cadencia regular (`-g 60 -keyint_min 30`) para garantizar fluidez absoluta de reproducción sin congelamientos, saltos o tartamudeo en Windows Media Player ni dispositivos móviles.
-- **Eliminación Total del Brinco en Zoom Dinámico y Encuadre**:
-  - Eliminado el salto abrupto a 1.25x en clic de ratón.
-  - Origen de transformación anclado a `50% 50%` fijo con traslación y escala unificadas en `translate3d(panPercentX, panPercentY, 0) scale(zoom)`, garantizando transiciones suaves y paneo 1:1 estilo ventana de Windows.
-- **Visibilidad Inmediata del Mando iPad / Tablet (Switcher Móvil)**:
-  - Botón de acceso directo en la barra superior: `[ 🎮 Mando iPad ]` en alto contraste y siempre visible sin importar la resolución de la pantalla.
-  - Pestaña dedicada `🎮 Mando iPad / Switcher` en el modal de configuración de cámaras (`CameraConnectModal`) con código QR, enlace directo y guía paso a paso.
-  - Banner distintivo en la pestaña Móvil / Remota QR para diferenciar al instante el control switcher de la cámara remota.
-  - Botón directo en la barra lateral derecha para abrir el código QR y enlace del mando sin tener que navegar por menús.
-- **Estructura Limpia en Carpeta Raíz de Proyectos sin Duplicados ni Diálogos Web**:
-  - Desinfección completa de prefijos y timestamps en nombres de proyectos: todos los videos (Master, miniatura y formatos para redes sociales) se guardan en una única carpeta limpia: `D:\PROGRAMAS IA\PODCASTUDIO\proyectos\[NombreProyecto]\`.
-  - Supresión de descargas del navegador y diálogos de guardado de Windows: los archivos se escriben directamente a disco local y el botón "Abrir Carpeta" abre el Explorador de Windows exactamente en la carpeta del proyecto.
-- **Compilación Nativa `PodcastStudio.exe` v1.0.10.0**:
-  - Binario ejecutable rápido y portable en la raíz con icono oficial de alta definición (285 KB) intacto.
+## 🚀 Versión Actual: v1.1.8 (Repetición Instantánea / Instant Replay & Salida LAN Program / OBS Feed)
+- **Motor de Repetición Instantánea Broadcast (P4.3)**:
+  - **Búfer Circular en Memoria**: 30 segundos de señal PGM limpia continua en búfer circular de chunks WebM/H.264 sin penalización en GPU.
+  - **Velocidad Variable de Slow-Motion**: Control táctil en cabina para reproducir a `0.25x`, `0.5x`, `0.75x` y `1.0x` con atajo global `[R]`.
+  - **Replay Watermark Bug**: Distintivo broadcast en pantalla con baliza roja pulsante, indicador de velocidad y barra de progreso de clip.
+  - **Corte Limpio a EN VIVO**: Botón `[ ⏹️ Volver a Vivo ]` y tecla `[Esc]` para conmutación inmediata a vivo sin cuadros negros ni desfase.
+- **Salida LAN Program & Enrutamiento Virtual para OBS y vMix (P4.4)**:
+  - **Servidor Web PGM 1080p60**: Endpoint `/program/feed` (y alias `/program`, `/pgm`) que transmite la señal limpia del Master directamente a fuentes *Navegador (Browser Source)* de OBS Studio, vMix y Smart TVs.
+  - **Telemetría JSON `/program/status`**: Reporte de resolución 1080p, 60 fps, cámara PGM activa, layout y monitores conectados.
+  - **Modal de Conexión Broadcast (`LanProgramOutputModal`)**: Código QR para vincular dispositivos móviles/pantallas, botón de copiado en 1 clic y guías de configuración.
+- **Compilación Nativa `PodcastStudio.exe` v1.1.8.0**:
+  - Binario ejecutable compilado con AssemblyVersion y FileVersion `1.1.8.0` (298.496 bytes).
 
 ---
 
-## 📦 Versión Anterior: v1.0.9 (Producción Oficial)
+## 📦 Versión Previa: v1.1.7 (Grabación ISO Multicanal & Supresión Adaptativa de Ruido DSP)
+- **Grabación ISO Multicanal de Pistas Independientes (P4.1)**:
+  - **Grabación Aislada por Cámara (Isolated Recording)**: Captura simultánea en disco de cada cámara activa (CAM 1 a CAM 10) en formato Full HD 1080p limpio en `proyectos/[NombreProyecto]/ISO/`.
+  - **Flujo Broadcast para Post-Producción NLE**: Archivos MP4 independientes sincronizados con `+faststart` para edición multicámara en Premiere Pro, DaVinci Resolve y Final Cut Pro.
+  - **Selector Rápido en Cabina**: Botón conmutable `[ 🔴 Grabación ISO: ON/OFF ]` en el panel de grabación.
+- **Supresión Adaptativa de Ruido DSP & Noise Gate (P4.2)**:
+  - **Filtro Paso Alto 80 Hz**: Corte de subgraves y rumble para atenuar ventiladores, zumbido de aire acondicionado y golpes en la mesa.
+  - **Puerta de Ruido Dinámica (Noise Gate Expander)**: Atenuación suave de -42 dBFS durante silencios con ataque ultrarrápido (3 ms) y liberación de 250 ms.
+  - **Botón `[ 🛡️ DSP Anti-Ruido ]`**: Control individual por canal en la Consola de Mezcla Broadcast.
+- **Compilación Nativa `PodcastStudio.exe` v1.1.7.0**:
+  - Binario ejecutable compilado con AssemblyVersion y FileVersion `1.1.7.0`.
+
+---
+
+## 📦 Versión Previa: v1.1.6 (Sala Multi-Invitados WebRTC, Retorno Limpio Mix-Minus N-1 & Auto-Cintillo por Voz)
+- **Retorno Limpio Mix-Minus N-1 Real (P3.3)**:
+  - Matriz de audio Mix-Minus que excluye la propia voz de cada invitado para cero retorno de eco.
+- **Auto-Cintillo Inteligente por Reconocimiento de Voz (P3.3)**:
+  - Detección dinámica de orador con filtro anti-ruidos (350ms) y temporizador de guarda de 4.5s.
+- **Sala Centralizada Multi-Invitados (P3.3)**:
+  - Panel visual `MultiGuestRoomModal` para hasta 8 invitados remotos y Screen WakeLock permanente.
+- **Compilación Nativa `PodcastStudio.exe` v1.1.6.0**:
+  - Binario ejecutable compilado con AssemblyVersion y FileVersion `1.1.6.0`.
+
+---
+
+## 📦 Versión Previa: v1.1.5 (Atenuación Prioritaria Conductor, Teleprompter Broadcast Flotante/Tablet & Soundboard)
+- **Auto-Ducking Prioritario de Conductor (P3.2)**:
+  - Atenuación automática de música (al 20%, -14 dB) y cámaras secundarias (al 38%, -8.4 dB) cuando el conductor habla, eliminando el clamor cruzado.
+- **Teleprompter Broadcast Flotante HUD & Espejo Óptico (P3.2)**:
+  - Pantalla flotante semitransparente con inversión horizontal para espejos divisores 70/30, velocidad regulable (0.5x a 8x) y endpoint LAN `/prompter` para iPads.
+- **Cartuchera Rápida de Efectos Soundboard Pad (P3.2)**:
+  - 9 pads táctiles con atajos de teclado numérico (Numpad 1-9) y botón de corte instantáneo `[0]`.
+- **Compilación Nativa `PodcastStudio.exe` v1.1.5.0**:
+  - Binario ejecutable compilado con AssemblyVersion y FileVersion `1.1.5.0` (298.496 bytes).
+
+---
+
+## 📦 Versión Previa: v1.1.4 (Tally Lights Broadcast LAN/Serial + Live Highlights & Auto-Clipper)
+- **Sistema Tally Light Broadcast (P2.4)**:
+  - **Tally Móvil Inalámbrico LAN (`/tally`)**: Convierte cualquier teléfono inteligente o tablet en luz de tally broadcast sobre la cámara vía WebSocket en tiempo real.
+  - **Screen WakeLock API**: Pantalla permanentemente activa sin suspensión durante la transmisión.
+  - **Hardware Serial USB (Arduino / ESP32)**: Detección nativa de puertos COM en Windows y emisión sincronizada de tramas (`TALLY:PGM=X,PVW=Y\n` y modo vMix/TallyArdu).
+- **Marcador de Highlights y Recorte Automático de Clips (P3.1)**:
+  - Botón de captura rápida `[ ⭐ HIGHLIGHT ]` y atajos de teclado globales `[H]` y `[M]`.
+  - Disparadores automáticos por IA: debate cruzado por VAD y ovaciones/vítores por SFX.
+  - Recorte temporal en 1 clic de clips virales en 9:16 vertical (1080x1920) y 16:9 con FFmpeg.
+- **Compilación Nativa `PodcastStudio.exe` v1.1.4.0**:
+  - Binario ejecutable compilado con AssemblyVersion y FileVersion `1.1.4.0` (298.496 bytes).
+
+---
+
+## 📦 Versión Previa: v1.1.3 (Classroom, Pizarra Virtual, Q&A, Numpad SFX & Split-Stack 9:16)
+- **Modo Classroom & Pizarra Virtual Broadcast (P2.1)**:
+  - Pizarra virtual interactiva con lápiz, resaltador, figuras, puntero láser con estela y borrador, dibujada sobre la pantalla Master y quemada directamente en el video 1080p y streaming.
+- **Panel Interactivo de Preguntas de Alumnos Q&A (P2.1)**:
+  - Gestor de dudas con puesta al aire instantánea como cintillo broadcast (`[ PREGUNTA ]`).
+- **Generador de Clips Verticales Split-Stack 9:16 (P2.2)**:
+  - Formato vertical con orador arriba e invitado/pantalla abajo para TikTok, Reels y Shorts.
+- **Radio Virtual Expandida & Cartuchera Numpad (P2.3)**:
+  - Disparo de efectos de sonido con teclas `[1]` a `[9]` y corte con `[0]`.
+  - Visualizador espectral de audio en tiempo real en Master Canvas.
+- **Compilación Nativa `PodcastStudio.exe` v1.1.3.0**:
+  - Binario ejecutable compilado con AssemblyVersion y FileVersion `1.1.3.0`.
+
+---
+
+## 📦 Versión Previa: v1.1.2 (Workspaces, IA Productora VAD, Subtitulado en Vivo & Telemetría)
+- **Selector de Espacios de Trabajo Especializados (P1.1)**:
+  - Selector en barra superior con 6 entornos contextuales de realización: Podcast Studio, Entrevista 1 a 1, Programa en Vivo / Talk Show, Clase Virtual / Webinar, Radio Virtual y Multicámara Pro.
+- **Asistente IA Productor (Voice Activity Detection & Auto-Director) (P1.2)**:
+  - Conmutador inteligente de cámaras en tiempo real que detecta la voz de los participantes mediante análisis acústico continuo, filtro anti-ruidos y detección de debate.
+- **Subtitulado y Transcripción en Vivo (Open Captions) (P1.3)**:
+  - Transcripción local de voz con Web Speech API integrada y quemado en el tercio inferior central del Master Canvas.
+- **Telemetría y Salud de Emisión (Streaming Health) (P1.4)**:
+  - Medición en tiempo real de FPS, bitrate de uplink y alerta de dropped frames.
+
+---
+
+## 📦 Versión Previa: v1.1.1 (Núcleo Broadcast de Audio Real, Consola Multicanal & Dual PVW/PGM)
+- **Núcleo Broadcast de Audio Real (P0.1)**:
+  - Enrutamiento directo de Música de Fondo (BGM) y Efectos de Sonido (SFX) al bus maestro sumador mediante Web Audio API (`masterBroadcastEngine`), garantizando grabación y streaming al 100% sin pérdida.
+  - Cero latencia en reproducción de efectos con búferes en memoria (`AudioBufferCache`).
+  - Auto-Ducking suave al hablar (atenuación al 25% con restauración gradual).
+  - Aislamiento del retorno de audio local para evitar eco y retroalimentación del micrófono en bocinas de la cabina.
+- **Consola de Mezcla de Audio Broadcast Multicanal (P0.4)**:
+  - Botón de acceso `[ 🎛️ Consola Audio ]` en barra superior y tiras de canal profesionales (CAM 1 a CAM 10, Remotos, BGM, SFX, Monitor y Master PGM).
+  - Faders verticales calibrados en dB, perillas de Ganancia Trim (-24dB a +18dB), botones MUTE y SOLO iluminados.
+  - Vúmetros estéreo a 60 FPS actualizados por `requestAnimationFrame` sin re-renders de React.
+  - Limitador Brickwall a -1.5 dBFS True Peak en Master para prevenir saturación y distorsión.
+  - Botón Unity Reset para restablecer faders a 0 dB con un solo clic.
+- **Motor Elástico Multicámara (6 a 10 ranuras) y 12 Layouts Broadcast (P0.2)**:
+  - Expansión dinámica del estudio hasta 10 cámaras simultáneas (`+ CAM`).
+  - 12 configuraciones broadcast tanto en monitor como en canvas 1080p: Plano Solo (1), PiP, Split 50/50 (2), Two-Shot, 3 Cams, Cuadrícula 4, Cuadrícula 6, Líder + 5 (6-lead), Cuadrícula 8, Cuadrícula 10, Galería Auto y Speaker View.
+  - Conmutación con cero salto a negro (Zero-Black-Gap) manteniendo decodificación en GPU.
+- **Switcher Dual Broadcast PREVIEW (PVW) / PROGRAM (PGM) (P0.3)**:
+  - Botón `[ Dual PVW/PGM ]` para activar el entorno de realización con dos monitores paralelos (Tally Verde para PVW y Tally Rojo para PGM).
+  - Consola central de realización con botón `[ CUT ]` instantáneo, botón `[ AUTO ]` (disolvencia de 300ms, 500ms o 1s) y palanca vertical interactiva **T-Bar** para transiciones manuales.
+  - Insignias de tally `[ PGM ]` y `[ PVW ]` en tiempo real en los recuadros de cámara inferiores.
+
+---
+
+## 📦 Versión Anterior: v1.0.9 (Producción Oficial — Ultra Calidad, Zoom 1:1, Mando iPad & Proyectos Limpios)
 - **Solución Definitiva de Reproducción de Video Master y Exportaciones (Fix Error `0xc00d36c4`)**:
   - Cierre ordenado y seguro de FFmpeg (`proc.stdin.end()`) que garantiza la escritura completa de la cabecera del contenedor, tablas de índices y atom `moov` con flag `+faststart`.
   - Descarga de archivos MP4 100% funcionales en resolución 1080p prístina sin trabas ni errores en Windows Media Player, reproductores móviles ni editores NLE.
@@ -108,11 +204,21 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🎯 Próximos Hitos (v1.1.0)
-- [ ] Soporte para balance de blancos manual y controles ISO remotos desde la PC.
-- [ ] Integración de selector multicámara con tally light físico (vía USB/Serial).
-- [ ] Banco de efectos de sonido con disparadores por atajos de teclado numérico (Numpad).
-- [ ] Auto-detección de encuadre facial por IA en el corte vertical para TikTok y Reels.
+## 🎯 Próximos Hitos (v1.1.9 — Fase P5.1 / P5.2)
+- [x] P2.1: Modo Classroom interactivo con pizarra virtual y panel de preguntas de alumnos (v1.1.3).
+- [x] P2.2: Generador de clips verticales Split-Stack 9:16 para TikTok y Shorts (v1.1.3).
+- [x] P2.3: Radio Virtual expandida con cartuchera de cuñas por Numpad y analizador espectral (v1.1.3).
+- [x] P2.4: Integración de Tally Light físico y móvil por red local Wi-Fi y USB/Serial (v1.1.4).
+- [x] P3.1: Marcador de Highlights en vivo y recorte automático de clips virales FFmpeg (v1.1.4).
+- [x] P3.2: Auto-Ducking multicanal dinámico por voz de conductor, teleprompter flotante broadcast y soundboard rápido (v1.1.5).
+- [x] P3.3: Sala multi-invitados WebRTC con retorno limpio Mix-Minus N-1 y Auto-Cintillo dinámico por voz (v1.1.6).
+- [x] P4.1: Grabación ISO Multicanal de pistas de video y audio independientes por cámara para post-producción NLE (v1.1.7).
+- [x] P4.2: Filtro supresor de ruido adaptativo por IA (Noise Suppression DSP) (v1.1.7).
+- [x] P4.3: Repetición Instantánea / Replay en Vivo con buffer circular de video (v1.1.8).
+- [x] P4.4: Salida LAN Program & Enrutamiento Virtual para OBS, vMix y Smart TVs (v1.1.8).
+- [ ] P5.1: Switcher Automatizado por Reconocimiento Facial / Detección de Mirada y Auto-Framing 1:1.
+- [ ] P5.2: Generador de Transiciones Broadcast Stinger con canal alfa WebM y cortinillas animadas.
+*(Regla de versionado estricto: después de v1.1.9 la siguiente versión corresponde a v1.2.1, nunca 1.1.10)*
 
 ---
 
