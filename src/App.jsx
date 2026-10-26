@@ -279,8 +279,61 @@ function PodcastStudioApp() {
 
   const assignedSlotsRef = useRef({});
   const controlChannelRef = useRef(null);
+  const isElectronMaster = typeof window !== 'undefined' && Boolean(window.api);
+  const [remotePgmFrame, setRemotePgmFrame] = useState(null);
+  const remoteWsRef = useRef(null);
 
-  // CALIBRADOR Y MONITOR PREVIEW (PVW) INDEPENDIENTE
+  // Enviar comando desde el iPad a la PC Máster vía LAN WebSocket y Supabase
+  const dispatchRemoteCommand = useCallback((type, data = {}) => {
+    const payload = { type, sender: 'ipad_extension', timestamp: Date.now(), ...data };
+    if (remoteWsRef.current && remoteWsRef.current.readyState === 1) {
+      try {
+        remoteWsRef.current.send(JSON.stringify({ type: 'remote-command', payload }));
+      } catch (e) {}
+    }
+    if (controlChannelRef.current) {
+      try {
+        controlChannelRef.current.send({
+          type: 'broadcast',
+          event: 'studio_command',
+          payload
+        }).catch(() => {});
+      } catch (e) {}
+    }
+  }, []);
+
+  // Actualizar estado del iPad con la información en vivo de la PC Máster
+  const applyRemoteStudioState = useCallback((s) => {
+    if (!s) return;
+    if (s.activeCam !== undefined) setActiveCam(Number(s.activeCam));
+    if (s.pvwCam !== undefined) setPvwCam(Number(s.pvwCam));
+    if (s.pipCam !== undefined) setPipCam(Number(s.pipCam));
+    if (s.layoutMode !== undefined) setLayoutMode(String(s.layoutMode));
+    if (s.isRecording !== undefined) {
+      setIsRecording(Boolean(s.isRecording));
+      isRecordingRef.current = Boolean(s.isRecording);
+    }
+    if (s.recordingTime !== undefined) setRecordingTime(Number(s.recordingTime));
+    if (s.isStreaming !== undefined) {
+      setIsStreaming(Boolean(s.isStreaming));
+      isStreamingRef.current = Boolean(s.isStreaming);
+    }
+    if (s.streamDuration !== undefined) setStreamDuration(Number(s.streamDuration));
+    if (s.topic !== undefined) setTopic(s.topic);
+    if (s.cintillosVisible !== undefined) setCintillosVisible(Boolean(s.cintillosVisible));
+    if (s.cintillo !== undefined) setCintillo(s.cintillo);
+    if (s.camSlots !== undefined && Array.isArray(s.camSlots) && s.camSlots.length > 0) {
+      setCamSlots(s.camSlots.map(Number));
+    }
+    if (s.tBarPosition !== undefined) setTBarPosition(Number(s.tBarPosition));
+    if (s.camMuted !== undefined) setCamMuted(s.camMuted);
+    if (s.teleprompter) {
+      if (s.teleprompter.text !== undefined) setTeleprompterText(s.teleprompter.text);
+      if (s.teleprompter.speed !== undefined) setTeleprompterSpeed(Number(s.teleprompter.speed));
+      if (s.teleprompter.fontSize !== undefined) setTeleprompterFontSize(Number(s.teleprompter.fontSize));
+      if (s.teleprompter.isPlaying !== undefined) setIsTeleprompterPlaying(Boolean(s.teleprompter.isPlaying));
+    }
+  }, []);
   const [showCalibratorModal, setShowCalibratorModal] = useState(false);
   const [calibratorTargetSlot, setCalibratorTargetSlot] = useState(0);
   const [cameraCrops, setCameraCrops] = useState(() => {
@@ -520,6 +573,9 @@ function PodcastStudioApp() {
     setCamSlots(newSlots); 
     setCamSettings(prev => ({ ...prev, [nextCount]: { ...defaultCamSettings } })); 
     updateBroadcastState({ camSlots: newSlots });
+    if (!isElectronMaster) {
+      dispatchRemoteCommand('ADD_CAM_SLOT');
+    }
   };
 
   const removeCam = (id) => { 
@@ -627,6 +683,9 @@ function PodcastStudioApp() {
       activeCam: nextActiveCam,
       pvwCam: nextPvwCam
     });
+    if (!isElectronMaster) {
+      dispatchRemoteCommand('REMOVE_CAM_SLOT', { camId: id });
+    }
   };
 
   // Transición instantánea CUT (conmuta PVW y PGM tanto en UI como en Master Canvas)
@@ -643,12 +702,18 @@ function PodcastStudioApp() {
       transitionFromCam: null,
       transitionToCam: null,
     });
-  }, [activeCam, pvwCam]);
+    if (!isElectronMaster) {
+      dispatchRemoteCommand('TRIGGER_CUT');
+    }
+  }, [activeCam, pvwCam, isElectronMaster, dispatchRemoteCommand]);
 
   // Transición suave AUTO (Disolvencia / Mix real en Master Canvas y grabación)
   const handleAutoTransition = useCallback(() => {
     if (isTransitioning) return;
     setIsTransitioning(true);
+    if (!isElectronMaster) {
+      dispatchRemoteCommand('TRIGGER_AUTO');
+    }
     const start = performance.now();
     const duration = transitionDuration;
     const fromPgm = activeCam;
@@ -683,12 +748,15 @@ function PodcastStudioApp() {
       }
     };
     requestAnimationFrame(step);
-  }, [isTransitioning, transitionDuration, activeCam, pvwCam]);
+  }, [isTransitioning, transitionDuration, activeCam, pvwCam, isElectronMaster, dispatchRemoteCommand]);
 
   // Control manual palanca T-Bar con mezcla proporcional real en Master Canvas
   const handleTBarChange = useCallback((val) => {
     const clamped = Math.max(0, Math.min(1.0, val));
     setTBarPosition(clamped);
+    if (!isElectronMaster) {
+      dispatchRemoteCommand('SET_TBAR', { position: clamped });
+    }
 
     if (clamped >= 0.98) {
       const fromPgm = activeCam;
@@ -710,7 +778,7 @@ function PodcastStudioApp() {
         transitionToCam: pvwCam,
       });
     }
-  }, [activeCam, pvwCam]);
+  }, [activeCam, pvwCam, isElectronMaster, dispatchRemoteCommand]);
   
   const getCamStream = (id) => { 
     const slotIdx = id - 1;
@@ -904,6 +972,9 @@ function PodcastStudioApp() {
       });
     }
     handleSaveSlotProfile(camId - 1, { audioMuted: nextMuted });
+    if (!isElectronMaster) {
+      dispatchRemoteCommand('TOGGLE_MIC_MUTE', { camId });
+    }
   };
 
   // Silenciar / Activar bocina de monitoreo local (retorno en altavoces de la computadora para no viciar el audio)
@@ -1558,6 +1629,10 @@ function PodcastStudioApp() {
   };
 
   const handleRecord = async () => {
+    if (!isElectronMaster) {
+      dispatchRemoteCommand('TOGGLE_RECORD');
+      return;
+    }
     if (!isRecording) {
       recordingChunksRef.current = [];
       setRecordingTime(0);
@@ -1733,6 +1808,10 @@ function PodcastStudioApp() {
   const toggleDestination = () => { setStreamConfigs(prev => ({ ...prev, [activeStreamTab]: { ...prev[activeStreamTab], enabled: !prev[activeStreamTab].enabled } })); };
 
   const handleStream = async () => {
+    if (!isElectronMaster) {
+      dispatchRemoteCommand('TOGGLE_STREAM');
+      return;
+    }
     if (!isStreaming) {
       // Recolectar todos los destinos que estén habilitados y tengan clave de transmisión
       const activeTargets = Object.entries(streamConfigs)
@@ -2158,12 +2237,18 @@ function PodcastStudioApp() {
     } else {
       setLayoutMode('1');
     }
+    if (!isElectronMaster) {
+      dispatchRemoteCommand('SET_ACTIVE_CAM', { camId });
+    }
   };
 
   const handleTogglePip = (rawCamId) => {
     const camId = Number(rawCamId);
     if (layoutMode === 'pip' && pipCam === camId) {
       setLayoutMode('1');
+      if (!isElectronMaster) {
+        dispatchRemoteCommand('SET_LAYOUT', { mode: '1' });
+      }
       return;
     }
     if (activeCam === camId) {
@@ -2172,6 +2257,9 @@ function PodcastStudioApp() {
     }
     setPipCam(camId);
     setLayoutMode('pip');
+    if (!isElectronMaster) {
+      dispatchRemoteCommand('TOGGLE_PIP', { camId });
+    }
   };
 
   // SINCRONIZACIÓN Y BROADCAST EN VIVO CON CONTROL REMOTO IPAD (LAN WEBSOCKET & SUPABASE)
@@ -2309,17 +2397,23 @@ function PodcastStudioApp() {
       if (typeof payload.fontSize === 'number') setTeleprompterFontSize(payload.fontSize);
     } else if (cmd === 'SET_PROMPTER_TEXT') {
       if (payload.text !== undefined) setTeleprompterText(payload.text);
+    } else if (cmd === 'ADD_CAM_SLOT') {
+      addCam();
+    } else if (cmd === 'REMOVE_CAM_SLOT') {
+      if (payload.camId !== undefined) removeCam(Number(payload.camId));
     }
 
     setTimeout(() => {
       broadcastStudioState();
     }, 40);
-  }, [broadcastStudioState, handleSelectMasterCam, handleCutTransition, handleAutoTransition, handleTBarChange, handleTogglePip, pipCam, handleRecord, handleStream, showManual, combinedSfx, playSfx, music, camSlots]);
+  }, [broadcastStudioState, handleSelectMasterCam, handleCutTransition, handleAutoTransition, handleTBarChange, handleTogglePip, pipCam, handleRecord, handleStream, showManual, combinedSfx, playSfx, music, camSlots, addCam, removeCam]);
 
 
   useEffect(() => {
-    broadcastStudioState();
-  }, [broadcastStudioState]);
+    if (isElectronMaster) {
+      broadcastStudioState();
+    }
+  }, [broadcastStudioState, isElectronMaster]);
 
   // Listener para comandos de red local LAN provenientes de Electron WebSocket
   useEffect(() => {
@@ -2331,6 +2425,62 @@ function PodcastStudioApp() {
     }
   }, [handleRemoteStudioCommand]);
 
+  // Conexión de red local WebSocket cuando corre en iPad / Navegador
+  useEffect(() => {
+    if (isElectronMaster) return;
+
+    let socket = null;
+    let isUnmounted = false;
+    let retryTimer = null;
+
+    function connectWs() {
+      if (isUnmounted) return;
+      const host = window.location.hostname || '127.0.0.1';
+      const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const port = window.location.port || (window.location.protocol === 'https:' ? '3000' : '3001');
+      const wsUrl = `${proto}//${host}:${port}`;
+
+      try {
+        socket = new WebSocket(wsUrl);
+        remoteWsRef.current = socket;
+
+        socket.onopen = () => {
+          console.log('[RemoteExtension] Conectado a Master PC en:', wsUrl);
+          socket.send(JSON.stringify({ type: 'identify', role: 'remote-control' }));
+          socket.send(JSON.stringify({ type: 'request-state' }));
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'studio-state' && data.state) {
+              applyRemoteStudioState(data.state);
+            } else if (data.type === 'pgm-frame' && data.data) {
+              setRemotePgmFrame(data.data);
+            }
+          } catch (e) {}
+        };
+
+        socket.onclose = () => {
+          if (!isUnmounted) retryTimer = setTimeout(connectWs, 2000);
+        };
+        socket.onerror = () => {
+          try { socket.close(); } catch (e) {}
+        };
+      } catch (e) {
+        retryTimer = setTimeout(connectWs, 3000);
+      }
+    }
+
+    connectWs();
+    return () => {
+      isUnmounted = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (socket) socket.close();
+    };
+  }, [isElectronMaster, applyRemoteStudioState]);
+
+  // Canal Supabase Cloud bidireccional (Master emite estado; iPad emite comandos)
   useEffect(() => {
     if (!supabase) return;
 
@@ -2342,22 +2492,52 @@ function PodcastStudioApp() {
 
     channel.on('broadcast', { event: 'studio_command' }, (event) => {
       const payload = event?.payload;
-      if (payload) handleRemoteStudioCommand(payload);
+      if (payload && isElectronMaster) handleRemoteStudioCommand(payload);
+    });
+
+    channel.on('broadcast', { event: 'studio_state' }, (event) => {
+      const payload = event?.payload;
+      if (payload && !isElectronMaster) applyRemoteStudioState(payload);
+    });
+
+    channel.on('broadcast', { event: 'pgm_cloud_frame' }, (event) => {
+      const payload = event?.payload;
+      if (payload?.dataUrl && !isElectronMaster) {
+        setRemotePgmFrame(payload.dataUrl);
+      }
     });
 
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') {
-        broadcastStudioState();
+        if (isElectronMaster) {
+          broadcastStudioState();
+        } else {
+          channel.send({
+            type: 'broadcast',
+            event: 'studio_command',
+            payload: { type: 'REQUEST_STATE', sender: 'ipad_extension' }
+          }).catch(() => {});
+        }
       }
     });
 
     return () => {
       channel.unsubscribe().catch(() => {});
     };
-  }, [broadcastStudioState, handleRemoteStudioCommand]);
+  }, [broadcastStudioState, handleRemoteStudioCommand, isElectronMaster, applyRemoteStudioState]);
 
   const renderMonitorLayout = (overrideCam = null) => {
     const effectiveActiveCam = overrideCam || activeCam;
+
+    // Si corre como extensión remota en iPad/Browser y la PC Máster está emitiendo fotogramas PGM sin cámara local directa en este dispositivo
+    if (!isElectronMaster && remotePgmFrame && !getCamStream(effectiveActiveCam)) {
+      return (
+        <div className="w-full h-full relative overflow-hidden bg-black flex items-center justify-center">
+          <img src={remotePgmFrame} alt="Señal Master PGM" className="w-full h-full object-contain pointer-events-none select-none" />
+        </div>
+      );
+    }
+
     const getTileProps = (id) => ({
       camId: id,
       stream: getCamStream(id),
@@ -2578,10 +2758,13 @@ function PodcastStudioApp() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen h-screen h-[100dvh] w-screen max-w-full bg-[#0a0a0a] text-[#e0e0e0] font-sans overflow-hidden text-[13px] select-none">
+    <div 
+      className="flex flex-col min-h-screen min-h-[100dvh] w-screen max-w-full bg-[#0a0a0a] text-[#e0e0e0] font-sans md:overflow-hidden overflow-x-hidden overflow-y-auto text-[13px] select-none"
+      style={{ WebkitOverflowScrolling: 'touch' }}
+    >
       
       {/* ÁREA DE TRABAJO PRINCIPAL */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
+      <div className="flex-1 flex min-h-0 md:flex-row flex-col md:overflow-hidden overflow-visible">
         <div className="flex-1 flex flex-col min-w-0">
         
         {/* TOP BAR */}
@@ -3017,7 +3200,7 @@ function PodcastStudioApp() {
         </div>
 
         {/* BOTTOM MULTI-CAM BAR (ENVUELVE ABAJO AL LLENARSE EL ANCHO PARA MOSTRAR TODAS LAS CÁMARAS Y EL BOTÓN +) */}
-        <div className="bg-[#111] border-t border-[#222] p-2 flex flex-wrap items-center gap-2 min-h-[125px] max-h-[265px] overflow-y-auto shrink-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        <div className="bg-[#111] border-t border-[#222] p-2 flex flex-wrap items-center gap-2 min-h-[125px] max-h-[340px] md:max-h-[265px] overflow-y-auto shrink-0 pb-20 md:pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {camSlots.map((camId) => {
             const isActive = activeCam === camId;
             const isPvw = pvwCam === camId;
@@ -3167,19 +3350,33 @@ function PodcastStudioApp() {
                   onClick={() => {
                     if (dualMonitorMode) {
                       setPvwCam(camId);
+                      if (!isElectronMaster) dispatchRemoteCommand('SET_PVW_CAM', { camId });
                     } else {
                       handleSelectMasterCam(camId);
                     }
                   }}
                   title={dualMonitorMode ? `Seleccionar CAM ${camId} en PREVIEW (PVW) · Clic en CUT para conmutar a PROGRAM` : `Seleccionar CAM ${camId} como Cámara Master`}
                 >
-                   <VideoTile stream={camStream} isLocal={camId === 1} muted={true} className="w-full h-full opacity-80" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
+                   {camStream ? (
+                     <VideoTile stream={camStream} isLocal={camId === 1} muted={true} className="w-full h-full opacity-80" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
+                   ) : (!isElectronMaster && isActive && remotePgmFrame) ? (
+                     <img src={remotePgmFrame} alt={`CAM ${camId}`} className="w-full h-full object-cover opacity-85" />
+                   ) : (
+                     <div className="w-full h-full flex flex-col items-center justify-center bg-[#141414] text-gray-500 font-mono text-[11px]">
+                       <Video size={16} className={`mb-0.5 ${isActive ? 'text-red-400 opacity-80' : 'text-gray-600 opacity-40'}`} />
+                       <span className="font-bold">CAM {camId}</span>
+                     </div>
+                   )}
                 </div>
                 <div className="flex p-0.5 bg-[#111] gap-0.5">
                   {dualMonitorMode ? (
                     <>
                       <button 
-                        onClick={(e) => { e.stopPropagation(); setPvwCam(camId); }} 
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          setPvwCam(camId); 
+                          if (!isElectronMaster) dispatchRemoteCommand('SET_PVW_CAM', { camId });
+                        }} 
                         className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
                           isPvw ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-400/80 hover:text-emerald-200 hover:bg-[#1a2920]'
                         }`}
