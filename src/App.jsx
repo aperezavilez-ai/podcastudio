@@ -829,21 +829,33 @@ function PodcastStudioApp() {
     }
   }, []);
 
-  // Emisión continua de fotogramas PGM al servidor HTTP/WS para clientes OBS/vMix e iPad en LAN (P4.4)
+  // Emisión continua de fotogramas PGM al servidor HTTP/WS para clientes OBS/vMix e iPad en LAN y Cloud
   useEffect(() => {
     let timer = null;
     let isBroadcasting = true;
+    let lastCloudEmit = 0;
 
     const streamLoop = () => {
       if (!isBroadcasting) return;
-      if (window.api?.sendProgramFeedFrame) {
-        const c = getMasterCanvas();
-        if (c && c.width > 0 && c.height > 0) {
-          try {
-            const dataUrl = c.toDataURL('image/jpeg', 0.82);
+      const c = getMasterCanvas();
+      if (c && c.width > 0 && c.height > 0) {
+        try {
+          const dataUrl = c.toDataURL('image/jpeg', 0.80);
+          if (window.api?.sendProgramFeedFrame) {
             window.api.sendProgramFeedFrame(dataUrl);
-          } catch(e) {}
-        }
+          }
+
+          // Emitir snapshot PGM liviano cada 700ms por Supabase para iPads remotos vía Internet
+          const now = Date.now();
+          if (controlChannelRef.current && (now - lastCloudEmit > 700)) {
+            lastCloudEmit = now;
+            controlChannelRef.current.send({
+              type: 'broadcast',
+              event: 'pgm_cloud_frame',
+              payload: { dataUrl }
+            }).catch(() => {});
+          }
+        } catch(e) {}
       }
       timer = setTimeout(streamLoop, 60);
     };
@@ -1253,21 +1265,20 @@ function PodcastStudioApp() {
       localStream,
       camStreamsMap,
       camMuted,
-      ...(isStreaming || isRecording ? {
-        activeCam,
-        pipCam,
-        camSlots,
-        cameraCrops,
-        layoutMode,
-        chromaKeyActive,
-        virtualBg,
-        logoBase64,
-        cintillosVisible,
-        cintillo,
-        topic,
-        getCamStream,
-        remoteCams,
-      } : {})
+      activeCam,
+      pvwCam,
+      pipCam,
+      camSlots,
+      cameraCrops,
+      layoutMode,
+      chromaKeyActive,
+      virtualBg,
+      logoBase64,
+      cintillosVisible,
+      cintillo,
+      topic,
+      getCamStream,
+      remoteCams,
     });
   }, [activeCam, pipCam, camSlots, cameraCrops, layoutMode, chromaKeyActive, virtualBg, logoBase64, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
@@ -2173,6 +2184,8 @@ function PodcastStudioApp() {
       layoutMode,
       isRecording: isRecordingRef.current,
       recordingTime,
+      isStreaming: isStreamingRef.current,
+      streamDuration,
       topic,
       cintillosVisible,
       cintillo,
@@ -2180,7 +2193,13 @@ function PodcastStudioApp() {
       tBarPosition,
       isReplaying: !!instantReplay.isReplaying,
       musicPlaying: !!music.isPlaying,
-      camMuted
+      camMuted,
+      teleprompter: {
+        text: teleprompterText,
+        speed: teleprompterSpeed,
+        fontSize: teleprompterFontSize,
+        isPlaying: isTeleprompterPlaying,
+      }
     };
 
     // 1. Enviar a través de Electron IPC a clientes de la Red Local (iPad / Tablets vía WebSocket LAN)
@@ -2198,7 +2217,7 @@ function PodcastStudioApp() {
         }).catch(() => {});
       } catch {}
     }
-  }, [activeCam, pvwCam, pipCam, layoutMode, recordingTime, topic, cintillosVisible, cintillo, camSlots, tBarPosition, music.isPlaying, camMuted]);
+  }, [activeCam, pvwCam, pipCam, layoutMode, recordingTime, isStreaming, streamDuration, topic, cintillosVisible, cintillo, camSlots, tBarPosition, music.isPlaying, camMuted, teleprompterText, teleprompterSpeed, teleprompterFontSize, isTeleprompterPlaying]);
 
   // DISPATCHER UNIFICADO DE COMANDOS DE CONTROL REMOTO
   const handleRemoteStudioCommand = useCallback((payload) => {
@@ -2219,6 +2238,11 @@ function PodcastStudioApp() {
       if (typeof payload.position === 'number') handleTBarChange(payload.position);
     } else if (cmd === 'TOGGLE_PIP') {
       handleTogglePip(Number(payload.camId || pipCam));
+    } else if (cmd === 'SET_PIP_CAM') {
+      if (payload.camId !== undefined) {
+        setPipCam(Number(payload.camId));
+        setLayoutMode('pip');
+      }
     } else if (cmd === 'SET_LAYOUT' || cmd === 'SET-LAYOUT') {
       if (payload.mode) setLayoutMode(payload.mode);
     } else if (cmd === 'TOGGLE_RECORD') {
@@ -2227,6 +2251,12 @@ function PodcastStudioApp() {
       if (!isRecordingRef.current) handleRecord();
     } else if (cmd === 'STOP_RECORD') {
       if (isRecordingRef.current) handleRecord();
+    } else if (cmd === 'TOGGLE_STREAM') {
+      handleStream();
+    } else if (cmd === 'START_STREAM') {
+      if (!isStreamingRef.current) handleStream();
+    } else if (cmd === 'STOP_STREAM') {
+      if (isStreamingRef.current) handleStream();
     } else if (cmd === 'TOGGLE_CINTILLO') {
       setCintillosVisible(v => !v);
     } else if (cmd === 'SET_CINTILLO_PRESET') {
@@ -2255,12 +2285,36 @@ function PodcastStudioApp() {
     } else if (cmd === 'TOGGLE_MIC_MUTE') {
       const cId = Number(payload.camId || 1);
       setCamMuted(prev => ({ ...prev, [cId]: !prev[cId] }));
+    } else if (cmd === 'MUTE_ALL') {
+      setCamMuted(prev => {
+        const next = { ...prev };
+        camSlots.forEach(id => { next[id] = true; });
+        return next;
+      });
+    } else if (cmd === 'UNMUTE_ALL') {
+      setCamMuted(prev => {
+        const next = { ...prev };
+        camSlots.forEach(id => { next[id] = false; });
+        return next;
+      });
+    } else if (cmd === 'TOGGLE_PROMPTER') {
+      setIsTeleprompterPlaying(p => !p);
+    } else if (cmd === 'PLAY_PROMPTER') {
+      setIsTeleprompterPlaying(true);
+    } else if (cmd === 'PAUSE_PROMPTER') {
+      setIsTeleprompterPlaying(false);
+    } else if (cmd === 'SET_PROMPTER_SPEED') {
+      if (typeof payload.speed === 'number') setTeleprompterSpeed(payload.speed);
+    } else if (cmd === 'SET_PROMPTER_FONT_SIZE') {
+      if (typeof payload.fontSize === 'number') setTeleprompterFontSize(payload.fontSize);
+    } else if (cmd === 'SET_PROMPTER_TEXT') {
+      if (payload.text !== undefined) setTeleprompterText(payload.text);
     }
 
     setTimeout(() => {
       broadcastStudioState();
     }, 40);
-  }, [broadcastStudioState, handleSelectMasterCam, handleCutTransition, handleAutoTransition, handleTBarChange, handleTogglePip, pipCam, handleRecord, showManual, combinedSfx, playSfx, music]);
+  }, [broadcastStudioState, handleSelectMasterCam, handleCutTransition, handleAutoTransition, handleTBarChange, handleTogglePip, pipCam, handleRecord, handleStream, showManual, combinedSfx, playSfx, music, camSlots]);
 
 
   useEffect(() => {
