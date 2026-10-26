@@ -1374,15 +1374,15 @@ export function startBroadcastEngine(initialState, onChunk) {
   if (audioTrack) tracks.push(audioTrack);
   masterStream = new MediaStream(tracks);
 
-  // Iniciar MediaRecorder: Priorizar códec H.264 por hardware (0% sobrecarga en CPU, sin congelamiento inicial)
-  let chosenMime = 'video/webm;codecs=h264,opus';
+  // Iniciar MediaRecorder: Priorizar WebM estándar con Opus para compatibilidad perfecta con tuberías FFmpeg
+  let chosenMime = 'video/webm;codecs=vp8,opus';
   if (!MediaRecorder.isTypeSupported(chosenMime)) {
-    if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) {
-      chosenMime = 'video/mp4;codecs=avc1';
-    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-      chosenMime = 'video/webm;codecs=vp8,opus';
-    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+    if (MediaRecorder.isTypeSupported('video/webm')) {
       chosenMime = 'video/webm';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) {
+      chosenMime = 'video/webm;codecs=h264,opus';
+    } else if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) {
+      chosenMime = 'video/mp4;codecs=avc1';
     }
   }
 

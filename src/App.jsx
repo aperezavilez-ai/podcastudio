@@ -1728,14 +1728,30 @@ function PodcastStudioApp() {
         .filter(([_, cfg]) => cfg.enabled && cfg.key && cfg.key.trim().length > 0)
         .map(([id, cfg]) => {
           let server = (cfg.server || '').trim();
-          if (id === 'facebook' && server.startsWith('rtmp://')) {
-            server = server.replace('rtmp://', 'rtmps://');
+          let key = (cfg.key || '').trim();
+
+          // Si el usuario pegó la URL completa en el campo de clave, separarla automáticamente
+          if (key.startsWith('rtmp://') || key.startsWith('rtmps://')) {
+            const lastSlash = key.lastIndexOf('/');
+            if (lastSlash > 8) {
+              server = key.substring(0, lastSlash + 1);
+              key = key.substring(lastSlash + 1);
+            }
+          }
+
+          if (id === 'facebook') {
+            if (server.startsWith('rtmp://')) {
+              server = server.replace('rtmp://', 'rtmps://');
+            }
+            if (!server) {
+              server = 'rtmps://live-api-s.facebook.com:443/rtmp/';
+            }
           }
           if (!server.endsWith('/')) server += '/';
           return {
             id,
             name: id === 'facebook' ? 'Facebook Live' : id === 'youtube' ? 'YouTube Live' : id === 'tiktok' ? 'TikTok Live' : 'RTMP Personalizado',
-            url: server + cfg.key.trim()
+            url: server + key
           };
         });
 

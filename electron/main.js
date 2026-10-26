@@ -1934,13 +1934,11 @@ ipcMain.handle('start-streaming', async (event, payload) => {
         '-r', '30',
         '-c:a', 'aac',
         '-b:a', '128k',
-        '-ar', '44100',
+        '-ar', '48000',
         '-max_interleave_delta', '0',
         '-flvflags', 'no_duration_filesize',
         '-rtmp_buffer', '100',
         '-rtmp_live', 'live',
-        ...(destUrl.startsWith('rtmp://') || destUrl.startsWith('rtmps://') ? ['-reconnect', '1', '-reconnect_at_eof', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'] : []),
-        ...(destUrl.startsWith('rtmps://') ? ['-tls_verify', '0'] : []),
         '-f', 'flv',
         destUrl
       ];
