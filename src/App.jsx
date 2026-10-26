@@ -1093,23 +1093,29 @@ function PodcastStudioApp() {
   useEffect(() => {
     const startCamera = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            width: { ideal: 1920, min: 1280 }, 
-            height: { ideal: 1080, min: 720 },
-            frameRate: { ideal: 30, min: 24 }
-          }, 
-          audio: true 
-        }).catch(async () => {
-          return await navigator.mediaDevices.getUserMedia({ 
-            video: { 
-              width: { ideal: 1920, min: 1280 }, 
-              height: { ideal: 1080, min: 720 } 
-            } 
-          });
-        });
+        const attempts = [
+          { video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
+          { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+          { video: true, audio: false }
+        ];
+
+        let stream = null;
+        for (const c of attempts) {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia(c);
+            if (stream) break;
+          } catch (e) {}
+        }
 
         if (stream) {
+          // Intentar vincular micrófono sin bloquear el video si falla
+          try {
+            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            if (micStream && micStream.getAudioTracks().length > 0) {
+              stream.addTrack(micStream.getAudioTracks()[0]);
+            }
+          } catch (e) {}
+
           setLocalStream(stream);
           setSlotStreams(prev => ({ ...prev, 0: stream }));
           const videoTrack = stream.getVideoTracks()[0];
@@ -1896,22 +1902,37 @@ function PodcastStudioApp() {
     }
 
     // Detener tracks anteriores para liberar el bloqueo exclusivo del driver de Windows
-    if (slotStreams[slot]) {
-      try { slotStreams[slot].getTracks().forEach(t => t.stop()); } catch (e) {}
-    }
-    if (slot === 0 && localStream) {
-      try { localStream.getTracks().forEach(t => t.stop()); } catch (e) {}
-    }
+    try {
+      if (slotStreams[slot]) {
+        slotStreams[slot].getTracks().forEach(t => t.stop());
+      }
+      if (slot === 0 && localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+      }
+      // Detener cualquier otro stream que tenga el mismo slot
+      Object.entries(slotStreams || {}).forEach(([sKey, sStream]) => {
+        if (sStream && Number(sKey) === slot) {
+          sStream.getTracks().forEach(t => t.stop());
+        }
+      });
+    } catch (e) {}
 
     // Pausa breve para que Windows DirectShow libere el hardware
-    await new Promise(r => setTimeout(r, 60));
+    await new Promise(r => setTimeout(r, 120));
 
     let stream = null;
     const attempts = [
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } }, audio: true },
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } }, audio: false },
-      { video: { deviceId: deviceId, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: true },
-      { video: { deviceId: deviceId, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+      // 1. Device ID específico en 1080p ideal (flexible sin 'min' que lance OverconstrainedError)
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
+      // 2. Device ID específico en 720p ideal
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      // 3. Device ID específico sin restricción de resolución (modo nativo del sensor/driver)
+      { video: { deviceId: { exact: deviceId } }, audio: false },
+      // 4. Device ID relajado
+      { video: { deviceId: deviceId }, audio: false },
+      // 5. Con audio si está disponible en el mismo dispositivo
+      { video: { deviceId: deviceId }, audio: true },
+      // 6. Genérico básico
       { video: true, audio: false }
     ];
 
@@ -1923,6 +1944,16 @@ function PodcastStudioApp() {
     }
 
     if (stream) {
+      // Si el slot es 0 (Master) y no tiene track de audio, intentar vincular el micrófono por separado sin bloquear el video
+      if (slot === 0 && stream.getAudioTracks().length === 0) {
+        try {
+          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          if (micStream && micStream.getAudioTracks().length > 0) {
+            stream.addTrack(micStream.getAudioTracks()[0]);
+          }
+        } catch (e) {}
+      }
+
       setSlotStreams(prev => ({ ...prev, [slot]: stream }));
       setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, label: label || 'Cámara USB', type: 'usb' } }));
       if (slot === 0) setLocalStream(stream);

@@ -172,7 +172,7 @@ export default function CameraConnectModal({
     }
 
     // Si todos los slots están llenos y se pueden añadir más
-    if (slotsCount < 8 && onAddSlot) {
+    if (slotsCount < 12 && onAddSlot) {
       onAddSlot();
       return slotsCount;
     }
@@ -622,7 +622,7 @@ Instrucciones:
                 </div>
               );
             })}
-            {slotsCount < 8 && onAddSlot && (
+            {slotsCount < 12 && onAddSlot && (
               <button
                 type="button"
                 className={styles.slotPill}

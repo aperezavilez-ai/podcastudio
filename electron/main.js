@@ -23,6 +23,7 @@ const os = require('os');
 if (process.platform === 'win32') {
   app.setAppUserModelId("com.podcaststudio.app");
 }
+app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 let mainWindow;
@@ -150,7 +151,7 @@ function createWindow() {
   });
 
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    if (permission === 'media' || permission === 'serial') callback(true); else callback(false);
+    callback(true);
   });
   session.defaultSession.on('select-serial-port', (event, portList, webContents, callback) => {
     event.preventDefault();
@@ -158,9 +159,9 @@ function createWindow() {
     else callback('');
   });
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-    if (permission === 'serial' || permission === 'media') return true;
     return true;
   });
+  session.defaultSession.setDevicePermissionHandler(() => true);
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173');
