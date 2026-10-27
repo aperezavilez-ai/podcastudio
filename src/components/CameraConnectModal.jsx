@@ -25,7 +25,10 @@ import {
   Save,
   MessageCircle,
   Trash2,
-  Camera
+  Camera,
+  Lock,
+  Shield,
+  RefreshCw
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import styles from './CameraConnectModal.module.css';
@@ -118,6 +121,8 @@ export default function CameraConnectModal({
   onDisconnect,
   onRenameSlot,
   localQrUrl = '',
+  studioPin = '',
+  onRegeneratePin,
   onOpenRemoteControl,
 }) {
   const [targetSlot, setTargetSlot] = useState(initialSlot);
@@ -359,18 +364,20 @@ export default function CameraConnectModal({
     const base = 'https://www.podcastudio.mx/remote-cam';
     if (autoAssignMode) {
       const params = new URLSearchParams({ auto: 'true' });
+      if (studioPin) params.set('pin', studioPin);
       if (guestName.trim()) params.set('name', guestName.trim());
       if (guestRole && guestRole !== 'guest') params.set('role', guestRole);
       return `${base}?${params.toString()}`;
     }
     const params = new URLSearchParams({
       slot: String(slotIdx + 1),
-      room: `studio_cam_${slotIdx + 1}`,
+      room: studioPin ? `studio_${studioPin}_cam_${slotIdx + 1}` : `studio_cam_${slotIdx + 1}`,
     });
+    if (studioPin) params.set('pin', studioPin);
     if (guestName.trim()) params.set('name', guestName.trim());
     if (guestRole && guestRole !== 'guest') params.set('role', guestRole);
     return `${base}?${params.toString()}`;
-  }, [guestName, guestRole, useCloudDomain, localQrUrl, autoAssignMode]);
+  }, [guestName, guestRole, useCloudDomain, localQrUrl, autoAssignMode, studioPin]);
 
   const remoteUrl = useMemo(() => generateRemoteUrl(targetSlot), [generateRemoteUrl, targetSlot]);
 
@@ -1443,6 +1450,52 @@ Instrucciones:
                       <span>Escanea con tu smartphone. Se abrirá la cámara de tu teléfono y se conectará exclusivamente a <strong>CAM {targetSlot + 1}</strong>.</span>
                     )}
                   </div>
+
+                  {/* RESTRICCIÓN DE SEGURIDAD / PIN DEL ESTUDIO */}
+                  {studioPin && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.35)',
+                      padding: '8px 14px',
+                      borderRadius: 10,
+                      maxWidth: 420,
+                      margin: '10px auto 6px',
+                      boxShadow: '0 4px 14px rgba(239, 68, 68, 0.15)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Lock size={15} className="text-red-400" />
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#fca5a5' }}>
+                          PIN de Seguridad: <span style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', letterSpacing: 3, fontFamily: 'monospace' }}>{studioPin}</span>
+                        </span>
+                      </div>
+                      {onRegeneratePin && (
+                        <button
+                          type="button"
+                          onClick={onRegeneratePin}
+                          title="Generar un nuevo código PIN de seguridad"
+                          style={{
+                            background: 'rgba(255,255,255,0.08)',
+                            border: '1px solid rgba(255,255,255,0.15)',
+                            color: '#cbd5e1',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            borderRadius: 6,
+                            padding: '3px 8px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
+                        >
+                          <RefreshCw size={11} /> Cambiar PIN
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {/* ENLACE DIRECTO VISIBLE */}
                   <div style={{

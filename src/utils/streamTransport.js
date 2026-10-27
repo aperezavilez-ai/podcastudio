@@ -236,7 +236,24 @@ export class P2PStreamTransport extends BaseStreamTransport {
       }
 
       if (payload.type === 'phone-disconnect') {
-        this.disconnectSlot(slotIndex)
+        const pc = this.peerConnections.get(slotIndex)
+        if (pc) {
+          try { pc.close() } catch {}
+          this.peerConnections.delete(slotIndex)
+        }
+        this.iceQueues.delete(slotIndex)
+        this.activeTracks.delete(slotIndex)
+        this.compoundStreams.delete(slotIndex)
+
+        const timer = this.statsTimers.get(slotIndex)
+        if (timer) {
+          clearInterval(timer)
+          this.statsTimers.delete(slotIndex)
+        }
+
+        this.emit('statusChanged', slotIndex, 'waiting')
+        this.emit('streamDisconnected', slotIndex)
+        return
       }
     })
 

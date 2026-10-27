@@ -1192,7 +1192,7 @@ if (!gotTheLock) {
   });
 }
 
-ipcMain.handle('get-qr-url', () => `https://www.podcastudio.mx/remote-cam?slot=2&room=studio_cam_2`);
+ipcMain.handle('get-qr-url', () => `https://www.podcastudio.mx/remote-cam?auto=true`);
 
 ipcMain.handle('get-local-control-url', () => `http://${LOCAL_IP}:3001/control`);
 

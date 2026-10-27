@@ -287,6 +287,27 @@ function PodcastStudioApp() {
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [qrCodeImage, setQrCodeImage] = useState('');
   const [mobileStatus, setMobileStatus] = useState('');
+
+  // PIN de Seguridad del Estudio para enlace seguro y exclusivo de teléfonos móviles
+  const [studioPin, setStudioPin] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_studio_pin');
+      if (saved && /^\d{6}$/.test(saved)) return saved;
+      const gen = String(Math.floor(100000 + Math.random() * 900000));
+      localStorage.setItem('podcastudio_studio_pin', gen);
+      return gen;
+    } catch {
+      return '784920';
+    }
+  });
+
+  const handleRegenerateStudioPin = useCallback(() => {
+    const newPin = String(Math.floor(100000 + Math.random() * 900000));
+    setStudioPin(newPin);
+    try {
+      localStorage.setItem('podcastudio_studio_pin', newPin);
+    } catch {}
+  }, []);
   const [showStreamModal, setShowStreamModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false); 
   const [showConnectModal, setShowConnectModal] = useState(false);
@@ -1581,7 +1602,7 @@ function PodcastStudioApp() {
   }, [activeCam, pipCam, camSlots, cameraCrops, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
-    const officialQr = 'https://www.podcastudio.mx/remote-cam?auto=true';
+    const officialQr = `https://www.podcastudio.mx/remote-cam?auto=true&pin=${studioPin}`;
     setQrCodeUrl(officialQr);
     QRCode.toDataURL(officialQr, { width: 250, margin: 2 }).then(img => setQrCodeImage(img)).catch(() => {});
 
@@ -1595,7 +1616,7 @@ function PodcastStudioApp() {
       try {
         cloudTransport = createStreamTransport('p2p');
         [0, 1, 2, 3].forEach(slotIdx => {
-          const roomCode = `studio_cam_${slotIdx + 1}`;
+          const roomCode = `studio_${studioPin}_cam_${slotIdx + 1}`;
           cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
             console.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
             setSlotStreams(prev => ({ ...prev, [slotIdx]: stream }));
@@ -1624,7 +1645,7 @@ function PodcastStudioApp() {
       // Auto-asignación dinámica de cámaras en la nube (Supabase)
       if (supabase) {
         try {
-          dispatchChannel = supabase.channel('remotecam_auto_dispatch', {
+          dispatchChannel = supabase.channel(`remotecam_auto_dispatch_${studioPin}`, {
             config: { broadcast: { self: false } }
           });
 
@@ -1647,7 +1668,7 @@ function PodcastStudioApp() {
 
             assignedSlotsRef.current[targetSlot] = deviceId;
             const assignedCam = targetSlot + 1;
-            const assignedRoom = `studio_cam_${assignedCam}`;
+            const assignedRoom = `studio_${studioPin}_cam_${assignedCam}`;
             console.log(`[Auto-Dispatch Master] Asignando CAM ${assignedCam} (${assignedRoom}) a ${deviceId}`);
 
             dispatchChannel.send({
@@ -1656,7 +1677,8 @@ function PodcastStudioApp() {
               payload: {
                 targetDeviceId: deviceId,
                 slot: assignedCam,
-                room: assignedRoom
+                room: assignedRoom,
+                pin: studioPin,
               }
             }).catch(() => {});
           });
@@ -1843,7 +1865,12 @@ function PodcastStudioApp() {
         });
       });
     }
-  }, []);
+
+    return () => {
+      if (cloudTransport) { try { cloudTransport.destroy(); } catch {} }
+      if (dispatchChannel && supabase) { try { supabase.removeChannel(dispatchChannel); } catch {} }
+    };
+  }, [studioPin]);
 
   const handleMasterChunk = (buffer) => {
     if (isStreamingRef.current && window.api?.sendStreamChunk) {
@@ -5427,6 +5454,8 @@ function PodcastStudioApp() {
         onDisconnect={handleDisconnectSlot}
         onRenameSlot={handleRenameSlot}
         localQrUrl={qrCodeUrl}
+        studioPin={studioPin}
+        onRegeneratePin={handleRegenerateStudioPin}
         onOpenRemoteControl={() => {
           setShowConnectModal(false);
           setShowRemoteControlModal(true);
