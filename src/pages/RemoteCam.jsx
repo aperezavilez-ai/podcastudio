@@ -648,40 +648,42 @@ export default function RemoteCam() {
     offerSentRef.current = false
     isOfferingRef.current = false
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('El navegador no permite acceso a cámara por seguridad. En Android debes abrir el enlace con HTTPS (https://www.podcastudio.mx/remote-cam).');
+      }
+
       const audioConstraints = {
         echoCancellation: true,
-        noiseSuppression: false,
+        noiseSuppression: true,
         autoGainControl: true,
-        latency: { ideal: 0 },
       }
 
       let stream = null
       try {
-        // CORREGIDO: 720p a 30fps fijos (min 25) para eliminar el barrido de imagen por obturación lenta
+        // Formato adaptable para Android e iOS en vertical u horizontal
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: targetFacing },
-            width: { ideal: 1280, max: 1280 },
-            height: { ideal: 720, max: 720 },
-            frameRate: { ideal: 30, min: 25, max: 30 },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30, max: 30 },
           },
           audio: audioConstraints,
         })
-      } catch {
+      } catch (e1) {
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: { ideal: targetFacing },
-              width: { ideal: 960, max: 1280 },
-              height: { ideal: 540, max: 720 },
-              frameRate: { ideal: 30, min: 25, max: 30 },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
             },
             audio: true,
           })
-        } catch {
+        } catch (e2) {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: targetFacing }, width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 24, max: 30 } },
-            audio: false,
+            video: true,
+            audio: true,
           })
         }
       }
@@ -721,12 +723,12 @@ export default function RemoteCam() {
       let newStream = null
       try {
         newStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { exact: nextFacing }, width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30, max: 30 } },
+          video: { facingMode: { ideal: nextFacing }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
           audio: false,
         })
       } catch {
         newStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: nextFacing }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+          video: { facingMode: { ideal: nextFacing } },
           audio: false,
         })
       }

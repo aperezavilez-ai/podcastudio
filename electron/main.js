@@ -500,15 +500,27 @@ function startMediaServer() {
             updateStatus('Solicitando cámara...', '');
 
             try {
-              currentStream = await navigator.mediaDevices.getUserMedia({
-                video: { 
-                  facingMode: currentFacing, 
-                  width: { ideal: 1920, min: 1280 }, 
-                  height: { ideal: 1080, min: 720 }, 
-                  frameRate: { ideal: 30, min: 24 } 
-                },
-                audio: true
-              });
+              if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                alert('El navegador bloqueó la cámara por seguridad. En Android, abre en Chrome y asegúrate de dar permisos de cámara.');
+                return;
+              }
+
+              try {
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                  video: { 
+                    facingMode: currentFacing, 
+                    width: { ideal: 1920 }, 
+                    height: { ideal: 1080 }, 
+                    frameRate: { ideal: 30 } 
+                  },
+                  audio: true
+                });
+              } catch (retryErr) {
+                currentStream = await navigator.mediaDevices.getUserMedia({
+                  video: { facingMode: currentFacing },
+                  audio: true
+                });
+              }
 
               // Activar auto-enfoque continuo por hardware en el móvil
               const vTrack = currentStream.getVideoTracks()[0];
