@@ -50,11 +50,13 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exePath)) {
 }
 
 # 5. Establecer CreationTime, LastWriteTime y LastAccessTime a este instante exacto
-$now = Get-Date
-$exeItem = Get-Item $exePath
-$exeItem.CreationTime = $now
-$exeItem.LastWriteTime = $now
-$exeItem.LastAccessTime = $now
+try {
+    $now = Get-Date
+    $exeItem = Get-Item $exePath
+    $exeItem.CreationTime = $now
+    $exeItem.LastWriteTime = $now
+    $exeItem.LastAccessTime = $now
+} catch {}
 
 Write-Host "==================================================" -ForegroundColor Green
 Write-Host "   EXITO: PODCASTSTUDIO.EXE GENERADO CORRECTAMENTE" -ForegroundColor Green

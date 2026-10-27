@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { RotateCw, Mic, MicOff, Video, VideoOff, Volume2, VolumeX, PhoneOff, Disc, Zap, Radio, Smartphone, Camera, AlertTriangle, Lock, Shield } from 'lucide-react'
+import { RotateCw, Mic, MicOff, Video, VideoOff, Volume2, VolumeX, PhoneOff, Disc, Zap, Radio, Smartphone, Camera, AlertTriangle } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { getWebRtcConfig } from '../utils/rtcConfig.js'
 import styles from './RemoteCam.module.css'
@@ -55,35 +55,9 @@ export default function RemoteCam() {
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const explicitSlot = searchParams.get('slot');
   const explicitRoom = searchParams.get('room');
-  const pinFromUrl = searchParams.get('pin') || '';
   const isAuto = searchParams.get('auto') === 'true' || (!explicitSlot && !explicitRoom);
 
-  // SEGURIDAD: PIN de Estudio para restringir accesos no autorizados desde la web pública
-  const [studioPin, setStudioPin] = useState(() => {
-    if (pinFromUrl && /^\d{4,8}$/.test(pinFromUrl.trim())) return pinFromUrl.trim();
-    try {
-      const stored = sessionStorage.getItem('podcastudio_mobile_pin');
-      if (stored && /^\d{4,8}$/.test(stored)) return stored;
-    } catch {}
-    return '';
-  });
-  const [enteredPin, setEnteredPin] = useState('');
-  const [pinError, setPinError] = useState('');
   const isFlippingRef = useRef(false);
-
-  const handleValidatePin = (e) => {
-    if (e) e.preventDefault();
-    const clean = enteredPin.trim();
-    if (!/^\d{4,8}$/.test(clean)) {
-      setPinError('Ingresa un PIN numérico válido de 6 dígitos.');
-      return;
-    }
-    setPinError('');
-    try {
-      sessionStorage.setItem('podcastudio_mobile_pin', clean);
-    } catch {}
-    setStudioPin(clean);
-  };
 
   const [slot, setSlot] = useState(explicitSlot || '2');
   const [room, setRoom] = useState(explicitRoom || (explicitSlot ? `studio_cam_${explicitSlot}` : 'studio_cam_2'));
@@ -216,10 +190,9 @@ export default function RemoteCam() {
 
   // NEGOCIACIÓN AUTOMÁTICA DEL SIGUIENTE SLOT LIBRE EN EL ESTUDIO
   useEffect(() => {
-    if (!supabase || !isAuto || !studioPin) return;
+    if (!supabase || !isAuto) return;
 
-    const dispatchChannelName = `remotecam_auto_dispatch_${studioPin}`;
-    const dispatchChannel = supabase.channel(dispatchChannelName, {
+    const dispatchChannel = supabase.channel('remotecam_auto_dispatch', {
       config: { broadcast: { self: false } },
     });
 
@@ -228,7 +201,7 @@ export default function RemoteCam() {
       if (payload && payload.targetDeviceId === deviceSessionIdRef.current) {
         console.log('[RemoteCam] Slot auto-asignado por Master:', payload.slot, payload.room);
         setSlot(String(payload.slot));
-        setRoom(payload.room || `studio_${studioPin}_cam_${payload.slot}`);
+        setRoom(payload.room || `studio_cam_${payload.slot}`);
         setIsAssigning(false);
       }
     });
@@ -241,7 +214,6 @@ export default function RemoteCam() {
           payload: {
             deviceId: deviceSessionIdRef.current,
             guestName: guestName.trim() || undefined,
-            pin: studioPin,
           },
         }).catch(() => {});
       }
@@ -256,12 +228,11 @@ export default function RemoteCam() {
       clearTimeout(fallbackTimer);
       try { supabase.removeChannel(dispatchChannel); } catch {}
     };
-  }, [isAuto, guestName, studioPin]);
+  }, [isAuto, guestName]);
 
   useEffect(() => {
-    if (!supabase || !studioPin) return;
-    const presenceChannelName = `remotecam_presence_${studioPin}`;
-    const presenceChannel = supabase.channel(presenceChannelName, {
+    if (!supabase) return;
+    const presenceChannel = supabase.channel('remotecam_presence', {
       config: { broadcast: { self: false } },
     });
 
@@ -286,7 +257,6 @@ export default function RemoteCam() {
           guestName: guestName.trim() || undefined,
           sessionRole,
           available: true,
-          pin: studioPin,
         },
       }).catch(() => {});
     });
@@ -295,7 +265,7 @@ export default function RemoteCam() {
     return () => {
       try { supabase.removeChannel(presenceChannel); } catch {}
     };
-  }, [facingMode, room, slot, guestName, sessionRole, studioPin]);
+  }, [facingMode, room, slot, guestName, sessionRole]);
 
   const requestWakeLock = useCallback(async () => {
     try {
@@ -388,13 +358,13 @@ export default function RemoteCam() {
       channelRef.current = null
     }
 
-    if (supabase && studioPin) {
+    if (supabase) {
       try {
-        const autoChan = supabase.channel(`remotecam_auto_dispatch_${studioPin}`)
+        const autoChan = supabase.channel('remotecam_auto_dispatch')
         autoChan.send({
           type: 'broadcast',
           event: 'release-slot',
-          payload: { deviceId: deviceSessionIdRef.current, slot, pin: studioPin },
+          payload: { deviceId: deviceSessionIdRef.current, slot },
         }).catch(() => {})
       } catch {}
     }
@@ -419,7 +389,7 @@ export default function RemoteCam() {
     setMicMuted(false)
     setSpeakerMuted(true)
     setQualityLabel('HD 720p')
-  }, [releaseWakeLock, stopAdaptationEngine, slot, studioPin])
+  }, [releaseWakeLock, stopAdaptationEngine, slot])
 
   const initSignaling = useCallback(async (localStream) => {
     if (!supabase) {
@@ -449,8 +419,7 @@ export default function RemoteCam() {
       }
     })
 
-    const baseRoom = studioPin && !room.includes(studioPin) ? `${studioPin}_${room}` : room
-    const channelName = `remotecam_${baseRoom}`
+    const channelName = `remotecam_${room}`
 
     if (channelRef.current) {
       try { supabase.removeChannel(channelRef.current) } catch {}
@@ -690,7 +659,7 @@ export default function RemoteCam() {
     })
 
     startAdaptationEngine()
-  }, [room, slot, guestName, sessionRole, studioPin, startAdaptationEngine])
+  }, [room, slot, guestName, sessionRole, startAdaptationEngine])
 
   const startCamera = async (targetFacing = 'environment') => {
     setErrorMsg(null)
@@ -942,64 +911,6 @@ export default function RemoteCam() {
     return () => { stopAll() }
   }, [stopAll])
 
-  if (!studioPin) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.lockScreen}>
-          <div className={styles.lockCard}>
-            <div className={styles.lockIconWrap}>
-              <Lock size={36} />
-            </div>
-            <div className={styles.logoBadge} style={{ borderColor: 'rgba(239, 68, 68, 0.4)', background: 'rgba(239, 68, 68, 0.1)', marginBottom: 12 }}>
-              <Shield size={14} className="text-red-400" />
-              <span style={{ color: '#fca5a5' }}>ACCESO RESTRINGIDO</span>
-            </div>
-            <h2 className={styles.title} style={{ fontSize: 20, marginBottom: 8, textAlign: 'center' }}>
-              PodcastStudio Remoto
-            </h2>
-            <p className={styles.desc} style={{ fontSize: 13, marginBottom: 18, textAlign: 'center' }}>
-              Esta pantalla es exclusiva para conectar teléfonos al estudio. Escanea el código QR desde PodcastStudio o ingresa el <strong>PIN de 6 dígitos</strong> del estudio.
-            </p>
-
-            <form onSubmit={handleValidatePin} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <input
-                type="tel"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                autoFocus
-                placeholder="000000"
-                value={enteredPin}
-                onChange={(e) => {
-                  const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                  setEnteredPin(val);
-                  if (pinError) setPinError('');
-                }}
-                className={styles.pinInput}
-              />
-              {pinError && (
-                <div style={{ color: '#f87171', fontSize: 11, fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <AlertTriangle size={13} /> {pinError}
-                </div>
-              )}
-              <button
-                type="submit"
-                className={styles.unlockBtn}
-                disabled={enteredPin.length < 4}
-                style={{
-                  opacity: enteredPin.length < 4 ? 0.5 : 1,
-                  cursor: enteredPin.length < 4 ? 'not-allowed' : 'pointer'
-                }}
-              >
-                Desbloquear y Acceder
-              </button>
-            </form>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={styles.container}>
       {!active ? (
@@ -1031,7 +942,7 @@ export default function RemoteCam() {
                 type="button"
                 onClick={() => {
                   setSlot(s);
-                  setRoom(studioPin ? `studio_${studioPin}_cam_${s}` : `studio_cam_${s}`);
+                  setRoom(`studio_cam_${s}`);
                 }}
                 style={{
                   padding: '4px 10px',
