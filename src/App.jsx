@@ -2136,6 +2136,12 @@ function PodcastStudioApp() {
 
   const createWifiMediaStream = async (url) => {
     return new Promise((resolve, reject) => {
+      let effectiveUrl = url;
+      if (url && url.startsWith('rtsp://')) {
+        const host = window.location.hostname || 'localhost';
+        effectiveUrl = `http://${host}:3001/api/rtsp-stream?url=${encodeURIComponent(url)}`;
+      }
+
       const canvas = document.createElement('canvas');
       canvas.width = 1280;
       canvas.height = 720;
@@ -2210,8 +2216,8 @@ function PodcastStudioApp() {
       }, 5000);
 
       try {
-        video.src = url;
-        img.src = url;
+        video.src = effectiveUrl;
+        img.src = effectiveUrl;
       } catch (err) {
         clearTimeout(failTimeout);
         reject(err);

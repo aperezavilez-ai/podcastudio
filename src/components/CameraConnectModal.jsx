@@ -143,6 +143,8 @@ export default function CameraConnectModal({
   const [ipadRemoteQrUrl, setIpadRemoteQrUrl] = useState('');
   const ipadRemoteLink = 'https://www.podcastudio.mx/control?room=master_studio';
   const [copiedIpadRemote, setCopiedIpadRemote] = useState(false);
+  const [sterenIp900, setSterenIp900] = useState('');
+  const [sterenIp500, setSterenIp500] = useState('');
 
   // Escáner de Códigos QR de Cámaras (usando la cámara del iPad o PC)
   const [isScanningQrWithCam, setIsScanningQrWithCam] = useState(false);
@@ -462,7 +464,12 @@ export default function CameraConnectModal({
           labelLower.includes('iriun') ||
           labelLower.includes('camo') ||
           labelLower.includes('epoccam') ||
-          labelLower.includes('obs virtual');
+          labelLower.includes('obs virtual') ||
+          labelLower.includes('steren') ||
+          labelLower.includes('wifi') ||
+          labelLower.includes('wireless') ||
+          labelLower.includes('ip camera') ||
+          labelLower.includes('network');
 
         if (isWifiOrVirtual) {
           let assigned = null;
@@ -1118,6 +1125,93 @@ Instrucciones:
                 </div>
               )}
 
+              {/* SECCIÓN STEREN RÁPIDA: SterenCAM-900 y SterenCAM500 */}
+              <div style={{
+                marginBottom: 16,
+                padding: '12px 14px',
+                borderRadius: 10,
+                background: 'rgba(14, 165, 233, 0.08)',
+                border: '1px solid rgba(14, 165, 233, 0.35)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <Wifi size={15} className="text-cyan-400" />
+                    <span style={{ fontSize: 12, fontWeight: 800, color: '#38bdf8' }}>
+                      Cámaras Steren Wi-Fi (SterenCAM-900 / SterenCAM500)
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                    Conexión RTSP Directa
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 10 }}>
+                  {/* Tarjeta SterenCAM-900 */}
+                  <div style={{ padding: '10px 12px', borderRadius: 8, background: '#10141f', border: '1px solid #1e293b' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc' }}>📹 SterenCAM-900</span>
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: '#0369a1', color: '#fff', fontWeight: 800 }}>Clave: 123456789</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input
+                        type="text"
+                        placeholder="IP de la cámara ej. 192.168.1.100"
+                        value={sterenIp900}
+                        onChange={(e) => setSterenIp900(e.target.value)}
+                        className={styles.formInput}
+                        style={{ fontSize: 11, padding: '4px 8px', flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ip = sterenIp900.trim() || '192.168.1.1';
+                          const fullUrl = `rtsp://admin:123456789@${ip}:554/live/ch0`;
+                          setWifiUrl(fullUrl);
+                          handleConnectWifi(fullUrl, targetSlot, `SterenCAM-900 (CAM ${targetSlot + 1})`);
+                        }}
+                        className={styles.connectBtn}
+                        style={{ fontSize: 11, padding: '4px 10px', whiteSpace: 'nowrap' }}
+                        title={`Conectar SterenCAM-900 a CAM ${targetSlot + 1}`}
+                      >
+                        Asignar a CAM {targetSlot + 1}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tarjeta SterenCAM500 */}
+                  <div style={{ padding: '10px 12px', borderRadius: 8, background: '#10141f', border: '1px solid #1e293b' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc' }}>📹 SterenCAM500</span>
+                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: '#0369a1', color: '#fff', fontWeight: 800 }}>Clave: 66666666</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <input
+                        type="text"
+                        placeholder="IP de la cámara ej. 192.168.1.101"
+                        value={sterenIp500}
+                        onChange={(e) => setSterenIp500(e.target.value)}
+                        className={styles.formInput}
+                        style={{ fontSize: 11, padding: '4px 8px', flex: 1 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const ip = sterenIp500.trim() || '192.168.1.1';
+                          const fullUrl = `rtsp://admin:66666666@${ip}:554/live/ch0`;
+                          setWifiUrl(fullUrl);
+                          handleConnectWifi(fullUrl, targetSlot, `SterenCAM500 (CAM ${targetSlot + 1})`);
+                        }}
+                        className={styles.connectBtn}
+                        style={{ fontSize: 11, padding: '4px 10px', whiteSpace: 'nowrap' }}
+                        title={`Conectar SterenCAM500 a CAM ${targetSlot + 1}`}
+                      >
+                        Asignar a CAM {targetSlot + 1}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className={styles.formGroup}>
                 <label className={styles.formLabel}>URL de transmisión directa (MJPEG / HLS / RTSP-HTTP):</label>
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -1297,6 +1391,72 @@ Instrucciones:
                 </div>
               ) : (
                 <>
+                  {/* ACCESO DIRECTO DESTACADO A BÚSQUEDA DE CÁMARAS WI-FI (STEREN / GO PRO / RED LOCAL) */}
+                  <div
+                    style={{
+                      marginBottom: 14,
+                      padding: '12px 14px',
+                      borderRadius: 12,
+                      background: 'rgba(234, 88, 12, 0.12)',
+                      border: '1.5px solid rgba(234, 88, 12, 0.5)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                      textAlign: 'left',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 8,
+                          background: '#ea580c',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#fff',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <Wifi size={18} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#fed7aa' }}>
+                          ¿Buscas conectar Cámaras Wi-Fi (SterenCAM-900, SterenCAM500, GoPro)?
+                        </div>
+                        <div style={{ fontSize: 11, color: '#cbd5e1' }}>
+                          Escanea tu red Wi-Fi o conecta tus cámaras Steren con contraseña directamente.
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('wifi');
+                        handleScanWifiCameras();
+                      }}
+                      style={{
+                        background: 'linear-gradient(135deg, #ea580c, #c2410c)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 8,
+                        padding: '8px 14px',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        whiteSpace: 'nowrap',
+                        boxShadow: '0 2px 8px rgba(234, 88, 12, 0.4)',
+                      }}
+                    >
+                      <Search size={14} /> Buscar Cámaras Wi-Fi
+                    </button>
+                  </div>
+
                   {/* BANNER DISTINTIVO PARA MANDO IPAD / SWITCHER */}
                   <div
                     style={{

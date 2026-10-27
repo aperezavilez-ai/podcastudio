@@ -201,6 +201,40 @@ function startMediaServer() {
     });
   }
 
+  // Transcodificador universal RTSP a MJPEG vía FFmpeg para cámaras Steren / Chinas / IP
+  appServer.get('/api/rtsp-stream', (req, res) => {
+    const rtspUrl = req.query.url;
+    if (!rtspUrl) return res.status(400).send('Missing url');
+
+    res.writeHead(200, {
+      'Content-Type': 'multipart/x-mixed-replace; boundary=--ffmpegframe',
+      'Connection': 'close',
+      'Pragma': 'no-cache',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Access-Control-Allow-Origin': '*'
+    });
+
+    const ffProc = spawn(ffmpegPath, [
+      '-rtsp_transport', 'tcp',
+      '-i', rtspUrl,
+      '-f', 'mpjpeg',
+      '-boundary_tag', 'ffmpegframe',
+      '-q:v', '4',
+      '-r', '25',
+      '-vf', 'scale=1280:720',
+      'pipe:1'
+    ], { stdio: ['ignore', 'pipe', 'ignore'] });
+
+    ffProc.stdout.pipe(res);
+
+    const killProc = () => {
+      try { ffProc.kill('SIGKILL'); } catch (e) {}
+    };
+
+    req.on('close', killProc);
+    req.on('end', killProc);
+  });
+
   // WebSocket seguro sobre HTTPS (puerto 3000)
   wss = new WebSocketServer({ server });
 
@@ -1856,6 +1890,25 @@ ipcMain.handle('scan-network-cameras', async () => {
         probePromises.push(
           checkTcpPort(ip, cp.port, 400).then((isOpen) => {
             if (isOpen) {
+              if (cp.port === 554) {
+                // Generar perfiles específicos para SterenCAM-900 y SterenCAM500
+                discovered.push({
+                  id: `steren_900_${ip}`,
+                  name: `SterenCAM-900 (${ip})`,
+                  url: `rtsp://admin:123456789@${ip}:554/live/ch0`,
+                  type: 'wifi_url',
+                  status: `Cámara SterenCAM-900 (RTSP Clave: 123456789)`,
+                  real: true,
+                });
+                discovered.push({
+                  id: `steren_500_${ip}`,
+                  name: `SterenCAM500 (${ip})`,
+                  url: `rtsp://admin:66666666@${ip}:554/live/ch0`,
+                  type: 'wifi_url',
+                  status: `Cámara SterenCAM500 (RTSP Clave: 66666666)`,
+                  real: true,
+                });
+              }
               const streamUrl = cp.proto === 'rtsp'
                 ? `rtsp://${ip}:${cp.port}${cp.path}`
                 : (cp.path ? `http://${ip}:${cp.port}${cp.path}` : `http://${ip}:${cp.port}`);
