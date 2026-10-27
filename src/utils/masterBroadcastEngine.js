@@ -62,7 +62,7 @@ let currentState = {
   chromaKeyActive: false,
   virtualBg: null,
   logoBase64: null,
-  cintillosVisible: true,
+  cintillosVisible: false,
   cintillo: null,
   topic: '',
   voiceEffect: 'normal',
@@ -152,7 +152,7 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
     if (camId && currentState.cameraCrops) {
       const crop = currentState.cameraCrops[camId - 1];
       if (crop) {
-        const zoom = Math.max(1.0, crop.zoom || 1.0);
+        const zoom = Math.max(0.4, crop.zoom || 1.0);
         const focusX = crop.focusX != null ? crop.focusX : 0.5;
         const focusY = crop.focusY != null ? crop.focusY : 0.42;
 
@@ -165,6 +165,16 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
           const maxShiftY = origSh - sh;
           sx += maxShiftX * focusX;
           sy += maxShiftY * focusY;
+        } else if (zoom < 0.99) {
+          // Zoom out (Plano General / Gran Angular): mostrar todo el campo visual sin recortar
+          const destW = w * zoom;
+          const destH = h * zoom;
+          const destX = x + (w - destW) / 2;
+          const destY = y + (h - destH) / 2;
+          ctx.fillStyle = '#0c0e14';
+          ctx.fillRect(x, y, w, h);
+          ctx.drawImage(video, 0, 0, vw, vh, destX, destY, destW, destH);
+          return;
         }
       }
     }
@@ -203,8 +213,11 @@ function drawCintillo(cintillo, topic) {
   ctx.shadowOffsetX = 0;
   ctx.shadowOffsetY = 8;
 
-  // Fondo translúcido tipo Glassmorphism
-  ctx.fillStyle = 'rgba(12, 14, 20, 0.92)';
+  // Fondo translúcido profesional de cristal templado (Glassmorphism)
+  const bgGrad = ctx.createLinearGradient(x, y, x + w, y + h);
+  bgGrad.addColorStop(0, 'rgba(16, 20, 32, 0.72)');
+  bgGrad.addColorStop(1, 'rgba(25, 30, 46, 0.62)');
+  ctx.fillStyle = bgGrad;
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, radius);
   ctx.fill();

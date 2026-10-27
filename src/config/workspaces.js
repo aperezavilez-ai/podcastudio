@@ -16,7 +16,7 @@ export const WORKSPACES = [
     camSlotCount: 4,
     dualMonitorDefault: false,
     activePanelDefault: 'musica',
-    cintillosVisibleDefault: true,
+    cintillosVisibleDefault: false,
     description: 'Optimizado para podcast tradicional y tertulias: acceso directo a música de fondo, efectos de sonido (SFX) y 4 micrófonos.',
     suggestedLayouts: ['4', 'two-shot', '1', 'gallery']
   },
@@ -31,7 +31,7 @@ export const WORKSPACES = [
     camSlotCount: 2,
     dualMonitorDefault: false,
     activePanelDefault: 'cintillos',
-    cintillosVisibleDefault: true,
+    cintillosVisibleDefault: false,
     description: 'Enfocado en entrevistas dinámicas: plano doble simétrico (Two-Shot), cintillos de identificación de presentador e invitado y tally visual.',
     suggestedLayouts: ['two-shot', '2', '1', 'pip']
   },
@@ -46,7 +46,7 @@ export const WORKSPACES = [
     camSlotCount: 6,
     dualMonitorDefault: false,
     activePanelDefault: 'cintillos',
-    cintillosVisibleDefault: true,
+    cintillosVisibleDefault: false,
     description: 'Control de emisión estilo televisión: doble monitor Preview (PVW) / Program (PGM), transiciones disueltas AUTO/T-Bar y cintillos informativos.',
     suggestedLayouts: ['1', 'two-shot', '3', '6', 'pip']
   },
@@ -78,7 +78,7 @@ export const WORKSPACES = [
     camSlotCount: 3,
     dualMonitorDefault: false,
     activePanelDefault: 'voz',
-    cintillosVisibleDefault: true,
+    cintillosVisibleDefault: false,
     description: 'Flujo de trabajo para cabina de radio visual: ecualización de voz, efectos de locutor, cartuchera de cuñas/jingles y medidores VU prominentes.',
     suggestedLayouts: ['speaker', '1', 'two-shot', 'gallery']
   },

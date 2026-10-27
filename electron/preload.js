@@ -19,9 +19,8 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   getQrUrl: () => ipcRenderer.invoke('get-qr-url'),
+  discoverNetworkCameras: () => ipcRenderer.invoke('discover-network-cameras'),
   scanNetworkCameras: () => ipcRenderer.invoke('scan-network-cameras'),
-  scanWifiNetworks: () => ipcRenderer.invoke('scan-wifi-networks'),
-  connectWifiNetwork: (payload) => ipcRenderer.invoke('connect-wifi-network', payload),
   openExternal: (url) => ipcRenderer.send('open-external', url),
   openRecordingsFolder: (projectName) => ipcRenderer.send('open-recordings-folder', projectName),
 

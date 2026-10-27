@@ -1183,149 +1183,136 @@ ipcMain.handle('set-prompter-text', (event, text) => {
 ipcMain.handle('get-guest-room-url', () => `http://${LOCAL_IP}:3001/camara?auto=true`);
 
 // ============================================================================
-// ESCANEO Y CONEXIÓN REAL DE REDES WI-FI DE WINDOWS (CÁMARAS STEREN, ACTIONCAM, IP)
+// DESCUBRIDOR REAL DE CÁMARAS IP / WI-FI EN LA RED LOCAL (ONVIF, RTSP, STEREN)
 // ============================================================================
-ipcMain.handle('scan-wifi-networks', async () => {
+ipcMain.handle('discover-network-cameras', async () => {
   return new Promise((resolve) => {
-    // 1. Obtener interfaz y red actualmente conectada
-    exec('netsh wlan show interfaces', { timeout: 4000, encoding: 'utf8' }, (errInt, stdoutInt) => {
-      let currentSsid = '';
-      if (!errInt && stdoutInt) {
-        const ssidMatch = stdoutInt.match(/^\s*SSID\s*:\s*(.+)$/m);
-        if (ssidMatch && ssidMatch[1]) currentSsid = ssidMatch[1].trim();
+    const discovered = new Map();
+    const dgram = require('dgram');
+    const net = require('net');
+
+    // 1. Obtener lista de IPs activas en la subred local mediante ARP
+    exec('arp -a', { timeout: 3500, encoding: 'utf8' }, (arpErr, arpStdout) => {
+      const activeIps = new Set();
+      if (!arpErr && arpStdout) {
+        const ipRegex = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/g;
+        let match;
+        while ((match = ipRegex.exec(arpStdout)) !== null) {
+          const ip = match[1];
+          if (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.16.')) {
+            if (!ip.endsWith('.255') && !ip.endsWith('.1')) {
+              activeIps.add(ip);
+            }
+          }
+        }
       }
 
-      // 2. Obtener lista real de redes visibles
-      exec('netsh wlan show networks mode=bssid', { timeout: 6000, encoding: 'utf8' }, (errNet, stdoutNet) => {
-        if (errNet || !stdoutNet) {
-          return resolve({ success: false, currentSsid, networks: [] });
-        }
+      // 2. Enviar Sonda WS-Discovery ONVIF por Multicast UDP a 239.255.255.250:3702
+      let udpClient = null;
+      try {
+        udpClient = dgram.createSocket('udp4');
+        const probeXml = `<?xml version="1.0" encoding="utf-8"?>
+<Envelope xmlns="http://www.w3.org/2003/05/soap-envelope">
+  <Header>
+    <wsa:MessageID xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">uuid:${Date.now()}</wsa:MessageID>
+    <wsa:To xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">urn:schemas-xmlsoap-org:ws:2005:04:discovery</wsa:To>
+    <wsa:Action xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</wsa:Action>
+  </Header>
+  <Body>
+    <Probe xmlns="http://schemas.xmlsoap.org/ws/2005/04/discovery">
+      <Types xmlns:dn="http://www.onvif.org/ver10/network/wsdl">dn:NetworkVideoTransmitter</Types>
+    </Probe>
+  </Body>
+</Envelope>`;
 
-        const networks = [];
-        const blocks = stdoutNet.split(/SSID\s+\d+\s*:\s*/i).slice(1);
+        udpClient.on('message', (msg, rinfo) => {
+          const resp = msg.toString();
+          const ip = rinfo.address;
+          const xaddrMatch = resp.match(/XAddrs>([^<]+)<\//i);
+          const xaddr = xaddrMatch ? xaddrMatch[1].trim() : '';
 
-        blocks.forEach((block, idx) => {
-          const lines = block.split(/\r?\n/);
-          const ssid = (lines[0] || '').trim();
-          if (!ssid) return;
+          let name = `Cámara IP ONVIF (${ip})`;
+          if (resp.toLowerCase().includes('steren')) name = `Cámara Steren Wi-Fi (${ip})`;
 
-          let signal = 50;
-          let auth = 'WPA2-Personal';
-          let bssid = '';
-
-          const sigMatch = block.match(/Se[ñn]al\s*:\s*(\d+)%/i) || block.match(/Signal\s*:\s*(\d+)%/i);
-          if (sigMatch) signal = parseInt(sigMatch[1], 10);
-
-          const authMatch = block.match(/Autenticaci[oó]n\s*:\s*(.+)/i) || block.match(/Authentication\s*:\s*(.+)/i);
-          if (authMatch) auth = authMatch[1].trim();
-
-          const bssidMatch = block.match(/BSSID\s+\d+\s*:\s*([0-9a-fA-F:-]+)/i);
-          if (bssidMatch) bssid = bssidMatch[1].trim();
-
-          const isConnected = (ssid === currentSsid);
-          const isCamera = /steren|cam|action|gopro|sjcam|dji|wifi.?cam/i.test(ssid);
-
-          networks.push({
-            id: `wifi_${idx}_${ssid}`,
-            ssid,
-            signal,
-            auth,
-            bssid,
-            isConnected,
-            isCamera
+          discovered.set(ip, {
+            id: `cam_onvif_${ip}`,
+            name,
+            ip,
+            port: 554,
+            type: 'wifi_url',
+            protocol: 'RTSP',
+            url: `rtsp://${ip}:554/live/ch0`,
+            service: xaddr
           });
         });
 
-        // Ordenar: primero conectada, luego cámaras detectadas, luego por señal
-        networks.sort((a, b) => {
-          if (a.isConnected) return -1;
-          if (b.isConnected) return 1;
-          if (a.isCamera && !b.isCamera) return -1;
-          if (!a.isCamera && b.isCamera) return 1;
-          return b.signal - a.signal;
+        udpClient.bind(() => {
+          try {
+            udpClient.setBroadcast(true);
+            udpClient.send(probeXml, 3702, '239.255.255.250');
+          } catch(e) {}
         });
+      } catch(e) {}
 
-        resolve({ success: true, currentSsid, networks });
+      // 3. Probar puertos de streaming de video reales en las IPs activas
+      const ipList = Array.from(activeIps);
+      const portTests = [
+        { port: 554, proto: 'RTSP', path: '/live/ch0', name: 'Cámara IP / RTSP' },
+        { port: 8192, proto: 'HTTP', path: '/', name: 'Cámara Steren CAM-800' },
+        { port: 8000, proto: 'RTSP', path: '/live', name: 'Cámara de Seguridad' }
+      ];
+
+      let pending = ipList.length * portTests.length;
+      if (pending === 0) {
+        setTimeout(finish, 1200);
+        return;
+      }
+
+      ipList.forEach(ip => {
+        portTests.forEach(t => {
+          const s = new net.Socket();
+          s.setTimeout(450);
+          s.on('connect', () => {
+            const streamUrl = t.proto === 'RTSP' ? `rtsp://${ip}:${t.port}${t.path}` : `http://${ip}:${t.port}${t.path}`;
+            if (!discovered.has(ip)) {
+              discovered.set(ip, {
+                id: `cam_${ip}_${t.port}`,
+                name: `${t.name} (${ip})`,
+                ip,
+                port: t.port,
+                type: 'wifi_url',
+                protocol: t.proto,
+                url: streamUrl
+              });
+            }
+            s.destroy();
+            checkPending();
+          });
+          s.on('error', () => { s.destroy(); checkPending(); });
+          s.on('timeout', () => { s.destroy(); checkPending(); });
+          try { s.connect(t.port, ip); } catch(e) { checkPending(); }
+        });
       });
+
+      function checkPending() {
+        pending--;
+        if (pending <= 0) {
+          setTimeout(finish, 600);
+        }
+      }
+
+      function finish() {
+        if (udpClient) {
+          try { udpClient.close(); } catch(e) {}
+        }
+        const cameras = Array.from(discovered.values());
+        resolve({
+          success: true,
+          cameras,
+          total: cameras.length
+        });
+      }
     });
-  });
-});
-
-ipcMain.handle('connect-wifi-network', async (event, { ssid, password }) => {
-  return new Promise((resolve) => {
-    if (!ssid) return resolve({ success: false, error: 'SSID requerido' });
-
-    // Si tiene contraseña o es red abierta, crear perfil temporal netsh
-    const safeSsid = ssid.replace(/[&|<>;"]/g, '');
-    let xmlProfile = '';
-
-    if (!password) {
-      // Red abierta (común en ActionCam Steren CAM-800 o IP Cam en modo setup)
-      xmlProfile = `<?xml version="1.0"?>
-<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
-    <name>${safeSsid}</name>
-    <SSIDConfig>
-        <SSID>
-            <name>${safeSsid}</name>
-        </SSID>
-    </SSIDConfig>
-    <connectionType>ESS</connectionType>
-    <connectionMode>manual</connectionMode>
-    <MSM>
-        <security>
-            <authEncryption>
-                <authentication>open</authentication>
-                <encryption>none</encryption>
-                <useOneX>false</useOneX>
-            </authEncryption>
-        </security>
-    </MSM>
-</WLANProfile>`;
-    } else {
-      // Red WPA2-PSK
-      xmlProfile = `<?xml version="1.0"?>
-<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
-    <name>${safeSsid}</name>
-    <SSIDConfig>
-        <SSID>
-            <name>${safeSsid}</name>
-        </SSID>
-    </SSIDConfig>
-    <connectionType>ESS</connectionType>
-    <connectionMode>manual</connectionMode>
-    <MSM>
-        <security>
-            <authEncryption>
-                <authentication>WPA2PSK</authentication>
-                <encryption>AES</encryption>
-                <useOneX>false</useOneX>
-            </authEncryption>
-            <sharedKey>
-                <keyType>passPhrase</keyType>
-                <protected>false</protected>
-                <keyMaterial>${password}</keyMaterial>
-            </sharedKey>
-        </security>
-    </MSM>
-</WLANProfile>`;
-    }
-
-    const tempXmlPath = path.join(app.getPath('temp'), `wifi_profile_${Date.now()}.xml`);
-    try {
-      fs.writeFileSync(tempXmlPath, xmlProfile, 'utf8');
-      exec(`netsh wlan add profile filename="${tempXmlPath}" user=current`, (errAdd) => {
-        try { fs.unlinkSync(tempXmlPath); } catch (e) {}
-
-        exec(`netsh wlan connect name="${safeSsid}" ssid="${safeSsid}"`, (errConn, stdoutConn) => {
-          if (errConn) {
-            return resolve({ success: false, error: errConn.message || 'Error al conectar' });
-          }
-          resolve({ success: true, message: `Conectando a ${safeSsid}...` });
-        });
-      });
-    } catch (e) {
-      resolve({ success: false, error: e.message });
-    }
   });
 });
 

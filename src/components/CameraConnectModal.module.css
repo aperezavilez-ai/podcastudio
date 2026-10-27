@@ -494,18 +494,22 @@
 }
 
 .qrWrap {
-  padding: 10px;
-  background: #fff;
-  border-radius: 8px;
+  padding: 16px;
+  background: #ffffff;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  margin: 6px auto;
 }
 
 .qrImage {
-  width: 140px;
-  height: 140px;
+  width: 240px;
+  height: 240px;
   display: block;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: pixelated;
 }
 
 .remoteText {

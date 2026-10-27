@@ -523,12 +523,12 @@ export default function CameraCalibratorModal({
                 ))}
               </div>
 
-              {/* SLIDER DE ZOOM CONTINUO */}
+              {/* SLIDER DE ZOOM CONTINUO (0.5x a 8.0x) */}
               <div className={styles.sliderRow}>
                 <span className={styles.sliderLabel}>Acercamiento</span>
                 <input
                   type="range"
-                  min="1"
+                  min="0.5"
                   max="8"
                   step="0.05"
                   value={zoom}

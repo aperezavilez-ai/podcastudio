@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 
 export const ZOOM_PRESETS = [
+  { id: 'ultrawide', label: '0.5x Gran Angular', zoom: 0.5, focusX: 0.5, focusY: 0.5 },
+  { id: 'wide_open', label: '0.75x Plano Abierto', zoom: 0.75, focusX: 0.5, focusY: 0.48 },
   { id: 'wide', label: '1.0x Plano General', zoom: 1.0, focusX: 0.5, focusY: 0.45 },
   { id: 'medium', label: '1.35x Plano Medio', zoom: 1.35, focusX: 0.5, focusY: 0.42 },
   { id: 'closeup', label: '1.75x Primer Plano', zoom: 1.75, focusX: 0.5, focusY: 0.38 },

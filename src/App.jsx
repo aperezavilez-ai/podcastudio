@@ -346,7 +346,12 @@ function PodcastStudioApp() {
     : 'https://www.podcastudio.mx/control?room=master_studio';
 
   useEffect(() => {
-    QRCode.toDataURL(activeQrTargetUrl, { width: 250, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
+    QRCode.toDataURL(activeQrTargetUrl, { 
+      width: 320, 
+      margin: 3, 
+      errorCorrectionLevel: 'M',
+      color: { dark: '#000000', light: '#ffffff' } 
+    })
       .then(img => setRemoteControlQrImage(img))
       .catch(() => {});
   }, [activeQrTargetUrl]);
@@ -507,8 +512,8 @@ function PodcastStudioApp() {
     setCustomSfx(prev => [sfxItem, ...prev]);
   };
 
-  // SISTEMA DE CINTILLOS Y GRÁFICOS BROADCAST (Importado de PODCASTUDIO)
-  const [cintillosVisible, setCintillosVisible] = useState(true);
+  // SISTEMA DE CINTILLOS Y GRÁFICOS BROADCAST (Inicia desactivado por defecto)
+  const [cintillosVisible, setCintillosVisible] = useState(false);
   const [cintilloStyle, setCintilloStyle] = useState('glass');
   const [cintilloPosition, setCintilloPosition] = useState('bl');
   const [autoRotateCintillos, setAutoRotateCintillos] = useState(false);
@@ -667,11 +672,8 @@ function PodcastStudioApp() {
   });
   showCustomRef.current = showCustom;
 
-  // Activar cintillo de conductor al iniciar la app y notificar a Electron que la UI está 100% montada
+  // Notificar a Electron que la UI está 100% montada (cintillos inician desactivados)
   useEffect(() => {
-    if (cintillosVisible && !cintillo.active) {
-      showManual('host');
-    }
     if (window.api && window.api.signalReady) {
       window.api.signalReady();
     }
@@ -1031,36 +1033,47 @@ function PodcastStudioApp() {
     }
   }, []);
 
-  // Emisión continua de fotogramas PGM al servidor HTTP/WS para clientes OBS/vMix e iPad en LAN y Cloud
+  // Emisión continua de fotogramas PGM al servidor HTTP/WS para clientes OBS/vMix e iPad en LAN y Cloud (Ultra Baja Latencia)
   useEffect(() => {
     if (!isElectronMaster) return;
     let timer = null;
     let isBroadcasting = true;
     let lastCloudEmit = 0;
 
+    // Canvas auxiliar offscreen de 640x360 para codificación ultrarrápida (1.5ms) y carga liviana (15KB)
+    const previewCanvas = document.createElement('canvas');
+    previewCanvas.width = 640;
+    previewCanvas.height = 360;
+    const previewCtx = previewCanvas.getContext('2d', { alpha: false });
+
     const streamLoop = () => {
       if (!isBroadcasting) return;
       const c = getMasterCanvas();
       if (c && c.width > 0 && c.height > 0) {
         try {
-          const dataUrl = c.toDataURL('image/jpeg', 0.80);
+          if (previewCtx) {
+            previewCtx.drawImage(c, 0, 0, 640, 360);
+          }
+          const lowLatencyDataUrl = previewCanvas.toDataURL('image/jpeg', 0.60);
+
+          // 1. Enviar a clientes WebSocket LAN (iPad / OBS en red local a 20fps casi 0ms)
           if (window.api?.sendProgramFeedFrame) {
-            window.api.sendProgramFeedFrame(dataUrl);
+            window.api.sendProgramFeedFrame(lowLatencyDataUrl);
           }
 
-          // Emitir snapshot PGM liviano cada 700ms por Supabase para iPads remotos vía Internet
+          // 2. Emitir snapshot ultraliviano (15KB) cada 120ms por Supabase para iPads remotos vía Cloud
           const now = Date.now();
-          if (controlChannelRef.current && (now - lastCloudEmit > 700)) {
+          if (controlChannelRef.current && (now - lastCloudEmit > 120)) {
             lastCloudEmit = now;
             controlChannelRef.current.send({
               type: 'broadcast',
               event: 'pgm_cloud_frame',
-              payload: { dataUrl }
+              payload: { dataUrl: lowLatencyDataUrl }
             }).catch(() => {});
           }
         } catch(e) {}
       }
-      timer = setTimeout(streamLoop, 60);
+      timer = setTimeout(streamLoop, 50);
     };
 
     streamLoop();
@@ -1280,7 +1293,7 @@ function PodcastStudioApp() {
     const s = camSettings[camId] || defaultCamSettings;
     const crop = cameraCrops[camId - 1] || {};
 
-    const zoom = Math.max(1.0, crop.zoom ?? s.zoom ?? 1.0);
+    const zoom = Math.max(0.4, crop.zoom ?? s.zoom ?? 1.0);
     const focusX = crop.focusX != null ? crop.focusX : (s.panX != null ? s.panX / 100 : 0.5);
     const focusY = crop.focusY != null ? crop.focusY : (s.panY != null ? s.panY / 100 : 0.42);
 
@@ -1296,7 +1309,7 @@ function PodcastStudioApp() {
     const panPercentX = (0.5 - focusX) * (zoom - 1) * 100;
     const panPercentY = (0.42 - focusY) * (zoom - 1) * 100;
 
-    const isZoomed = zoom > 1.001 || Math.abs(panPercentX) > 0.05 || Math.abs(panPercentY) > 0.05;
+    const isZoomed = Math.abs(zoom - 1.0) > 0.005 || Math.abs(panPercentX) > 0.05 || Math.abs(panPercentY) > 0.05;
 
     return {
       transformOrigin: '50% 50%',
@@ -3364,8 +3377,8 @@ function PodcastStudioApp() {
                 </div>
               )}
               
-              {/* LOGO SUPERIOR IZQUIERDO OFICIAL DEL PROYECTO */}
-              {logoBase64 && typeof logoBase64 === 'string' && logoBase64.trim() && (
+              {/* LOGO SUPERIOR IZQUIERDO OFICIAL DEL PROYECTO (Solo en PC Master; iPad ya lo recibe en el fotograma PGM) */}
+              {isElectronMaster && logoBase64 && typeof logoBase64 === 'string' && logoBase64.trim() && (
                 <img 
                   src={logoBase64} 
                   alt="Logo Oficial del Proyecto" 
@@ -3375,8 +3388,8 @@ function PodcastStudioApp() {
               )}
 
 
-              {/* CINTILLO BROADCAST TRANSLÚCIDO 3D CON 13 ESTILOS Y ANIMACIONES */}
-              {cintillosVisible && cintillo?.active && (
+              {/* CINTILLO BROADCAST TRANSLÚCIDO 3D (Solo en PC Master; iPad ya lo recibe en el fotograma PGM sin encimar recuadros) */}
+              {isElectronMaster && cintillosVisible && cintillo?.active && (
                 <CintilloOverlay
                   styleId={cintilloStyle}
                   tag={cintillo.tag || 'TEMA'}
@@ -5039,7 +5052,7 @@ function PodcastStudioApp() {
             <div className="flex-1 flex overflow-hidden">
               <div className="flex-1 p-4 bg-black flex flex-col items-center justify-center relative border-r border-[#222]"><div className="w-full max-w-2xl aspect-video bg-[#050505] border border-[#333] rounded relative overflow-hidden"><VideoTile stream={getCamStream(editingCamId)} isLocal={editingCamId === 1} className="w-full h-full" style={getVideoStyle(editingCamId)} /></div></div>
               <div className="w-[400px] overflow-y-auto p-4 space-y-6 bg-[#111] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                <div><div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-orange-500 flex items-center gap-2"><Search size={12}/> ZOOM</span></div><div className="grid grid-cols-4 gap-1 mb-2">{[1, 1.35, 1.75, 2.2].map(z => (<button key={z} onClick={() => updateSetting('zoom', z)} className={`py-1 text-[10px] rounded border ${camSettings[editingCamId].zoom === z ? 'bg-orange-600 border-orange-500 text-white' : 'bg-[#222] border-[#333] text-gray-400'}`}>{z}x</button>))}</div><input type="range" min="1" max="5" step="0.05" value={camSettings[editingCamId].zoom} onChange={e => updateSetting('zoom', parseFloat(e.target.value))} className="w-full accent-orange-500" /></div>
+                <div><div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-orange-500 flex items-center gap-2"><Search size={12}/> ZOOM / ENCUADRE</span></div><div className="grid grid-cols-4 gap-1 mb-2">{[0.5, 0.75, 1, 1.5].map(z => (<button key={z} onClick={() => updateSetting('zoom', z)} className={`py-1 text-[10px] rounded border ${camSettings[editingCamId].zoom === z ? 'bg-orange-600 border-orange-500 text-white' : 'bg-[#222] border-[#333] text-gray-400'}`}>{z}x</button>))}</div><input type="range" min="0.5" max="5" step="0.05" value={camSettings[editingCamId].zoom} onChange={e => updateSetting('zoom', parseFloat(e.target.value))} className="w-full accent-orange-500" /></div>
               </div>
             </div>
             <div className="p-3 bg-[#16171b] border-t border-[#2a2b30] flex justify-between items-center"><button onClick={resetSettings} className="px-4 py-2 bg-transparent text-gray-400 hover:text-white flex items-center gap-2 text-xs"><Disc size={14}/> Restablecer</button><button onClick={() => setShowSettingsModal(false)} className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-bold flex items-center gap-2 shadow-lg">Guardar y Cerrar</button></div>
