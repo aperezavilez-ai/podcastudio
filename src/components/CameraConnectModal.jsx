@@ -203,7 +203,7 @@ export default function CameraConnectModal({
               stopQrCamScanner();
               setWifiUrl(scannedText);
               if (scannedText.startsWith('http://') || scannedText.startsWith('https://') || scannedText.startsWith('rtsp://')) {
-                onConnectWifi?.(scannedText, targetSlot, `Cámara QR (CAM ${targetSlot + 1})`);
+                onWifiConnect?.(scannedText, targetSlot, `Cámara QR (CAM ${targetSlot + 1})`);
               }
               return;
             }
@@ -216,7 +216,7 @@ export default function CameraConnectModal({
       setQrScanError('No se pudo acceder a la cámara para escanear QR: ' + (err.message || 'Permiso denegado'));
       setIsScanningQrWithCam(false);
     }
-  }, [targetSlot, onConnectWifi, stopQrCamScanner]);
+  }, [targetSlot, onWifiConnect, stopQrCamScanner]);
 
   useEffect(() => {
     if (!open) {
@@ -565,6 +565,21 @@ export default function CameraConnectModal({
     cohost: 'Co-presentador',
   };
   const roleLabel = roleNameMap[guestRole] || 'Invitado';
+
+  const invitationText = useMemo(() => {
+    return `🎙️ Invitación para unirte en vivo a PodcastStudio (${roleLabel} - CAM ${targetSlot + 1})
+
+${guestName.trim() ? `Hola ${guestName.trim()}, ` : 'Hola, '}te invito a conectarte en vivo con tu cámara y micrófono como ${guestRole === 'student' ? 'alumno a la clase virtual' : guestRole === 'cohost' ? 'co-presentador' : 'invitado'}:
+
+👉 Enlace de acceso directo:
+${remoteUrl}
+
+Instrucciones:
+1. Abre el enlace en tu celular o computadora (Safari en iPhone, Chrome en Android/PC).
+2. Permite el acceso a tu cámara y micrófono cuando te lo solicite el navegador.
+3. Presiona "Activar Cámara y Conectar".
+¡Listo! Tu video y voz entrarán en vivo al estudio en CAM ${targetSlot + 1}.`;
+  }, [guestName, guestRole, roleLabel, targetSlot, remoteUrl]);
 
   const handleCopyInvite = async () => {
     let slotToAssign = targetSlot;

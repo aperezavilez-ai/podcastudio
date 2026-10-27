@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback, Component } from 'react';
 import { 
-  Video, Mic, MicOff, Sparkles, Settings, Play, Square, QrCode, Share2, Camera, 
+  Video, Mic, MicOff, Sparkles, Settings, Play, Pause, Square, QrCode, Share2, Camera, 
   Sliders, Volume2, Users, LayoutGrid, Plus, Headphones, Wifi, Search, 
   Grid, Eye, EyeOff, X, Copy, Link, Mail, MessageCircle, Globe, Sun, Disc, Smartphone, 
   CheckCircle, Download, UploadCloud, Image as ImageIcon, FileVideo, AudioLines, Monitor,
@@ -353,6 +353,8 @@ function PodcastStudioApp() {
     }
   }, []);
 
+  const showCustomRef = useRef(null);
+
   // Actualizar estado del iPad con la información en vivo de la PC Máster
   const applyRemoteStudioState = useCallback((s) => {
     if (!s) return;
@@ -372,7 +374,9 @@ function PodcastStudioApp() {
     if (s.streamDuration !== undefined) setStreamDuration(Number(s.streamDuration));
     if (s.topic !== undefined) setTopic(s.topic);
     if (s.cintillosVisible !== undefined) setCintillosVisible(Boolean(s.cintillosVisible));
-    if (s.cintillo !== undefined) setCintillo(s.cintillo);
+    if (s.cintillo !== undefined && showCustomRef.current) {
+      showCustomRef.current(s.cintillo);
+    }
     if (s.camSlots !== undefined && Array.isArray(s.camSlots) && s.camSlots.length > 0) {
       setCamSlots(s.camSlots.map(Number));
     }
@@ -422,6 +426,13 @@ function PodcastStudioApp() {
   const teleprompterYRef = useRef(0);
   const rightPrompterScrollRef = useRef(null);
   const rightPrompterScrollPos = useRef(0);
+
+  const prompterWordCount = useMemo(() => {
+    return (teleprompterText || '').trim().split(/\s+/).filter(Boolean).length;
+  }, [teleprompterText]);
+  const prompterEstMins = useMemo(() => {
+    return Math.ceil(prompterWordCount / 130) || 1;
+  }, [prompterWordCount]);
 
   // CONFIGURACIÓN DE STREAMING Y MULTI-STREAM
   const [streamConfigs, setStreamConfigs] = useState(() => {
@@ -583,6 +594,7 @@ function PodcastStudioApp() {
     displaySec: 10,
     masterPosition: cintilloPosition
   });
+  showCustomRef.current = showCustom;
 
   // Activar cintillo de conductor al iniciar la app y notificar a Electron que la UI está 100% montada
   useEffect(() => {
@@ -2419,11 +2431,10 @@ function PodcastStudioApp() {
       }
     } else if (cmd === 'SET_CUSTOM_CINTILLO') {
       if (payload.text) {
-        setCintillo({
-          active: true,
+        showCustom({
+          tag: payload.tag || 'EN VIVO',
           text: payload.text,
           subtitle: payload.subtitle || '',
-          tag: payload.tag || 'EN VIVO',
           color: '#e8612a'
         });
         setCintillosVisible(true);
