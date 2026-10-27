@@ -136,6 +136,12 @@ export class P2PStreamTransport extends BaseStreamTransport {
           }
 
           newPc.ontrack = (trackEvent) => {
+            if (trackEvent.receiver) {
+              try {
+                if ('jitterBufferTarget' in trackEvent.receiver) trackEvent.receiver.jitterBufferTarget = 0;
+                if ('playoutDelayHint' in trackEvent.receiver) trackEvent.receiver.playoutDelayHint = 0;
+              } catch {}
+            }
             const track = trackEvent.track
             if (!track) return
             trackMap.set(track.id, track)

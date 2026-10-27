@@ -84,6 +84,8 @@ export default function CameraCalibratorModal({
   const [saturation, setSaturation] = useState(currentSlotCrop.saturation ?? 100)
   const [warmth, setWarmth] = useState(currentSlotCrop.warmth ?? 0)
   const [tint, setTint] = useState(currentSlotCrop.tint ?? 0)
+  const [sharpness, setSharpness] = useState(currentSlotCrop.sharpness ?? 100)
+  const [focusDistance, setFocusDistance] = useState(currentSlotCrop.focusDistance ?? 50)
   const [audioGain, setAudioGain] = useState(currentSlotCrop.audioGain ?? 1.0)
   const [audioMuted, setAudioMuted] = useState(Boolean(currentSlotCrop.audioMuted))
 
@@ -98,7 +100,7 @@ export default function CameraCalibratorModal({
   // Hardware UVC states
   const [exposureMode, setExposureMode] = useState('continuous')
   const [whiteBalanceMode, setWhiteBalanceMode] = useState('continuous')
-  const [focusMode, setFocusMode] = useState('continuous')
+  const [focusMode, setFocusMode] = useState(currentSlotCrop.focusMode || 'continuous')
   const [uvcMsg, setUvcMsg] = useState('')
 
   // Cargar valores del slot cuando cambia de pestaña dentro del modal
@@ -115,6 +117,9 @@ export default function CameraCalibratorModal({
     setSaturation(sc.saturation ?? 100)
     setWarmth(sc.warmth ?? (CALIBRATION_LOOK_PRESETS.find(p => p.id === sc.lookPreset)?.warmth || 0))
     setTint(sc.tint ?? (CALIBRATION_LOOK_PRESETS.find(p => p.id === sc.lookPreset)?.tint || 0))
+    setSharpness(sc.sharpness ?? 100)
+    setFocusDistance(sc.focusDistance ?? 50)
+    setFocusMode(sc.focusMode || 'continuous')
     setAudioGain(sc.audioGain ?? 1.0)
     setAudioMuted(Boolean(sc.audioMuted))
   }, [selectedSlot, crops])
@@ -189,8 +194,9 @@ export default function CameraCalibratorModal({
       saturation,
       warmth,
       tint,
+      sharpness,
     })
-  }, [brightness, contrast, saturation, warmth, tint])
+  }, [brightness, contrast, saturation, warmth, tint, sharpness])
 
   // Medidor VU de audio en tiempo real sin feedback
   useEffect(() => {
@@ -248,35 +254,105 @@ export default function CameraCalibratorModal({
     }
   }, [isOpen, stream, selectedSlot, audioGain])
 
+  const buildProfile = (overrides = {}) => {
+    const pZoom = overrides.zoom ?? zoom
+    const pFocusX = overrides.focusX ?? focusX
+    const pFocusY = overrides.focusY ?? focusY
+    const pPushIn = overrides.pushIn ?? pushIn
+    const pPresetId = overrides.presetId ?? activePreset
+    const pLookPreset = overrides.lookPreset ?? lookPreset
+    const pBrightness = overrides.brightness ?? brightness
+    const pContrast = overrides.contrast ?? contrast
+    const pSaturation = overrides.saturation ?? saturation
+    const pWarmth = overrides.warmth ?? warmth
+    const pTint = overrides.tint ?? tint
+    const pSharpness = overrides.sharpness ?? sharpness
+    const pFocusMode = overrides.focusMode ?? focusMode
+    const pFocusDistance = overrides.focusDistance ?? focusDistance
+    const pAudioGain = overrides.audioGain ?? audioGain
+    const pAudioMuted = overrides.audioMuted ?? audioMuted
+
+    const f = buildCanvasFilter({
+      brightness: pBrightness,
+      contrast: pContrast,
+      saturation: pSaturation,
+      warmth: pWarmth,
+      tint: pTint,
+      sharpness: pSharpness,
+    })
+
+    return {
+      zoom: pZoom,
+      focusX: pFocusX,
+      focusY: pFocusY,
+      pushIn: pPushIn,
+      presetId: pPresetId,
+      lookPreset: pLookPreset,
+      brightness: pBrightness,
+      contrast: pContrast,
+      saturation: pSaturation,
+      warmth: pWarmth,
+      tint: pTint,
+      sharpness: pSharpness,
+      focusMode: pFocusMode,
+      focusDistance: pFocusDistance,
+      lutId: CALIBRATION_LOOK_PRESETS.find(p => p.id === pLookPreset)?.lutId || 'none',
+      filter: f !== 'none' ? f : null,
+      audioGain: pAudioGain,
+      audioMuted: pAudioMuted,
+      ...overrides,
+    }
+  }
+
+  // Sincronización reactiva inmediata en vivo (Master Canvas y Preview)
+  const autoSync = useCallback((patch = {}) => {
+    if (onSaveSlotProfile) {
+      onSaveSlotProfile(selectedSlot, buildProfile(patch))
+    }
+  }, [selectedSlot, onSaveSlotProfile, zoom, focusX, focusY, pushIn, activePreset, lookPreset, brightness, contrast, saturation, warmth, tint, sharpness, focusMode, focusDistance, audioGain, audioMuted])
+
   // Acciones de Zoom y Encuadre
   const handleApplyPreset = (preset) => {
     setActivePreset(preset.id)
     setZoom(preset.zoom)
     setFocusX(preset.focusX)
     setFocusY(preset.focusY)
+    autoSync({ presetId: preset.id, zoom: preset.zoom, focusX: preset.focusX, focusY: preset.focusY })
   }
 
   const handleZoomSlider = (val) => {
     setZoom(val)
-    setActivePreset(val <= 1.02 ? 'wide' : 'custom')
+    const pid = val <= 1.02 ? 'wide' : 'custom'
+    setActivePreset(pid)
+    autoSync({ zoom: val, presetId: pid })
   }
 
   const handleNudge = (dx, dy) => {
+    const nextZoom = zoom <= 1.02 ? 1.15 : zoom
     if (zoom <= 1.02) {
       setZoom(1.15)
       setActivePreset('custom')
     }
-    setFocusX(prev => Math.max(0.1, Math.min(0.9, parseFloat((prev + dx).toFixed(2)))))
-    setFocusY(prev => Math.max(0.1, Math.min(0.9, parseFloat((prev + dy).toFixed(2)))))
+    const nx = Math.max(0.1, Math.min(0.9, parseFloat((focusX + dx).toFixed(2))))
+    const ny = Math.max(0.1, Math.min(0.9, parseFloat((focusY + dy).toFixed(2))))
+    setFocusX(nx)
+    setFocusY(ny)
+    autoSync({ zoom: nextZoom, focusX: nx, focusY: ny, presetId: 'custom' })
   }
 
   const handlePanSlider = (axis, val) => {
+    const nextZoom = zoom <= 1.02 ? 1.15 : zoom
     if (zoom <= 1.02) {
       setZoom(1.15)
       setActivePreset('custom')
     }
-    if (axis === 'x') setFocusX(val)
-    if (axis === 'y') setFocusY(val)
+    if (axis === 'x') {
+      setFocusX(val)
+      autoSync({ zoom: nextZoom, focusX: val, presetId: 'custom' })
+    } else {
+      setFocusY(val)
+      autoSync({ zoom: nextZoom, focusY: val, presetId: 'custom' })
+    }
   }
 
   const handleSelectLookPreset = (p) => {
@@ -286,9 +362,35 @@ export default function CameraCalibratorModal({
     setSaturation(p.saturation)
     setWarmth(p.warmth ?? 0)
     setTint(p.tint ?? 0)
+    autoSync({
+      lookPreset: p.id,
+      brightness: p.brightness,
+      contrast: p.contrast,
+      saturation: p.saturation,
+      warmth: p.warmth ?? 0,
+      tint: p.tint ?? 0,
+    })
   }
 
   const handleReset = () => {
+    const resetProf = {
+      zoom: 1.0,
+      focusX: 0.5,
+      focusY: 0.42,
+      pushIn: false,
+      presetId: 'wide',
+      lookPreset: 'original',
+      brightness: 100,
+      contrast: 100,
+      saturation: 100,
+      warmth: 0,
+      tint: 0,
+      sharpness: 100,
+      focusDistance: 50,
+      focusMode: 'continuous',
+      audioGain: 1.0,
+      audioMuted: false,
+    }
     setZoom(1.0)
     setFocusX(0.5)
     setFocusY(0.42)
@@ -300,27 +402,45 @@ export default function CameraCalibratorModal({
     setSaturation(100)
     setWarmth(0)
     setTint(0)
+    setSharpness(100)
+    setFocusDistance(50)
+    setFocusMode('continuous')
     setAudioGain(1.0)
     setAudioMuted(false)
+    autoSync(resetProf)
   }
 
-  const buildProfile = () => ({
-    zoom,
-    focusX,
-    focusY,
-    pushIn,
-    presetId: activePreset,
-    lookPreset,
-    brightness,
-    contrast,
-    saturation,
-    warmth,
-    tint,
-    lutId: CALIBRATION_LOOK_PRESETS.find(p => p.id === lookPreset)?.lutId || 'none',
-    filter: computedFilter !== 'none' ? computedFilter : null,
-    audioGain,
-    audioMuted,
-  })
+  const handleFocusDistance = useCallback(async (distVal) => {
+    setFocusDistance(distVal)
+    setFocusMode('manual')
+    autoSync({ focusDistance: distVal, focusMode: 'manual' })
+    const track = stream?.getVideoTracks?.()[0]
+    if (track && typeof track.applyConstraints === 'function') {
+      try {
+        await track.applyConstraints({
+          advanced: [{ focusMode: 'manual', focusDistance: distVal / 100 }]
+        })
+      } catch (_) {}
+    }
+  }, [stream, autoSync])
+
+  const handleAutoEnhanceFocus = useCallback(async () => {
+    setSharpness(130)
+    setContrast(112)
+    setBrightness(102)
+    setFocusMode('continuous')
+    const track = stream?.getVideoTracks?.()[0]
+    if (track && typeof track.applyConstraints === 'function') {
+      try {
+        await track.applyConstraints({
+          advanced: [{ focusMode: 'continuous' }]
+        })
+      } catch (_) {}
+    }
+    autoSync({ sharpness: 130, contrast: 112, brightness: 102, focusMode: 'continuous' })
+    setUvcMsg('⚡ Nitidez y Auto-Enfoque continuo aplicados en vivo')
+    setTimeout(() => setUvcMsg(''), 3000)
+  }, [stream, autoSync])
 
   const handleSave = () => {
     const prof = buildProfile()
@@ -426,8 +546,8 @@ export default function CameraCalibratorModal({
                   onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
                   style={{
                     filter: computedFilter,
-                    transform: (zoom > 1.02 || Math.abs(focusX - 0.5) > 0.02 || Math.abs(focusY - 0.42) > 0.03)
-                      ? `scale(${Math.max(zoom, (Math.abs(focusX - 0.5) > 0.02 || Math.abs(focusY - 0.42) > 0.03) ? 1.15 : 1)})`
+                    transform: (Math.abs(zoom - 1.0) > 0.02 || Math.abs(focusX - 0.5) > 0.02 || Math.abs(focusY - 0.42) > 0.03)
+                      ? `scale(${zoom.toFixed(3)})`
                       : undefined,
                     transformOrigin: `${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}%`,
                   }}
@@ -640,6 +760,24 @@ export default function CameraCalibratorModal({
 
               {/* DESLIZADORES DE FINETUNING */}
               <div className={styles.sliderRow}>
+                <span className={styles.sliderLabel}>Nitidez / Claridad</span>
+                <input
+                  type="range"
+                  min="50"
+                  max="200"
+                  step="2"
+                  value={sharpness}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setSharpness(v);
+                    autoSync({ sharpness: v });
+                  }}
+                  className={styles.slider}
+                />
+                <span className={styles.sliderValue}>{sharpness}%</span>
+              </div>
+
+              <div className={styles.sliderRow}>
                 <span className={styles.sliderLabel}>Brillo</span>
                 <input
                   type="range"
@@ -647,7 +785,11 @@ export default function CameraCalibratorModal({
                   max="130"
                   step="1"
                   value={brightness}
-                  onChange={(e) => setBrightness(parseInt(e.target.value, 10))}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setBrightness(v);
+                    autoSync({ brightness: v });
+                  }}
                   className={styles.slider}
                 />
                 <span className={styles.sliderValue}>{brightness}%</span>
@@ -661,7 +803,11 @@ export default function CameraCalibratorModal({
                   max="140"
                   step="1"
                   value={contrast}
-                  onChange={(e) => setContrast(parseInt(e.target.value, 10))}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setContrast(v);
+                    autoSync({ contrast: v });
+                  }}
                   className={styles.slider}
                 />
                 <span className={styles.sliderValue}>{contrast}%</span>
@@ -675,7 +821,11 @@ export default function CameraCalibratorModal({
                   max="160"
                   step="2"
                   value={saturation}
-                  onChange={(e) => setSaturation(parseInt(e.target.value, 10))}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setSaturation(v);
+                    autoSync({ saturation: v });
+                  }}
                   className={styles.slider}
                 />
                 <span className={styles.sliderValue}>{saturation}%</span>
@@ -689,7 +839,11 @@ export default function CameraCalibratorModal({
                   max="40"
                   step="1"
                   value={warmth}
-                  onChange={(e) => setWarmth(parseInt(e.target.value, 10))}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setWarmth(v);
+                    autoSync({ warmth: v });
+                  }}
                   className={styles.slider}
                 />
                 <span className={styles.sliderValue}>{warmth > 0 ? `+${warmth}` : warmth}</span>
@@ -703,7 +857,11 @@ export default function CameraCalibratorModal({
                   max="25"
                   step="1"
                   value={tint}
-                  onChange={(e) => setTint(parseInt(e.target.value, 10))}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setTint(v);
+                    autoSync({ tint: v });
+                  }}
                   className={styles.slider}
                 />
                 <span className={styles.sliderValue}>{tint > 0 ? `+${tint}` : tint}</span>
@@ -741,7 +899,11 @@ export default function CameraCalibratorModal({
                     max="2"
                     step="0.05"
                     value={audioGain}
-                    onChange={(e) => setAudioGain(parseFloat(e.target.value))}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      setAudioGain(v);
+                      autoSync({ audioGain: v });
+                    }}
                     className={styles.slider}
                   />
                   <span className={styles.sliderValue}>{Math.round(audioGain * 100)}%</span>
@@ -754,14 +916,14 @@ export default function CameraCalibratorModal({
               <div className={styles.sectionHeader}>
                 <div className={styles.sectionTitle}>
                   <Camera size={15} style={{ marginRight: 6 }} />
-                  Sensor y Hardware de Cámara (UVC)
+                  Sensor, Auto-Enfoque y Hardware (UVC)
                 </div>
                 <span style={{ fontSize: 10, color: 'var(--accent, #e8612a)', fontWeight: 600 }}>
                   Bloqueo Broadcast
                 </span>
               </div>
               <p style={{ fontSize: 10, color: '#8c97ab', margin: '0 0 8px 0', lineHeight: 1.4 }}>
-                Fija los automatismos del sensor de tu webcam para evitar parpadeos de luz, variaciones de color o respirado de foco mientras grabas.
+                Ajusta el foco automático o manual, y bloquea parámetros para evitar parpadeos o respirado de lente.
               </p>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
@@ -788,13 +950,46 @@ export default function CameraCalibratorModal({
                 <button
                   type="button"
                   className={`${styles.presetBtn} ${focusMode === 'manual' ? styles.presetBtnActive : ''}`}
-                  onClick={() => handleToggleHardwareMode('focusMode', focusMode === 'manual' ? 'continuous' : 'manual')}
-                  title="Bloquea la distancia de enfoque para eliminar el respirado de lente"
+                  onClick={() => {
+                    const target = focusMode === 'manual' ? 'continuous' : 'manual';
+                    handleToggleHardwareMode('focusMode', target);
+                    autoSync({ focusMode: target });
+                  }}
+                  title="Alterna entre Enfoque Automático y Manual para fijar la distancia"
                 >
                   {focusMode === 'manual' ? <Lock size={14} style={{ marginRight: 4 }} /> : <Focus size={14} style={{ marginRight: 4 }} />}
-                  <span style={{ fontSize: 10 }}>{focusMode === 'manual' ? 'Foco Fijo' : 'Foco Auto'}</span>
+                  <span style={{ fontSize: 10 }}>{focusMode === 'manual' ? 'Foco Manual' : 'Foco Auto'}</span>
                 </button>
               </div>
+
+              {/* DISTANCIA DE ENFOQUE MANUAL */}
+              {focusMode === 'manual' && (
+                <div className={styles.sliderRow} style={{ marginTop: 8 }}>
+                  <span className={styles.sliderLabel}>Distancia Foco</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={focusDistance}
+                    onChange={(e) => handleFocusDistance(parseInt(e.target.value, 10))}
+                    className={styles.slider}
+                  />
+                  <span className={styles.sliderValue}>{focusDistance}%</span>
+                </div>
+              )}
+
+              {/* BOTÓN RÁPIDO DE AUTO-MEJORA */}
+              <button
+                type="button"
+                className={styles.guideBtn}
+                style={{ marginTop: 8, width: '100%', justifyContent: 'center', background: 'rgba(232, 97, 42, 0.15)', borderColor: 'rgba(232, 97, 42, 0.4)', color: '#ff8a50', fontWeight: 600, padding: '7px 10px' }}
+                onClick={handleAutoEnhanceFocus}
+                title="Optimiza contraste, nitidez al 130% y activa auto-enfoque continuo en tiempo real"
+              >
+                <Zap size={14} style={{ marginRight: 6 }} />
+                ⚡ Auto-Mejora y Enfoque Rápido
+              </button>
 
               {uvcMsg && (
                 <div style={{ marginTop: 6, fontSize: 10, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 4 }}>

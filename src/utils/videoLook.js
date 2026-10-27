@@ -18,8 +18,10 @@ export function buildCanvasFilter(look) {
   // Corrige dominantes de iluminación LED o fluorescentes
   const hue = (warmth * 0.4) + (tint * 0.75)
 
-  const sharp = (look.sharpness ?? 0) > 0 ? (1 + (look.sharpness / 100) * 0.12) : 1
-  const contrastFinal = c * sharp
+  // Nitidez y Claridad (Sharpness): 100% = neutral, hasta 200% para realce de bordes y microcontraste
+  const rawSharp = look.sharpness != null ? look.sharpness : 100
+  const sharpFactor = rawSharp > 100 ? (1 + ((rawSharp - 100) / 100) * 0.32) : (rawSharp < 100 ? Math.max(0.7, rawSharp / 100) : 1.0)
+  const contrastFinal = c * sharpFactor
 
   return `brightness(${b}) contrast(${contrastFinal}) saturate(${s}) sepia(${(sepia + coolSepia).toFixed(3)}) hue-rotate(${hue.toFixed(2)}deg)`
 }

@@ -108,11 +108,26 @@ const VideoTile = React.forwardRef(({
         }
       };
       attemptPlay();
+
+      // Detección y corrección instantánea de drift/retraso: salta al borde en vivo (< 50ms)
+      const onTimeUpdate = () => {
+        try {
+          if (v && v.buffered && v.buffered.length > 0) {
+            const end = v.buffered.end(v.buffered.length - 1);
+            if (end - v.currentTime > 0.22) {
+              v.currentTime = end;
+            }
+          }
+        } catch (_) {}
+      };
+
       v.addEventListener('loadedmetadata', attemptPlay);
       v.addEventListener('canplay', attemptPlay);
+      v.addEventListener('timeupdate', onTimeUpdate);
       return () => {
         v.removeEventListener('loadedmetadata', attemptPlay);
         v.removeEventListener('canplay', attemptPlay);
+        v.removeEventListener('timeupdate', onTimeUpdate);
       };
     }
   }, [stream, videoRef]);
@@ -625,7 +640,26 @@ function PodcastStudioApp() {
   const [guestFacebook, setGuestFacebook] = useState('/invitado_oficial');
   const [guestFacebookSub, setGuestFacebookSub] = useState('Página oficial en Facebook');
 
-  const [logoBase64, setLogoBase64] = useState(null);
+  const [logoConfig, setLogoConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_logo_config');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      url: null,
+      mediaType: 'image',
+      position: 'top-left',
+      scale: 100,
+      opacity: 100,
+    };
+  });
+  const [logoBase64, setLogoBase64] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_logo_config');
+      if (saved) return JSON.parse(saved).url || null;
+    } catch {}
+    return null;
+  });
   const [customCintillosList, setCustomCintillosList] = useState([]);
 
   // Redes activas según objetivo ('guest' o 'program')
@@ -1122,6 +1156,7 @@ function PodcastStudioApp() {
         }
       };
       try { localStorage.setItem('podcastudio_camera_crops', JSON.stringify(updated)); } catch (e) {}
+      updateBroadcastState({ cameraCrops: updated });
       return updated;
     });
 
@@ -1331,6 +1366,7 @@ function PodcastStudioApp() {
       saturation: crop.saturation ?? s.saturation,
       warmth: crop.warmth ?? s.temp,
       tint: crop.tint ?? 0,
+      sharpness: crop.sharpness ?? s.sharpness ?? 100,
     });
 
     // Panning relativo al zoom con centro fijo al 50%: elimina al 100% cualquier brinco visual
@@ -1385,6 +1421,15 @@ function PodcastStudioApp() {
           const devId = videoTrack?.getSettings?.()?.deviceId;
           const devLabel = videoTrack?.label || 'Cámara 1 (Principal)';
           setCameraMeta(prev => ({ ...prev, 0: { deviceId: devId, label: devLabel, type: 'usb' } }));
+
+          // Auto-enfoque continuo por hardware al iniciar
+          if (videoTrack && videoTrack.applyConstraints) {
+            try {
+              await videoTrack.applyConstraints({
+                advanced: [{ focusMode: 'continuous' }]
+              });
+            } catch (_) {}
+          }
 
           if (stream.getAudioTracks().length > 0) {
             try {
@@ -1526,13 +1571,14 @@ function PodcastStudioApp() {
       chromaKeyActive,
       virtualBg,
       logoBase64,
+      logoConfig,
       cintillosVisible,
       cintillo,
       topic,
       getCamStream,
       remoteCams,
     });
-  }, [activeCam, pipCam, camSlots, cameraCrops, layoutMode, chromaKeyActive, virtualBg, logoBase64, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
+  }, [activeCam, pipCam, camSlots, cameraCrops, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
     const officialQr = 'https://www.podcastudio.mx/remote-cam?auto=true';
@@ -2157,10 +2203,40 @@ function PodcastStudioApp() {
   const handleLogoUpload = (e) => {
     const file = e.target.files[0];
     if (file) { 
+      const isVideo = file.type.startsWith('video/') || Boolean(file.name.match(/\.(mp4|webm|mov|mkv)$/i));
       const reader = new FileReader(); 
-      reader.onload = (evt) => setLogoBase64(evt.target.result); 
+      reader.onload = (evt) => {
+        const dataUrl = evt.target.result;
+        setLogoBase64(dataUrl);
+        setLogoConfig(prev => {
+          const updated = {
+            ...prev,
+            url: dataUrl,
+            mediaType: isVideo ? 'video' : 'image',
+          };
+          try { localStorage.setItem('podcastudio_logo_config', JSON.stringify(updated)); } catch (_) {}
+          return updated;
+        });
+      };
       reader.readAsDataURL(file); 
     }
+  };
+
+  const handleRemoveLogo = () => {
+    setLogoBase64(null);
+    setLogoConfig(prev => {
+      const updated = { ...prev, url: null };
+      try { localStorage.setItem('podcastudio_logo_config', JSON.stringify(updated)); } catch (_) {}
+      return updated;
+    });
+  };
+
+  const handleUpdateLogoSetting = (key, value) => {
+    setLogoConfig(prev => {
+      const updated = { ...prev, [key]: value };
+      try { localStorage.setItem('podcastudio_logo_config', JSON.stringify(updated)); } catch (_) {}
+      return updated;
+    });
   };
 
   // Dispositivos de video USB
@@ -3405,14 +3481,44 @@ function PodcastStudioApp() {
                 </div>
               )}
               
-              {/* LOGO SUPERIOR IZQUIERDO OFICIAL DEL PROYECTO (Solo en PC Master; iPad ya lo recibe en el fotograma PGM) */}
-              {isElectronMaster && logoBase64 && typeof logoBase64 === 'string' && logoBase64.trim() && (
-                <img 
-                  src={logoBase64} 
-                  alt="Logo Oficial del Proyecto" 
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }} 
-                  className="absolute top-4 left-4 h-16 object-contain z-30 drop-shadow-lg" 
-                />
+              {/* LOGO OFICIAL DEL PROYECTO O VIDEO 3D ANIMADO */}
+              {isElectronMaster && (logoConfig.url || logoBase64) && (
+                (() => {
+                  const url = logoConfig.url || logoBase64;
+                  const isVideo = logoConfig.mediaType === 'video' || (typeof url === 'string' && (url.startsWith('data:video') || url.match(/\.(mp4|webm|mov|mkv)($|\?)/i)));
+                  const pos = logoConfig.position || 'top-left';
+                  const scale = Math.max(0.4, Math.min(2.5, (logoConfig.scale || 100) / 100));
+                  const opacity = Math.max(0.2, Math.min(1.0, (logoConfig.opacity || 100) / 100));
+
+                  const posClasses = {
+                    'top-left': 'top-4 left-4',
+                    'top-right': 'top-4 right-4',
+                    'bottom-left': 'bottom-16 left-4',
+                    'bottom-right': 'bottom-16 right-4',
+                  }[pos] || 'top-4 left-4';
+
+                  const baseH = 64 * scale;
+
+                  return isVideo ? (
+                    <video
+                      src={url}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className={`absolute ${posClasses} z-30 drop-shadow-2xl pointer-events-none select-none transition-all duration-200`}
+                      style={{ height: `${baseH}px`, maxWidth: '35%', opacity }}
+                    />
+                  ) : (
+                    <img
+                      src={url}
+                      alt="Logo Oficial del Proyecto"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      className={`absolute ${posClasses} z-30 drop-shadow-2xl object-contain pointer-events-none select-none transition-all duration-200`}
+                      style={{ height: `${baseH}px`, maxWidth: '35%', opacity }}
+                    />
+                  );
+                })()
               )}
 
 
@@ -3788,32 +3894,107 @@ function PodcastStudioApp() {
           {!isRightPanelCollapsed && (
             <div className="flex-1 overflow-y-auto p-2 space-y-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
 
-              {/* CARD: LOGO OFICIAL DEL PROYECTO (ARRIBA EN PANTALLA) */}
-              <div className="border border-[#222] rounded bg-[#161616] p-2.5 space-y-2">
+              {/* CARD: LOGO OFICIAL DEL PROYECTO O VIDEO 3D ANIMADO */}
+              <div className="border border-[#222] rounded bg-[#161616] p-2.5 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold text-gray-200 flex items-center gap-1.5">
-                    <ImageIcon size={13} className="text-orange-500" /> Logo Oficial del Proyecto
+                    <ImageIcon size={13} className="text-orange-500" /> Logo Oficial / Video 3D
                   </span>
-                  {logoBase64 && (
+                  {(logoConfig.url || logoBase64) && (
                     <span className="text-[9px] bg-green-900/60 text-green-300 font-bold px-1.5 py-0.5 rounded border border-green-700/40">
-                      Activo Arriba
+                      {logoConfig.mediaType === 'video' ? '🎬 3D Video Activo' : '🖼️ Imagen Activa'}
                     </span>
                   )}
                 </div>
                 <p className="text-[10px] text-gray-400 leading-snug">
-                  Se ubica en la esquina superior izquierda del monitor. No altera los cintillos.
+                  Sube tu logo en imagen (PNG, JPG, WebP) o en video animado 3D (MP4, WebM transparente). Ajusta esquina y tamaño libremente.
                 </p>
+
                 <div className="flex gap-2 items-center">
                   <label className="flex-1 bg-[#222] hover:bg-[#2c2c2c] text-xs text-center py-1.5 rounded cursor-pointer flex items-center justify-center gap-1.5 border border-[#444] text-gray-200 font-bold transition-colors">
-                    <Upload size={12}/> {logoBase64 ? 'Cambiar Logo Oficial' : 'Subir Logo Oficial'}
-                    <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogoUpload} />
+                    <Upload size={12}/> {(logoConfig.url || logoBase64) ? 'Cambiar Logo / Video 3D' : 'Subir Logo / Video 3D'}
+                    <input 
+                      type="file" 
+                      accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime" 
+                      className="hidden" 
+                      onChange={handleLogoUpload} 
+                    />
                   </label>
-                  {logoBase64 && (
-                    <button onClick={() => setLogoBase64(null)} className="p-1.5 bg-[#222] hover:bg-red-900/50 text-gray-400 hover:text-red-400 rounded border border-[#333]" title="Quitar logo oficial">
+                  {(logoConfig.url || logoBase64) && (
+                    <button 
+                      onClick={handleRemoveLogo} 
+                      className="p-1.5 bg-[#222] hover:bg-red-900/50 text-gray-400 hover:text-red-400 rounded border border-[#333]" 
+                      title="Quitar logo o video"
+                    >
                       <X size={14} />
                     </button>
                   )}
                 </div>
+
+                {/* CONTROLES DE ESQUINA, TAMAÑO Y OPACIDAD */}
+                {(logoConfig.url || logoBase64) && (
+                  <div className="bg-[#0f0f11] p-2 rounded border border-[#26262a] space-y-2 mt-1">
+                    {/* SELECTOR DE ESQUINAS */}
+                    <div>
+                      <span className="text-[9.5px] font-semibold text-gray-400 block mb-1">Ubicación / Esquina:</span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {[
+                          { id: 'top-left', label: '↖ Arriba Izq' },
+                          { id: 'top-right', label: '↗ Arriba Der' },
+                          { id: 'bottom-left', label: '↙ Abajo Izq' },
+                          { id: 'bottom-right', label: '↘ Abajo Der' },
+                        ].map((pos) => (
+                          <button
+                            key={pos.id}
+                            type="button"
+                            onClick={() => handleUpdateLogoSetting('position', pos.id)}
+                            className={`text-[10px] py-1 px-1.5 rounded font-bold border transition-all ${
+                              (logoConfig.position || 'top-left') === pos.id
+                                ? 'bg-orange-600 border-orange-500 text-white shadow-sm'
+                                : 'bg-[#18181c] border-[#2c2c34] text-gray-400 hover:text-white hover:bg-[#202026]'
+                            }`}
+                          >
+                            {pos.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* TAMAÑO / ESCALA */}
+                    <div>
+                      <div className="flex justify-between items-center text-[9.5px] text-gray-400 mb-1">
+                        <span>Tamaño / Escala</span>
+                        <span className="font-bold text-orange-400">{logoConfig.scale || 100}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="40"
+                        max="220"
+                        step="5"
+                        value={logoConfig.scale || 100}
+                        onChange={(e) => handleUpdateLogoSetting('scale', parseInt(e.target.value, 10))}
+                        className="w-full accent-orange-500 h-1 bg-[#222] rounded cursor-pointer"
+                      />
+                    </div>
+
+                    {/* OPACIDAD */}
+                    <div>
+                      <div className="flex justify-between items-center text-[9.5px] text-gray-400 mb-1">
+                        <span>Opacidad</span>
+                        <span className="font-bold text-gray-300">{logoConfig.opacity ?? 100}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="20"
+                        max="100"
+                        step="5"
+                        value={logoConfig.opacity ?? 100}
+                        onChange={(e) => handleUpdateLogoSetting('opacity', parseInt(e.target.value, 10))}
+                        className="w-full accent-orange-500 h-1 bg-[#222] rounded cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* PANEL 1: CINTILLOS & GRÁFICOS BROADCAST */}

@@ -11,6 +11,7 @@
  */
 
 import { applyVoiceEffectChain } from './voiceEffectsProcessor.js';
+import { buildCanvasFilter } from './videoLook.js';
 
 let canvas = null;
 let ctx = null;
@@ -62,6 +63,7 @@ let currentState = {
   chromaKeyActive: false,
   virtualBg: null,
   logoBase64: null,
+  logoConfig: null,
   cintillosVisible: false,
   cintillo: null,
   topic: '',
@@ -83,6 +85,7 @@ let currentState = {
 const videoElements = new Map();
 let virtualBgImage = null;
 let logoImage = null;
+let logoVideoElement = null;
 let lastStreamSync = 0;
 
 function getOrCreateVideo(camId, stream) {
@@ -123,13 +126,42 @@ function updateImages() {
     virtualBgImage = null;
   }
 
-  if (currentState.logoBase64) {
-    if (!logoImage || logoImage.src !== currentState.logoBase64) {
-      logoImage = new Image();
-      logoImage.src = currentState.logoBase64;
+  const logoUrl = currentState.logoConfig?.url || currentState.logoBase64;
+  const isVideoLogo = currentState.logoConfig?.mediaType === 'video' || (typeof logoUrl === 'string' && (logoUrl.startsWith('data:video') || logoUrl.match(/\.(mp4|webm|mov|mkv)($|\?)/i)));
+
+  if (logoUrl) {
+    if (isVideoLogo) {
+      logoImage = null;
+      if (!logoVideoElement || logoVideoElement.src !== logoUrl) {
+        if (logoVideoElement) {
+          try { logoVideoElement.pause(); logoVideoElement.src = ''; } catch {}
+        }
+        logoVideoElement = document.createElement('video');
+        logoVideoElement.src = logoUrl;
+        logoVideoElement.autoplay = true;
+        logoVideoElement.loop = true;
+        logoVideoElement.muted = true;
+        logoVideoElement.playsInline = true;
+        logoVideoElement.crossOrigin = 'anonymous';
+        logoVideoElement.play().catch(() => {});
+      }
+    } else {
+      if (logoVideoElement) {
+        try { logoVideoElement.pause(); logoVideoElement.src = ''; } catch {}
+        logoVideoElement = null;
+      }
+      if (!logoImage || logoImage.src !== logoUrl) {
+        logoImage = new Image();
+        logoImage.crossOrigin = 'anonymous';
+        logoImage.src = logoUrl;
+      }
     }
   } else {
     logoImage = null;
+    if (logoVideoElement) {
+      try { logoVideoElement.pause(); logoVideoElement.src = ''; } catch {}
+      logoVideoElement = null;
+    }
   }
 }
 
@@ -149,10 +181,18 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
       sy = (vh - sh) / 2;
     }
 
-    // Aplicar Zoom dinámico y punto focal si existen para este camId
+    // Aplicar Zoom dinámico, punto focal y calibración de color/nitidez si existen para este camId
+    let hasFilter = false;
     if (camId && currentState.cameraCrops) {
       const crop = currentState.cameraCrops[camId - 1];
       if (crop) {
+        const filterStr = crop.filter || buildCanvasFilter(crop);
+        if (filterStr && filterStr !== 'none') {
+          ctx.save();
+          ctx.filter = filterStr;
+          hasFilter = true;
+        }
+
         const zoom = Math.max(0.4, crop.zoom || 1.0);
         const focusX = crop.focusX != null ? crop.focusX : 0.5;
         const focusY = crop.focusY != null ? crop.focusY : 0.42;
@@ -175,6 +215,7 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
           ctx.fillStyle = '#0c0e14';
           ctx.fillRect(x, y, w, h);
           ctx.drawImage(video, 0, 0, vw, vh, destX, destY, destW, destH);
+          if (hasFilter) ctx.restore();
           drawCameraNameBadge(x, y, w, h, camId);
           return;
         }
@@ -182,6 +223,7 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
     }
 
     ctx.drawImage(video, sx, sy, sw, sh, x, y, w, h);
+    if (hasFilter) ctx.restore();
     drawCameraNameBadge(x, y, w, h, camId);
   } else {
     // Señal no disponible
@@ -729,12 +771,58 @@ function renderFrame() {
   }
 } // Fin bloque layout regular cuando no hay repetición activa
 
-  // 3. Logo Oficial del Proyecto (Superior Izquierda)
-  if (logoImage && logoImage.complete && logoImage.naturalWidth > 0) {
-    const maxLogoH = 80;
-    const aspect = logoImage.naturalWidth / logoImage.naturalHeight;
-    const logoW = maxLogoH * aspect;
-    ctx.drawImage(logoImage, 50, 45, logoW, maxLogoH);
+  // 3. Logo Oficial / Video 3D (Posición, Escala y Opacidad configurables)
+  const lConfig = currentState.logoConfig || {};
+  const lPosition = lConfig.position || 'top-left';
+  const lScale = Math.max(0.3, Math.min(3.0, (lConfig.scale || 100) / 100));
+  const lOpacity = Math.max(0.1, Math.min(1.0, (lConfig.opacity != null ? lConfig.opacity : 100) / 100));
+
+  let logoDrawable = null;
+  let natW = 0, natH = 0;
+
+  if (logoVideoElement && logoVideoElement.readyState >= 2) {
+    logoDrawable = logoVideoElement;
+    natW = logoVideoElement.videoWidth || 320;
+    natH = logoVideoElement.videoHeight || 320;
+  } else if (logoImage && logoImage.complete && logoImage.naturalWidth > 0) {
+    logoDrawable = logoImage;
+    natW = logoImage.naturalWidth;
+    natH = logoImage.naturalHeight;
+  }
+
+  if (logoDrawable && natW > 0 && natH > 0) {
+    const baseH = 80 * lScale;
+    const aspect = natW / natH;
+    const logoW = baseH * aspect;
+    const logoH = baseH;
+
+    let posX = 50;
+    let posY = 45;
+
+    if (lPosition === 'top-right') {
+      posX = width - 50 - logoW;
+      posY = 45;
+    } else if (lPosition === 'bottom-left') {
+      const cintilloOffset = (currentState.cintillosVisible && currentState.cintillo?.active) ? 140 : 0;
+      posX = 50;
+      posY = height - 45 - logoH - cintilloOffset;
+    } else if (lPosition === 'bottom-right') {
+      const cintilloOffset = (currentState.cintillosVisible && currentState.cintillo?.active) ? 140 : 0;
+      posX = width - 50 - logoW;
+      posY = height - 45 - logoH - cintilloOffset;
+    }
+
+    ctx.save();
+    if (lOpacity < 1.0) {
+      ctx.globalAlpha = lOpacity;
+    }
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 2;
+
+    ctx.drawImage(logoDrawable, posX, posY, logoW, logoH);
+    ctx.restore();
   }
 
   // 4. Cintillo informativo al aire

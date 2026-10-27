@@ -501,9 +501,24 @@ function startMediaServer() {
 
             try {
               currentStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: currentFacing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+                video: { 
+                  facingMode: currentFacing, 
+                  width: { ideal: 1920, min: 1280 }, 
+                  height: { ideal: 1080, min: 720 }, 
+                  frameRate: { ideal: 30, min: 24 } 
+                },
                 audio: true
               });
+
+              // Activar auto-enfoque continuo por hardware en el móvil
+              const vTrack = currentStream.getVideoTracks()[0];
+              if (vTrack && vTrack.applyConstraints) {
+                try {
+                  await vTrack.applyConstraints({
+                    advanced: [{ focusMode: 'continuous' }]
+                  });
+                } catch (e) {}
+              }
 
               videoEl.srcObject = currentStream;
               videoEl.style.display = 'block';
@@ -525,7 +540,7 @@ function startMediaServer() {
                   try {
                     const params = sender.getParameters();
                     if (!params.encodings) params.encodings = [{}];
-                    params.encodings[0].maxBitrate = 4500000;
+                    params.encodings[0].maxBitrate = 5000000;
                     params.encodings[0].networkPriority = 'high';
                     params.encodings[0].priority = 'high';
                     params.degradationPreference = 'maintain-resolution';
@@ -546,6 +561,8 @@ function startMediaServer() {
                 } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
                   updateStatus('Reconectando...', '');
                 }
+              };
+
               // Forzar preferencia de códec H.264 por hardware en el móvil para 0% lag y 0 pixelado
               try {
                 const transceivers = pc.getTransceivers();
