@@ -203,7 +203,20 @@ export class P2PStreamTransport extends BaseStreamTransport {
           }
 
           const answer = await newPc.createAnswer()
-          await newPc.setLocalDescription(answer)
+          
+          // Optimizar Opus en la respuesta SDP para latencia ultra-baja (paquetes cada 10-20ms)
+          let finalAnswerSdp = answer.sdp || '';
+          if (finalAnswerSdp.includes('opus/48000')) {
+            finalAnswerSdp = finalAnswerSdp.replace(/a=fmtp:(\d+)[^\r\n]*/g, (match, pt) => {
+              if (finalAnswerSdp.includes(`a=rtpmap:${pt} opus/48000`)) {
+                return `a=fmtp:${pt} minptime=10;maxptime=20;useinbandfec=1;stereo=0;sprop-stereo=0;cbr=1`;
+              }
+              return match;
+            });
+          }
+
+          const localDesc = new RTCSessionDescription({ type: answer.type, sdp: finalAnswerSdp });
+          await newPc.setLocalDescription(localDesc)
 
           const postQueue = this.iceQueues.get(slotIndex) || []
           this.iceQueues.set(slotIndex, [])
@@ -214,7 +227,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
           await channel.send({
             type: 'broadcast',
             event: 'signal',
-            payload: { type: 'answer', sdp: answer, sender: 'studio' },
+            payload: { type: 'answer', sdp: localDesc, sender: 'studio' },
           })
         } catch (err) {
           console.error('[P2PTransport] Error handling offer:', err)
@@ -278,6 +291,15 @@ export class P2PStreamTransport extends BaseStreamTransport {
     const timer = setInterval(async () => {
       const current = this.peerConnections.get(slotIndex)
       if (!current || current.connectionState !== 'connected') return
+
+      // Mantener jitter buffer y retardo en 0ms continuo para respuesta en vivo
+      current.getReceivers().forEach((receiver) => {
+        try {
+          if ('jitterBufferTarget' in receiver) receiver.jitterBufferTarget = 0;
+          if ('playoutDelayHint' in receiver) receiver.playoutDelayHint = 0;
+        } catch {}
+      });
+
       try {
         const stats = await current.getStats()
         let bytes = 0, frames = 0, packetsLost = 0

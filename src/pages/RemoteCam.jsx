@@ -8,11 +8,11 @@ const RTC_CONFIG = getWebRtcConfig()
 
 
 // TIERS BROADCAST HD ULTRA-BAJA LATENCIA (30 FPS FIJOS)
-// Evita bufferbloat, retrasos en movimiento y desincronización labial
+// Evita bufferbloat, congestión en uplink Wi-Fi y desincronización labial
 const QUALITY_TIERS = [
-  { label: 'HD 720p Fluido', maxBitrate: 2500000, width: 1280, height: 720, frameRate: 30 },
-  { label: 'HD 720p Balanceado', maxBitrate: 2000000, width: 1280, height: 720, frameRate: 30 },
-  { label: 'SD+ 540p Rápido', maxBitrate: 1400000, width: 960, height: 540, frameRate: 30 },
+  { label: 'HD 720p Fluido', maxBitrate: 2000000, width: 1280, height: 720, frameRate: 30 },
+  { label: 'HD 720p Balanceado', maxBitrate: 1500000, width: 1280, height: 720, frameRate: 30 },
+  { label: 'SD+ 540p Rápido', maxBitrate: 1000000, width: 960, height: 540, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 250     
 const RTT_HEALTHY_MS = 100     
@@ -44,7 +44,7 @@ function applyAudioSenderParams(sender) {
   try {
     const params = sender.getParameters() || {}
     if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
-    params.encodings[0].maxBitrate = 128000
+    params.encodings[0].maxBitrate = 64000
     params.encodings[0].priority = 'high'
     params.encodings[0].networkPriority = 'high'
     sender.setParameters(params).catch(() => {})
@@ -510,9 +510,23 @@ export default function RemoteCam() {
           if (vTransceiver && 'setCodecPreferences' in vTransceiver && window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities) {
             const caps = RTCRtpReceiver.getCapabilities('video');
             if (caps && caps.codecs) {
-              const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
-              const others = caps.codecs.filter(c => c.mimeType.toLowerCase() !== 'video/h264');
-              vTransceiver.setCodecPreferences([...h264, ...others]);
+              const isAndroid = /Android/i.test(navigator.userAgent);
+              let preferred = [];
+              if (isAndroid) {
+                // En Android: VP8 codifica sin buffer de lookahead ni retraso de fotogramas B
+                const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
+                const h264Base = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264' && (!c.sdpFmtpLine || c.sdpFmtpLine.includes('42e01f')));
+                const others = caps.codecs.filter(c => !vp8.includes(c) && !h264Base.includes(c));
+                preferred = [...vp8, ...h264Base, ...others];
+              } else {
+                // En iOS / Safari: H264 por hardware es nativo de bajísima latencia
+                const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
+                const others = caps.codecs.filter(c => c.mimeType.toLowerCase() !== 'video/h264');
+                preferred = [...h264, ...others];
+              }
+              if (preferred.length > 0) {
+                vTransceiver.setCodecPreferences(preferred);
+              }
             }
           }
         } catch (e) {}
@@ -523,28 +537,21 @@ export default function RemoteCam() {
           ...(isRestart ? { iceRestart: true } : {}),
         })
 
-        function prioritizeH264(sdp) {
-          const lines = sdp.split('\r\n');
-          let mIdx = -1;
-          const h264Pts = [];
-          lines.forEach((l, i) => {
-            if (l.startsWith('m=video')) mIdx = i;
-            if (l.startsWith('a=rtpmap:') && l.toLowerCase().includes('h264')) {
-              const pt = l.split(':')[1].split(' ')[0];
-              if (!h264Pts.includes(pt)) h264Pts.push(pt);
-            }
-          });
-          if (mIdx !== -1 && h264Pts.length > 0) {
-            const parts = lines[mIdx].split(' ');
-            const header = parts.slice(0, 3);
-            const payloads = parts.slice(3);
-            const rest = payloads.filter(p => !h264Pts.includes(p));
-            lines[mIdx] = [...header, ...h264Pts, ...rest].join(' ');
+        function optimizeOfferSdp(sdp) {
+          let mod = sdp;
+          // Optimizar audio Opus a latencia ultra-baja (paquetes cada 10-20ms)
+          if (mod.includes('opus/48000')) {
+            mod = mod.replace(/a=fmtp:(\d+)[^\r\n]*/g, (match, pt) => {
+              if (mod.includes(`a=rtpmap:${pt} opus/48000`)) {
+                return `a=fmtp:${pt} minptime=10;maxptime=20;useinbandfec=1;stereo=0;sprop-stereo=0;cbr=1`;
+              }
+              return match;
+            });
           }
-          return lines.join('\r\n');
+          return mod;
         }
 
-        offer.sdp = prioritizeH264(offer.sdp);
+        offer.sdp = optimizeOfferSdp(offer.sdp);
         await pc.setLocalDescription(offer)
 
         if (videoSenderRef.current) {
@@ -553,8 +560,8 @@ export default function RemoteCam() {
         if (audioSenderRef.current) applyAudioSenderParams(audioSenderRef.current)
 
         let finalSdp = offer.sdp || ''
-        if (finalSdp && !finalSdp.includes('x-google-min-bitrate')) {
-          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:2500\r\nb=TIAS:2500000\r\n')
+        if (finalSdp && !finalSdp.includes('b=AS:')) {
+          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:2000\r\nb=TIAS:2000000\r\n')
         }
 
         await channel.send({
@@ -674,6 +681,9 @@ export default function RemoteCam() {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
+        latency: 0,
+        channelCount: 1,
+        sampleRate: 48000,
       }
 
       let stream = null
@@ -696,7 +706,7 @@ export default function RemoteCam() {
               width: { ideal: 1280 },
               height: { ideal: 720 },
             },
-            audio: true,
+            audio: audioConstraints,
           })
         } catch (e2) {
           stream = await navigator.mediaDevices.getUserMedia({
@@ -719,8 +729,14 @@ export default function RemoteCam() {
 
       const track = stream.getVideoTracks()[0]
       if (track) {
-        const caps = track.getCapabilities ? track.getCapabilities() : {}
-        setTorchSupported(Boolean(caps.torch))
+        try {
+          const caps = track.getCapabilities ? track.getCapabilities() : {}
+          setTorchSupported(Boolean(caps.torch))
+          // Auto-Enfoque continuo automático de alta nitidez en celular
+          if (caps.focusMode && caps.focusMode.includes('continuous')) {
+            await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+          }
+        } catch {}
       }
 
       setActive(true)
@@ -779,6 +795,9 @@ export default function RemoteCam() {
       }
       const caps = newTrack?.getCapabilities ? newTrack.getCapabilities() : {}
       setTorchSupported(Boolean(caps.torch))
+      if (caps.focusMode && caps.focusMode.includes('continuous')) {
+        try { await newTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch {}
+      }
     } catch (err) {
       console.warn('Error al cambiar de cámara:', err)
     } finally {

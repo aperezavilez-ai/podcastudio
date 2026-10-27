@@ -24,6 +24,12 @@ if (process.platform === 'win32') {
   app.setAppUserModelId("com.podcaststudio.app");
 }
 app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
+// Switches Chromium para latencia ultra-baja y cero throttling de video/audio en Windows
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 let mainWindow;

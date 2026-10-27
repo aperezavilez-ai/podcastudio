@@ -109,25 +109,45 @@ const VideoTile = React.forwardRef(({
       };
       attemptPlay();
 
-      // Detección y corrección instantánea de drift/retraso: salta al borde en vivo (< 50ms)
-      const onTimeUpdate = () => {
+      // Detección y corrección continua cuadro a cuadro (Live Edge Synchronization < 50ms)
+      let animId = null;
+      let active = true;
+
+      const checkDrift = () => {
+        if (!active || !v) return;
         try {
-          if (v && v.buffered && v.buffered.length > 0) {
+          if (v.buffered && v.buffered.length > 0) {
             const end = v.buffered.end(v.buffered.length - 1);
-            if (end - v.currentTime > 0.22) {
+            if (end - v.currentTime > 0.05) {
               v.currentTime = end;
             }
           }
         } catch (_) {}
       };
 
+      if ('requestVideoFrameCallback' in v) {
+        const onRvfc = () => {
+          if (!active) return;
+          checkDrift();
+          try { v.requestVideoFrameCallback(onRvfc); } catch (_) {}
+        };
+        try { v.requestVideoFrameCallback(onRvfc); } catch (_) {}
+      }
+
+      const rafLoop = () => {
+        if (!active) return;
+        checkDrift();
+        animId = requestAnimationFrame(rafLoop);
+      };
+      animId = requestAnimationFrame(rafLoop);
+
       v.addEventListener('loadedmetadata', attemptPlay);
       v.addEventListener('canplay', attemptPlay);
-      v.addEventListener('timeupdate', onTimeUpdate);
       return () => {
+        active = false;
+        if (animId) cancelAnimationFrame(animId);
         v.removeEventListener('loadedmetadata', attemptPlay);
         v.removeEventListener('canplay', attemptPlay);
-        v.removeEventListener('timeupdate', onTimeUpdate);
       };
     }
   }, [stream, videoRef]);
@@ -2322,6 +2342,15 @@ function PodcastStudioApp() {
             stream.addTrack(micStream.getAudioTracks()[0]);
           }
         } catch (e) {}
+      }
+
+      const vTrack = stream.getVideoTracks()[0];
+      if (vTrack && vTrack.applyConstraints) {
+        try {
+          await vTrack.applyConstraints({
+            advanced: [{ focusMode: 'continuous' }]
+          });
+        } catch (_) {}
       }
 
       setSlotStreams(prev => ({ ...prev, [slot]: stream }));

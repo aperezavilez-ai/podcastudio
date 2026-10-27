@@ -21,7 +21,7 @@ export function useCameraAudioLevels(camStreamsMap = {}, camMutedMap = {}) {
     if (!audioCtxRef.current) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (AudioCtx) {
-        audioCtxRef.current = new AudioCtx();
+        audioCtxRef.current = new AudioCtx({ latencyHint: 'interactive' });
       }
     }
 

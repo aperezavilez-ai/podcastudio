@@ -88,12 +88,34 @@ let logoImage = null;
 let logoVideoElement = null;
 let lastStreamSync = 0;
 
+let offscreenVideoContainer = null;
+function getOffscreenContainer() {
+  if (typeof document === 'undefined') return null;
+  if (!offscreenVideoContainer) {
+    offscreenVideoContainer = document.getElementById('broadcast-offscreen-videos');
+    if (!offscreenVideoContainer && document.body) {
+      offscreenVideoContainer = document.createElement('div');
+      offscreenVideoContainer.id = 'broadcast-offscreen-videos';
+      offscreenVideoContainer.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:2px;height:2px;opacity:0.001;pointer-events:none;z-index:-9999;overflow:hidden;';
+      document.body.appendChild(offscreenVideoContainer);
+    }
+  }
+  return offscreenVideoContainer;
+}
+
 function getOrCreateVideo(camId, stream) {
   if (!videoElements.has(camId)) {
     const v = document.createElement('video');
     v.autoplay = true;
     v.playsInline = true;
     v.muted = true;
+    v.defaultMuted = true;
+    v.preservesPitch = false;
+    v.defaultPlaybackRate = 1.0;
+    try {
+      const container = getOffscreenContainer();
+      if (container) container.appendChild(v);
+    } catch {}
     videoElements.set(camId, v);
   }
   const v = videoElements.get(camId);
@@ -167,6 +189,18 @@ function updateImages() {
 
 function drawCameraCover(video, x, y, w, h, camId = null) {
   if (video && video.readyState >= 2) {
+    // Sincronización continua de cuadro a borde en vivo (Live Edge Catch-up)
+    // Elimina de raíz cualquier descarte, buffering o retraso acumulativo de 1 a 2 segundos
+    if (video.buffered && video.buffered.length > 0) {
+      try {
+        const liveEdge = video.buffered.end(video.buffered.length - 1);
+        const drift = liveEdge - video.currentTime;
+        if (drift > 0.05) {
+          video.currentTime = liveEdge;
+        }
+      } catch {}
+    }
+
     const vw = video.videoWidth || 1280;
     const vh = video.videoHeight || 720;
     const videoRatio = vw / vh;
@@ -856,7 +890,7 @@ function renderFrame() {
 function initMixerBuses() {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!audioContext && AudioCtx) {
-    audioContext = new AudioCtx({ sampleRate: 48000 });
+    audioContext = new AudioCtx({ sampleRate: 48000, latencyHint: 'interactive' });
   }
   if (!audioContext) return;
 
@@ -998,9 +1032,11 @@ function getOrCreateChannelStrip(channelId, label = '') {
   soloGain.connect(analyser);
   analyser.connect(masterSumGain);
 
-  // Invitados remotos también se envían al retorno local para que el conductor los escuche
-  if (channelId.startsWith('remote_')) {
-    analyser.connect(monitorSumGain);
+  // Invitados remotos y cámaras secundarias también se envían al retorno local para que el conductor los escuche
+  if (channelId.startsWith('remote_') || (channelId.startsWith('cam_') && channelId !== 'cam_1')) {
+    try {
+      analyser.connect(monitorSumGain);
+    } catch {}
   }
 
   const strip = {
