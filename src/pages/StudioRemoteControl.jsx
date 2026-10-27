@@ -282,18 +282,7 @@ export default function StudioRemoteControl() {
       }
     });
 
-    const pingInterval = setInterval(() => {
-      if (channelRef.current) {
-        channelRef.current.send({
-          type: 'broadcast',
-          event: 'studio_command',
-          payload: { type: 'REQUEST_STATE', sender: 'ipad_remote' }
-        }).catch(() => {});
-      }
-    }, 4000);
-
     return () => {
-      clearInterval(pingInterval);
       channel.unsubscribe().catch(() => {});
     };
   }, [room, drawFrameOnCanvas]);

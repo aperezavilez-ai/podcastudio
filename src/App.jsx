@@ -114,7 +114,7 @@ const VideoTile = React.forwardRef(({
         v.removeEventListener('canplay', attemptPlay);
       };
     }
-  }, [stream, videoRef, isActive]);
+  }, [stream, videoRef]);
 
   const isMuted = muted !== undefined ? muted : isLocal;
 
@@ -479,6 +479,10 @@ function PodcastStudioApp() {
 
   const [activeLiveDestinations, setActiveLiveDestinations] = useState([]);
   const [streamDuration, setStreamDuration] = useState(0);
+  const streamDurationRef = useRef(0);
+  useEffect(() => { streamDurationRef.current = streamDuration; }, [streamDuration]);
+  const recordingTimeRef = useRef(0);
+  useEffect(() => { recordingTimeRef.current = recordingTime; }, [recordingTime]);
   const isStreamingRef = useRef(false);
   const isRecordingRef = useRef(false);
 
@@ -1029,6 +1033,7 @@ function PodcastStudioApp() {
 
   // Emisión continua de fotogramas PGM al servidor HTTP/WS para clientes OBS/vMix e iPad en LAN y Cloud
   useEffect(() => {
+    if (!isElectronMaster) return;
     let timer = null;
     let isBroadcasting = true;
     let lastCloudEmit = 0;
@@ -1461,6 +1466,7 @@ function PodcastStudioApp() {
 
   // Sincronización en tiempo real del Master Compositor y Audio Engine
   useEffect(() => {
+    if (!isElectronMaster) return;
     // Sincronizar siempre el audio del estudio y los efectos de voz en vivo
     syncStudioAudio(localStream, remoteCams, camStreamsMap, camMuted);
     updateBroadcastState({
@@ -1495,91 +1501,93 @@ function PodcastStudioApp() {
     // Generar código QR para el Control Remoto iPad
     QRCode.toDataURL(remoteControlUrl, { width: 250, margin: 2 }).then(img => setRemoteControlQrImage(img)).catch(() => {});
 
-    // Conectar receptor en la nube de cámaras remotas de celular (Supabase WebRTC)
+    // Conectar receptor en la nube de cámaras remotas de celular (Supabase WebRTC) SOLO en Electron Master
     let cloudTransport = null;
-    try {
-      cloudTransport = createStreamTransport('p2p');
-      [0, 1, 2, 3].forEach(slotIdx => {
-        const roomCode = `studio_cam_${slotIdx + 1}`;
-        cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
-          console.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
-          setSlotStreams(prev => ({ ...prev, [slotIdx]: stream }));
-          setCameraMeta(prev => ({
-            ...prev,
-            [slotIdx]: { deviceId: `cloud_${slotIdx}`, label: label || `Celular Remoto (CAM ${slotIdx + 1})`, type: 'remote' }
-          }));
-          setMobileStatus(`Celular en vivo conectado en CAM ${slotIdx + 1}`);
-        });
-        cloudTransport.on('streamDisconnected', slotIdx => {
-          console.log(`[Cloud WebRTC] Cámara desconectada en slot ${slotIdx + 1}`);
-          delete assignedSlotsRef.current[slotIdx];
-          setSlotStreams(prev => {
-            const next = { ...prev };
-            delete next[slotIdx];
-            return next;
-          });
-          setMobileStatus('');
-        });
-        cloudTransport.connectSlot(slotIdx, roomCode);
-      });
-    } catch (e) {
-      console.warn('Transporte cloud:', e);
-    }
-
-    // Auto-asignación dinámica de cámaras en la nube (Supabase)
     let dispatchChannel = null;
-    if (supabase) {
+    if (isElectronMaster) {
       try {
-        dispatchChannel = supabase.channel('remotecam_auto_dispatch', {
-          config: { broadcast: { self: false } }
+        cloudTransport = createStreamTransport('p2p');
+        [0, 1, 2, 3].forEach(slotIdx => {
+          const roomCode = `studio_cam_${slotIdx + 1}`;
+          cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
+            console.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
+            setSlotStreams(prev => ({ ...prev, [slotIdx]: stream }));
+            setCameraMeta(prev => ({
+              ...prev,
+              [slotIdx]: { deviceId: `cloud_${slotIdx}`, label: label || `Celular Remoto (CAM ${slotIdx + 1})`, type: 'remote' }
+            }));
+            setMobileStatus(`Celular en vivo conectado en CAM ${slotIdx + 1}`);
+          });
+          cloudTransport.on('streamDisconnected', slotIdx => {
+            console.log(`[Cloud WebRTC] Cámara desconectada en slot ${slotIdx + 1}`);
+            delete assignedSlotsRef.current[slotIdx];
+            setSlotStreams(prev => {
+              const next = { ...prev };
+              delete next[slotIdx];
+              return next;
+            });
+            setMobileStatus('');
+          });
+          cloudTransport.connectSlot(slotIdx, roomCode);
         });
+      } catch (e) {
+        console.warn('Transporte cloud:', e);
+      }
 
-        dispatchChannel.on('broadcast', { event: 'request-slot' }, (ev) => {
-          const { deviceId, guestName } = ev?.payload || {};
-          if (!deviceId) return;
+      // Auto-asignación dinámica de cámaras en la nube (Supabase)
+      if (supabase) {
+        try {
+          dispatchChannel = supabase.channel('remotecam_auto_dispatch', {
+            config: { broadcast: { self: false } }
+          });
 
-          let targetSlot = null;
-          for (let s = 1; s <= 3; s++) {
-            const isBusy = Boolean(slotStreamsRef.current[s]) || (assignedSlotsRef.current[s] && assignedSlotsRef.current[s] !== deviceId);
-            if (!isBusy) {
-              targetSlot = s;
-              break;
+          dispatchChannel.on('broadcast', { event: 'request-slot' }, (ev) => {
+            const { deviceId, guestName } = ev?.payload || {};
+            if (!deviceId) return;
+
+            let targetSlot = null;
+            for (let s = 1; s <= 3; s++) {
+              const isBusy = Boolean(slotStreamsRef.current[s]) || (assignedSlotsRef.current[s] && assignedSlotsRef.current[s] !== deviceId);
+              if (!isBusy) {
+                targetSlot = s;
+                break;
+              }
             }
-          }
-          if (targetSlot === null && !localStreamRef.current && !slotStreamsRef.current[0]) {
-            targetSlot = 0;
-          }
-          if (targetSlot === null) targetSlot = 1;
-
-          assignedSlotsRef.current[targetSlot] = deviceId;
-          const assignedCam = targetSlot + 1;
-          const assignedRoom = `studio_cam_${assignedCam}`;
-          console.log(`[Auto-Dispatch Master] Asignando CAM ${assignedCam} (${assignedRoom}) a ${deviceId}`);
-
-          dispatchChannel.send({
-            type: 'broadcast',
-            event: 'assign-slot',
-            payload: {
-              targetDeviceId: deviceId,
-              slot: assignedCam,
-              room: assignedRoom
+            if (targetSlot === null && !localStreamRef.current && !slotStreamsRef.current[0]) {
+              targetSlot = 0;
             }
-          }).catch(() => {});
-        });
+            if (targetSlot === null) targetSlot = 1;
 
-        dispatchChannel.on('broadcast', { event: 'release-slot' }, (ev) => {
-          const { deviceId, slot } = ev?.payload || {};
-          if (slot != null) {
-            const s = parseInt(slot, 10) - 1;
-            if (assignedSlotsRef.current[s] === deviceId) {
-              delete assignedSlotsRef.current[s];
+            assignedSlotsRef.current[targetSlot] = deviceId;
+            const assignedCam = targetSlot + 1;
+            const assignedRoom = `studio_cam_${assignedCam}`;
+            console.log(`[Auto-Dispatch Master] Asignando CAM ${assignedCam} (${assignedRoom}) a ${deviceId}`);
+
+            dispatchChannel.send({
+              type: 'broadcast',
+              event: 'assign-slot',
+              payload: {
+                targetDeviceId: deviceId,
+                slot: assignedCam,
+                room: assignedRoom
+              }
+            }).catch(() => {});
+          });
+
+          dispatchChannel.on('broadcast', { event: 'release-slot' }, (ev) => {
+            const { deviceId, slot } = ev?.payload || {};
+            if (slot != null) {
+              const s = parseInt(slot, 10) - 1;
+              if (assignedSlotsRef.current[s] === deviceId) {
+                delete assignedSlotsRef.current[s];
+              }
             }
-          }
-        });
+          });
 
-        dispatchChannel.subscribe();
-      } catch (err) {
-        console.warn('Error configurando auto-dispatch:', err);
+          dispatchChannel.subscribe();
+        } catch (err) {
+          console.warn('Error configurando auto-dispatch:', err);
+        }
       }
     }
 
@@ -2425,9 +2433,9 @@ function PodcastStudioApp() {
       pipCam,
       layoutMode,
       isRecording: isRecordingRef.current,
-      recordingTime,
+      recordingTime: recordingTimeRef.current,
       isStreaming: isStreamingRef.current,
-      streamDuration,
+      streamDuration: streamDurationRef.current,
       topic,
       cintillosVisible,
       cintillo,
@@ -2459,7 +2467,7 @@ function PodcastStudioApp() {
         }).catch(() => {});
       } catch {}
     }
-  }, [activeCam, pvwCam, pipCam, layoutMode, recordingTime, isStreaming, streamDuration, topic, cintillosVisible, cintillo, camSlots, tBarPosition, music.isPlaying, camMuted, teleprompterText, teleprompterSpeed, teleprompterFontSize, isTeleprompterPlaying]);
+  }, [activeCam, pvwCam, pipCam, layoutMode, topic, cintillosVisible, cintillo, camSlots, tBarPosition, instantReplay.isReplaying, music.isPlaying, camMuted, teleprompterText, teleprompterSpeed, teleprompterFontSize, isTeleprompterPlaying]);
 
   // DISPATCHER UNIFICADO DE COMANDOS DE CONTROL REMOTO
   const handleRemoteStudioCommand = useCallback((payload) => {

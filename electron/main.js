@@ -1183,6 +1183,153 @@ ipcMain.handle('set-prompter-text', (event, text) => {
 ipcMain.handle('get-guest-room-url', () => `http://${LOCAL_IP}:3001/camara?auto=true`);
 
 // ============================================================================
+// ESCANEO Y CONEXIÓN REAL DE REDES WI-FI DE WINDOWS (CÁMARAS STEREN, ACTIONCAM, IP)
+// ============================================================================
+ipcMain.handle('scan-wifi-networks', async () => {
+  return new Promise((resolve) => {
+    // 1. Obtener interfaz y red actualmente conectada
+    exec('netsh wlan show interfaces', { timeout: 4000, encoding: 'utf8' }, (errInt, stdoutInt) => {
+      let currentSsid = '';
+      if (!errInt && stdoutInt) {
+        const ssidMatch = stdoutInt.match(/^\s*SSID\s*:\s*(.+)$/m);
+        if (ssidMatch && ssidMatch[1]) currentSsid = ssidMatch[1].trim();
+      }
+
+      // 2. Obtener lista real de redes visibles
+      exec('netsh wlan show networks mode=bssid', { timeout: 6000, encoding: 'utf8' }, (errNet, stdoutNet) => {
+        if (errNet || !stdoutNet) {
+          return resolve({ success: false, currentSsid, networks: [] });
+        }
+
+        const networks = [];
+        const blocks = stdoutNet.split(/SSID\s+\d+\s*:\s*/i).slice(1);
+
+        blocks.forEach((block, idx) => {
+          const lines = block.split(/\r?\n/);
+          const ssid = (lines[0] || '').trim();
+          if (!ssid) return;
+
+          let signal = 50;
+          let auth = 'WPA2-Personal';
+          let bssid = '';
+
+          const sigMatch = block.match(/Se[ñn]al\s*:\s*(\d+)%/i) || block.match(/Signal\s*:\s*(\d+)%/i);
+          if (sigMatch) signal = parseInt(sigMatch[1], 10);
+
+          const authMatch = block.match(/Autenticaci[oó]n\s*:\s*(.+)/i) || block.match(/Authentication\s*:\s*(.+)/i);
+          if (authMatch) auth = authMatch[1].trim();
+
+          const bssidMatch = block.match(/BSSID\s+\d+\s*:\s*([0-9a-fA-F:-]+)/i);
+          if (bssidMatch) bssid = bssidMatch[1].trim();
+
+          const isConnected = (ssid === currentSsid);
+          const isCamera = /steren|cam|action|gopro|sjcam|dji|wifi.?cam/i.test(ssid);
+
+          networks.push({
+            id: `wifi_${idx}_${ssid}`,
+            ssid,
+            signal,
+            auth,
+            bssid,
+            isConnected,
+            isCamera
+          });
+        });
+
+        // Ordenar: primero conectada, luego cámaras detectadas, luego por señal
+        networks.sort((a, b) => {
+          if (a.isConnected) return -1;
+          if (b.isConnected) return 1;
+          if (a.isCamera && !b.isCamera) return -1;
+          if (!a.isCamera && b.isCamera) return 1;
+          return b.signal - a.signal;
+        });
+
+        resolve({ success: true, currentSsid, networks });
+      });
+    });
+  });
+});
+
+ipcMain.handle('connect-wifi-network', async (event, { ssid, password }) => {
+  return new Promise((resolve) => {
+    if (!ssid) return resolve({ success: false, error: 'SSID requerido' });
+
+    // Si tiene contraseña o es red abierta, crear perfil temporal netsh
+    const safeSsid = ssid.replace(/[&|<>;"]/g, '');
+    let xmlProfile = '';
+
+    if (!password) {
+      // Red abierta (común en ActionCam Steren CAM-800 o IP Cam en modo setup)
+      xmlProfile = `<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+    <name>${safeSsid}</name>
+    <SSIDConfig>
+        <SSID>
+            <name>${safeSsid}</name>
+        </SSID>
+    </SSIDConfig>
+    <connectionType>ESS</connectionType>
+    <connectionMode>manual</connectionMode>
+    <MSM>
+        <security>
+            <authEncryption>
+                <authentication>open</authentication>
+                <encryption>none</encryption>
+                <useOneX>false</useOneX>
+            </authEncryption>
+        </security>
+    </MSM>
+</WLANProfile>`;
+    } else {
+      // Red WPA2-PSK
+      xmlProfile = `<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+    <name>${safeSsid}</name>
+    <SSIDConfig>
+        <SSID>
+            <name>${safeSsid}</name>
+        </SSID>
+    </SSIDConfig>
+    <connectionType>ESS</connectionType>
+    <connectionMode>manual</connectionMode>
+    <MSM>
+        <security>
+            <authEncryption>
+                <authentication>WPA2PSK</authentication>
+                <encryption>AES</encryption>
+                <useOneX>false</useOneX>
+            </authEncryption>
+            <sharedKey>
+                <keyType>passPhrase</keyType>
+                <protected>false</protected>
+                <keyMaterial>${password}</keyMaterial>
+            </sharedKey>
+        </security>
+    </MSM>
+</WLANProfile>`;
+    }
+
+    const tempXmlPath = path.join(app.getPath('temp'), `wifi_profile_${Date.now()}.xml`);
+    try {
+      fs.writeFileSync(tempXmlPath, xmlProfile, 'utf8');
+      exec(`netsh wlan add profile filename="${tempXmlPath}" user=current`, (errAdd) => {
+        try { fs.unlinkSync(tempXmlPath); } catch (e) {}
+
+        exec(`netsh wlan connect name="${safeSsid}" ssid="${safeSsid}"`, (errConn, stdoutConn) => {
+          if (errConn) {
+            return resolve({ success: false, error: errConn.message || 'Error al conectar' });
+          }
+          resolve({ success: true, message: `Conectando a ${safeSsid}...` });
+        });
+      });
+    } catch (e) {
+      resolve({ success: false, error: e.message });
+    }
+  });
+});
+
+// ============================================================================
 // SALIDA LAN PROGRAM & VIRTUAL FEED IPC HANDLERS (P4.4)
 // ============================================================================
 ipcMain.handle('get-program-feed-url', () => `http://${LOCAL_IP}:3001/program/feed`);
