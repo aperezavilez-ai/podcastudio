@@ -1222,6 +1222,201 @@ Instrucciones:
                 </div>
               )}
 
+              {/* PRESETS DEDICADOS STEREN (CAM-800 ACCIÓN & CAM-500 SEGURIDAD) */}
+              <div style={{
+                marginBottom: 16,
+                padding: '14px 16px',
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.15), rgba(30, 41, 59, 0.6))',
+                border: '1.5px solid rgba(234, 88, 12, 0.5)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 6,
+                      background: '#ea580c',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#fff'
+                    }}>
+                      <Camera size={16} />
+                    </div>
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: '#fed7aa' }}>
+                        Cámaras Steren (Presets Rápidos de Conexión)
+                      </span>
+                      <div style={{ fontSize: 10, color: '#cbd5e1' }}>
+                        Configuración instantánea 1-clic para CAM-800 y CAM-500
+                      </div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 9999, background: 'rgba(234, 88, 12, 0.25)', color: '#fb923c', border: '1px solid rgba(234, 88, 12, 0.5)' }}>
+                    STEREN READY
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 10, marginBottom: 10 }}>
+                  {/* PRESET STEREN CAM-800 */}
+                  <div style={{
+                    padding: '12px',
+                    borderRadius: 8,
+                    background: '#0d131f',
+                    border: '1px solid #1e293b',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: 8
+                  }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#f8fafc' }}>
+                          ⚡ Steren CAM-800 (Acción 4K Wi-Fi)
+                        </span>
+                        <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: '#ea580c', color: '#fff', fontWeight: 800 }}>
+                          HTTP / MJPEG
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 10, color: '#94a3b8', margin: '4px 0 0 0', lineHeight: 1.4 }}>
+                        Conecta tu PC a la red Wi-Fi de la cámara (ej. <em>ActionCam_...</em>) o al módem. Puerto estándar 8192 o 8080.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRegCamName('Steren CAM-800 (Acción 4K)');
+                          setRegCamIp('192.168.1.1');
+                          setRegCamPort('8192');
+                          setRegCamProto('action_cam');
+                          setRegCamPath('/');
+                          setWifiUrl('http://192.168.1.1:8192/');
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          background: 'rgba(234, 88, 12, 0.2)',
+                          border: '1px solid #ea580c',
+                          color: '#fed7aa',
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Auto-llenar Formulario
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWifiUrl('http://192.168.1.1:8192/');
+                          setTimeout(() => handleConnectWifi('http://192.168.1.1:8192/'), 50);
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 6,
+                          background: '#ea580c',
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: 10.5,
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Conectar CAM {targetSlot + 1}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* PRESET STEREN CAM-500 */}
+                  <div style={{
+                    padding: '12px',
+                    borderRadius: 8,
+                    background: '#0d131f',
+                    border: '1px solid #1e293b',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: 8
+                  }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#f8fafc' }}>
+                          ⚡ Steren CAM-500 (Domo IP / Seguridad)
+                        </span>
+                        <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: '#2563eb', color: '#fff', fontWeight: 800 }}>
+                          RTSP
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 10, color: '#94a3b8', margin: '4px 0 0 0', lineHeight: 1.4 }}>
+                        Conectada a tu módem por Wi-Fi. Puerto RTSP 554, usuario por defecto <em>admin</em>.
+                      </p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRegCamName('Steren CAM-500 (IP Domo)');
+                          setRegCamPort('554');
+                          setRegCamProto('rtsp');
+                          setRegCamPath('/live/ch0');
+                          setRegCamUser('admin');
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: '6px 10px',
+                          borderRadius: 6,
+                          background: 'rgba(37, 99, 235, 0.2)',
+                          border: '1px solid #2563eb',
+                          color: '#bfdbfe',
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Auto-llenar Formulario
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetIp = regCamIp.trim() || '192.168.1.100';
+                          const generated = `rtsp://admin:${regCamPass ? encodeURIComponent(regCamPass) + '@' : ''}${targetIp}:554/live/ch0`;
+                          setWifiUrl(generated);
+                          setTimeout(() => handleConnectWifi(generated), 50);
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: 6,
+                          background: '#2563eb',
+                          border: 'none',
+                          color: '#fff',
+                          fontSize: 10.5,
+                          fontWeight: 800,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Conectar CAM {targetSlot + 1}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{
+                  padding: '8px 10px',
+                  borderRadius: 6,
+                  background: 'rgba(0,0,0,0.3)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  fontSize: 10,
+                  color: '#94a3b8',
+                  lineHeight: 1.4
+                }}>
+                  💡 <strong>¿Por qué no salían automáticamente en el escaneo?</strong> Las cámaras de acción Steren CAM-800 emiten su propia red Wi-Fi aislada. Si tu computadora está conectada al módem de tu casa, no puede ver el Wi-Fi de la cámara hasta que te conectes a él o uses el cable USB en modo <em>PC Cam</em>.
+                </div>
+              </div>
+
               {/* FORMULARIO UNIVERSAL DE REGISTRO DE CÁMARAS WI-FI / IP / RTSP */}
               <div style={{
                 marginBottom: 16,

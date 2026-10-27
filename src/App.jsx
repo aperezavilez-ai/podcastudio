@@ -513,10 +513,55 @@ function PodcastStudioApp() {
   const [socialTarget, setSocialTarget] = useState('guest'); // 'guest' | 'program'
   const [activeSocialTab, setActiveSocialTab] = useState('guest');
 
-  const [hostName, setHostName] = useState('Luis Avilez');
-  const [hostRole, setHostRole] = useState('Conductor & Productor');
-  const [guestName, setGuestName] = useState('Invitado Especial');
-  const [guestRole, setGuestRole] = useState('Especialista en IA & Media');
+  // Soporte Multi-Conductor & Multi-Invitado Dinámico (Para mesas de 2, 3, 4 o más participantes)
+  const [conductores, setConductores] = useState(() => {
+    const saved = localStorage.getItem('podcastudio_conductores_v3');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return [
+      { id: 1, name: 'Luis Avilez', role: 'Conductor & Productor', instagram: '@luisavilez', youtube: '@luisavilez', tiktok: '', facebook: '' },
+      { id: 2, name: 'Co-Conductor', role: 'Conductor', instagram: '', youtube: '', tiktok: '', facebook: '' }
+    ];
+  });
+  const [activeConductorIdx, setActiveConductorIdx] = useState(0);
+
+  const [invitados, setInvitados] = useState(() => {
+    const saved = localStorage.getItem('podcastudio_invitados_v3');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return [
+      { id: 1, name: 'Invitado Especial', role: 'Especialista en IA & Media', instagram: '@invitado_oficial', youtube: '@invitado_oficial', tiktok: '', facebook: '' }
+    ];
+  });
+  const [activeInvitadoIdx, setActiveInvitadoIdx] = useState(0);
+
+  useEffect(() => {
+    try { localStorage.setItem('podcastudio_conductores_v3', JSON.stringify(conductores)); } catch (e) {}
+  }, [conductores]);
+
+  useEffect(() => {
+    try { localStorage.setItem('podcastudio_invitados_v3', JSON.stringify(invitados)); } catch (e) {}
+  }, [invitados]);
+
+  const hostName = conductores[activeConductorIdx]?.name || 'Luis Avilez';
+  const hostRole = conductores[activeConductorIdx]?.role || 'Conductor & Productor';
+  const guestName = invitados[activeInvitadoIdx]?.name || 'Invitado Especial';
+  const guestRole = invitados[activeInvitadoIdx]?.role || 'Especialista en IA & Media';
+  const setHostName = (val) => {
+    setConductores(prev => prev.map((c, i) => i === activeConductorIdx ? { ...c, name: val } : c));
+  };
+  const setHostRole = (val) => {
+    setConductores(prev => prev.map((c, i) => i === activeConductorIdx ? { ...c, role: val } : c));
+  };
+  const setGuestName = (val) => {
+    setInvitados(prev => prev.map((g, i) => i === activeInvitadoIdx ? { ...g, name: val } : g));
+  };
+  const setGuestRole = (val) => {
+    setInvitados(prev => prev.map((g, i) => i === activeInvitadoIdx ? { ...g, role: val } : g));
+  };
+
   const [topic, setTopic] = useState('El futuro del podcast');
   const [contactPhone, setContactPhone] = useState('+52 667 491 2221');
   const [subContact, setSubContact] = useState('Atención directa & Consultas en vivo');
@@ -1259,6 +1304,10 @@ function PodcastStudioApp() {
   }; 
 
   useEffect(() => {
+    if (!isElectronMaster) {
+      console.log('[PodcastStudio] Cliente remoto / iPad: Modo Switcher Espejo activo. Cámara local desactivada.');
+      return;
+    }
     const startCamera = async () => {
       try {
         const attempts = [
@@ -2633,8 +2682,8 @@ function PodcastStudioApp() {
   const renderMonitorLayout = (overrideCam = null) => {
     const effectiveActiveCam = overrideCam || activeCam;
 
-    // Si corre como extensión remota en iPad/Browser y la PC Máster está emitiendo fotogramas PGM sin cámara local directa en este dispositivo
-    if (!isElectronMaster && !getCamStream(effectiveActiveCam)) {
+    // Si corre como extensión remota en iPad/Browser, SIEMPRE mostrar la señal Master espejo de la PC
+    if (!isElectronMaster) {
       return (
         <div className="w-full h-full relative overflow-hidden bg-black flex items-center justify-center">
           <PgmFeedCanvas />
@@ -2875,6 +2924,70 @@ function PodcastStudioApp() {
     }
   };
 
+  const triggerConductorCintillo = (idx) => {
+    const cond = conductores[idx];
+    if (!cond) return;
+    setActiveConductorIdx(idx);
+    switchSocialTarget('program');
+    setCintillosVisible(true);
+    showCustom({
+      tag: `CONDUCTOR ${conductores.length > 1 ? idx + 1 : ''}`.trim(),
+      text: cond.name,
+      subtitle: cond.role,
+      color: '#ea580c',
+      presetId: `conductor_${idx}`
+    });
+  };
+
+  const triggerInvitadoCintillo = (idx) => {
+    const inv = invitados[idx];
+    if (!inv) return;
+    setActiveInvitadoIdx(idx);
+    switchSocialTarget('guest');
+    setCintillosVisible(true);
+    showCustom({
+      tag: `INVITADO ${invitados.length > 1 ? idx + 1 : ''}`.trim(),
+      text: inv.name,
+      subtitle: inv.role,
+      color: '#059669',
+      presetId: `invitado_${idx}`
+    });
+  };
+
+  const addConductor = () => {
+    const nextNum = conductores.length + 1;
+    setConductores(prev => [
+      ...prev,
+      { id: Date.now(), name: `Conductor ${nextNum}`, role: 'Conductor', instagram: '', youtube: '', tiktok: '', facebook: '' }
+    ]);
+    setActiveConductorIdx(conductores.length);
+  };
+
+  const removeConductor = (idx) => {
+    if (conductores.length <= 1) return;
+    setConductores(prev => prev.filter((_, i) => i !== idx));
+    if (activeConductorIdx >= idx) {
+      setActiveConductorIdx(Math.max(0, activeConductorIdx - 1));
+    }
+  };
+
+  const addInvitado = () => {
+    const nextNum = invitados.length + 1;
+    setInvitados(prev => [
+      ...prev,
+      { id: Date.now(), name: `Invitado ${nextNum}`, role: 'Invitado Especial', instagram: '', youtube: '', tiktok: '', facebook: '' }
+    ]);
+    setActiveInvitadoIdx(invitados.length);
+  };
+
+  const removeInvitado = (idx) => {
+    if (invitados.length <= 1) return;
+    setInvitados(prev => prev.filter((_, i) => i !== idx));
+    if (activeInvitadoIdx >= idx) {
+      setActiveInvitadoIdx(Math.max(0, activeInvitadoIdx - 1));
+    }
+  };
+
   return (
     <div 
       className="flex flex-col h-screen h-[100dvh] max-h-screen w-screen max-w-full bg-[#0a0a0a] text-[#e0e0e0] font-sans overflow-hidden text-[13px] select-none"
@@ -2906,24 +3019,24 @@ function PodcastStudioApp() {
                 {music.duckingEnabled && micLevel > 14 && <span className="text-[9px] bg-orange-600 text-white px-1 rounded ml-1">Ducking</span>}
               </div>
             )}
-            <span className="hidden md:inline text-gray-400 shrink-0">CALIDAD:</span>
-            <span className="text-orange-500 border border-orange-500 rounded px-2 py-0.5 font-bold text-[11px] sm:text-xs shrink-0">1080p · 30fps</span>
+            <span className="hidden md:inline text-gray-500 font-bold tracking-wider shrink-0 text-[11px]">CALIDAD</span>
+            <span className="text-orange-500 font-extrabold text-xs shrink-0">1080p · 30fps</span>
 
-            {/* ZOOM DINÁMICO & ENCUADRE FUERA DE LA PANTALLA */}
+            {/* ZOOM DINÁMICO & ENCUADRE (TEXTO PLANO LIMPIO SIN RECUADROS NI LÍNEAS) */}
             {(() => {
               const currentActiveZoom = ((cameraCrops[activeCam - 1]?.zoom) || 1.0);
               return (
                 <div 
-                  className="hidden md:flex items-center gap-1.5 bg-[#141417] px-2.5 py-1 rounded border border-[#2a2a32] text-xs select-none shrink-0"
+                  className="hidden md:flex items-center gap-1.5 text-xs select-none shrink-0"
                   title="Control de Zoom Dinámico & Encuadre: Usa la rueda del mouse para Zoom, y arrastra con clic izquierdo para mover la imagen"
                 >
-                  <Search size={12} className="text-orange-500" />
+                  <Search size={13} className="text-orange-500" />
                   <span className="text-orange-500 font-bold">ZOOM DINÁMICO</span>
-                  <span className="px-1.5 py-0.2 rounded bg-orange-600 text-white font-bold text-[10px]">
+                  <span className="text-white font-extrabold text-[11px]">
                     {currentActiveZoom.toFixed(1)}x
                   </span>
                   {currentActiveZoom > 1.01 && (
-                    <div className="flex items-center gap-1.5 ml-1 pl-1.5 border-l border-[#333]">
+                    <div className="flex items-center gap-1.5 ml-1">
                       <span className="text-[10px] text-gray-400 font-medium hidden lg:inline">
                         Arrastra para centrar
                       </span>
@@ -2934,10 +3047,10 @@ function PodcastStudioApp() {
                           handleSaveSlotProfile(activeCam - 1, resetProfile);
                           updateBroadcastState({ cameraCrops: { ...cameraCrops, [activeCam - 1]: resetProfile } });
                         }}
-                        className="px-1.5 py-0.5 rounded bg-[#222] hover:bg-orange-950/80 hover:text-orange-300 text-gray-300 font-bold text-[9px] cursor-pointer transition-all border border-[#3a3a42]"
+                        className="text-orange-400 hover:text-orange-300 font-bold text-[10px] cursor-pointer transition-colors"
                         title="Restablecer zoom a 1.0x y centrar toma"
                       >
-                        Reset 1.0x
+                        [Reset]
                       </button>
                     </div>
                   )}
@@ -2945,61 +3058,33 @@ function PodcastStudioApp() {
               );
             })()}
 
-            {/* BOTÓN CONSOLA DE AUDIO BROADCAST MULTICANAL (P0.4) */}
-            <button
-              onClick={() => setShowAudioMixerModal(true)}
-              className="px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/35 hover:to-orange-500/35 text-amber-300 border border-amber-500/60 transition-all cursor-pointer shadow-sm shrink-0"
-              title="Abrir Consola de Audio Broadcast Multicanal (Faders, Trim, Mute, Solo, Vúmetros 60 FPS)"
-            >
-              <Sliders size={14} className="text-amber-400" />
-              <span>🎛️ Consola Audio</span>
-            </button>
-
-            {/* BOTÓN TALLY LIGHTS BROADCAST (P2.4) */}
+            {/* BOTÓN TALLY LIGHTS (TEXTO PLANO LIMPIO SIN RECUADROS NI LÍNEAS) */}
             <button
               onClick={() => setShowTallyModal(true)}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 bg-[#18181b] hover:bg-[#25252b] text-gray-200 border border-[#333] hover:border-red-500/60 transition-all cursor-pointer shadow-sm shrink-0"
+              className="px-1.5 py-1 text-xs font-bold flex items-center gap-1.5 text-gray-300 hover:text-white transition-colors cursor-pointer shrink-0"
               title="Configurar Tally Lights Broadcast (Móviles Wi-Fi y Puertos Seriales USB)"
             >
               <Radio size={14} className="text-red-500 animate-pulse" />
               <span className="hidden sm:inline">Tally Lights</span>
-              <span className="px-1.5 py-0.2 rounded text-[9.5px] font-black bg-red-600/30 text-red-300 border border-red-500/40">
+              <span className="text-[11px] font-black text-red-400">
                 P{activeCam}
               </span>
             </button>
 
-            {/* BOTÓN OCULTAR / MOSTRAR PANEL LATERAL DERECHO */}
+            {/* BOTÓN OCULTAR / MOSTRAR PANEL LATERAL (TEXTO PLANO LIMPIO SIN RECUADROS NI LÍNEAS) */}
             <button
               onClick={() => setIsRightPanelOpen(p => !p)}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 ${
-                isRightPanelOpen
-                  ? 'bg-orange-950/70 text-orange-300 border-orange-500/70 shadow-[0_0_10px_rgba(249,115,22,0.25)]'
-                  : 'bg-[#18181b] hover:bg-[#25252b] text-gray-300 border-[#333]'
-              }`}
+              className="px-1.5 py-1 text-xs font-bold flex items-center gap-1.5 text-gray-300 hover:text-orange-400 transition-colors cursor-pointer shrink-0"
               title={isRightPanelOpen ? "Ocultar panel lateral derecho" : "Mostrar panel lateral derecho"}
             >
               <PanelRight size={14} className={isRightPanelOpen ? 'text-orange-400' : 'text-gray-400'} />
               <span className="hidden sm:inline">{isRightPanelOpen ? 'Ocultar Panel' : 'Mostrar Panel'}</span>
             </button>
 
-            {/* BOTÓN SALIDA LAN PROGRAM & OBS VIRTUAL FEED (P4.4) */}
-            <button
-              onClick={() => setShowLanProgramModal(true)}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 ${
-                showLanProgramModal
-                  ? 'bg-purple-950/80 text-purple-300 border-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.35)]'
-                  : 'bg-[#18181b] hover:bg-[#25252b] text-gray-200 border-[#333]'
-              }`}
-              title="Abrir enlace de transmisión de señal limpia 1080p para OBS Studio, vMix y Smart TVs"
-            >
-              <Tv size={14} className={showLanProgramModal ? 'text-purple-400' : 'text-gray-400'} />
-              <span className="hidden sm:inline">Salida LAN / OBS</span>
-            </button>
-
-            {/* BOTÓN DE CONTROL REMOTO IPAD / TABLETS */}
+            {/* BOTÓN MANDO IPAD (TEXTO PLANO LIMPIO SIN RECUADROS NI LÍNEAS) */}
             <button
               onClick={() => setShowRemoteControlModal(true)}
-              className="px-3 py-1.5 rounded-lg text-xs font-extrabold flex items-center gap-1.5 bg-gradient-to-r from-amber-500/25 to-orange-500/25 hover:from-amber-500/40 hover:to-orange-500/40 text-amber-300 border border-amber-500/70 transition-all cursor-pointer shadow-[0_0_12px_rgba(245,158,11,0.25)] shrink-0"
+              className="px-1.5 py-1 text-xs font-bold flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-colors cursor-pointer shrink-0"
               title="Conectar iPad, Tablet o Móvil como Mando Switcher a distancia"
             >
               <Smartphone size={14} className="text-amber-400" />
@@ -3738,7 +3823,7 @@ function PodcastStudioApp() {
                             ? 'bg-emerald-950 text-emerald-400 border-emerald-500/50' 
                             : 'bg-orange-950 text-orange-400 border-orange-500/50'
                         }`}>
-                          {socialTarget === 'guest' ? 'MODO INVITADO' : 'MODO CONDUCTOR'}
+                          {socialTarget === 'guest' ? 'MODO INVITADOS' : 'MODO CONDUCTORES'}
                         </span>
                       </div>
 
@@ -3753,7 +3838,7 @@ function PodcastStudioApp() {
                           }`}
                         >
                           <Mic size={13} />
-                          <span>🎙️ Conductor</span>
+                          <span>🎙️ Conductores ({conductores.length})</span>
                         </button>
                         <button
                           type="button"
@@ -3765,24 +3850,66 @@ function PodcastStudioApp() {
                           }`}
                         >
                           <Users size={13} />
-                          <span>👤 Invitado</span>
+                          <span>👤 Invitados ({invitados.length})</span>
                         </button>
                       </div>
 
                       {/* CAMPOS VARIABLES EDITABLES EN VIVO SEGÚN EL PERFIL SELECCIONADO */}
                       {socialTarget === 'program' ? (
-                        <div className="p-2.5 rounded-lg bg-[#181512] border border-orange-500/40 space-y-2 animate-fadeIn">
-                          <div className="text-[10px] font-bold text-orange-400 uppercase tracking-wider flex items-center justify-between">
-                            <span>Datos del Conductor / Programa</span>
-                            <span className="text-[9px] text-orange-400/80 font-normal">Variables activas</span>
+                        <div className="p-2.5 rounded-lg bg-[#181512] border border-orange-500/40 space-y-2.5 animate-fadeIn">
+                          {/* PESTAÑAS DE CONDUCTORES (2, 3, 4 O MÁS) */}
+                          <div className="flex items-center gap-1 overflow-x-auto pb-1 [scrollbar-width:none]">
+                            {conductores.map((c, idx) => (
+                              <button
+                                key={c.id || idx}
+                                type="button"
+                                onClick={() => setActiveConductorIdx(idx)}
+                                className={`px-2 py-1 rounded text-[10px] font-bold shrink-0 transition-colors flex items-center gap-1 ${
+                                  activeConductorIdx === idx
+                                    ? 'bg-orange-600 text-white border border-orange-400'
+                                    : 'bg-[#221c17] text-orange-300 hover:bg-[#2e241c] border border-orange-900/40'
+                                }`}
+                              >
+                                <span>🎤 {c.name ? c.name.split(' ')[0] : `Cond ${idx + 1}`}</span>
+                                {conductores.length > 1 && (
+                                  <span
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      removeConductor(idx);
+                                    }}
+                                    className="ml-1 text-orange-200 hover:text-red-400 text-[10px]"
+                                    title="Eliminar conductor"
+                                  >
+                                    ×
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={addConductor}
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-[#1e2029] hover:bg-[#282b37] text-orange-400 border border-dashed border-orange-500/50 shrink-0 transition-colors"
+                              title="Agregar otro conductor a la mesa"
+                            >
+                              + Conductor
+                            </button>
                           </div>
+
+                          <div className="text-[10px] font-bold text-orange-400 uppercase tracking-wider flex items-center justify-between">
+                            <span>Conductor #{activeConductorIdx + 1} de {conductores.length}</span>
+                            <span className="text-[9px] text-orange-400/80 font-normal">Editando perfil activo</span>
+                          </div>
+
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <label className="text-[9px] font-bold text-orange-300 block mb-0.5">NOMBRE CONDUCTOR</label>
                               <input 
                                 type="text" 
-                                value={hostName} 
-                                onChange={e => setHostName(e.target.value)} 
+                                value={conductores[activeConductorIdx]?.name || ''} 
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setConductores(prev => prev.map((c, i) => i === activeConductorIdx ? { ...c, name: val } : c));
+                                }} 
                                 placeholder="Nombre Conductor" 
                                 className="w-full bg-[#121110] border border-[#3a2e26] rounded p-1.5 text-xs text-white outline-none focus:border-orange-500" 
                               />
@@ -3791,8 +3918,11 @@ function PodcastStudioApp() {
                               <label className="text-[9px] font-bold text-gray-400 block mb-0.5">ROL / CARGO</label>
                               <input 
                                 type="text" 
-                                value={hostRole} 
-                                onChange={e => setHostRole(e.target.value)} 
+                                value={conductores[activeConductorIdx]?.role || ''} 
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setConductores(prev => prev.map((c, i) => i === activeConductorIdx ? { ...c, role: val } : c));
+                                }} 
                                 placeholder="Conductor & Productor" 
                                 className="w-full bg-[#121110] border border-[#3a2e26] rounded p-1.5 text-xs text-white outline-none focus:border-orange-500" 
                               />
@@ -3844,18 +3974,60 @@ function PodcastStudioApp() {
                           </div>
                         </div>
                       ) : (
-                        <div className="p-2.5 rounded-lg bg-[#0e1714] border border-emerald-500/50 space-y-2 animate-fadeIn">
-                          <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center justify-between">
-                            <span>Datos del Invitado Especial</span>
-                            <span className="text-[9px] text-emerald-400/80 font-normal">Variables activas</span>
+                        <div className="p-2.5 rounded-lg bg-[#0e1714] border border-emerald-500/50 space-y-2.5 animate-fadeIn">
+                          {/* PESTAÑAS DE INVITADOS (1, 2, 3 O MÁS) */}
+                          <div className="flex items-center gap-1 overflow-x-auto pb-1 [scrollbar-width:none]">
+                            {invitados.map((inv, idx) => (
+                              <button
+                                key={inv.id || idx}
+                                type="button"
+                                onClick={() => setActiveInvitadoIdx(idx)}
+                                className={`px-2 py-1 rounded text-[10px] font-bold shrink-0 transition-colors flex items-center gap-1 ${
+                                  activeInvitadoIdx === idx
+                                    ? 'bg-emerald-600 text-white border border-emerald-400'
+                                    : 'bg-[#12221b] text-emerald-300 hover:bg-[#1a3026] border border-emerald-900/40'
+                                }`}
+                              >
+                                <span>👤 {inv.name ? inv.name.split(' ')[0] : `Inv ${idx + 1}`}</span>
+                                {invitados.length > 1 && (
+                                  <span
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      removeInvitado(idx);
+                                    }}
+                                    className="ml-1 text-emerald-200 hover:text-red-400 text-[10px]"
+                                    title="Eliminar invitado"
+                                  >
+                                    ×
+                                  </span>
+                                )}
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={addInvitado}
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-[#1e2029] hover:bg-[#282b37] text-emerald-400 border border-dashed border-emerald-500/50 shrink-0 transition-colors"
+                              title="Agregar otro invitado al programa"
+                            >
+                              + Invitado
+                            </button>
                           </div>
+
+                          <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center justify-between">
+                            <span>Invitado #{activeInvitadoIdx + 1} de {invitados.length}</span>
+                            <span className="text-[9px] text-emerald-400/80 font-normal">Editando perfil activo</span>
+                          </div>
+
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <label className="text-[9px] font-bold text-emerald-300 block mb-0.5">NOMBRE INVITADO</label>
                               <input 
                                 type="text" 
-                                value={guestName} 
-                                onChange={e => setGuestName(e.target.value)} 
+                                value={invitados[activeInvitadoIdx]?.name || ''} 
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setInvitados(prev => prev.map((g, i) => i === activeInvitadoIdx ? { ...g, name: val } : g));
+                                }} 
                                 placeholder="Nombre Invitado" 
                                 className="w-full bg-[#0a120f] border border-[#1f362c] rounded p-1.5 text-xs text-white outline-none focus:border-emerald-500" 
                               />
@@ -3864,8 +4036,11 @@ function PodcastStudioApp() {
                               <label className="text-[9px] font-bold text-gray-400 block mb-0.5">ESPECIALIDAD / ROL</label>
                               <input 
                                 type="text" 
-                                value={guestRole} 
-                                onChange={e => setGuestRole(e.target.value)} 
+                                value={invitados[activeInvitadoIdx]?.role || ''} 
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setInvitados(prev => prev.map((g, i) => i === activeInvitadoIdx ? { ...g, role: val } : g));
+                                }} 
                                 placeholder="Especialista / Cargo" 
                                 className="w-full bg-[#0a120f] border border-[#1f362c] rounded p-1.5 text-xs text-white outline-none focus:border-emerald-500" 
                               />
@@ -3933,27 +4108,64 @@ function PodcastStudioApp() {
                       </div>
                     </div>
 
-                    {/* LANZAMIENTO RÁPIDO DE PRESETS AL AIRE */}
+                    {/* LANZAMIENTO RÁPIDO DE PRESETS AL AIRE (MULTI-CONDUCTOR & MULTI-INVITADO) */}
                     <div className="pt-2 border-t border-[#2a2a2a]">
                       <div className="flex justify-between items-center mb-1.5">
                         <label className="text-[10px] uppercase font-bold tracking-wider text-gray-400">
-                          Lanzamiento Rápido ({socialTarget === 'guest' ? 'Invitado' : 'Conductor'})
+                          Lanzamiento Rápido 1-Clic al Aire:
                         </label>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-1.5">
-                        <button 
-                          onClick={() => { switchSocialTarget('program'); setCintillosVisible(true); showManual('host'); }} 
-                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-orange-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-orange-400 cursor-pointer"
-                        >
-                          🎤 Conductor
-                        </button>
-                        <button 
-                          onClick={() => { switchSocialTarget('guest'); setCintillosVisible(true); showManual('guest'); }} 
-                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-emerald-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-emerald-400 cursor-pointer"
-                        >
-                          👤 Invitado
-                        </button>
+                      {/* BOTONES DIRECTOS PARA CADA CONDUCTOR */}
+                      <div className="mb-2">
+                        <div className="text-[9px] font-bold text-orange-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                          <Mic size={10} /> Conductores en vivo ({conductores.length}):
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {conductores.map((c, idx) => (
+                            <button
+                              key={`launch-cond-${idx}`}
+                              type="button"
+                              onClick={() => triggerConductorCintillo(idx)}
+                              className="p-1.5 bg-[#1e1510] hover:bg-[#2b1c13] border border-orange-600/50 hover:border-orange-500 rounded text-[10px] font-bold flex items-center justify-between text-orange-300 cursor-pointer shadow-sm transition-all"
+                              title={`Lanzar cintillo de ${c.name} al aire`}
+                            >
+                              <span className="truncate">🎤 {c.name || `Conductor ${idx + 1}`}</span>
+                              <span className="text-[9px] text-orange-400 font-extrabold bg-orange-950/70 px-1 py-0.2 rounded border border-orange-500/30 shrink-0">
+                                C{idx + 1}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* BOTONES DIRECTOS PARA CADA INVITADO */}
+                      {invitados.length > 0 && (
+                        <div className="mb-2">
+                          <div className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                            <Users size={10} /> Invitados Especiales ({invitados.length}):
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {invitados.map((inv, idx) => (
+                              <button
+                                key={`launch-inv-${idx}`}
+                                type="button"
+                                onClick={() => triggerInvitadoCintillo(idx)}
+                                className="p-1.5 bg-[#0e1c16] hover:bg-[#152a21] border border-emerald-600/50 hover:border-emerald-500 rounded text-[10px] font-bold flex items-center justify-between text-emerald-300 cursor-pointer shadow-sm transition-all"
+                                title={`Lanzar cintillo de ${inv.name} al aire`}
+                              >
+                                <span className="truncate">👤 {inv.name || `Invitado ${idx + 1}`}</span>
+                                <span className="text-[9px] text-emerald-400 font-extrabold bg-emerald-950/70 px-1 py-0.2 rounded border border-emerald-500/30 shrink-0">
+                                  I{idx + 1}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* TEMAS Y REDES */}
+                      <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-[#222]">
                         <button 
                           onClick={() => { setCintillosVisible(true); showManual('topic'); }} 
                           className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-blue-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-blue-400 cursor-pointer"
@@ -3993,12 +4205,6 @@ function PodcastStudioApp() {
                           className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-amber-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-amber-400 cursor-pointer"
                         >
                           📞 Contacto
-                        </button>
-                        <button 
-                          onClick={() => { setCintillosVisible(true); showManual('promo'); }} 
-                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-purple-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-purple-400 cursor-pointer"
-                        >
-                          🏷️ Promo
                         </button>
                       </div>
                     </div>
@@ -5215,15 +5421,6 @@ function PodcastStudioApp() {
 
 
 
-
-      {/* SALIDA LAN PROGRAM & ENRUTAMIENTO OBS / VMIX (P4.4) */}
-      <LanProgramOutputModal
-        open={showLanProgramModal}
-        onClose={() => setShowLanProgramModal(false)}
-        lanFeedUrl={lanProgramUrl}
-        activeCam={activeCam}
-        layoutMode={layoutMode}
-      />
 
     </div>
   );
