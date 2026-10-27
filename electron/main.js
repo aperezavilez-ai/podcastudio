@@ -1849,6 +1849,59 @@ ipcMain.handle('scan-network-cameras', async () => {
     });
   };
 
+  const discoverOnvifCameras = () => {
+    return new Promise((resolve) => {
+      const onvifCams = [];
+      try {
+        const dgram = require('dgram');
+        const client = dgram.createSocket('udp4');
+        const probeMsg = `<?xml version="1.0" encoding="utf-8"?>
+<Envelope xmlns="http://www.w3.org/2003/05/soap-envelope" xmlns:dn="http://www.onvif.org/ver10/network/wsdl">
+  <Header>
+    <wsa:MessageID xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">uuid:c0a80101-0000-0000-0000-000000000001</wsa:MessageID>
+    <wsa:To xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">urn:schemas-xmlsoap-org:ws:2005:04:discovery</wsa:To>
+    <wsa:Action xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">http://schemas.xmlsoap.org/ws/2005:04/discovery/Probe</wsa:Action>
+  </Header>
+  <Body>
+    <Probe xmlns="http://schemas.xmlsoap.org/ws/2005/04/discovery">
+      <Types>dn:NetworkVideoTransmitter</Types>
+    </Probe>
+  </Body>
+</Envelope>`;
+
+        client.on('error', () => {
+          try { client.close(); } catch(e) {}
+          resolve(onvifCams);
+        });
+
+        client.on('message', (msg, rinfo) => {
+          if (rinfo && rinfo.address && !onvifCams.some(c => c.ip === rinfo.address)) {
+            onvifCams.push({
+              ip: rinfo.address,
+              name: `Cámara ONVIF (${rinfo.address})`,
+              url: `rtsp://${rinfo.address}:554/live`,
+            });
+          }
+        });
+
+        client.bind(0, () => {
+          try {
+            client.setBroadcast(true);
+            const buffer = Buffer.from(probeMsg, 'utf-8');
+            client.send(buffer, 0, buffer.length, 3702, '239.255.255.250');
+          } catch(e) {}
+        });
+
+        setTimeout(() => {
+          try { client.close(); } catch (e) {}
+          resolve(onvifCams);
+        }, 1000);
+      } catch (e) {
+        resolve(onvifCams);
+      }
+    });
+  };
+
   const discovered = [];
 
   // 1. Clientes móviles WebRTC actualmente conectados al servidor local
@@ -1865,68 +1918,116 @@ ipcMain.handle('scan-network-cameras', async () => {
     }
   }
 
-  // 2. Sondear IPs activas en la red mediante ARP y puertos de cámaras reales
+  // 2. Ejecutar descubrimiento ONVIF en paralelo
+  const onvifResults = await discoverOnvifCameras();
+  for (const oc of onvifResults) {
+    discovered.push({
+      id: `onvif_${oc.ip.replace(/\./g, '_')}`,
+      name: oc.name,
+      url: oc.url,
+      ip: oc.ip,
+      port: 554,
+      proto: 'rtsp',
+      type: 'wifi_url',
+      status: 'Cámara ONVIF / RTSP detectada por multidifusión',
+      real: true,
+    });
+  }
+
+  // 3. Sondear IPs activas en la red mediante ARP + Gateways de Acción + Rango Subred
   try {
     const arpIps = await getLocalArpIps();
-    // Subnet local base
-    const baseIps = ['127.0.0.1', LOCAL_IP, '192.168.1.1', '192.168.1.254', '10.5.5.9', '192.168.42.1'];
-    const ipsToScan = [...new Set([...baseIps, ...arpIps])];
+    const subnetPrefix = LOCAL_IP.substring(0, LOCAL_IP.lastIndexOf('.') + 1); // e.g. "192.168.1."
+    const baseGateways = [
+      '192.168.1.1',
+      '192.168.0.1',
+      '192.168.42.1', // Gateway típico de cámaras de acción AP Wi-Fi
+      '10.5.5.9',     // GoPro AP Wi-Fi
+      '192.168.10.1',
+    ];
+    if (LOCAL_IP && LOCAL_IP !== '127.0.0.1') {
+      baseGateways.push(LOCAL_IP);
+    }
+
+    // Subred local: rango DHCP habitual de cámaras y dispositivos
+    const commonIps = [];
+    if (subnetPrefix && subnetPrefix.length > 4) {
+      for (let i = 1; i <= 35; i++) commonIps.push(`${subnetPrefix}${i}`);
+      for (let i = 100; i <= 130; i++) commonIps.push(`${subnetPrefix}${i}`);
+    }
+
+    const ipsToScan = [...new Set([...baseGateways, ...arpIps, ...commonIps])];
 
     const cameraPorts = [
-      { port: 554, name: 'Cámara Steren / China (RTSP)', path: '', proto: 'rtsp' },
-      { port: 80, name: 'Cámara IP / Web Stream', path: '/video', proto: 'http' },
-      { port: 8080, name: 'GoPro / IP Webcam', path: '/video', proto: 'http' },
-      { port: 8000, name: 'Cámara ONVIF / CCTV', path: '', proto: 'http' },
-      { port: 8899, name: 'Cámara Wi-Fi Genérica', path: '/onvif/device_service', proto: 'http' },
+      { port: 554, name: 'Cámara RTSP / CCTV', path: '/live', proto: 'rtsp' },
+      { port: 8192, name: 'Cámara de Acción Wi-Fi', path: '/', proto: 'http' },
       { port: 4747, name: 'DroidCam Wi-Fi', path: '/video', proto: 'http' },
-      { port: 8192, name: 'Cámara de Acción', path: '/', proto: 'http' },
-      { port: 8554, name: 'RTSP Stream Universal', path: '', proto: 'rtsp' },
+      { port: 8080, name: 'Cámara IP / Webcam', path: '/video', proto: 'http' },
+      { port: 8554, name: 'RTSP Stream', path: '/live', proto: 'rtsp' },
     ];
 
-    const probePromises = [];
+    const verifyHttpVideo = (host, port, path) => {
+      return new Promise((resolve) => {
+        const req = http.request({ host, port, path, method: 'GET', timeout: 450 }, (res) => {
+          const ctype = (res.headers['content-type'] || '').toLowerCase();
+          const server = (res.headers['server'] || '').toLowerCase();
+          // Descartar impresoras Epson/HP o páginas de configuración HTML
+          if (server.includes('epson') || server.includes('printer') || ctype.includes('text/html')) {
+            resolve(false);
+          } else if (ctype.includes('multipart') || ctype.includes('image') || ctype.includes('video') || ctype.includes('octet-stream')) {
+            resolve(true);
+          } else {
+            resolve(res.statusCode === 200);
+          }
+          req.destroy();
+        });
+        req.on('timeout', () => { req.destroy(); resolve(false); });
+        req.on('error', () => resolve(false));
+        req.end();
+      });
+    };
 
+    const checkIpPort = async (ip, cp) => {
+      if (ip === '127.0.0.1' || ip.endsWith('.255')) return;
+      if (discovered.some(d => d.ip === ip && d.port === cp.port)) return;
+
+      const isOpen = await checkTcpPort(ip, cp.port, 300);
+      if (isOpen) {
+        if (cp.proto === 'http') {
+          const isRealVideo = await verifyHttpVideo(ip, cp.port, cp.path);
+          if (!isRealVideo) return;
+        }
+
+        const streamUrl = cp.proto === 'rtsp'
+          ? `rtsp://${ip}:${cp.port}${cp.path}`
+          : `http://${ip}:${cp.port}${cp.path}`;
+
+        discovered.push({
+          id: `cam_${ip.replace(/\./g, '_')}_${cp.port}`,
+          name: `${cp.name} (${ip})`,
+          url: streamUrl,
+          ip: ip,
+          port: cp.port,
+          proto: cp.proto,
+          type: 'wifi_url',
+          status: `Cámara activa en red (puerto ${cp.port})`,
+          real: true,
+        });
+      }
+    };
+
+    const tasks = [];
     for (const ip of ipsToScan) {
       for (const cp of cameraPorts) {
-        probePromises.push(
-          checkTcpPort(ip, cp.port, 400).then((isOpen) => {
-            if (isOpen) {
-              if (cp.port === 554) {
-                // Generar perfiles específicos para SterenCAM-900 y SterenCAM500
-                discovered.push({
-                  id: `steren_900_${ip}`,
-                  name: `SterenCAM-900 (${ip})`,
-                  url: `rtsp://admin:123456789@${ip}:554/live/ch0`,
-                  type: 'wifi_url',
-                  status: `Cámara SterenCAM-900 (RTSP Clave: 123456789)`,
-                  real: true,
-                });
-                discovered.push({
-                  id: `steren_500_${ip}`,
-                  name: `SterenCAM500 (${ip})`,
-                  url: `rtsp://admin:66666666@${ip}:554/live/ch0`,
-                  type: 'wifi_url',
-                  status: `Cámara SterenCAM500 (RTSP Clave: 66666666)`,
-                  real: true,
-                });
-              }
-              const streamUrl = cp.proto === 'rtsp'
-                ? `rtsp://${ip}:${cp.port}${cp.path}`
-                : (cp.path ? `http://${ip}:${cp.port}${cp.path}` : `http://${ip}:${cp.port}`);
-              discovered.push({
-                id: `real_cam_${ip}_${cp.port}`,
-                name: `${cp.name} (${ip})`,
-                url: streamUrl,
-                type: 'wifi_url',
-                status: `Cámara activa en red (puerto ${cp.port})`,
-                real: true,
-              });
-            }
-          })
-        );
+        tasks.push(() => checkIpPort(ip, cp));
       }
     }
 
-    await Promise.all(probePromises);
+    const BATCH_SIZE = 30;
+    for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
+      const chunk = tasks.slice(i, i + BATCH_SIZE);
+      await Promise.all(chunk.map(fn => fn()));
+    }
   } catch (err) {
     console.warn('[Network Scanner Error]:', err.message);
   }

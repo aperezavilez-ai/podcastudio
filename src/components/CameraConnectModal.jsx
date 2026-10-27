@@ -141,10 +141,27 @@ export default function CameraConnectModal({
   const [copiedSlotNumber, setCopiedSlotNumber] = useState(null);
   const [autoAssignMode, setAutoAssignMode] = useState(true);
   const [ipadRemoteQrUrl, setIpadRemoteQrUrl] = useState('');
+  const [useIpadLocalNetwork, setUseIpadLocalNetwork] = useState(false);
   const ipadRemoteLink = 'https://www.podcastudio.mx/control?room=master_studio';
   const [copiedIpadRemote, setCopiedIpadRemote] = useState(false);
-  const [sterenIp900, setSterenIp900] = useState('');
-  const [sterenIp500, setSterenIp500] = useState('');
+
+  // Formulario Universal de Registro de Cámaras
+  const [regCamName, setRegCamName] = useState('');
+  const [regCamProto, setRegCamProto] = useState('rtsp');
+  const [regCamIp, setRegCamIp] = useState('');
+  const [regCamPort, setRegCamPort] = useState('554');
+  const [regCamUser, setRegCamUser] = useState('admin');
+  const [regCamPass, setRegCamPass] = useState('');
+  const [regCamPath, setRegCamPath] = useState('/live');
+  const [showRegPass, setShowRegPass] = useState(false);
+  const [registeredCameras, setRegisteredCameras] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_registered_cameras');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Escáner de Códigos QR de Cámaras (usando la cámara del iPad o PC)
   const [isScanningQrWithCam, setIsScanningQrWithCam] = useState(false);
@@ -226,13 +243,25 @@ export default function CameraConnectModal({
     }
   }, [open, stopQrCamScanner]);
 
+  const activeIpadLink = useMemo(() => {
+    if (useIpadLocalNetwork && localQrUrl) {
+      try {
+        const parsed = new URL(localQrUrl);
+        return `${parsed.protocol}//${parsed.host}/control`;
+      } catch {
+        return localQrUrl.includes('/control') ? localQrUrl : `${localQrUrl.replace(/\/[^/]*$/, '')}/control`;
+      }
+    }
+    return ipadRemoteLink;
+  }, [useIpadLocalNetwork, localQrUrl, ipadRemoteLink]);
+
   useEffect(() => {
-    QRCode.toDataURL(ipadRemoteLink, { width: 220, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
+    QRCode.toDataURL(activeIpadLink, { width: 220, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
       .then(url => setIpadRemoteQrUrl(url))
       .catch(() => {
-        setIpadRemoteQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(ipadRemoteLink)}`);
+        setIpadRemoteQrUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(activeIpadLink)}`);
       });
-  }, [ipadRemoteLink]);
+  }, [activeIpadLink]);
 
   // Encontrar el siguiente slot disponible (libre de señal y metadatos)
   const getNextAvailableSlot = useCallback((preferredSlot) => {
@@ -362,16 +391,18 @@ export default function CameraConnectModal({
     }
   };
 
-  const handleConnectWifi = async (urlToConnect) => {
+  const handleConnectWifi = async (urlToConnect, slotOverride, labelOverride) => {
     const url = (urlToConnect || wifiUrl)?.trim();
+    const slot = typeof slotOverride === 'number' ? slotOverride : targetSlot;
+    const label = labelOverride || customLabel.trim() || `WiFi Cam ${slot + 1}`;
     if (!url || !onWifiConnect) return;
     setWifiConnecting(true);
     setWifiConnectError(null);
     setWifiConnectSuccess(null);
     try {
-      const resStream = await onWifiConnect(url, targetSlot, customLabel.trim() || `WiFi Cam ${targetSlot + 1}`);
+      const resStream = await onWifiConnect(url, slot, label);
       if (resStream) {
-        setWifiConnectSuccess(`¡Conectado exitosamente a CAM ${targetSlot + 1}!`);
+        setWifiConnectSuccess(`¡Conectado exitosamente a CAM ${slot + 1}!`);
       } else {
         setWifiConnectError('No se pudo establecer el stream de video desde esa URL. Verifica que la cámara esté encendida y accesible.');
       }
@@ -380,6 +411,72 @@ export default function CameraConnectModal({
     } finally {
       setWifiConnecting(false);
     }
+  };
+
+  const handleSaveRegisteredCamera = () => {
+    if (!regCamIp.trim()) {
+      setWifiConnectError('Por favor ingresa la IP o dirección de la cámara.');
+      return;
+    }
+    const port = regCamPort.trim() || (regCamProto === 'rtsp' ? '554' : regCamProto === 'action' ? '8192' : '8080');
+    const path = regCamPath.trim() || (regCamProto === 'rtsp' ? '/live' : regCamProto === 'action' ? '/' : '/video');
+    const newCam = {
+      id: `cam_reg_${Date.now()}`,
+      name: regCamName.trim() || `Cámara IP (${regCamIp.trim()})`,
+      proto: regCamProto,
+      ip: regCamIp.trim(),
+      port,
+      user: regCamUser.trim(),
+      pass: regCamPass.trim(),
+      path,
+    };
+    const updated = [newCam, ...registeredCameras.filter(c => c.ip !== newCam.ip || c.port !== newCam.port)];
+    setRegisteredCameras(updated);
+    try {
+      localStorage.setItem('podcastudio_registered_cameras', JSON.stringify(updated));
+    } catch {}
+    setWifiConnectSuccess(`¡Cámara "${newCam.name}" guardada en tu lista permanente!`);
+  };
+
+  const handleDeleteRegisteredCamera = (id) => {
+    const updated = registeredCameras.filter(c => c.id !== id);
+    setRegisteredCameras(updated);
+    try {
+      localStorage.setItem('podcastudio_registered_cameras', JSON.stringify(updated));
+    } catch {}
+  };
+
+  const handleConnectRegisteredCamera = async (cam, slot = targetSlot) => {
+    let fullUrl = '';
+    const userPass = cam.user ? `${encodeURIComponent(cam.user)}${cam.pass ? ':' + encodeURIComponent(cam.pass) : ''}@` : '';
+    const cleanPath = cam.path ? (cam.path.startsWith('/') ? cam.path : `/${cam.path}`) : '';
+    if (cam.proto === 'rtsp') {
+      fullUrl = `rtsp://${userPass}${cam.ip}:${cam.port || '554'}${cleanPath || '/live'}`;
+    } else {
+      fullUrl = `http://${userPass}${cam.ip}:${cam.port || '8080'}${cleanPath || '/'}`;
+    }
+    setWifiUrl(fullUrl);
+    await handleConnectWifi(fullUrl, slot, `${cam.name} (CAM ${slot + 1})`);
+  };
+
+  const handleConnectFromForm = async () => {
+    if (!regCamIp.trim()) {
+      setWifiConnectError('Ingresa la IP de la cámara para conectar.');
+      return;
+    }
+    const port = regCamPort.trim() || (regCamProto === 'rtsp' ? '554' : regCamProto === 'action' ? '8192' : '8080');
+    const path = regCamPath.trim() || (regCamProto === 'rtsp' ? '/live' : regCamProto === 'action' ? '/' : '/video');
+    const userPass = regCamUser.trim() ? `${encodeURIComponent(regCamUser.trim())}${regCamPass.trim() ? ':' + encodeURIComponent(regCamPass.trim()) : ''}@` : '';
+    const cleanPath = path ? (path.startsWith('/') ? path : `/${path}`) : '';
+
+    let fullUrl = '';
+    if (regCamProto === 'rtsp') {
+      fullUrl = `rtsp://${userPass}${regCamIp.trim()}:${port}${cleanPath}`;
+    } else {
+      fullUrl = `http://${userPass}${regCamIp.trim()}:${port}${cleanPath}`;
+    }
+    setWifiUrl(fullUrl);
+    await handleConnectWifi(fullUrl, targetSlot, regCamName.trim() || `Cámara WiFi (CAM ${targetSlot + 1})`);
   };
 
   const handleExplicitDisconnect = (slot) => {
@@ -1125,92 +1222,282 @@ Instrucciones:
                 </div>
               )}
 
-              {/* SECCIÓN STEREN RÁPIDA: SterenCAM-900 y SterenCAM500 */}
+              {/* FORMULARIO UNIVERSAL DE REGISTRO DE CÁMARAS WI-FI / IP / RTSP */}
               <div style={{
                 marginBottom: 16,
-                padding: '12px 14px',
-                borderRadius: 10,
-                background: 'rgba(14, 165, 233, 0.08)',
-                border: '1px solid rgba(14, 165, 233, 0.35)',
+                padding: '14px 16px',
+                borderRadius: 12,
+                background: 'rgba(15, 23, 42, 0.75)',
+                border: '1px solid rgba(59, 130, 246, 0.35)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                    <Wifi size={15} className="text-cyan-400" />
-                    <span style={{ fontSize: 12, fontWeight: 800, color: '#38bdf8' }}>
-                      Cámaras Steren Wi-Fi (SterenCAM-900 / SterenCAM500)
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Sliders size={16} className="text-blue-400" />
+                    <span style={{ fontSize: 13, fontWeight: 800, color: '#60a5fa' }}>
+                      Registrar Nueva Cámara Wi-Fi / IP / RTSP
                     </span>
                   </div>
-                  <span style={{ fontSize: 10, color: '#94a3b8' }}>
-                    Conexión RTSP Directa
+                  <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                    Universal para cualquier modelo o marca
                   </span>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 10 }}>
-                  {/* Tarjeta SterenCAM-900 */}
-                  <div style={{ padding: '10px 12px', borderRadius: 8, background: '#10141f', border: '1px solid #1e293b' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc' }}>📹 SterenCAM-900</span>
-                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: '#0369a1', color: '#fff', fontWeight: 800 }}>Clave: 123456789</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <input
-                        type="text"
-                        placeholder="IP de la cámara ej. 192.168.1.100"
-                        value={sterenIp900}
-                        onChange={(e) => setSterenIp900(e.target.value)}
-                        className={styles.formInput}
-                        style={{ fontSize: 11, padding: '4px 8px', flex: 1 }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const ip = sterenIp900.trim() || '192.168.1.1';
-                          const fullUrl = `rtsp://admin:123456789@${ip}:554/live/ch0`;
-                          setWifiUrl(fullUrl);
-                          handleConnectWifi(fullUrl, targetSlot, `SterenCAM-900 (CAM ${targetSlot + 1})`);
-                        }}
-                        className={styles.connectBtn}
-                        style={{ fontSize: 11, padding: '4px 10px', whiteSpace: 'nowrap' }}
-                        title={`Conectar SterenCAM-900 a CAM ${targetSlot + 1}`}
-                      >
-                        Asignar a CAM {targetSlot + 1}
-                      </button>
-                    </div>
+                {/* Campos del Formulario */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginBottom: 12 }}>
+                  {/* Nombre / Modelo */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: '#cbd5e1', marginBottom: 4, fontWeight: 600 }}>
+                      Nombre / Modelo:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="ej. Cámara 1 / Acción 4K"
+                      value={regCamName}
+                      onChange={(e) => setRegCamName(e.target.value)}
+                      className={styles.formInput}
+                      style={{ fontSize: 12, padding: '7px 10px', width: '100%' }}
+                    />
                   </div>
 
-                  {/* Tarjeta SterenCAM500 */}
-                  <div style={{ padding: '10px 12px', borderRadius: 8, background: '#10141f', border: '1px solid #1e293b' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc' }}>📹 SterenCAM500</span>
-                      <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 4, background: '#0369a1', color: '#fff', fontWeight: 800 }}>Clave: 66666666</span>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <input
-                        type="text"
-                        placeholder="IP de la cámara ej. 192.168.1.101"
-                        value={sterenIp500}
-                        onChange={(e) => setSterenIp500(e.target.value)}
-                        className={styles.formInput}
-                        style={{ fontSize: 11, padding: '4px 8px', flex: 1 }}
-                      />
+                  {/* Protocolo / Tipo */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: '#cbd5e1', marginBottom: 4, fontWeight: 600 }}>
+                      Tipo / Protocolo:
+                    </label>
+                    <select
+                      value={regCamProto}
+                      onChange={(e) => {
+                        const newProto = e.target.value;
+                        setRegCamProto(newProto);
+                        if (newProto === 'rtsp') {
+                          setRegCamPort('554');
+                          setRegCamPath('/live');
+                        } else if (newProto === 'action') {
+                          setRegCamPort('8192');
+                          setRegCamPath('/');
+                        } else {
+                          setRegCamPort('8080');
+                          setRegCamPath('/video');
+                        }
+                      }}
+                      className={styles.formInput}
+                      style={{ fontSize: 12, padding: '7px 10px', width: '100%', background: '#0f172a', color: '#f8fafc' }}
+                    >
+                      <option value="rtsp">RTSP (CCTV / Seguridad / IP HD)</option>
+                      <option value="action">Cámara de Acción Wi-Fi (Puerto 8192)</option>
+                      <option value="http">IP Webcam / DroidCam / MJPEG (HTTP)</option>
+                    </select>
+                  </div>
+
+                  {/* IP o Host */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: '#cbd5e1', marginBottom: 4, fontWeight: 600 }}>
+                      Dirección IP o Host:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="ej. 192.168.1.100 o 192.168.1.1"
+                      value={regCamIp}
+                      onChange={(e) => setRegCamIp(e.target.value)}
+                      className={styles.formInput}
+                      style={{ fontSize: 12, padding: '7px 10px', width: '100%' }}
+                    />
+                  </div>
+
+                  {/* Puerto */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: '#cbd5e1', marginBottom: 4, fontWeight: 600 }}>
+                      Puerto:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="554 / 8192 / 8080"
+                      value={regCamPort}
+                      onChange={(e) => setRegCamPort(e.target.value)}
+                      className={styles.formInput}
+                      style={{ fontSize: 12, padding: '7px 10px', width: '100%' }}
+                    />
+                  </div>
+
+                  {/* Usuario */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: 11, color: '#cbd5e1', marginBottom: 4, fontWeight: 600 }}>
+                      Usuario (si requiere):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="admin (opcional)"
+                      value={regCamUser}
+                      onChange={(e) => setRegCamUser(e.target.value)}
+                      className={styles.formInput}
+                      style={{ fontSize: 12, padding: '7px 10px', width: '100%' }}
+                    />
+                  </div>
+
+                  {/* Contraseña */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <label style={{ fontSize: 11, color: '#cbd5e1', fontWeight: 600 }}>
+                        Contraseña:
+                      </label>
                       <button
                         type="button"
-                        onClick={() => {
-                          const ip = sterenIp500.trim() || '192.168.1.1';
-                          const fullUrl = `rtsp://admin:66666666@${ip}:554/live/ch0`;
-                          setWifiUrl(fullUrl);
-                          handleConnectWifi(fullUrl, targetSlot, `SterenCAM500 (CAM ${targetSlot + 1})`);
-                        }}
-                        className={styles.connectBtn}
-                        style={{ fontSize: 11, padding: '4px 10px', whiteSpace: 'nowrap' }}
-                        title={`Conectar SterenCAM500 a CAM ${targetSlot + 1}`}
+                        onClick={() => setShowRegPass(!showRegPass)}
+                        style={{ background: 'none', border: 'none', color: '#93c5fd', fontSize: 10, cursor: 'pointer', padding: 0 }}
                       >
-                        Asignar a CAM {targetSlot + 1}
+                        {showRegPass ? 'Ocultar' : 'Mostrar'}
                       </button>
                     </div>
+                    <input
+                      type={showRegPass ? 'text' : 'password'}
+                      placeholder="Contraseña de la cámara"
+                      value={regCamPass}
+                      onChange={(e) => setRegCamPass(e.target.value)}
+                      className={styles.formInput}
+                      style={{ fontSize: 12, padding: '7px 10px', width: '100%' }}
+                    />
                   </div>
                 </div>
+
+                {/* Botones de acción del formulario */}
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end', paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <button
+                    type="button"
+                    onClick={handleSaveRegisteredCamera}
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.2)',
+                      border: '1px solid #3b82f6',
+                      color: '#93c5fd',
+                      padding: '8px 16px',
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      transition: 'all 0.15s'
+                    }}
+                    title="Guardar esta cámara en tu registro permanente"
+                  >
+                    <Save size={14} />
+                    <span>Guardar en mis Cámaras</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleConnectFromForm}
+                    disabled={wifiConnecting || !regCamIp.trim()}
+                    style={{
+                      background: 'linear-gradient(135deg, #ea580c, #c2410c)',
+                      border: 'none',
+                      color: '#fff',
+                      padding: '8px 20px',
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: wifiConnecting || !regCamIp.trim() ? 'not-allowed' : 'pointer',
+                      opacity: wifiConnecting || !regCamIp.trim() ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      boxShadow: '0 2px 10px rgba(234, 88, 12, 0.35)'
+                    }}
+                    title={`Conectar esta configuración directamente a CAM ${targetSlot + 1}`}
+                  >
+                    {wifiConnecting ? <Loader2 size={14} className="animate-spin" /> : <Wifi size={14} />}
+                    <span>Conectar a CAM {targetSlot + 1}</span>
+                  </button>
+                </div>
               </div>
+
+              {/* LISTA DE CÁMARAS REGISTRADAS / GUARDADAS */}
+              {registeredCameras && registeredCameras.length > 0 && (
+                <div style={{
+                  marginBottom: 16,
+                  padding: '12px 14px',
+                  borderRadius: 10,
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Camera size={14} className="text-emerald-400" />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#f8fafc' }}>
+                        Mis Cámaras Registradas ({registeredCameras.length})
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 10, color: '#94a3b8' }}>
+                      Asignación rápida con 1 clic
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 8 }}>
+                    {registeredCameras.map((cam) => (
+                      <div
+                        key={cam.id}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: 8,
+                          background: '#0e111a',
+                          border: '1px solid #1e293b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 10
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            📹 {cam.name}
+                          </div>
+                          <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, fontFamily: 'monospace' }}>
+                            {cam.proto.toUpperCase()} · {cam.ip}:{cam.port}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, shrink: 0 }}>
+                          <button
+                            type="button"
+                            onClick={() => handleConnectRegisteredCamera(cam, targetSlot)}
+                            disabled={wifiConnecting}
+                            style={{
+                              background: '#0284c7',
+                              border: 'none',
+                              color: '#fff',
+                              padding: '5px 12px',
+                              borderRadius: 6,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title={`Conectar ${cam.name} a CAM ${targetSlot + 1}`}
+                          >
+                            Asignar a CAM {targetSlot + 1}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRegisteredCamera(cam.id)}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#64748b',
+                              padding: 4,
+                              cursor: 'pointer',
+                              borderRadius: 4
+                            }}
+                            title="Eliminar de guardados"
+                          >
+                            <Trash2 size={13} className="hover:text-red-400" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className={styles.formGroup}>
                 <label className={styles.formLabel}>URL de transmisión directa (MJPEG / HLS / RTSP-HTTP):</label>
@@ -1284,7 +1571,7 @@ Instrucciones:
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#fb923c' }}>
                     <Camera size={15} />
-                    <span>Escanear Código QR de Cámara (Steren, China, GoPro o Móvil)</span>
+                    <span>Escanear Código QR de Cámara (Acción, IP, Móvil)</span>
                   </div>
                   <button
                     type="button"
@@ -1424,10 +1711,10 @@ Instrucciones:
                       </div>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 800, color: '#fed7aa' }}>
-                          ¿Buscas conectar Cámaras Wi-Fi (SterenCAM-900, SterenCAM500, GoPro)?
+                          ¿Buscas conectar Cámaras Wi-Fi o de Red Local (RTSP / ONVIF / Acción)?
                         </div>
                         <div style={{ fontSize: 11, color: '#cbd5e1' }}>
-                          Escanea tu red Wi-Fi o conecta tus cámaras Steren con contraseña directamente.
+                          Escanea tu red Wi-Fi automáticamente o agrega tus cámaras con IP y contraseña.
                         </div>
                       </div>
                     </div>
@@ -1856,6 +2143,46 @@ Instrucciones:
                 </div>
               </div>
 
+              {/* SELECTOR MODO RED LOCAL (CERO LATENCIA) VS WEB CLOUD */}
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => setUseIpadLocalNetwork(false)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 20,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: !useIpadLocalNetwork ? '#f59e0b' : 'rgba(255,255,255,0.06)',
+                    color: !useIpadLocalNetwork ? '#000' : '#94a3b8',
+                    border: !useIpadLocalNetwork ? '1px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Enlace oficial para cualquier dispositivo con internet"
+                >
+                  🌐 Web Oficial Cloud
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUseIpadLocalNetwork(true)}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: 20,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: useIpadLocalNetwork ? '#10b981' : 'rgba(255,255,255,0.06)',
+                    color: useIpadLocalNetwork ? '#000' : '#94a3b8',
+                    border: useIpadLocalNetwork ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title="Conexión directa en red local Wi-Fi con latencia 0 ms"
+                >
+                  ⚡ Red Local Wi-Fi (Cero Retraso)
+                </button>
+              </div>
+
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, margin: '10px 0 16px' }}>
                 <div
                   style={{
@@ -1863,7 +2190,7 @@ Instrucciones:
                     background: '#ffffff',
                     borderRadius: 16,
                     boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-                    border: '3px solid #f59e0b',
+                    border: useIpadLocalNetwork ? '3px solid #10b981' : '3px solid #f59e0b',
                     display: 'inline-block'
                   }}
                 >
@@ -1897,7 +2224,7 @@ Instrucciones:
                 <input
                   type="text"
                   readOnly
-                  value={ipadRemoteLink}
+                  value={activeIpadLink}
                   style={{
                     background: 'transparent',
                     border: 'none',
@@ -1911,7 +2238,7 @@ Instrucciones:
                 <button
                   type="button"
                   onClick={async () => {
-                    const ok = await copyTextToClipboard(ipadRemoteLink);
+                    const ok = await copyTextToClipboard(activeIpadLink);
                     if (ok) {
                       setCopiedIpadRemote(true);
                       setTimeout(() => setCopiedIpadRemote(false), 2500);
@@ -1940,7 +2267,7 @@ Instrucciones:
               <div style={{ display: 'flex', justifyContent: 'center', gap: 10 }}>
                 <button
                   type="button"
-                  onClick={() => openExternalLink(ipadRemoteLink)}
+                  onClick={() => openExternalLink(activeIpadLink)}
                   style={{
                     padding: '8px 16px',
                     background: 'rgba(255,255,255,0.08)',

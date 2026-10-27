@@ -95,11 +95,23 @@ const VideoTile = React.forwardRef(({
   const videoRef = ref || internalRef;
 
   useEffect(() => {
-    if (videoRef.current && stream) {
-      if (videoRef.current.srcObject !== stream) {
-        videoRef.current.srcObject = stream;
+    const v = videoRef.current;
+    if (v && stream) {
+      if (v.srcObject !== stream) {
+        v.srcObject = stream;
       }
-      videoRef.current.play().catch(e => console.log("Play error:", e));
+      const attemptPlay = () => {
+        if (v && v.paused) {
+          v.play().catch(() => {});
+        }
+      };
+      attemptPlay();
+      v.addEventListener('loadedmetadata', attemptPlay);
+      v.addEventListener('canplay', attemptPlay);
+      return () => {
+        v.removeEventListener('loadedmetadata', attemptPlay);
+        v.removeEventListener('canplay', attemptPlay);
+      };
     }
   }, [stream, videoRef]);
 
@@ -118,7 +130,16 @@ const VideoTile = React.forwardRef(({
     <div className={`relative overflow-hidden bg-[#050505] flex items-center justify-center ${className} ${onClick ? 'cursor-pointer' : ''}`} onClick={onClick}>
       {chromaKey && bgImage && <img src={bgImage} className="absolute inset-0 w-full h-full object-cover z-0" alt="Virtual BG" />}
       {stream ? (
-        <video ref={videoRef} autoPlay playsInline muted={isMuted} className={`w-full h-full object-cover ${chromaKey ? 'relative z-10 mix-blend-screen' : ''}`} style={{...style, filter: chromaKey ? `${style?.filter || ''} contrast(1.5) brightness(1.1)` : style?.filter }} />
+        <video 
+          ref={videoRef} 
+          autoPlay 
+          playsInline 
+          muted={isMuted} 
+          onLoadedMetadata={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); }}
+          onCanPlay={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); }}
+          className={`w-full h-full object-cover ${chromaKey ? 'relative z-10 mix-blend-screen' : ''}`} 
+          style={{...style, filter: chromaKey ? `${style?.filter || ''} contrast(1.5) brightness(1.1)` : style?.filter }} 
+        />
       ) : (
         <div className="flex flex-col items-center justify-center text-gray-500 w-full h-full bg-[#111] z-10">
           <Camera size={24} className="mb-2 opacity-50" />
@@ -2625,7 +2646,7 @@ function PodcastStudioApp() {
       stream: getCamStream(id),
       label: null, // ELIMINADO de la pantalla master para no estorbar logos ni cintillos
       isLocal: id === 1,
-      muted: Boolean(camSpeakerMuted[id]),
+      muted: true, // Monitor Master siempre silenciado para que el navegador nunca bloquee la reproducción con pantallas o flashes negros (el audio se procesa en el Audio Mixer)
       speakerMuted: undefined,
       onToggleSpeaker: null, // ELIMINADO de la pantalla master (los controles van en los recuadros inferiores)
       micMuted: undefined,
@@ -2970,7 +2991,7 @@ function PodcastStudioApp() {
               <span>🎮 Mando iPad</span>
             </button>
           </div>
-          <div className="flex gap-2 items-center pr-2 lg:pr-32" style={{ WebkitAppRegion: 'no-drag' }}>
+          <div className="flex gap-1.5 sm:gap-2 items-center pr-1 sm:pr-2" style={{ WebkitAppRegion: 'no-drag' }}>
              {/* INDICADOR DE GRABACIÓN MASTER A LA DERECHA */}
              {isRecording && (
                <button
@@ -3281,7 +3302,10 @@ function PodcastStudioApp() {
         </div>
 
         {/* BOTTOM MULTI-CAM BAR (CARRUSEL HORIZONTAL 100% VISIBLE Y CUADRADO) */}
-        <div className="h-[120px] min-h-[120px] max-h-[120px] bg-[#111] border-t border-[#222] px-2 py-1.5 flex items-center gap-2 overflow-x-auto overflow-y-hidden shrink-0 [scrollbar-width:thin] flex-nowrap">
+        <div 
+          className="h-[120px] min-h-[120px] max-h-[120px] bg-[#111] border-t border-[#222] px-2 py-1.5 flex items-center gap-2 overflow-x-auto overflow-y-hidden shrink-0 [scrollbar-width:thin] flex-nowrap"
+          style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+        >
           {camSlots.map((camId) => {
             const isActive = activeCam === camId;
             const isPvw = pvwCam === camId;
@@ -3556,7 +3580,7 @@ function PodcastStudioApp() {
 
       {/* RIGHT SIDEBAR */}
       {isRightPanelOpen && (
-        <div className={`bg-[#111] border-l border-[#222] flex flex-col z-20 shrink-0 transition-all duration-300 ${isRightPanelCollapsed ? 'w-[50px]' : 'w-[360px]'}`}>
+        <div className={`bg-[#111] border-l border-[#222] flex flex-col z-20 shrink-0 transition-all duration-300 ${isRightPanelCollapsed ? 'w-[50px]' : 'w-[290px] xl:w-[350px]'}`}>
           <div className="flex items-center justify-between px-3 py-2 border-b border-[#222] bg-[#0a0a0a]">
             {!isRightPanelCollapsed && <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Estudio Broadcast</span>}
             <div className={`flex items-center gap-1 ${isRightPanelCollapsed ? 'mx-auto flex-col' : 'ml-auto'}`}>
@@ -4442,7 +4466,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.1.9</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.2.4</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>
@@ -4963,7 +4987,7 @@ function PodcastStudioApp() {
           className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50 p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShowRemoteControlModal(false); }}
         >
-          <div className="bg-[#14161b] border border-[#262832] rounded-2xl w-full max-w-[500px] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#14161b] border border-[#262832] rounded-2xl w-full max-w-[640px] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center p-4 border-b border-[#262832] bg-[#0d0f13]">
               <div className="flex items-center gap-2.5 text-base font-extrabold text-white">
                 <Smartphone size={18} className="text-amber-400" />

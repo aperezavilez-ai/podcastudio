@@ -53,7 +53,7 @@ export default function ConnectedCamerasModal({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div 
-        className="bg-[#121319] border border-[#2b2e3e] rounded-2xl w-full max-w-[620px] max-h-[85vh] flex flex-col shadow-2xl overflow-hidden"
+        className="bg-[#121319] border border-[#2b2e3e] rounded-2xl w-full max-w-[840px] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* HEADER */}
