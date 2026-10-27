@@ -8,7 +8,7 @@ export const CINTILLO_PRESETS = [
   { id: 'social_instagram', label: 'Instagram', tag: 'INSTAGRAM', color: '#E1306C', network: 'instagram' },
   { id: 'social_tiktok', label: 'TikTok', tag: 'TIKTOK', color: '#25F4EE', network: 'tiktok' },
   { id: 'social_facebook', label: 'Facebook', tag: 'FACEBOOK', color: '#1877F2', network: 'facebook' },
-  { id: 'host', label: 'Conductor / presentador', tag: 'HOST', color: '#e8612a' },
+  { id: 'host', label: 'Conductor / presentador', tag: 'CONDUCTOR', color: '#e8612a' },
   { id: 'promo', label: 'Promoción / Código', tag: 'PROMO', color: '#e8612a' },
 ]
 

@@ -24,8 +24,10 @@ import {
   Loader2,
   Save,
   MessageCircle,
-  Trash2
+  Trash2,
+  Camera
 } from 'lucide-react';
+import jsQR from 'jsqr';
 import styles from './CameraConnectModal.module.css';
 
 function ModalVideoPreview({ stream, label }) {
@@ -141,6 +143,86 @@ export default function CameraConnectModal({
   const [ipadRemoteQrUrl, setIpadRemoteQrUrl] = useState('');
   const ipadRemoteLink = 'https://www.podcastudio.mx/control?room=master_studio';
   const [copiedIpadRemote, setCopiedIpadRemote] = useState(false);
+
+  // Escáner de Códigos QR de Cámaras (usando la cámara del iPad o PC)
+  const [isScanningQrWithCam, setIsScanningQrWithCam] = useState(false);
+  const [qrScanError, setQrScanError] = useState(null);
+  const [qrScanSuccess, setQrScanSuccess] = useState(null);
+  const qrVideoRef = useRef(null);
+  const qrStreamRef = useRef(null);
+  const qrAnimRef = useRef(null);
+  const qrCanvasRef = useRef(null);
+
+  const stopQrCamScanner = useCallback(() => {
+    if (qrAnimRef.current) {
+      cancelAnimationFrame(qrAnimRef.current);
+      qrAnimRef.current = null;
+    }
+    if (qrStreamRef.current) {
+      qrStreamRef.current.getTracks().forEach(t => t.stop());
+      qrStreamRef.current = null;
+    }
+    setIsScanningQrWithCam(false);
+  }, []);
+
+  const startQrCamScanner = useCallback(async () => {
+    setIsScanningQrWithCam(true);
+    setQrScanError(null);
+    setQrScanSuccess(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      qrStreamRef.current = stream;
+      if (qrVideoRef.current) {
+        qrVideoRef.current.srcObject = stream;
+        qrVideoRef.current.setAttribute('playsinline', 'true');
+        qrVideoRef.current.play().catch(() => {});
+      }
+
+      const scanFrame = () => {
+        if (!qrVideoRef.current || !qrStreamRef.current) return;
+        const video = qrVideoRef.current;
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+          if (!qrCanvasRef.current) {
+            qrCanvasRef.current = document.createElement('canvas');
+          }
+          const canvas = qrCanvasRef.current;
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+              inversionAttempts: 'dontInvert',
+            });
+            if (code && code.data && code.data.trim()) {
+              const scannedText = code.data.trim();
+              setQrScanSuccess(`¡Código QR leído con éxito!: ${scannedText.slice(0, 40)}...`);
+              stopQrCamScanner();
+              setWifiUrl(scannedText);
+              if (scannedText.startsWith('http://') || scannedText.startsWith('https://') || scannedText.startsWith('rtsp://')) {
+                onConnectWifi?.(scannedText, targetSlot, `Cámara QR (CAM ${targetSlot + 1})`);
+              }
+              return;
+            }
+          }
+        }
+        qrAnimRef.current = requestAnimationFrame(scanFrame);
+      };
+      qrAnimRef.current = requestAnimationFrame(scanFrame);
+    } catch (err) {
+      setQrScanError('No se pudo acceder a la cámara para escanear QR: ' + (err.message || 'Permiso denegado'));
+      setIsScanningQrWithCam(false);
+    }
+  }, [targetSlot, onConnectWifi, stopQrCamScanner]);
+
+  useEffect(() => {
+    if (!open) {
+      stopQrCamScanner();
+    }
+  }, [open, stopQrCamScanner]);
 
   useEffect(() => {
     QRCode.toDataURL(ipadRemoteLink, { width: 220, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
@@ -1084,6 +1166,62 @@ Instrucciones:
                   >
                     <AlertTriangle size={14} />
                     <span>{wifiConnectError}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* ESCÁNER QR CON CÁMARA DEL IPAD / PC */}
+              <div style={{ marginTop: 16, padding: '12px 14px', borderRadius: 10, background: 'rgba(234, 88, 12, 0.08)', border: '1px solid rgba(234, 88, 12, 0.3)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: '#fb923c' }}>
+                    <Camera size={15} />
+                    <span>Escanear Código QR de Cámara (Steren, China, GoPro o Móvil)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={isScanningQrWithCam ? stopQrCamScanner : startQrCamScanner}
+                    style={{
+                      background: isScanningQrWithCam ? '#dc2626' : '#ea580c',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 6,
+                      padding: '5px 10px',
+                      fontSize: 11,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5
+                    }}
+                  >
+                    <Camera size={13} />
+                    <span>{isScanningQrWithCam ? 'Cerrar Cámara' : 'Abrir Cámara para Escanear'}</span>
+                  </button>
+                </div>
+                <p style={{ fontSize: 11, color: '#fed7aa', margin: 0, opacity: 0.9 }}>
+                  Apunta la cámara de este iPad o computadora al código QR de tu cámara Wi-Fi o teléfono para registrarla al instante en CAM {targetSlot + 1}.
+                </p>
+
+                {/* VISOR DE ESCANEO ACTIVO */}
+                {isScanningQrWithCam && (
+                  <div style={{ marginTop: 10, position: 'relative', borderRadius: 10, overflow: 'hidden', border: '2px solid #ea580c', background: '#000', aspectRatio: '16/9', maxWidth: 360, margin: '10px auto 0' }}>
+                    <video ref={qrVideoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div style={{ position: 'absolute', inset: 16, border: '2px dashed rgba(251, 146, 60, 0.85)', borderRadius: 8, pointerEvents: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ background: 'rgba(0,0,0,0.75)', color: '#fff', padding: '3px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>
+                        Enfoca el código QR de la cámara
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {qrScanSuccess && (
+                  <div style={{ marginTop: 8, color: '#4ade80', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <Check size={14} /> <span>{qrScanSuccess}</span>
+                  </div>
+                )}
+                {qrScanError && (
+                  <div style={{ marginTop: 8, color: '#f87171', fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <AlertTriangle size={14} /> <span>{qrScanError}</span>
                   </div>
                 )}
               </div>

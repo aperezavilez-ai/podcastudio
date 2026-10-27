@@ -15,7 +15,7 @@ const QUICK_COLORS = [
 ]
 
 const QUICK_TAGS = [
-  'HOST',
+  'CONDUCTOR',
   'INVITADO ESPECIAL',
   'ESPECIALISTA',
   'TEMA CLAVE',

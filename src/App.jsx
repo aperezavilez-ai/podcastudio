@@ -64,6 +64,8 @@ import { useAutoSpeakerCintillo } from './hooks/useAutoSpeakerCintillo.js';
 import { useInstantReplay } from './hooks/useInstantReplay.js';
 import InstantReplayControl from './components/InstantReplayControl.jsx';
 import LanProgramOutputModal from './components/LanProgramOutputModal.jsx';
+import ConnectedCamerasModal from './components/ConnectedCamerasModal.jsx';
+import PgmFeedCanvas from './components/PgmFeedCanvas.jsx';
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -258,29 +260,78 @@ function PodcastStudioApp() {
   useEffect(() => { slotStreamsRef.current = slotStreams; }, [slotStreams]);
 
   const [showRemoteControlModal, setShowRemoteControlModal] = useState(false);
+  const [remoteControlTab, setRemoteControlTab] = useState('web'); // 'web' | 'lan'
   const [remoteControlQrImage, setRemoteControlQrImage] = useState('');
   const [remoteControlUrl, setRemoteControlUrl] = useState('https://www.podcastudio.mx/control?room=master_studio');
+  const [lanControlUrl, setLanControlUrl] = useState('');
+
+  // Gestión de Cámaras Guardadas y Conectadas (Persistentes)
+  const [showConnectedCamerasModal, setShowConnectedCamerasModal] = useState(false);
+  const [savedCameras, setSavedCameras] = useState(() => {
+    try {
+      const stored = localStorage.getItem('podcastudio_saved_cameras');
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const saveCameraToHistory = useCallback((camera) => {
+    if (!camera) return;
+    setSavedCameras(prev => {
+      const filtered = prev.filter(c => {
+        if (camera.url && c.url === camera.url) return false;
+        if (camera.deviceId && c.deviceId === camera.deviceId) return false;
+        if (camera.id && c.id === camera.id) return false;
+        return true;
+      });
+      const newEntry = {
+        id: camera.id || camera.deviceId || camera.url || `cam_${Date.now()}`,
+        name: camera.label || camera.name || 'Cámara Conectada',
+        type: camera.type || 'usb',
+        url: camera.url || null,
+        deviceId: camera.deviceId || null,
+        lastUsed: new Date().toISOString()
+      };
+      const updated = [newEntry, ...filtered].slice(0, 30);
+      try {
+        localStorage.setItem('podcastudio_saved_cameras', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  }, []);
+
+  const handleForgetCamera = useCallback((camIdOrKey) => {
+    setSavedCameras(prev => {
+      const updated = prev.filter(c => c.id !== camIdOrKey && c.deviceId !== camIdOrKey && c.url !== camIdOrKey);
+      try {
+        localStorage.setItem('podcastudio_saved_cameras', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  }, []);
 
   useEffect(() => {
     if (window.api?.getLocalControlUrl) {
       window.api.getLocalControlUrl().then(url => {
-        if (url) setRemoteControlUrl(url);
+        if (url) setLanControlUrl(url);
       }).catch(() => {});
     }
   }, []);
 
+  const activeQrTargetUrl = remoteControlTab === 'lan' && lanControlUrl
+    ? lanControlUrl
+    : 'https://www.podcastudio.mx/control?room=master_studio';
+
   useEffect(() => {
-    if (remoteControlUrl) {
-      QRCode.toDataURL(remoteControlUrl, { width: 250, margin: 2 })
-        .then(img => setRemoteControlQrImage(img))
-        .catch(() => {});
-    }
-  }, [remoteControlUrl]);
+    QRCode.toDataURL(activeQrTargetUrl, { width: 250, margin: 2, color: { dark: '#000000', light: '#ffffff' } })
+      .then(img => setRemoteControlQrImage(img))
+      .catch(() => {});
+  }, [activeQrTargetUrl]);
 
   const assignedSlotsRef = useRef({});
   const controlChannelRef = useRef(null);
   const isElectronMaster = typeof window !== 'undefined' && Boolean(window.api);
-  const [remotePgmFrame, setRemotePgmFrame] = useState(null);
   const remoteWsRef = useRef(null);
 
   // Enviar comando desde el iPad a la PC Máster vía LAN WebSocket y Supabase
@@ -2062,6 +2113,7 @@ function PodcastStudioApp() {
 
       setSlotStreams(prev => ({ ...prev, [slot]: stream }));
       setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, label: label || 'Cámara USB', type: 'usb' } }));
+      saveCameraToHistory({ deviceId, label: label || 'Cámara USB', type: 'usb' });
       if (slot === 0) setLocalStream(stream);
       return stream;
     } else {
@@ -2173,6 +2225,7 @@ function PodcastStudioApp() {
         ...prev,
         [slot]: { url, label: label || `WiFi Cam ${slot + 1}`, type: 'wifi' }
       }));
+      saveCameraToHistory({ url, label: label || `WiFi Cam ${slot + 1}`, type: 'wifi' });
       return stream;
     } catch (err) {
       console.error('Error conectando cámara WiFi:', err);
@@ -2189,8 +2242,20 @@ function PodcastStudioApp() {
       ...prev,
       [slot]: { deviceId: meta.id || `remote_${slot}`, label: label || `Cámara ${slot + 1}`, type: 'remote', ...meta }
     }));
+    saveCameraToHistory({ deviceId: meta.id || `remote_${slot}`, label: label || `Cámara ${slot + 1}`, type: 'remote' });
     if (slot === 0) setLocalStream(remoteStream);
   };
+
+  const handleReconnectSavedCamera = useCallback(async (savedCam) => {
+    if (!savedCam) return;
+    const freeSlot = camSlots.find(s => !slotStreams[s - 1]) || activeCam;
+    const targetIdx = freeSlot - 1;
+    if (savedCam.type === 'wifi' && savedCam.url) {
+      await handleWifiConnect(savedCam.url, targetIdx, savedCam.name || savedCam.label);
+    } else if (savedCam.type === 'usb' && savedCam.deviceId) {
+      await handleDeviceSelect(savedCam.deviceId, targetIdx, savedCam.name || savedCam.label);
+    }
+  }, [camSlots, slotStreams, activeCam, handleWifiConnect, handleDeviceSelect]);
 
   const handleDisconnectSlot = (slot) => {
     if (slotStreams[slot]) {
@@ -2456,7 +2521,7 @@ function PodcastStudioApp() {
             if (data.type === 'studio-state' && data.state) {
               applyRemoteStudioState(data.state);
             } else if (data.type === 'pgm-frame' && data.data) {
-              setRemotePgmFrame(data.data);
+              window.dispatchEvent(new CustomEvent('podcastudio_pgm_feed_frame', { detail: data.data }));
             }
           } catch (e) {}
         };
@@ -2503,7 +2568,7 @@ function PodcastStudioApp() {
     channel.on('broadcast', { event: 'pgm_cloud_frame' }, (event) => {
       const payload = event?.payload;
       if (payload?.dataUrl && !isElectronMaster) {
-        setRemotePgmFrame(payload.dataUrl);
+        window.dispatchEvent(new CustomEvent('podcastudio_pgm_feed_frame', { detail: payload.dataUrl }));
       }
     });
 
@@ -2530,10 +2595,10 @@ function PodcastStudioApp() {
     const effectiveActiveCam = overrideCam || activeCam;
 
     // Si corre como extensión remota en iPad/Browser y la PC Máster está emitiendo fotogramas PGM sin cámara local directa en este dispositivo
-    if (!isElectronMaster && remotePgmFrame && !getCamStream(effectiveActiveCam)) {
+    if (!isElectronMaster && !getCamStream(effectiveActiveCam)) {
       return (
         <div className="w-full h-full relative overflow-hidden bg-black flex items-center justify-center">
-          <img src={remotePgmFrame} alt="Señal Master PGM" className="w-full h-full object-contain pointer-events-none select-none" />
+          <PgmFeedCanvas />
         </div>
       );
     }
@@ -2759,17 +2824,16 @@ function PodcastStudioApp() {
 
   return (
     <div 
-      className="flex flex-col min-h-screen min-h-[100dvh] w-screen max-w-full bg-[#0a0a0a] text-[#e0e0e0] font-sans md:overflow-hidden overflow-x-hidden overflow-y-auto text-[13px] select-none"
-      style={{ WebkitOverflowScrolling: 'touch' }}
+      className="flex flex-col h-screen h-[100dvh] max-h-screen w-screen max-w-full bg-[#0a0a0a] text-[#e0e0e0] font-sans overflow-hidden text-[13px] select-none"
     >
       
       {/* ÁREA DE TRABAJO PRINCIPAL */}
-      <div className="flex-1 flex min-h-0 md:flex-row flex-col md:overflow-hidden overflow-visible">
-        <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex min-h-0 flex-row overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
         
         {/* TOP BAR */}
         <div 
-          className="flex justify-between items-center bg-[#0a0a0a] px-3 sm:px-4 py-2 border-b border-[#222] shrink-0"
+          className="h-[46px] min-h-[46px] max-h-[46px] flex justify-between items-center bg-[#0a0a0a] px-2.5 sm:px-3 border-b border-[#222] shrink-0 overflow-x-auto overflow-y-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           style={{ WebkitAppRegion: 'drag' }}
         >
           <div className="flex items-center gap-3 sm:gap-6" style={{ WebkitAppRegion: 'no-drag' }}>
@@ -2959,7 +3023,7 @@ function PodcastStudioApp() {
         </div>
 
         {/* ÁREA DE MONITOREO Y SWITCHING (DUAL PVW/PGM O MASTER ÚNICO) */}
-        <div className="flex-1 bg-black relative flex p-2.5 min-h-0 gap-2.5">
+        <div className="flex-1 min-h-0 bg-black relative flex p-1.5 gap-2 overflow-hidden items-center justify-center">
           {dualMonitorMode && (
             <>
               {/* MONITOR PREVIEW (PVW) */}
@@ -3116,9 +3180,9 @@ function PodcastStudioApp() {
               </div>
             )}
 
-            <div className="flex-1 w-full h-full relative overflow-hidden flex items-center justify-center p-2 bg-[#050505]">
+            <div className="flex-1 min-h-0 w-full h-full relative overflow-hidden flex items-center justify-center p-1 bg-[#050505]">
               {/* CONTENEDOR MAESTRO 16:9 CALIBRADO EXACTO A LA SALIDA DE VIDEO (1080p) */}
-              <div className="relative aspect-video max-w-full max-h-full w-full h-auto mx-auto my-auto shadow-2xl rounded-lg overflow-hidden bg-black flex items-center justify-center border border-[#1f2026]">
+              <div className="relative aspect-video max-w-full max-h-full w-auto h-auto mx-auto my-auto shadow-2xl rounded-lg overflow-hidden bg-black flex items-center justify-center border border-[#1f2026]">
                 {renderMonitorLayout()}
                 
                 {countdown !== null && <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center"><span className="text-white text-9xl font-bold animate-ping">{countdown}</span></div>}
@@ -3199,8 +3263,8 @@ function PodcastStudioApp() {
           </div>
         </div>
 
-        {/* BOTTOM MULTI-CAM BAR (ENVUELVE ABAJO AL LLENARSE EL ANCHO PARA MOSTRAR TODAS LAS CÁMARAS Y EL BOTÓN +) */}
-        <div className="bg-[#111] border-t border-[#222] p-2 flex flex-wrap items-center gap-2 min-h-[125px] max-h-[340px] md:max-h-[265px] overflow-y-auto shrink-0 pb-20 md:pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {/* BOTTOM MULTI-CAM BAR (CARRUSEL HORIZONTAL 100% VISIBLE Y CUADRADO) */}
+        <div className="h-[120px] min-h-[120px] max-h-[120px] bg-[#111] border-t border-[#222] px-2 py-1.5 flex items-center gap-2 overflow-x-auto overflow-y-hidden shrink-0 [scrollbar-width:thin] flex-nowrap">
           {camSlots.map((camId) => {
             const isActive = activeCam === camId;
             const isPvw = pvwCam === camId;
@@ -3209,7 +3273,7 @@ function PodcastStudioApp() {
             return (
               <div 
                 key={camId} 
-                className={`w-[195px] h-[108px] rounded-lg border-2 flex flex-col shrink-0 relative group transition-all ${
+                className={`w-[172px] h-[104px] rounded-lg border-2 flex flex-col shrink-0 relative group transition-all ${
                   isActive 
                     ? 'border-red-500 bg-[#1c1212] shadow-md shadow-red-950/30' 
                     : (dualMonitorMode && isPvw ? 'border-emerald-500 bg-[#121c16] shadow-md shadow-emerald-950/30' : 'border-[#262626] bg-[#0c0c0c]')
@@ -3359,8 +3423,8 @@ function PodcastStudioApp() {
                 >
                    {camStream ? (
                      <VideoTile stream={camStream} isLocal={camId === 1} muted={true} className="w-full h-full opacity-80" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
-                   ) : (!isElectronMaster && isActive && remotePgmFrame) ? (
-                     <img src={remotePgmFrame} alt={`CAM ${camId}`} className="w-full h-full object-cover opacity-85" />
+                   ) : (!isElectronMaster && isActive) ? (
+                     <PgmFeedCanvas className="w-full h-full object-cover opacity-85" />
                    ) : (
                      <div className="w-full h-full flex flex-col items-center justify-center bg-[#141414] text-gray-500 font-mono text-[11px]">
                        <Video size={16} className={`mb-0.5 ${isActive ? 'text-red-400 opacity-80' : 'text-gray-600 opacity-40'}`} />
@@ -3455,7 +3519,7 @@ function PodcastStudioApp() {
           <button 
             onClick={addCam} 
             disabled={camSlots.length >= 12}
-            className={`w-[195px] h-[108px] rounded-lg border-2 border-dashed flex flex-col items-center justify-center shrink-0 transition-all ${
+            className={`w-[172px] h-[104px] rounded-lg border-2 border-dashed flex flex-col items-center justify-center shrink-0 transition-all ${
               camSlots.length >= 12
                 ? 'border-[#222] bg-[#0a0a0a] text-gray-600 cursor-not-allowed opacity-40'
                 : 'border-[#333] hover:border-orange-500/70 bg-[#0c0c0c] hover:bg-[#181818] text-gray-400 hover:text-white cursor-pointer shadow-sm group'
@@ -3555,15 +3619,7 @@ function PodcastStudioApp() {
                       </div>
                     </div>
 
-                    {/* BOTÓN DISEÑADOR Y GENERADOR */}
-                    <button 
-                      onClick={() => setShowCintilloModal(true)} 
-                      className="w-full py-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white rounded font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-orange-900/30"
-                    >
-                      <Sparkles size={14} /> Diseñador & Generador Asistente
-                    </button>
-
-                    {/* SELECTOR DE ESTILOS (13 ESTILOS BROADCAST) */}
+                    {/* SELECTOR DE ESTILOS (13 ESTILOS BROADCAST EN ESPAÑOL) */}
                     <div>
                       <div className="flex justify-between items-center mb-1">
                         <label className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Estilo Visual (13 Estilos TV)</label>
@@ -3603,138 +3659,199 @@ function PodcastStudioApp() {
                       </div>
                     </div>
 
-                    {/* LANZAMIENTO RÁPIDO DE PRESETS AL AIRE */}
-                    <div>
-                      <div className="flex justify-between items-center mb-1.5">
-                        <label className="text-[10px] uppercase font-bold tracking-wider text-gray-400">Lanzamiento Rápido al Aire</label>
-                        <button 
-                          onClick={() => { setActiveSocialTab(socialTarget); setShowSocialsModal(true); }}
-                          className="text-[10px] font-bold text-orange-400 hover:text-orange-300 flex items-center gap-1 bg-[#1a1a1a] hover:bg-[#252525] px-2 py-0.5 rounded border border-[#333]"
-                          title="Editar enlaces y subtítulos de redes sociales"
-                        >
-                          <Settings size={11} /> Editar Redes
-                        </button>
-                      </div>
-
-                      {/* SELECTOR DE MODO DE REDES (INVITADO VS PROGRAMA) */}
-                      <div className="flex items-center justify-between bg-[#15171e] p-1.5 rounded border border-[#2a2d38] mb-2">
-                        <span className="text-[10px] text-gray-300 font-semibold flex items-center gap-1">
-                          <Share2 size={11} className="text-orange-400" /> Redes al aire:
+                    {/* SELECTOR DE PERFIL ACTIVO AL AIRE (CONDUCTOR VS INVITADO) */}
+                    <div className="pt-2 border-t border-[#2a2a2a]">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-[10px] uppercase font-bold tracking-wider text-gray-300">
+                          Perfil y Variables al Aire:
+                        </label>
+                        <span className={`text-[9.5px] font-extrabold px-1.5 py-0.2 rounded border ${
+                          socialTarget === 'guest' 
+                            ? 'bg-emerald-950 text-emerald-400 border-emerald-500/50' 
+                            : 'bg-orange-950 text-orange-400 border-orange-500/50'
+                        }`}>
+                          {socialTarget === 'guest' ? 'MODO INVITADO' : 'MODO CONDUCTOR'}
                         </span>
-                        <div className="flex gap-1">
-                          <button
-                            type="button"
-                            onClick={() => switchSocialTarget('guest')}
-                            className={`px-2.5 py-0.5 text-[9.5px] font-bold rounded transition-all ${socialTarget === 'guest' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-[#222] text-gray-400 hover:text-white'}`}
-                          >
-                            👤 Del Invitado
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => switchSocialTarget('program')}
-                            className={`px-2.5 py-0.5 text-[9.5px] font-bold rounded transition-all ${socialTarget === 'program' ? 'bg-orange-600 text-white shadow-sm' : 'bg-[#222] text-gray-400 hover:text-white'}`}
-                          >
-                            🎙️ Del Programa
-                          </button>
-                        </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-1.5">
-                        <button onClick={() => { setCintillosVisible(true); showManual('host'); }} className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-orange-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-orange-400">
-                          🎤 Host
+                      <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#14151b] rounded-lg border border-[#272a36] mb-2.5">
+                        <button
+                          type="button"
+                          onClick={() => switchSocialTarget('program')}
+                          className={`py-1.5 px-2 text-xs font-bold rounded-md flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                            socialTarget === 'program' 
+                              ? 'bg-orange-600 text-white shadow-md shadow-orange-900/30' 
+                              : 'text-gray-400 hover:text-white hover:bg-[#20222b]'
+                          }`}
+                        >
+                          <Mic size={13} />
+                          <span>🎙️ Conductor</span>
                         </button>
-                        <button onClick={() => { setCintillosVisible(true); showManual('guest'); }} className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-emerald-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-emerald-400">
-                          👤 Invitado
-                        </button>
-                        <button onClick={() => { setCintillosVisible(true); showManual('topic'); }} className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-blue-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-blue-400">
-                          💡 Tema
-                        </button>
-                        <button onClick={() => { setCintillosVisible(true); showManual('social_youtube'); }} className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-red-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-red-400" title={`Lanzar YouTube (${socialTarget === 'guest' ? 'Invitado' : 'Programa'})`}>
-                          <Youtube size={12} className="text-red-500" /> YouTube
-                        </button>
-                        <button onClick={() => { setCintillosVisible(true); showManual('social_instagram'); }} className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-pink-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-pink-400" title={`Lanzar Instagram (${socialTarget === 'guest' ? 'Invitado' : 'Programa'})`}>
-                          <Instagram size={12} className="text-pink-500" /> Instagram
-                        </button>
-                        <button onClick={() => { setCintillosVisible(true); showManual('social_tiktok'); }} className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-cyan-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-cyan-400" title={`Lanzar TikTok (${socialTarget === 'guest' ? 'Invitado' : 'Programa'})`}>
-                          <Music size={12} className="text-cyan-400" /> TikTok
-                        </button>
-                        <button onClick={() => { setCintillosVisible(true); showManual('social_facebook'); }} className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-blue-600/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-blue-500" title={`Lanzar Facebook (${socialTarget === 'guest' ? 'Invitado' : 'Programa'})`}>
-                          <Facebook size={12} className="text-blue-500" /> Facebook
-                        </button>
-                        <button onClick={() => { setCintillosVisible(true); showManual('contact'); }} className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-amber-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-amber-400">
-                          📞 Contacto
-                        </button>
-                        <button onClick={() => { setCintillosVisible(true); showManual('promo'); }} className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-purple-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-purple-400">
-                          🏷️ Promo
+                        <button
+                          type="button"
+                          onClick={() => switchSocialTarget('guest')}
+                          className={`py-1.5 px-2 text-xs font-bold rounded-md flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                            socialTarget === 'guest' 
+                              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/30' 
+                              : 'text-gray-400 hover:text-white hover:bg-[#20222b]'
+                          }`}
+                        >
+                          <Users size={13} />
+                          <span>👤 Invitado</span>
                         </button>
                       </div>
-                    </div>
 
-                    {/* DATOS RÁPIDOS DEL PROGRAMA CON LETRAS CHICAS ARRIBA DE CADA RECUADRO */}
-                    <div className="space-y-2.5 pt-2.5 border-t border-[#2a2a2a]">
-                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
-                        <span>Datos Rápidos del Programa</span>
-                        <span className="text-[9px] text-gray-500 font-normal">Identificadores para cintillos</span>
-                      </div>
+                      {/* CAMPOS VARIABLES EDITABLES EN VIVO SEGÚN EL PERFIL SELECCIONADO */}
+                      {socialTarget === 'program' ? (
+                        <div className="p-2.5 rounded-lg bg-[#181512] border border-orange-500/40 space-y-2 animate-fadeIn">
+                          <div className="text-[10px] font-bold text-orange-400 uppercase tracking-wider flex items-center justify-between">
+                            <span>Datos del Conductor / Programa</span>
+                            <span className="text-[9px] text-orange-400/80 font-normal">Variables activas</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[9px] font-bold text-orange-300 block mb-0.5">NOMBRE CONDUCTOR</label>
+                              <input 
+                                type="text" 
+                                value={hostName} 
+                                onChange={e => setHostName(e.target.value)} 
+                                placeholder="Nombre Conductor" 
+                                className="w-full bg-[#121110] border border-[#3a2e26] rounded p-1.5 text-xs text-white outline-none focus:border-orange-500" 
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-bold text-gray-400 block mb-0.5">ROL / CARGO</label>
+                              <input 
+                                type="text" 
+                                value={hostRole} 
+                                onChange={e => setHostRole(e.target.value)} 
+                                placeholder="Conductor & Productor" 
+                                className="w-full bg-[#121110] border border-[#3a2e26] rounded p-1.5 text-xs text-white outline-none focus:border-orange-500" 
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 pt-1">
+                            <div>
+                              <label className="text-[9px] font-bold text-pink-400 flex items-center gap-1 mb-0.5"><Instagram size={10} /> INSTAGRAM</label>
+                              <input 
+                                type="text" 
+                                value={socialInstagram} 
+                                onChange={e => setSocialInstagram(e.target.value)} 
+                                placeholder="@canal_oficial" 
+                                className="w-full bg-[#121110] border border-[#3a2e26] rounded p-1 text-xs text-white outline-none focus:border-pink-500" 
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-bold text-red-400 flex items-center gap-1 mb-0.5"><Youtube size={10} /> YOUTUBE</label>
+                              <input 
+                                type="text" 
+                                value={socialYoutube} 
+                                onChange={e => setSocialYoutube(e.target.value)} 
+                                placeholder="@canal_oficial" 
+                                className="w-full bg-[#121110] border border-[#3a2e26] rounded p-1 text-xs text-white outline-none focus:border-red-500" 
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[9px] font-bold text-cyan-400 flex items-center gap-1 mb-0.5"><Music size={10} /> TIKTOK</label>
+                              <input 
+                                type="text" 
+                                value={socialTiktok} 
+                                onChange={e => setSocialTiktok(e.target.value)} 
+                                placeholder="@canal_oficial" 
+                                className="w-full bg-[#121110] border border-[#3a2e26] rounded p-1 text-xs text-white outline-none focus:border-cyan-500" 
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-bold text-blue-400 flex items-center gap-1 mb-0.5"><Facebook size={10} /> FACEBOOK</label>
+                              <input 
+                                type="text" 
+                                value={socialFacebook} 
+                                onChange={e => setSocialFacebook(e.target.value)} 
+                                placeholder="/canal_oficial" 
+                                className="w-full bg-[#121110] border border-[#3a2e26] rounded p-1 text-xs text-white outline-none focus:border-blue-500" 
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-2.5 rounded-lg bg-[#0e1714] border border-emerald-500/50 space-y-2 animate-fadeIn">
+                          <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center justify-between">
+                            <span>Datos del Invitado Especial</span>
+                            <span className="text-[9px] text-emerald-400/80 font-normal">Variables activas</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[9px] font-bold text-emerald-300 block mb-0.5">NOMBRE INVITADO</label>
+                              <input 
+                                type="text" 
+                                value={guestName} 
+                                onChange={e => setGuestName(e.target.value)} 
+                                placeholder="Nombre Invitado" 
+                                className="w-full bg-[#0a120f] border border-[#1f362c] rounded p-1.5 text-xs text-white outline-none focus:border-emerald-500" 
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-bold text-gray-400 block mb-0.5">ESPECIALIDAD / ROL</label>
+                              <input 
+                                type="text" 
+                                value={guestRole} 
+                                onChange={e => setGuestRole(e.target.value)} 
+                                placeholder="Especialista / Cargo" 
+                                className="w-full bg-[#0a120f] border border-[#1f362c] rounded p-1.5 text-xs text-white outline-none focus:border-emerald-500" 
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 pt-1">
+                            <div>
+                              <label className="text-[9px] font-bold text-pink-400 flex items-center gap-1 mb-0.5"><Instagram size={10} /> INSTAGRAM</label>
+                              <input 
+                                type="text" 
+                                value={guestInstagram} 
+                                onChange={e => setGuestInstagram(e.target.value)} 
+                                placeholder="@usuario_invitado" 
+                                className="w-full bg-[#0a120f] border border-[#1f362c] rounded p-1 text-xs text-white outline-none focus:border-pink-500" 
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-bold text-red-400 flex items-center gap-1 mb-0.5"><Youtube size={10} /> YOUTUBE</label>
+                              <input 
+                                type="text" 
+                                value={guestYoutube} 
+                                onChange={e => setGuestYoutube(e.target.value)} 
+                                placeholder="@canal_invitado" 
+                                className="w-full bg-[#0a120f] border border-[#1f362c] rounded p-1 text-xs text-white outline-none focus:border-red-500" 
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[9px] font-bold text-cyan-400 flex items-center gap-1 mb-0.5"><Music size={10} /> TIKTOK</label>
+                              <input 
+                                type="text" 
+                                value={guestTiktok} 
+                                onChange={e => setGuestTiktok(e.target.value)} 
+                                placeholder="@tiktok_invitado" 
+                                className="w-full bg-[#0a120f] border border-[#1f362c] rounded p-1 text-xs text-white outline-none focus:border-cyan-500" 
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[9px] font-bold text-blue-400 flex items-center gap-1 mb-0.5"><Facebook size={10} /> FACEBOOK</label>
+                              <input 
+                                type="text" 
+                                value={guestFacebook} 
+                                onChange={e => setGuestFacebook(e.target.value)} 
+                                placeholder="/facebook_invitado" 
+                                className="w-full bg-[#0a120f] border border-[#1f362c] rounded p-1 text-xs text-white outline-none focus:border-blue-500" 
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
 
-                      {/* CONDUCTOR */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[9.5px] font-bold text-orange-400 block mb-0.5 tracking-wide">
-                            NOMBRE CONDUCTOR
-                          </label>
-                          <input 
-                            type="text" 
-                            value={hostName} 
-                            onChange={e => setHostName(e.target.value)} 
-                            placeholder="Nombre del Conductor" 
-                            className="w-full bg-[#18181b] border border-[#333] rounded p-1.5 text-xs text-white outline-none focus:border-orange-500" 
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[9.5px] font-bold text-gray-400 block mb-0.5 tracking-wide">
-                            ROL / CARGO CONDUCTOR
-                          </label>
-                          <input 
-                            type="text" 
-                            value={hostRole} 
-                            onChange={e => setHostRole(e.target.value)} 
-                            placeholder="Cargo o Profesión" 
-                            className="w-full bg-[#18181b] border border-[#333] rounded p-1.5 text-xs text-white outline-none focus:border-orange-500" 
-                          />
-                        </div>
-                      </div>
-
-                      {/* INVITADO */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[9.5px] font-bold text-emerald-400 block mb-0.5 tracking-wide">
-                            NOMBRE INVITADO
-                          </label>
-                          <input 
-                            type="text" 
-                            value={guestName} 
-                            onChange={e => setGuestName(e.target.value)} 
-                            placeholder="Nombre del Invitado" 
-                            className="w-full bg-[#18181b] border border-[#333] rounded p-1.5 text-xs text-white outline-none focus:border-emerald-500" 
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[9.5px] font-bold text-gray-400 block mb-0.5 tracking-wide">
-                            ESPECIALIDAD / ROL
-                          </label>
-                          <input 
-                            type="text" 
-                            value={guestRole} 
-                            onChange={e => setGuestRole(e.target.value)} 
-                            placeholder="Especialidad del Invitado" 
-                            className="w-full bg-[#18181b] border border-[#333] rounded p-1.5 text-xs text-white outline-none focus:border-emerald-500" 
-                          />
-                        </div>
-                      </div>
-
-                      {/* TEMA DEL EPISODIO */}
-                      <div>
+                      {/* TEMA DEL EPISODIO GLOBAL */}
+                      <div className="mt-2.5">
                         <label className="text-[9.5px] font-bold text-blue-400 block mb-0.5 tracking-wide">
                           TEMA PRINCIPAL DEL EPISODIO
                         </label>
@@ -3745,6 +3862,76 @@ function PodcastStudioApp() {
                           placeholder="Tema o titular del programa de hoy" 
                           className="w-full bg-[#18181b] border border-[#333] rounded p-1.5 text-xs text-white outline-none focus:border-blue-500" 
                         />
+                      </div>
+                    </div>
+
+                    {/* LANZAMIENTO RÁPIDO DE PRESETS AL AIRE */}
+                    <div className="pt-2 border-t border-[#2a2a2a]">
+                      <div className="flex justify-between items-center mb-1.5">
+                        <label className="text-[10px] uppercase font-bold tracking-wider text-gray-400">
+                          Lanzamiento Rápido ({socialTarget === 'guest' ? 'Invitado' : 'Conductor'})
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <button 
+                          onClick={() => { switchSocialTarget('program'); setCintillosVisible(true); showManual('host'); }} 
+                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-orange-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-orange-400 cursor-pointer"
+                        >
+                          🎤 Conductor
+                        </button>
+                        <button 
+                          onClick={() => { switchSocialTarget('guest'); setCintillosVisible(true); showManual('guest'); }} 
+                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-emerald-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-emerald-400 cursor-pointer"
+                        >
+                          👤 Invitado
+                        </button>
+                        <button 
+                          onClick={() => { setCintillosVisible(true); showManual('topic'); }} 
+                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-blue-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-blue-400 cursor-pointer"
+                        >
+                          💡 Tema
+                        </button>
+                        <button 
+                          onClick={() => { setCintillosVisible(true); showManual('social_youtube'); }} 
+                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-red-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-red-400 cursor-pointer" 
+                          title={`Lanzar YouTube (${socialTarget === 'guest' ? 'Invitado' : 'Conductor'})`}
+                        >
+                          <Youtube size={12} className="text-red-500" /> YouTube
+                        </button>
+                        <button 
+                          onClick={() => { setCintillosVisible(true); showManual('social_instagram'); }} 
+                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-pink-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-pink-400 cursor-pointer" 
+                          title={`Lanzar Instagram (${socialTarget === 'guest' ? 'Invitado' : 'Conductor'})`}
+                        >
+                          <Instagram size={12} className="text-pink-500" /> Instagram
+                        </button>
+                        <button 
+                          onClick={() => { setCintillosVisible(true); showManual('social_tiktok'); }} 
+                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-cyan-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-cyan-400 cursor-pointer" 
+                          title={`Lanzar TikTok (${socialTarget === 'guest' ? 'Invitado' : 'Conductor'})`}
+                        >
+                          <Music size={12} className="text-cyan-400" /> TikTok
+                        </button>
+                        <button 
+                          onClick={() => { setCintillosVisible(true); showManual('social_facebook'); }} 
+                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-blue-600/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-blue-500 cursor-pointer" 
+                          title={`Lanzar Facebook (${socialTarget === 'guest' ? 'Invitado' : 'Conductor'})`}
+                        >
+                          <Facebook size={12} className="text-blue-500" /> Facebook
+                        </button>
+                        <button 
+                          onClick={() => { setCintillosVisible(true); showManual('contact'); }} 
+                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-amber-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-amber-400 cursor-pointer"
+                        >
+                          📞 Contacto
+                        </button>
+                        <button 
+                          onClick={() => { setCintillosVisible(true); showManual('promo'); }} 
+                          className="p-1.5 bg-[#1a1a1a] hover:bg-[#252525] border border-[#333] hover:border-purple-500/50 rounded text-[10px] font-bold flex items-center justify-center gap-1 text-purple-400 cursor-pointer"
+                        >
+                          🏷️ Promo
+                        </button>
                       </div>
                     </div>
 
@@ -4101,7 +4288,27 @@ function PodcastStudioApp() {
               <div className="border border-[#222] rounded bg-[#161616] overflow-hidden">
                 <button onClick={() => togglePanel('transmision')} className="w-full p-2.5 flex justify-between items-center text-xs hover:bg-[#2a2a2a] transition-colors"><span className="flex items-center gap-2 font-bold text-white"><Share2 size={15} className="text-red-400"/> Transmisión y Redes</span><ChevronDown size={14} className="text-gray-400"/></button>
                 {activePanel === 'transmision' && (
-                   <div className="p-3 border-t border-[#222] bg-[#0f0f0f]"><button onClick={() => setShowStreamModal(true)} className="w-full py-2 bg-red-700 hover:bg-red-600 rounded font-bold flex items-center justify-center gap-2 text-xs text-white"><Wifi size={14}/> Configurar Transmisión</button></div>
+                   <div className="p-3 border-t border-[#222] bg-[#0f0f0f]">
+                     <button onClick={() => setShowStreamModal(true)} className="w-full py-2 bg-red-700 hover:bg-red-600 rounded font-bold flex items-center justify-center gap-2 text-xs text-white cursor-pointer shadow-md">
+                       <Wifi size={14}/> Configurar Transmisión
+                     </button>
+
+                     {/* BOTÓN SOLICITADO: CÁMARAS CONECTADAS Y EN USO CON GESTIÓN DE DESCONEXIÓN [X] */}
+                     <button 
+                       type="button"
+                       onClick={() => setShowConnectedCamerasModal(true)} 
+                       className="w-full mt-2.5 py-2.5 px-3 bg-[#181a24] hover:bg-[#222534] border border-[#2f3448] hover:border-orange-500/60 rounded-lg text-xs font-bold text-gray-100 flex items-center justify-between transition-all group shadow-sm cursor-pointer"
+                       title="Ver todas las cámaras conectadas, en uso y guardadas, y desconectar u olvidar con la X"
+                     >
+                       <span className="flex items-center gap-2">
+                         <Video size={14} className="text-orange-400 group-hover:scale-110 transition-transform" />
+                         <span>📹 Cámaras Conectadas & en Uso</span>
+                       </span>
+                       <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-orange-950/80 text-orange-400 border border-orange-500/40 font-bold">
+                         {camSlots.filter(s => slotStreams[s - 1] || cameraMeta[s - 1]).length} Activas
+                       </span>
+                     </button>
+                   </div>
                 )}
               </div>
 
@@ -4739,7 +4946,7 @@ function PodcastStudioApp() {
           className="fixed inset-0 bg-black/75 backdrop-blur-md flex items-center justify-center z-50 p-4"
           onClick={(e) => { if (e.target === e.currentTarget) setShowRemoteControlModal(false); }}
         >
-          <div className="bg-[#14161b] border border-[#262832] rounded-2xl w-full max-w-[480px] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#14161b] border border-[#262832] rounded-2xl w-full max-w-[500px] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center p-4 border-b border-[#262832] bg-[#0d0f13]">
               <div className="flex items-center gap-2.5 text-base font-extrabold text-white">
                 <Smartphone size={18} className="text-amber-400" />
@@ -4752,6 +4959,33 @@ function PodcastStudioApp() {
                 title="Cerrar ventana (Esc)"
               >
                 <X size={18} />
+              </button>
+            </div>
+
+            {/* SELECTOR DE ENLACE: WEB (PREDETERMINADO) VS RED LOCAL LAN */}
+            <div className="grid grid-cols-2 p-2 bg-[#0a0b0e] border-b border-[#262832] gap-1.5">
+              <button
+                type="button"
+                onClick={() => setRemoteControlTab('web')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  remoteControlTab === 'web'
+                    ? 'bg-amber-600 text-white shadow-md shadow-amber-900/30'
+                    : 'text-gray-400 hover:text-white hover:bg-[#1a1c24]'
+                }`}
+              >
+                <span>🌐 Enlace Web Oficial</span>
+                <span className="text-[9px] bg-black/40 px-1.5 py-0.2 rounded font-mono">Recomendado</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRemoteControlTab('lan')}
+                className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  remoteControlTab === 'lan'
+                    ? 'bg-amber-600 text-white shadow-md shadow-amber-900/30'
+                    : 'text-gray-400 hover:text-white hover:bg-[#1a1c24]'
+                }`}
+              >
+                <span>🏠 Red Local LAN</span>
               </button>
             </div>
             
@@ -4769,16 +5003,18 @@ function PodcastStudioApp() {
                   Escanea con la cámara de tu iPad o Tablet
                 </h4>
                 <p className="text-xs text-gray-400 leading-relaxed max-w-sm">
-                  Abre la consola en Safari o Chrome. Podrás alternar cámaras al aire, activar PiP y controlar la grabación local en esta PC en tiempo real.
+                  {remoteControlTab === 'web' 
+                    ? 'Abre directamente el proyecto en podcastudio.mx sin necesidad de configuración ni puertos locales.'
+                    : 'Conexión ultrarrápida punto a punto dentro de tu red Wi-Fi local.'}
                 </p>
               </div>
 
               <div className="w-full flex items-center gap-2 bg-[#0b0c10] border border-[#222530] p-2 rounded-xl text-xs text-gray-300">
-                <span className="truncate flex-1 font-mono text-[11px] text-gray-400">{remoteControlUrl}</span>
+                <span className="truncate flex-1 font-mono text-[11px] text-gray-400">{activeQrTargetUrl}</span>
                 <button
                   type="button"
                   onClick={() => {
-                    navigator.clipboard.writeText(remoteControlUrl);
+                    navigator.clipboard.writeText(activeQrTargetUrl);
                     alert('¡Enlace del Control Remoto copiado al portapapeles!');
                   }}
                   className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg shrink-0 flex items-center gap-1.5 cursor-pointer shadow"
@@ -4791,6 +5027,23 @@ function PodcastStudioApp() {
           </div>
         </div>
       )}
+
+      {/* MODAL CÁMARAS CONECTADAS & GUARDADAS (SOLICITADO POR EL USUARIO) */}
+      <ConnectedCamerasModal
+        open={showConnectedCamerasModal}
+        onClose={() => setShowConnectedCamerasModal(false)}
+        camSlots={camSlots}
+        cameraMeta={cameraMeta}
+        slotStreams={slotStreams}
+        savedCameras={savedCameras}
+        onDisconnectSlot={handleDisconnectSlot}
+        onReconnectCamera={handleReconnectSavedCamera}
+        onForgetCamera={handleForgetCamera}
+        onOpenConnectModal={() => {
+          setConnectModalSlot(activeCam - 1);
+          setShowConnectModal(true);
+        }}
+      />
 
       {/* MODAL DE EXPORTACIÓN Y DESCARGA MULTI-FORMATO (FACEBOOK, YOUTUBE, TIKTOK, INSTAGRAM) */}
       <MultiFormatExportModal

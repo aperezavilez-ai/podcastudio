@@ -1839,10 +1839,14 @@ ipcMain.handle('scan-network-cameras', async () => {
     const ipsToScan = [...new Set([...baseIps, ...arpIps])];
 
     const cameraPorts = [
-      { port: 4747, name: 'DroidCam Wi-Fi', path: '/video' },
-      { port: 8080, name: 'IP Webcam', path: '/video' },
-      { port: 8192, name: 'Cámara de Acción', path: '/' },
-      { port: 8554, name: 'RTSP Stream', path: '' },
+      { port: 554, name: 'Cámara Steren / China (RTSP)', path: '', proto: 'rtsp' },
+      { port: 80, name: 'Cámara IP / Web Stream', path: '/video', proto: 'http' },
+      { port: 8080, name: 'GoPro / IP Webcam', path: '/video', proto: 'http' },
+      { port: 8000, name: 'Cámara ONVIF / CCTV', path: '', proto: 'http' },
+      { port: 8899, name: 'Cámara Wi-Fi Genérica', path: '/onvif/device_service', proto: 'http' },
+      { port: 4747, name: 'DroidCam Wi-Fi', path: '/video', proto: 'http' },
+      { port: 8192, name: 'Cámara de Acción', path: '/', proto: 'http' },
+      { port: 8554, name: 'RTSP Stream Universal', path: '', proto: 'rtsp' },
     ];
 
     const probePromises = [];
@@ -1850,9 +1854,11 @@ ipcMain.handle('scan-network-cameras', async () => {
     for (const ip of ipsToScan) {
       for (const cp of cameraPorts) {
         probePromises.push(
-          checkTcpPort(ip, cp.port, 450).then((isOpen) => {
+          checkTcpPort(ip, cp.port, 400).then((isOpen) => {
             if (isOpen) {
-              const streamUrl = cp.path ? `http://${ip}:${cp.port}${cp.path}` : `http://${ip}:${cp.port}`;
+              const streamUrl = cp.proto === 'rtsp'
+                ? `rtsp://${ip}:${cp.port}${cp.path}`
+                : (cp.path ? `http://${ip}:${cp.port}${cp.path}` : `http://${ip}:${cp.port}`);
               discovered.push({
                 id: `real_cam_${ip}_${cp.port}`,
                 name: `${cp.name} (${ip})`,
