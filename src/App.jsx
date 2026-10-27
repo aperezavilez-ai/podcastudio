@@ -2253,9 +2253,9 @@ function PodcastStudioApp() {
     if (savedCam.type === 'wifi' && savedCam.url) {
       await handleWifiConnect(savedCam.url, targetIdx, savedCam.name || savedCam.label);
     } else if (savedCam.type === 'usb' && savedCam.deviceId) {
-      await handleDeviceSelect(savedCam.deviceId, targetIdx, savedCam.name || savedCam.label);
+      await handleUsbConnect(savedCam.deviceId, targetIdx, savedCam.name || savedCam.label);
     }
-  }, [camSlots, slotStreams, activeCam, handleWifiConnect, handleDeviceSelect]);
+  }, [camSlots, slotStreams, activeCam, handleWifiConnect, handleUsbConnect]);
 
   const handleDisconnectSlot = (slot) => {
     if (slotStreams[slot]) {
