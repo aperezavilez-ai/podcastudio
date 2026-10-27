@@ -6,7 +6,7 @@ import {
   CheckCircle, Download, UploadCloud, Image as ImageIcon, FileVideo, AudioLines, Monitor,
   BookOpen, Type, Layers, Music, ChevronRight, ChevronLeft, PanelRight, ChevronDown,
   PlayCircle, PauseCircle, Upload, Facebook, Youtube, Instagram, VolumeX, Sparkle, RefreshCw,
-  Radio, Tv, Trash2, Loader2, Pencil, HelpCircle, RotateCcw, Zap, FlipHorizontal, Tablet
+  Radio, Tv, Trash2, Loader2, Pencil, HelpCircle, RotateCcw, Zap, FlipHorizontal, Tablet, Tag
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import mammoth from 'mammoth';
@@ -66,6 +66,7 @@ import InstantReplayControl from './components/InstantReplayControl.jsx';
 import LanProgramOutputModal from './components/LanProgramOutputModal.jsx';
 import ConnectedCamerasModal from './components/ConnectedCamerasModal.jsx';
 import PgmFeedCanvas from './components/PgmFeedCanvas.jsx';
+import CameraNameBadgeModal from './components/CameraNameBadgeModal.jsx';
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -280,6 +281,33 @@ function PodcastStudioApp() {
   const [slotStreams, setSlotStreams] = useState({});
   const slotStreamsRef = useRef(slotStreams);
   useEffect(() => { slotStreamsRef.current = slotStreams; }, [slotStreams]);
+
+  // RÓTULOS DE NOMBRE INDIVIDUALES POR CÁMARA (RESTRAM / LOWER THIRDS PARA INVITADOS O CLASES)
+  const [cameraBadges, setCameraBadges] = useState(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_camera_badges');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [badgeModalSlot, setBadgeModalSlot] = useState(null);
+  const [showBadgeModal, setShowBadgeModal] = useState(false);
+
+  const handleSaveCameraBadge = useCallback((camId, badge) => {
+    setCameraBadges(prev => {
+      const next = { ...prev, [camId]: badge };
+      try {
+        localStorage.setItem('podcastudio_camera_badges', JSON.stringify(next));
+      } catch (e) {}
+      updateBroadcastState({ cameraBadges: next });
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    updateBroadcastState({ cameraBadges });
+  }, [cameraBadges]);
 
   const [showRemoteControlModal, setShowRemoteControlModal] = useState(false);
   const [remoteControlTab, setRemoteControlTab] = useState('web'); // 'web' | 'lan'
@@ -3471,6 +3499,20 @@ function PodcastStudioApp() {
                        <span className="font-bold">CAM {camId}</span>
                      </div>
                    )}
+
+                    {/* MINI RÓTULO DE NOMBRE SOBRE EL VIDEO EN LA MINIATURA */}
+                    {cameraBadges[camId]?.enabled && cameraBadges[camId]?.name && (
+                      <div 
+                        className={`absolute z-10 px-1.5 py-0.5 rounded bg-slate-950/85 border border-white/20 text-white font-bold text-[8.5px] leading-tight shadow-md pointer-events-none select-none max-w-[85%] truncate ${
+                          cameraBadges[camId].position === 'bottom-right' ? 'bottom-7 right-1.5' :
+                          cameraBadges[camId].position === 'top-left' ? 'top-6 left-1.5' :
+                          cameraBadges[camId].position === 'top-right' ? 'top-6 right-1.5' :
+                          'bottom-7 left-1.5'
+                        }`}
+                      >
+                        {cameraBadges[camId].name}
+                      </div>
+                    )}
                 </div>
 
                 {/* BARRA SUPERIOR FLOTANTE TRASLÚCIDA (CASI IMPERCEPTIBLE, 100% VISIBILIDAD) */}
@@ -3589,6 +3631,27 @@ function PodcastStudioApp() {
                       title="Configuración y Ajustes de Cámara (Zoom, Enfoque, LUTs, Color, Guías)"
                     >
                       <Settings size={11} />
+                    </button>
+
+                    {/* BOTÓN RÓTULO DE NOMBRE (ESTILO RESTREAM / INVITADOS / CLASES) */}
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setBadgeModalSlot(camId); 
+                        setShowBadgeModal(true); 
+                      }} 
+                      className={`p-0.5 rounded transition-colors ${
+                        cameraBadges[camId]?.enabled && cameraBadges[camId]?.name
+                          ? 'text-orange-400 bg-orange-950/60 hover:bg-orange-900/80 border border-orange-500/40' 
+                          : 'text-gray-300 hover:text-orange-400 hover:bg-black/60'
+                      }`} 
+                      title={
+                        cameraBadges[camId]?.enabled && cameraBadges[camId]?.name
+                          ? `Rótulo activo: "${cameraBadges[camId].name}" (${cameraBadges[camId].position || 'abajo-izq'}) · Clic para editar`
+                          : `Asignar Rótulo de Nombre a CAM ${camId} (Invitado / Profesor / Alumno)`
+                      }
+                    >
+                      <Tag size={11} />
                     </button>
 
                     {/* BOTÓN BOTE DE BASURA / APAGAR / DESCONECTAR / ELIMINAR CÁMARA */}
@@ -5439,10 +5502,14 @@ function PodcastStudioApp() {
         }}
       />
 
-
-
-
-
+      {/* MODAL DE RÓTULO DE NOMBRE INDIVIDUAL POR CÁMARA (ESTILO RESTREAM / CLASES) */}
+      <CameraNameBadgeModal
+        isOpen={showBadgeModal}
+        onClose={() => setShowBadgeModal(false)}
+        camId={badgeModalSlot}
+        badge={badgeModalSlot ? cameraBadges[badgeModalSlot] : null}
+        onSave={handleSaveCameraBadge}
+      />
     </div>
   );
 }

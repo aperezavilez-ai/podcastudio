@@ -77,6 +77,7 @@ let currentState = {
   isReplaying: false,
   replayVideoElement: null,
   replayOverlay: { active: false, label: 'REPLAY', speed: 0.5, progress: 0 },
+  cameraBadges: {},
 };
 
 const videoElements = new Map();
@@ -174,12 +175,14 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
           ctx.fillStyle = '#0c0e14';
           ctx.fillRect(x, y, w, h);
           ctx.drawImage(video, 0, 0, vw, vh, destX, destY, destW, destH);
+          drawCameraNameBadge(x, y, w, h, camId);
           return;
         }
       }
     }
 
     ctx.drawImage(video, sx, sy, sw, sh, x, y, w, h);
+    drawCameraNameBadge(x, y, w, h, camId);
   } else {
     // Señal no disponible
     ctx.fillStyle = '#0c0e14';
@@ -189,7 +192,95 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('SIN SEÑAL', x + w / 2, y + h / 2);
+    drawCameraNameBadge(x, y, w, h, camId);
   }
+}
+
+// RÓTULOS DE NOMBRE INDIVIDUALES POR CÁMARA (RESTREAM / LOWER THIRDS PARA INVITADOS O CLASES)
+function drawCameraNameBadge(x, y, w, h, camId) {
+  if (!camId || !currentState.cameraBadges) return;
+  const badge = currentState.cameraBadges[camId];
+  if (!badge || !badge.enabled || !badge.name || !badge.name.trim()) return;
+
+  const name = badge.name.trim();
+  const subtitle = (badge.subtitle || '').trim();
+  const position = badge.position || 'bottom-left';
+
+  ctx.save();
+
+  // Escalar el rótulo armónicamente según el tamaño del cuadro (ej. plano completo vs 4-shot)
+  const scale = Math.max(0.65, Math.min(1.25, w / 960));
+  const fontSizeName = Math.round(18 * scale);
+  const fontSizeSub = Math.round(12 * scale);
+  const padX = Math.round(14 * scale);
+  const padY = Math.round(8 * scale);
+  const radius = Math.round(6 * scale);
+
+  ctx.font = `bold ${fontSizeName}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  const nameWidth = ctx.measureText(name).width;
+
+  let subWidth = 0;
+  if (subtitle) {
+    ctx.font = `500 ${fontSizeSub}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    subWidth = ctx.measureText(subtitle).width;
+  }
+
+  const badgeW = Math.max(nameWidth, subWidth) + padX * 2;
+  const badgeH = (subtitle ? fontSizeName + fontSizeSub + 6 : fontSizeName) + padY * 2;
+
+  const margin = Math.round(20 * scale);
+  let bx = x + margin;
+  let by = y + h - margin - badgeH;
+
+  if (position === 'bottom-right') {
+    bx = x + w - margin - badgeW;
+    by = y + h - margin - badgeH;
+  } else if (position === 'top-left') {
+    bx = x + margin;
+    by = y + margin;
+  } else if (position === 'top-right') {
+    bx = x + w - margin - badgeW;
+    by = y + margin;
+  }
+
+  // Sombra suave para despegar el rótulo del fondo de video
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
+  ctx.shadowBlur = Math.round(10 * scale);
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = Math.round(3 * scale);
+
+  // Fondo glassmorphism oscuro y elegante estilo Restream
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+  if (ctx.roundRect) {
+    ctx.beginPath();
+    ctx.roundRect(bx, by, badgeW, badgeH, radius);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.lineWidth = Math.max(1, Math.round(1.5 * scale));
+    ctx.stroke();
+  } else {
+    ctx.fillRect(bx, by, badgeW, badgeH);
+  }
+
+  // Quitar sombra para el texto
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+
+  // Dibujar Nombre Principal
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `bold ${fontSizeName}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(name, bx + padX, by + padY);
+
+  // Dibujar Subtítulo / Cargo si existe
+  if (subtitle) {
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = `500 ${fontSizeSub}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    ctx.fillText(subtitle, bx + padX, by + padY + fontSizeName + Math.round(4 * scale));
+  }
+
+  ctx.restore();
 }
 
 function drawCintillo(cintillo, topic) {
