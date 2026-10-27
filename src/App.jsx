@@ -89,7 +89,8 @@ const VideoTile = React.forwardRef(({
   onClick, 
   style, 
   chromaKey, 
-  bgImage 
+  bgImage,
+  isActive = true 
 }, ref) => {
   const internalRef = useRef(null);
   const videoRef = ref || internalRef;
@@ -113,7 +114,7 @@ const VideoTile = React.forwardRef(({
         v.removeEventListener('canplay', attemptPlay);
       };
     }
-  }, [stream, videoRef]);
+  }, [stream, videoRef, isActive]);
 
   const isMuted = muted !== undefined ? muted : isLocal;
 
@@ -2641,20 +2642,34 @@ function PodcastStudioApp() {
       );
     }
 
-    const getTileProps = (id) => ({
-      camId: id,
-      stream: getCamStream(id),
-      label: null, // ELIMINADO de la pantalla master para no estorbar logos ni cintillos
-      isLocal: id === 1,
-      muted: true, // Monitor Master siempre silenciado para que el navegador nunca bloquee la reproducción con pantallas o flashes negros (el audio se procesa en el Audio Mixer)
-      speakerMuted: undefined,
-      onToggleSpeaker: null, // ELIMINADO de la pantalla master (los controles van en los recuadros inferiores)
-      micMuted: undefined,
-      onToggleMic: null, // ELIMINADO de la pantalla master (los controles van en los recuadros inferiores)
-      style: getVideoStyle(id, true),
-      chromaKey: chromaKeyActive,
-      bgImage: virtualBg
-    });
+    const getTileProps = (id) => {
+      const idx = camSlots.indexOf(id);
+      return {
+        camId: id,
+        stream: getCamStream(id),
+        label: null, // ELIMINADO de la pantalla master para no estorbar logos ni cintillos
+        isLocal: id === 1,
+        muted: true, // Monitor Master siempre silenciado para que el navegador nunca bloquee la reproducción con pantallas o flashes negros (el audio se procesa en el Audio Mixer)
+        speakerMuted: undefined,
+        onToggleSpeaker: null, // ELIMINADO de la pantalla master (los controles van en los recuadros inferiores)
+        micMuted: undefined,
+        onToggleMic: null, // ELIMINADO de la pantalla master (los controles van en los recuadros inferiores)
+        style: getVideoStyle(id, true),
+        chromaKey: chromaKeyActive,
+        bgImage: virtualBg,
+        isActive: (layoutMode === '1' && id === effectiveActiveCam) || 
+                  (layoutMode === 'pip' && (id === effectiveActiveCam || id === effectivePipCam)) ||
+                  (layoutMode === '2' && (idx === 0 || idx === 1)) ||
+                  (layoutMode === 'two-shot' && (idx === 0 || idx === 1)) ||
+                  (layoutMode === '3' && idx < 3) ||
+                  (layoutMode === '4' && idx < 4) ||
+                  (layoutMode === '6' && idx < 6) ||
+                  (layoutMode === '8' && idx < 8) ||
+                  (layoutMode === '10' && idx < 10) ||
+                  (layoutMode === 'speaker' && id === effectiveActiveCam) ||
+                  (layoutMode === 'gallery')
+      };
+    };
 
     const effectivePipCam = (pipCam && pipCam !== effectiveActiveCam)
       ? pipCam
@@ -3218,9 +3233,16 @@ function PodcastStudioApp() {
               </div>
             )}
 
-            <div className="flex-1 min-h-0 w-full h-full relative overflow-hidden flex items-center justify-center p-1 bg-[#050505]">
-              {/* CONTENEDOR MAESTRO 16:9 CALIBRADO EXACTO A LA SALIDA DE VIDEO (1080p) */}
-              <div className="relative aspect-video max-w-full max-h-full w-auto h-auto mx-auto my-auto shadow-2xl rounded-lg overflow-hidden bg-black flex items-center justify-center border border-[#1f2026]">
+            <div className="flex-1 min-h-0 w-full h-full relative overflow-hidden flex items-center justify-center p-1.5 bg-[#050505]">
+              {/* CONTENEDOR MAESTRO BROADCAST CALIBRADO EXACTO (1080p / 16:9) */}
+              <div 
+                className="relative w-full h-full max-w-full max-h-full rounded-xl overflow-hidden bg-black flex items-center justify-center border border-[#222530] shadow-2xl"
+                style={{
+                  aspectRatio: '16 / 9',
+                  maxWidth: '100%',
+                  maxHeight: '100%'
+                }}
+              >
                 {renderMonitorLayout()}
                 
                 {countdown !== null && <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center"><span className="text-white text-9xl font-bold animate-ping">{countdown}</span></div>}
@@ -3301,10 +3323,10 @@ function PodcastStudioApp() {
           </div>
         </div>
 
-        {/* BOTTOM MULTI-CAM BAR (CARRUSEL HORIZONTAL 100% VISIBLE Y CUADRADO) */}
+        {/* BOTTOM MULTI-CAM BAR (CARRUSEL Y GRILLA ENVOLVENTE CON MÁXIMA VISIBILIDAD 100% Y SIN FRANJAS NEGRAS) */}
         <div 
-          className="h-[120px] min-h-[120px] max-h-[120px] bg-[#111] border-t border-[#222] px-2 py-1.5 flex items-center gap-2 overflow-x-auto overflow-y-hidden shrink-0 [scrollbar-width:thin] flex-nowrap"
-          style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+          className="min-h-[148px] max-h-[305px] bg-[#0c0c0e] border-t border-[#222] px-3 py-2 flex items-start gap-2.5 overflow-y-auto overflow-x-hidden shrink-0 [scrollbar-width:thin] flex-wrap"
+          style={{ WebkitOverflowScrolling: 'touch' }}
         >
           {camSlots.map((camId) => {
             const isActive = activeCam === camId;
@@ -3314,16 +3336,42 @@ function PodcastStudioApp() {
             return (
               <div 
                 key={camId} 
-                className={`w-[172px] h-[104px] rounded-lg border-2 flex flex-col shrink-0 relative group transition-all ${
+                className={`w-[210px] h-[130px] rounded-xl border-2 flex flex-col shrink-0 relative group overflow-hidden transition-all shadow-md ${
                   isActive 
-                    ? 'border-red-500 bg-[#1c1212] shadow-md shadow-red-950/30' 
-                    : (dualMonitorMode && isPvw ? 'border-emerald-500 bg-[#121c16] shadow-md shadow-emerald-950/30' : 'border-[#262626] bg-[#0c0c0c]')
+                    ? 'border-red-500 shadow-red-950/40 ring-1 ring-red-500/50' 
+                    : (dualMonitorMode && isPvw ? 'border-emerald-500 shadow-emerald-950/40 ring-1 ring-emerald-500/50' : 'border-[#282828] hover:border-[#444] bg-[#080808]')
                 }`}
               >
-                <div className="flex justify-between items-center px-1.5 py-0.5 bg-black/60 border-b border-[#222]">
+                {/* VIDEO A PANTALLA COMPLETA DENTRO DEL RECUADRO (SIN FRANJAS NEGRAS SÓLIDAS) */}
+                <div 
+                  className="absolute inset-0 w-full h-full cursor-pointer z-0 bg-[#080808]" 
+                  onClick={() => {
+                    if (dualMonitorMode) {
+                      setPvwCam(camId);
+                      if (!isElectronMaster) dispatchRemoteCommand('SET_PVW_CAM', { camId });
+                    } else {
+                      handleSelectMasterCam(camId);
+                    }
+                  }}
+                  title={dualMonitorMode ? `Seleccionar CAM ${camId} en PREVIEW (PVW) · Clic en CUT para conmutar a PROGRAM` : `Seleccionar CAM ${camId} como Cámara Master`}
+                >
+                   {camStream ? (
+                     <VideoTile stream={camStream} isLocal={camId === 1} muted={true} className="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
+                   ) : (!isElectronMaster && isActive) ? (
+                     <PgmFeedCanvas className="w-full h-full object-cover opacity-85" />
+                   ) : (
+                     <div className="w-full h-full flex flex-col items-center justify-center bg-[#101014] text-gray-500 font-mono text-[11px]">
+                       <Video size={18} className={`mb-1 ${isActive ? 'text-red-400 opacity-80' : 'text-gray-600 opacity-40'}`} />
+                       <span className="font-bold">CAM {camId}</span>
+                     </div>
+                   )}
+                </div>
+
+                {/* BARRA SUPERIOR FLOTANTE TRASLÚCIDA (CASI IMPERCEPTIBLE, 100% VISIBILIDAD) */}
+                <div className="absolute top-0 inset-x-0 z-20 flex justify-between items-center px-2 py-1 bg-gradient-to-b from-black/80 via-black/35 to-transparent pointer-events-auto select-none">
                   {/* CAM IDENTIFIER CON TALLY BROADCAST */}
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-[10px] font-black ${isActive ? 'text-red-400' : (dualMonitorMode && isPvw ? 'text-emerald-400' : 'text-gray-300')}`}>
+                  <div className="flex items-center gap-1.5 drop-shadow">
+                    <span className={`text-[10px] font-black ${isActive ? 'text-red-400' : (dualMonitorMode && isPvw ? 'text-emerald-400' : 'text-gray-200')}`}>
                       CAM {camId}
                     </span>
                     {isActive ? (
@@ -3337,14 +3385,14 @@ function PodcastStudioApp() {
                     ) : null)}
                   </div>
 
-                  {/* INDICADOR DE AUDIO, VUMETRO EN TIEMPO REAL Y BOTÓN DE MUTE */}
-                  <div className="flex items-center gap-1">
+                  {/* INDICADOR DE AUDIO, VUMETRO EN TIEMPO REAL Y BOTONES DE CONTROL */}
+                  <div className="flex items-center gap-1 drop-shadow">
                     {(() => {
                       const audioInfo = camAudioLevels[camId] || { hasMic: false, level: 0, isMuted: false };
                       if (!audioInfo.hasMic) {
                         return (
                           <div 
-                            className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-black/40 text-gray-500 cursor-not-allowed select-none" 
+                            className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-black/40 text-gray-400 cursor-not-allowed select-none" 
                             title="Esta cámara no cuenta con micrófono detectado"
                           >
                             <MicOff size={9} className="opacity-40" />
@@ -3394,7 +3442,7 @@ function PodcastStudioApp() {
                       );
                     })()}
 
-                    {/* BOTÓN DE BOCINA DE RETORNO / MONITOREO LOCAL (AL LADO DEL MICRÓFONO PARA NO VICIAR AUDIO) */}
+                    {/* BOTÓN DE BOCINA DE RETORNO / MONITOREO LOCAL */}
                     <button
                       type="button"
                       onClick={(e) => {
@@ -3408,7 +3456,7 @@ function PodcastStudioApp() {
                       }`}
                       title={
                         camSpeakerMuted[camId]
-                          ? `Bocina local de CAM ${camId} SILENCIADA (Evita acople/vicio en estudio) · Clic para escuchar`
+                          ? `Bocina local de CAM ${camId} SILENCIADA · Clic para escuchar`
                           : `Bocina local de CAM ${camId} ACTIVA · Clic para silenciar en tus altavoces`
                       }
                     >
@@ -3422,7 +3470,7 @@ function PodcastStudioApp() {
                     {/* BOTÓN CONEXIONES (USB / WIFI / QR) */}
                     <button 
                       onClick={(e) => { e.stopPropagation(); setConnectModalSlot(camId - 1); setShowConnectModal(true); }} 
-                      className="text-gray-400 hover:text-orange-400 hover:bg-[#252525] rounded p-0.5 transition-colors" 
+                      className="text-gray-300 hover:text-orange-400 hover:bg-black/60 rounded p-0.5 transition-colors" 
                       title="Configurar Entrada de Video (USB / WiFi IP / QR Celular)"
                     >
                       <Video size={11} />
@@ -3431,7 +3479,7 @@ function PodcastStudioApp() {
                     {/* BOTÓN ENGRANE DE CONFIGURACIÓN Y CALIBRACIÓN COMPLETA */}
                     <button 
                       onClick={(e) => { e.stopPropagation(); openCalibrator(camId); }} 
-                      className="text-gray-400 hover:text-white hover:bg-[#252525] rounded p-0.5 transition-colors" 
+                      className="text-gray-300 hover:text-white hover:bg-black/60 rounded p-0.5 transition-colors" 
                       title="Configuración y Ajustes de Cámara (Zoom, Enfoque, LUTs, Color, Guías)"
                     >
                       <Settings size={11} />
@@ -3443,37 +3491,16 @@ function PodcastStudioApp() {
                         e.stopPropagation(); 
                         handleDeleteOrDisconnectCam(camId); 
                       }} 
-                      className="text-gray-400 hover:text-red-400 hover:bg-red-500/20 rounded p-0.5 transition-colors" 
+                      className="text-gray-300 hover:text-red-400 hover:bg-red-500/20 rounded p-0.5 transition-colors" 
                       title={camStream ? `Apagar y desconectar señal de CAM ${camId}` : (camId !== 1 ? `Eliminar ranura de CAM ${camId}` : `Restablecer señal de CAM ${camId}`)}
                     >
-                      <Trash2 size={11} className={camStream ? "text-red-400 hover:text-red-300" : "text-gray-500 hover:text-red-400"} />
+                      <Trash2 size={11} className={camStream ? "text-red-400 hover:text-red-300" : "text-gray-400 hover:text-red-400"} />
                     </button>
                   </div>
                 </div>
-                <div 
-                  className="flex-1 relative overflow-hidden cursor-pointer" 
-                  onClick={() => {
-                    if (dualMonitorMode) {
-                      setPvwCam(camId);
-                      if (!isElectronMaster) dispatchRemoteCommand('SET_PVW_CAM', { camId });
-                    } else {
-                      handleSelectMasterCam(camId);
-                    }
-                  }}
-                  title={dualMonitorMode ? `Seleccionar CAM ${camId} en PREVIEW (PVW) · Clic en CUT para conmutar a PROGRAM` : `Seleccionar CAM ${camId} como Cámara Master`}
-                >
-                   {camStream ? (
-                     <VideoTile stream={camStream} isLocal={camId === 1} muted={true} className="w-full h-full opacity-80" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
-                   ) : (!isElectronMaster && isActive) ? (
-                     <PgmFeedCanvas className="w-full h-full object-cover opacity-85" />
-                   ) : (
-                     <div className="w-full h-full flex flex-col items-center justify-center bg-[#141414] text-gray-500 font-mono text-[11px]">
-                       <Video size={16} className={`mb-0.5 ${isActive ? 'text-red-400 opacity-80' : 'text-gray-600 opacity-40'}`} />
-                       <span className="font-bold">CAM {camId}</span>
-                     </div>
-                   )}
-                </div>
-                <div className="flex p-0.5 bg-[#111] gap-0.5">
+
+                {/* BARRA INFERIOR FLOTANTE TRASLÚCIDA (BOTONES FLOTANTES SIN FRANJA SÓLIDA) */}
+                <div className="absolute bottom-0 inset-x-0 z-20 flex items-center px-1.5 py-1 bg-gradient-to-t from-black/80 via-black/30 to-transparent gap-1 pointer-events-auto select-none">
                   {dualMonitorMode ? (
                     <>
                       <button 
@@ -3482,8 +3509,8 @@ function PodcastStudioApp() {
                           setPvwCam(camId); 
                           if (!isElectronMaster) dispatchRemoteCommand('SET_PVW_CAM', { camId });
                         }} 
-                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
-                          isPvw ? 'bg-emerald-600 text-white shadow-sm' : 'text-emerald-400/80 hover:text-emerald-200 hover:bg-[#1a2920]'
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold backdrop-blur-[2px] transition-all ${
+                          isPvw ? 'bg-emerald-600 text-white shadow-sm' : 'bg-black/50 text-emerald-400/90 hover:bg-black/80 hover:text-emerald-200 border border-emerald-900/30'
                         }`}
                         title={`Poner CAM ${camId} en PREVIEW`}
                       >
@@ -3491,8 +3518,8 @@ function PodcastStudioApp() {
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleSelectMasterCam(camId); }} 
-                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
-                          isActive ? 'bg-red-600 text-white shadow-sm' : 'text-red-400/80 hover:text-red-200 hover:bg-[#291a1a]'
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold backdrop-blur-[2px] transition-all ${
+                          isActive ? 'bg-red-600 text-white shadow-sm' : 'bg-black/50 text-red-400/90 hover:bg-black/80 hover:text-red-200 border border-red-900/30'
                         }`}
                         title={`Poner CAM ${camId} directamente en PROGRAM (Al Aire)`}
                       >
@@ -3500,10 +3527,10 @@ function PodcastStudioApp() {
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleTogglePip(camId); }} 
-                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold backdrop-blur-[2px] transition-all ${
                           layoutMode === 'pip' && pipCam === camId 
                             ? 'bg-orange-600 text-white shadow-sm' 
-                            : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                            : 'bg-black/50 text-gray-300 hover:bg-black/80 hover:text-white border border-white/10'
                         }`}
                         title={`Colocar CAM ${camId} en recuadro PiP`}
                       >
@@ -3514,10 +3541,10 @@ function PodcastStudioApp() {
                     <>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleTogglePip(camId); }} 
-                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold backdrop-blur-[2px] transition-all ${
                           layoutMode === 'pip' && pipCam === camId 
                             ? 'bg-orange-600 text-white shadow-sm' 
-                            : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                            : 'bg-black/50 text-gray-300 hover:bg-black/80 hover:text-white border border-white/10'
                         }`}
                         title={`Colocar CAM ${camId} en recuadro PiP`}
                       >
@@ -3525,8 +3552,8 @@ function PodcastStudioApp() {
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); setLayoutMode('2'); }} 
-                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
-                          layoutMode === '2' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold backdrop-blur-[2px] transition-all ${
+                          layoutMode === '2' ? 'bg-orange-600 text-white' : 'bg-black/50 text-gray-300 hover:bg-black/80 hover:text-white border border-white/10'
                         }`}
                         title="Modo pantalla dividida 2 cámaras"
                       >
@@ -3534,8 +3561,8 @@ function PodcastStudioApp() {
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); setLayoutMode('3'); }} 
-                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
-                          layoutMode === '3' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold backdrop-blur-[2px] transition-all ${
+                          layoutMode === '3' ? 'bg-orange-600 text-white' : 'bg-black/50 text-gray-300 hover:bg-black/80 hover:text-white border border-white/10'
                         }`}
                         title="Modo pantalla 3 cámaras"
                       >
@@ -3543,8 +3570,8 @@ function PodcastStudioApp() {
                       </button>
                       <button 
                         onClick={(e) => { e.stopPropagation(); setLayoutMode('4'); }} 
-                        className={`flex-1 text-[9px] py-0.5 rounded font-bold transition-all ${
-                          layoutMode === '4' ? 'bg-orange-600 text-white' : 'text-gray-400 hover:text-white hover:bg-[#333]'
+                        className={`flex-1 text-[9px] py-0.5 rounded font-bold backdrop-blur-[2px] transition-all ${
+                          layoutMode === '4' ? 'bg-orange-600 text-white' : 'bg-black/50 text-gray-300 hover:bg-black/80 hover:text-white border border-white/10'
                         }`}
                         title="Modo cuadrícula 4 cámaras"
                       >
@@ -3560,20 +3587,20 @@ function PodcastStudioApp() {
           <button 
             onClick={addCam} 
             disabled={camSlots.length >= 12}
-            className={`w-[172px] h-[104px] rounded-lg border-2 border-dashed flex flex-col items-center justify-center shrink-0 transition-all ${
+            className={`w-[210px] h-[130px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center shrink-0 transition-all ${
               camSlots.length >= 12
                 ? 'border-[#222] bg-[#0a0a0a] text-gray-600 cursor-not-allowed opacity-40'
-                : 'border-[#333] hover:border-orange-500/70 bg-[#0c0c0c] hover:bg-[#181818] text-gray-400 hover:text-white cursor-pointer shadow-sm group'
+                : 'border-[#333] hover:border-orange-500/70 bg-[#0c0c0e]/80 hover:bg-[#161618] text-gray-400 hover:text-white cursor-pointer shadow-sm group'
             }`}
             title={camSlots.length >= 12 ? 'Límite máximo de 12 cámaras alcanzado' : `Agregar ranura para CAM ${camSlots.length + 1}`}
           >
-            <div className={`p-1.5 rounded-full mb-1 transition-transform group-hover:scale-110 ${camSlots.length >= 12 ? 'bg-[#181818] text-gray-600' : 'bg-orange-500/15 text-orange-400 border border-orange-500/30'}`}>
-              <Plus size={18} />
+            <div className={`p-2 rounded-full mb-1.5 transition-transform group-hover:scale-110 ${camSlots.length >= 12 ? 'bg-[#181818] text-gray-600' : 'bg-orange-500/15 text-orange-400 border border-orange-500/30'}`}>
+              <Plus size={20} />
             </div>
-            <span className="text-[11px] font-black tracking-wider uppercase">
+            <span className="text-[11.5px] font-black tracking-wider uppercase">
               {camSlots.length >= 12 ? 'MÁXIMO 12 CAMS' : `+ CÁMARA ${camSlots.length + 1}`}
             </span>
-            <span className="text-[9px] text-gray-500 font-mono mt-0.5">({camSlots.length}/12 ranuras)</span>
+            <span className="text-[9.5px] text-gray-500 font-mono mt-0.5">({camSlots.length}/12 ranuras)</span>
           </button>
         </div>
       </div>
@@ -4466,7 +4493,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.2.4</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.2.5</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>
