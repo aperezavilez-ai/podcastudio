@@ -1172,8 +1172,18 @@ Instrucciones:
                           <button
                             type="button"
                             onClick={async () => {
-                              setWifiUrl(cam.url);
-                              await handleConnectWifi(cam.url);
+                              let targetUrl = cam.url;
+                              if (cam.protocol === 'RTSP' || cam.port === 554) {
+                                const pass = window.prompt(`Cámara detectada en ${cam.ip}.\n\nIngresa la contraseña configurada en la app Steren Home (si no pusiste contraseña, déjalo vacío y presiona Aceptar):`, '');
+                                if (pass === null) return;
+                                if (pass.trim()) {
+                                  targetUrl = `rtsp://admin:${encodeURIComponent(pass.trim())}@${cam.ip}:554/live/ch0`;
+                                } else {
+                                  targetUrl = `rtsp://${cam.ip}:554/live/ch0`;
+                                }
+                              }
+                              setWifiUrl(targetUrl);
+                              await handleConnectWifi(targetUrl, targetSlot, `${cam.name} (CAM ${targetSlot + 1})`);
                             }}
                             disabled={wifiConnecting}
                             style={{

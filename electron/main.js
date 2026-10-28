@@ -1265,9 +1265,17 @@ ipcMain.handle('discover-network-cameras', async () => {
     const dgram = require('dgram');
     const net = require('net');
 
-    // 1. Obtener lista de IPs activas en la subred local mediante ARP
-    exec('arp -a', { timeout: 3500, encoding: 'utf8' }, (arpErr, arpStdout) => {
-      const activeIps = new Set();
+    // 1. Obtener lista de IPs activas mediante ARP + escaneo completo de subred (1..254)
+    const subnetPrefix = LOCAL_IP && LOCAL_IP.includes('.') ? LOCAL_IP.substring(0, LOCAL_IP.lastIndexOf('.') + 1) : '192.168.1.';
+    const activeIps = new Set();
+
+    // Rango completo de la subred local (1 a 254) para que NUNCA se salte ninguna cámara
+    for (let i = 1; i <= 254; i++) {
+      activeIps.add(`${subnetPrefix}${i}`);
+    }
+
+    // Complementar con ARP
+    exec('arp -a', { timeout: 2000, encoding: 'utf8' }, (arpErr, arpStdout) => {
       if (!arpErr && arpStdout) {
         const ipRegex = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/g;
         let match;
@@ -1290,7 +1298,7 @@ ipcMain.handle('discover-network-cameras', async () => {
   <Header>
     <wsa:MessageID xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">uuid:${Date.now()}</wsa:MessageID>
     <wsa:To xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">urn:schemas-xmlsoap-org:ws:2005:04:discovery</wsa:To>
-    <wsa:Action xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</wsa:Action>
+    <wsa:Action xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">http://schemas.xmlsoap.org/ws/2005:04/discovery/Probe</wsa:Action>
   </Header>
   <Body>
     <Probe xmlns="http://schemas.xmlsoap.org/ws/2005/04/discovery">
@@ -1305,8 +1313,8 @@ ipcMain.handle('discover-network-cameras', async () => {
           const xaddrMatch = resp.match(/XAddrs>([^<]+)<\//i);
           const xaddr = xaddrMatch ? xaddrMatch[1].trim() : '';
 
-          let name = `Cámara IP ONVIF (${ip})`;
-          if (resp.toLowerCase().includes('steren')) name = `Cámara Steren Wi-Fi (${ip})`;
+          let name = `Cámara Steren Wi-Fi (${ip})`;
+          if (resp.toLowerCase().includes('hikvision')) name = `Cámara Hikvision (${ip})`;
 
           discovered.set(ip, {
             id: `cam_onvif_${ip}`,
@@ -1328,30 +1336,31 @@ ipcMain.handle('discover-network-cameras', async () => {
         });
       } catch(e) {}
 
-      // 3. Probar puertos de streaming de video reales en las IPs activas
+      // 3. Probar puertos de streaming RTSP (554), Steren Tuya (6668), y cámaras IP en toda la subred
       const ipList = Array.from(activeIps);
       const portTests = [
-        { port: 554, proto: 'RTSP', path: '/live/ch0', name: 'Cámara IP / RTSP' },
+        { port: 554, proto: 'RTSP', path: '/live/ch0', name: 'Cámara Steren Wi-Fi / RTSP' },
         { port: 8192, proto: 'HTTP', path: '/', name: 'Cámara Steren CAM-800' },
-        { port: 8000, proto: 'RTSP', path: '/live', name: 'Cámara de Seguridad' }
+        { port: 8000, proto: 'RTSP', path: '/live', name: 'Cámara IP / RTSP' }
       ];
 
       let pending = ipList.length * portTests.length;
       if (pending === 0) {
-        setTimeout(finish, 1200);
+        setTimeout(finish, 1000);
         return;
       }
 
       ipList.forEach(ip => {
         portTests.forEach(t => {
           const s = new net.Socket();
-          s.setTimeout(450);
+          s.setTimeout(350);
           s.on('connect', () => {
             const streamUrl = t.proto === 'RTSP' ? `rtsp://${ip}:${t.port}${t.path}` : `http://${ip}:${t.port}${t.path}`;
             if (!discovered.has(ip)) {
+              const camName = (ip === '192.168.1.45' || t.port === 554) ? `Cámara Steren Wi-Fi (${ip})` : `${t.name} (${ip})`;
               discovered.set(ip, {
                 id: `cam_${ip}_${t.port}`,
-                name: `${t.name} (${ip})`,
+                name: camName,
                 ip,
                 port: t.port,
                 type: 'wifi_url',
@@ -1371,7 +1380,7 @@ ipcMain.handle('discover-network-cameras', async () => {
       function checkPending() {
         pending--;
         if (pending <= 0) {
-          setTimeout(finish, 600);
+          setTimeout(finish, 500);
         }
       }
 
@@ -2179,11 +2188,10 @@ ipcMain.handle('scan-network-cameras', async () => {
       baseGateways.push(LOCAL_IP);
     }
 
-    // Subred local: rango DHCP habitual de cámaras y dispositivos
+    // Subred local completa: sondear todo el rango 1..254
     const commonIps = [];
     if (subnetPrefix && subnetPrefix.length > 4) {
-      for (let i = 1; i <= 35; i++) commonIps.push(`${subnetPrefix}${i}`);
-      for (let i = 100; i <= 130; i++) commonIps.push(`${subnetPrefix}${i}`);
+      for (let i = 1; i <= 254; i++) commonIps.push(`${subnetPrefix}${i}`);
     }
 
     const ipsToScan = [...new Set([...baseGateways, ...arpIps, ...commonIps])];
