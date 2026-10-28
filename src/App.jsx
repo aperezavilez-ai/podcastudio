@@ -36,7 +36,8 @@ import { useSoundEffect } from './hooks/useSoundEffect.js';
 import { 
   startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, 
   getInitHeader, captureMasterCanvasSnapshot, getMasterCanvas,
-  setVoiceMonitor, syncStudioAudio, getCameraSnapshots
+  setVoiceMonitor, syncStudioAudio, getCameraSnapshots,
+  createMasterRecordingSession
 } from './utils/masterBroadcastEngine.js';
 import { VOICE_EFFECTS } from './utils/voiceEffectsProcessor.js';
 import { createStreamTransport } from './utils/streamTransport.js';
@@ -298,6 +299,7 @@ function PodcastStudioApp() {
   // GRABACIÓN ISO MULTICANAL (PISTAS INDEPENDIENTES POR CÁMARA) (P4.1)
   const [isoRecordingEnabled, setIsoRecordingEnabled] = useState(true);
   const isoRecordersRef = useRef(new Map()); // slotNum -> MediaRecorder
+  const masterRecorderRef = useRef(null); // Grabador dedicado para el Master limpio en alta fidelidad
 
   const [editingCamId, setEditingCamId] = useState(1);
   const [camSettings, setCamSettings] = useState({
@@ -499,9 +501,34 @@ function PodcastStudioApp() {
     }
     return {};
   });
-  const [camMuted, setCamMuted] = useState({ 1: false, 2: false, 3: false, 4: false });
+  const [camMuted, setCamMuted] = useState({ 1: false, 2: true, 3: true, 4: true });
   // Control de retorno de audio local (bocina / parlante de monitoreo en estudio para cada cámara)
   const [camSpeakerMuted, setCamSpeakerMuted] = useState({ 1: true, 2: false, 3: false, 4: false });
+
+  // AFV (Audio Follows Video): Solo el micrófono de la cámara activa al aire (PGM) está abierto.
+  // Todas las demás cámaras permanecen silenciadas en la línea de tiempo inferior para evitar
+  // retroalimentación ("vicios"), eco de sala y que el micrófono de la computadora se cuele en las tomas remotas.
+  useEffect(() => {
+    setCamMuted(prev => {
+      const next = { ...prev };
+      const currentSlots = Array.isArray(camSlots) && camSlots.length > 0 ? camSlots : [1, 2, 3, 4];
+      currentSlots.forEach(id => {
+        if (layoutMode === '1') {
+          next[id] = id !== activeCam;
+        } else if (layoutMode === 'pip') {
+          next[id] = id !== activeCam && id !== pipCam;
+        } else if (layoutMode === '2' || layoutMode === 'two-shot') {
+          next[id] = id !== currentSlots[0] && id !== currentSlots[1];
+        } else if (layoutMode === '3') {
+          next[id] = id !== currentSlots[0] && id !== currentSlots[1] && id !== currentSlots[2];
+        } else if (layoutMode === '4') {
+          next[id] = id !== currentSlots[0] && id !== currentSlots[1] && id !== currentSlots[2] && id !== currentSlots[3];
+        }
+      });
+      return next;
+    });
+  }, [activeCam, layoutMode, pipCam, camSlots]);
+
 
   // ZOOM DINÁMICO & ENCUADRE DE CÁMARA (PAN/DRAG) EN MONITOR MASTER
   const [zoomHud, setZoomHud] = useState({ visible: false, zoom: 1.0 });
@@ -1949,6 +1976,19 @@ function PodcastStudioApp() {
               camMuted,
             }, handleMasterChunk);
 
+            // Iniciar sesión de grabación dedicada para el Master con cabecera EBML limpia
+            if (masterRecorderRef.current && masterRecorderRef.current.state !== 'inactive') {
+              try { masterRecorderRef.current.stop(); } catch(e) {}
+            }
+            masterRecorderRef.current = createMasterRecordingSession((buf) => {
+              if (isRecordingRef.current) {
+                recordingChunksRef.current.push(buf);
+                if (window.api?.sendRecordChunk) {
+                  window.api.sendRecordChunk(buf);
+                }
+              }
+            }, 500);
+
             // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
             if (isoRecordingEnabled && window.api?.startIsoRecording) {
               const activeSlots = [];
@@ -2036,6 +2076,12 @@ function PodcastStudioApp() {
         } catch (e) {
           console.warn('[handleRecord] No se pudo obtener toDataURL del canvas:', e);
         }
+      }
+
+      // Detener grabador dedicado del Master
+      if (masterRecorderRef.current && masterRecorderRef.current.state !== 'inactive') {
+        try { masterRecorderRef.current.stop(); } catch (e) {}
+        masterRecorderRef.current = null;
       }
 
       // Detener y finalizar grabadores ISO multicanal (P4.1)

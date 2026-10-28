@@ -1577,7 +1577,8 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
       // Configuración de codificación de calidad broadcast Full HD 1080p real a 30fps sin pixelación
       ffmpegRecordProcess = spawn(ffmpegPath, [
         '-probesize', '32M',
-        '-analyzeduration', '0',
+        '-analyzeduration', '2000000',
+        '-fflags', '+nobuffer+flush_packets',
         '-f', 'webm',
         '-i', 'pipe:0',
         '-c:v', 'libx264',
@@ -1592,13 +1593,21 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
         '-c:a', 'aac',
         '-b:a', '192k',
         '-ar', '48000',
-        '-af', 'aresample=async=1000:first_pts=0',
         '-movflags', '+faststart',
         '-y',
         currentRecordingPath
       ], {
         stdio: ['pipe', 'ignore', 'pipe']
       });
+
+      if (ffmpegRecordProcess.stderr) {
+        ffmpegRecordProcess.stderr.on('data', (data) => {
+          const msg = data.toString();
+          if (msg.includes('Error') || msg.includes('fatal') || msg.includes('Opening') || msg.includes('frame=')) {
+            console.log('[FFmpeg Grabación]:', msg.trim());
+          }
+        });
+      }
 
       ffmpegRecordProcess.on('error', (err) => {
         console.error('Error FFmpeg Grabación:', err.message);

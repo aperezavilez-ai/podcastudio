@@ -1153,9 +1153,42 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
     initMixerBuses();
     if (!audioContext || !audioDestination) return null;
 
-    // 1. EL MICRÓFONO MASTER (CAM 1 / INTERFAZ DE AUDIO) NUNCA SE DESCONECTA DEL BUS
+    // DETERMINAR CÁMARAS PERMITIDAS EN LA MEZCLA MASTER (AUDIO FOLLOWS VIDEO / AFV)
+    // En modo '1' (cámara única al aire), ÚNICAMENTE el micrófono de la cámara activa (PGM)
+    // ingresa a la mezcla Master. Las demás cámaras (incluido el micrófono de la computadora
+    // en CAM 1 cuando no está al aire) se silencian estrictamente para erradicar vicios y eco.
+    const layout = currentState.layoutMode || '1';
+    const activePgm = currentState.activeCam || 1;
+    const slots = Array.isArray(currentState.camSlots) && currentState.camSlots.length > 0 ? currentState.camSlots : [1, 2, 3, 4];
+    
+    const allowedCams = new Set();
+    if (layout === '1') {
+      allowedCams.add(activePgm);
+    } else if (layout === 'pip') {
+      allowedCams.add(activePgm);
+      const pipId = currentState.pipCam || (slots.find(id => id !== activePgm) || 2);
+      allowedCams.add(pipId);
+    } else if (layout === '2' || layout === 'two-shot') {
+      allowedCams.add(slots[0] || 1);
+      allowedCams.add(slots[1] || 2);
+    } else if (layout === '3') {
+      allowedCams.add(slots[0] || 1);
+      allowedCams.add(slots[1] || 2);
+      allowedCams.add(slots[2] || 3);
+    } else if (layout === '4') {
+      allowedCams.add(slots[0] || 1);
+      allowedCams.add(slots[1] || 2);
+      allowedCams.add(slots[2] || 3);
+      allowedCams.add(slots[3] || 4);
+    } else {
+      // Modo galería o todos
+      slots.forEach(id => allowedCams.add(id));
+    }
+
+    // 1. CÁMARA 1 (MICRÓFONO COMPUTADORA / INTERFAZ LOCAL)
     const masterAudioStream = (camStreamsMap && camStreamsMap[1]) || localStream;
-    const isMasterMuted = Boolean(camMutedMap[1]);
+    const isCam1Allowed = allowedCams.has(1);
+    const isMasterMuted = Boolean(camMutedMap[1]) || !isCam1Allowed;
     if (masterAudioStream && masterAudioStream.getAudioTracks().length > 0) {
       const masterTrack = masterAudioStream.getAudioTracks()[0];
       masterTrack.enabled = !isMasterMuted;
@@ -1169,13 +1202,14 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
       }
     }
 
-    // 2. CONECTAR DEMÁS CÁMARAS (CAM 2 A CAM 10) RESPETANDO SU ESTADO
+    // 2. CONECTAR DEMÁS CÁMARAS (CAM 2 A CAM 12) CON POLÍTICA AFV
     if (camStreamsMap && Object.keys(camStreamsMap).length > 0) {
       Object.entries(camStreamsMap).forEach(([camIdStr, stream]) => {
         const camId = Number(camIdStr);
         if (camId === 1) return;
 
-        const isCamMuted = Boolean(camMutedMap[camId]);
+        const isCamAllowed = allowedCams.has(camId);
+        const isCamMuted = Boolean(camMutedMap[camId]) || !isCamAllowed;
         if (stream && stream.getAudioTracks().length > 0) {
           const track = stream.getAudioTracks()[0];
           track.enabled = !isCamMuted;
@@ -1192,11 +1226,12 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
       });
     }
 
-    // 3. CÁMARAS REMOTAS WEBRTC
+    // 3. CÁMARAS REMOTAS WEBRTC (CON POLÍTICA AFV)
     if (Array.isArray(remoteCams)) {
       remoteCams.forEach((rc) => {
         const rcCamId = rc.slot ? rc.slot + 1 : 2;
-        const isMuted = Boolean(camMutedMap[rcCamId]);
+        const isRcAllowed = allowedCams.has(rcCamId);
+        const isMuted = Boolean(camMutedMap[rcCamId]) || !isRcAllowed;
         if (rc.stream && rc.stream.getAudioTracks().length > 0) {
           const track = rc.stream.getAudioTracks()[0];
           track.enabled = !isMuted;
@@ -1680,6 +1715,74 @@ export function startBroadcastEngine(initialState, onChunk) {
 
   return masterStream;
 }
+
+/**
+ * Obtiene o inicializa el stream compuesto Master 1080p en vivo (Video Canvas + Mezcla Audio)
+ */
+export function getMasterStream() {
+  if (!masterStream || masterStream.getVideoTracks().length === 0 || masterStream.getVideoTracks()[0].readyState === 'ended') {
+    ensureMasterCanvas();
+    const canvasStream = canvas.captureStream(30);
+    const videoTrack = canvasStream.getVideoTracks()[0];
+    const audioTrack = setupAudioMixing(
+      currentState.localStream,
+      currentState.remoteCams,
+      currentState.camStreamsMap,
+      currentState.camMuted
+    );
+    const tracks = [videoTrack];
+    if (audioTrack) tracks.push(audioTrack);
+    masterStream = new MediaStream(tracks);
+  }
+  return masterStream;
+}
+
+/**
+ * Crea una sesión de grabación dedicada para el Master con MediaRecorder independiente.
+ * Garantiza que el primer chunk contenga la cabecera EBML limpia y completa desde el milisegundo 0,
+ * evitando archivos de 0 bytes o corruptos.
+ */
+export function createMasterRecordingSession(onChunk, timesliceMs = 500) {
+  const stream = getMasterStream();
+  if (!stream) return null;
+
+  let chosenMime = 'video/webm;codecs=vp8,opus';
+  if (!MediaRecorder.isTypeSupported(chosenMime)) {
+    if (MediaRecorder.isTypeSupported('video/webm')) {
+      chosenMime = 'video/webm';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) {
+      chosenMime = 'video/webm;codecs=h264,opus';
+    } else if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) {
+      chosenMime = 'video/mp4;codecs=avc1';
+    }
+  }
+
+  try {
+    const rec = new MediaRecorder(stream, {
+      mimeType: chosenMime,
+      videoBitsPerSecond: 10000000,
+    });
+
+    rec.ondataavailable = async (e) => {
+      if (e.data && e.data.size > 0 && typeof onChunk === 'function') {
+        try {
+          const buf = await e.data.arrayBuffer();
+          onChunk(buf);
+        } catch (err) {
+          console.warn('[MasterRecorder] Error buffer chunk:', err);
+        }
+      }
+    };
+
+    rec.start(timesliceMs);
+    console.log('[MasterRecorder] Sesión de grabación iniciada con MediaRecorder dedicado (mime:', chosenMime, ')');
+    return rec;
+  } catch (err) {
+    console.error('[MasterRecorder] Error iniciando MediaRecorder dedicado:', err);
+    return null;
+  }
+}
+
 
 /**
  * Actualiza en vivo cualquier parámetro del switcher sin detener la transmisión

@@ -5,20 +5,29 @@ import RemoteCam from './pages/RemoteCam.jsx'
 import StudioRemoteControl from './pages/StudioRemoteControl.jsx'
 import './index.css'
 
-// Rutas de captura de cámara remota para celulares
-const isRemoteCam = 
-  typeof window !== 'undefined' && (
-    window.location.pathname.includes('/remote-cam') || 
-    window.location.pathname.includes('/camara') ||
-    window.location.search.includes('slot=') ||
-    (window.location.search.includes('room=') && !window.location.pathname.includes('/control'))
-  );
+// Detección de entorno Electron Master vs Navegador Móvil/Tablet
+const hasElectronApi = typeof window !== 'undefined' && Boolean(window.api);
+const pathname = typeof window !== 'undefined' ? window.location.pathname.toLowerCase() : '';
+const search = typeof window !== 'undefined' ? window.location.search.toLowerCase() : '';
+const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+const isTouchTabletOrMobile = /ipad|tablet|(android(?!.*mobile))|iphone|ipod/i.test(userAgent) || 
+  (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1 && /macintosh/i.test(userAgent));
 
-// Rutas de consola de control remoto profesional para iPad / Tablets
+// 1. Rutas de consola de control remoto profesional para iPad / Tablets
 const isStudioRemote = 
-  typeof window !== 'undefined' && (
-    window.location.pathname.includes('/control') || 
-    window.location.pathname.includes('/mando')
+  pathname.includes('/control') || 
+  pathname.includes('/mando') ||
+  search.includes('control') ||
+  search.includes('mando') ||
+  (!hasElectronApi && isTouchTabletOrMobile && !search.includes('slot=') && !pathname.includes('/camara') && !pathname.includes('/remote-cam'));
+
+// 2. Rutas de captura de cámara remota para celulares
+const isRemoteCam = 
+  !isStudioRemote && (
+    pathname.includes('/remote-cam') || 
+    pathname.includes('/camara') ||
+    search.includes('slot=') ||
+    (search.includes('room=') && !search.includes('master_studio'))
   );
 
 ReactDOM.createRoot(document.getElementById('root')).render(

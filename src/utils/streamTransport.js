@@ -89,11 +89,9 @@ export class P2PStreamTransport extends BaseStreamTransport {
       if (payload.type === 'offer') {
         try {
           const existingPc = this.peerConnections.get(slotIndex)
-          if (existingPc && (existingPc.connectionState === 'connected' || existingPc.iceConnectionState === 'connected')) {
-            return
-          }
           if (existingPc) {
             try { existingPc.close() } catch {}
+            this.peerConnections.delete(slotIndex)
           }
 
           const callerLabel = payload.guestName

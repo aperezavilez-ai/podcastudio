@@ -10,9 +10,9 @@ const RTC_CONFIG = getWebRtcConfig()
 // TIERS BROADCAST FULL HD ULTRA-BAJA LATENCIA Y MÁXIMA NITIDEZ (30 FPS FIJOS)
 // Cero descarte, máxima profundidad de campo y definición nativa de sensor
 const QUALITY_TIERS = [
-  { label: 'Full HD 1080p Cristal', maxBitrate: 5000000, width: 1920, height: 1080, frameRate: 30 },
-  { label: 'HD 720p Fluido', maxBitrate: 2500000, width: 1280, height: 720, frameRate: 30 },
-  { label: 'HD 720p Balanceado', maxBitrate: 1500000, width: 1280, height: 720, frameRate: 30 },
+  { label: 'Full HD 1080p Cristal', maxBitrate: 6000000, width: 1920, height: 1080, frameRate: 30 },
+  { label: 'HD 720p Fluido', maxBitrate: 3500000, width: 1280, height: 720, frameRate: 30 },
+  { label: 'HD 720p Balanceado', maxBitrate: 2000000, width: 1280, height: 720, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 250     
 const RTT_HEALTHY_MS = 100     
@@ -266,6 +266,20 @@ export default function RemoteCam() {
       try { supabase.removeChannel(presenceChannel); } catch {}
     };
   }, [facingMode, room, slot, guestName, sessionRole]);
+
+  // Recuperación automática de conexión al reactivar pantalla o volver a la pestaña en Android
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && active && streamRef.current) {
+        if (!pcRef.current || pcRef.current.iceConnectionState === 'disconnected' || pcRef.current.iceConnectionState === 'failed') {
+          console.log('[RemoteCam] Pantalla activa en Android, renegociando señal con estudio...');
+          initSignaling(streamRef.current);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [active, initSignaling]);
 
   const requestWakeLock = useCallback(async () => {
     try {
@@ -561,7 +575,7 @@ export default function RemoteCam() {
 
         let finalSdp = offer.sdp || ''
         if (finalSdp && !finalSdp.includes('b=AS:')) {
-          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:2000\r\nb=TIAS:2000000\r\n')
+          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:6000\r\nb=TIAS:6000000\r\n')
         }
 
         await channel.send({
@@ -765,12 +779,12 @@ export default function RemoteCam() {
       let newStream = null
       try {
         newStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: nextFacing }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
+          video: { facingMode: { ideal: nextFacing }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, max: 30 } },
           audio: false,
         })
       } catch {
         newStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: nextFacing } },
+          video: { facingMode: { ideal: nextFacing }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
           audio: false,
         })
       }
