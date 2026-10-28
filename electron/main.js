@@ -1265,35 +1265,14 @@ ipcMain.handle('discover-network-cameras', async () => {
     const dgram = require('dgram');
     const net = require('net');
 
-    // 1. Obtener lista de IPs activas mediante ARP + escaneo completo de subred (1..254)
     const subnetPrefix = LOCAL_IP && LOCAL_IP.includes('.') ? LOCAL_IP.substring(0, LOCAL_IP.lastIndexOf('.') + 1) : '192.168.1.';
-    const activeIps = new Set();
+    const arpIps = new Set();
 
-    // Rango completo de la subred local (1 a 254) para que NUNCA se salte ninguna cámara
-    for (let i = 1; i <= 254; i++) {
-      activeIps.add(`${subnetPrefix}${i}`);
-    }
-
-    // Complementar con ARP
-    exec('arp -a', { timeout: 2000, encoding: 'utf8' }, (arpErr, arpStdout) => {
-      if (!arpErr && arpStdout) {
-        const ipRegex = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/g;
-        let match;
-        while ((match = ipRegex.exec(arpStdout)) !== null) {
-          const ip = match[1];
-          if (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.16.')) {
-            if (!ip.endsWith('.255') && !ip.endsWith('.1')) {
-              activeIps.add(ip);
-            }
-          }
-        }
-      }
-
-      // 2. Enviar Sonda WS-Discovery ONVIF por Multicast UDP a 239.255.255.250:3702
-      let udpClient = null;
-      try {
-        udpClient = dgram.createSocket('udp4');
-        const probeXml = `<?xml version="1.0" encoding="utf-8"?>
+    // 1. Enviar Sonda WS-Discovery ONVIF por Multicast UDP a 239.255.255.250:3702
+    let udpClient = null;
+    try {
+      udpClient = dgram.createSocket('udp4');
+      const probeXml = `<?xml version="1.0" encoding="utf-8"?>
 <Envelope xmlns="http://www.w3.org/2003/05/soap-envelope">
   <Header>
     <wsa:MessageID xmlns:wsa="http://schemas.xmlsoap.org/ws/2004/08/addressing">uuid:${Date.now()}</wsa:MessageID>
@@ -1307,94 +1286,123 @@ ipcMain.handle('discover-network-cameras', async () => {
   </Body>
 </Envelope>`;
 
-        udpClient.on('message', (msg, rinfo) => {
-          const resp = msg.toString();
-          const ip = rinfo.address;
-          const xaddrMatch = resp.match(/XAddrs>([^<]+)<\//i);
-          const xaddr = xaddrMatch ? xaddrMatch[1].trim() : '';
+      udpClient.on('message', (msg, rinfo) => {
+        const resp = msg.toString();
+        const ip = rinfo.address;
+        const xaddrMatch = resp.match(/XAddrs>([^<]+)<\//i);
+        const xaddr = xaddrMatch ? xaddrMatch[1].trim() : '';
 
-          let name = `Cámara Steren Wi-Fi (${ip})`;
-          if (resp.toLowerCase().includes('hikvision')) name = `Cámara Hikvision (${ip})`;
+        let name = `Cámara Steren Wi-Fi (${ip})`;
+        if (resp.toLowerCase().includes('hikvision')) name = `Cámara Hikvision (${ip})`;
 
-          discovered.set(ip, {
-            id: `cam_onvif_${ip}`,
-            name,
-            ip,
-            port: 554,
-            type: 'wifi_url',
-            protocol: 'RTSP',
-            url: `rtsp://${ip}:554/live/ch0`,
-            service: xaddr
-          });
-        });
-
-        udpClient.bind(() => {
-          try {
-            udpClient.setBroadcast(true);
-            udpClient.send(probeXml, 3702, '239.255.255.250');
-          } catch(e) {}
-        });
-      } catch(e) {}
-
-      // 3. Probar puertos de streaming RTSP (554), Steren Tuya (6668), y cámaras IP en toda la subred
-      const ipList = Array.from(activeIps);
-      const portTests = [
-        { port: 554, proto: 'RTSP', path: '/live/ch0', name: 'Cámara Steren Wi-Fi / RTSP' },
-        { port: 8192, proto: 'HTTP', path: '/', name: 'Cámara Steren CAM-800' },
-        { port: 8000, proto: 'RTSP', path: '/live', name: 'Cámara IP / RTSP' }
-      ];
-
-      let pending = ipList.length * portTests.length;
-      if (pending === 0) {
-        setTimeout(finish, 1000);
-        return;
-      }
-
-      ipList.forEach(ip => {
-        portTests.forEach(t => {
-          const s = new net.Socket();
-          s.setTimeout(350);
-          s.on('connect', () => {
-            const streamUrl = t.proto === 'RTSP' ? `rtsp://${ip}:${t.port}${t.path}` : `http://${ip}:${t.port}${t.path}`;
-            if (!discovered.has(ip)) {
-              const camName = (ip === '192.168.1.45' || t.port === 554) ? `Cámara Steren Wi-Fi (${ip})` : `${t.name} (${ip})`;
-              discovered.set(ip, {
-                id: `cam_${ip}_${t.port}`,
-                name: camName,
-                ip,
-                port: t.port,
-                type: 'wifi_url',
-                protocol: t.proto,
-                url: streamUrl
-              });
-            }
-            s.destroy();
-            checkPending();
-          });
-          s.on('error', () => { s.destroy(); checkPending(); });
-          s.on('timeout', () => { s.destroy(); checkPending(); });
-          try { s.connect(t.port, ip); } catch(e) { checkPending(); }
+        discovered.set(ip, {
+          id: `cam_onvif_${ip}`,
+          name,
+          ip,
+          port: 554,
+          type: 'wifi_url',
+          protocol: 'RTSP',
+          url: `rtsp://${ip}:554/live/ch0`,
+          service: xaddr
         });
       });
 
-      function checkPending() {
-        pending--;
-        if (pending <= 0) {
-          setTimeout(finish, 500);
+      udpClient.bind(() => {
+        try {
+          udpClient.setBroadcast(true);
+          udpClient.send(probeXml, 3702, '239.255.255.250');
+        } catch(e) {}
+      });
+    } catch(e) {}
+
+    // 2. Leer tabla ARP para IPs prioritarias
+    exec('arp -a', { timeout: 1500, encoding: 'utf8' }, async (arpErr, arpStdout) => {
+      if (!arpErr && arpStdout) {
+        const ipRegex = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/g;
+        let match;
+        while ((match = ipRegex.exec(arpStdout)) !== null) {
+          const ip = match[1];
+          if (ip.startsWith(subnetPrefix) && !ip.endsWith('.255') && !ip.endsWith('.1') && ip !== LOCAL_IP) {
+            arpIps.add(ip);
+          }
         }
       }
 
-      function finish() {
-        if (udpClient) {
-          try { udpClient.close(); } catch(e) {}
-        }
-        const cameras = Array.from(discovered.values());
-        resolve({
-          success: true,
-          cameras,
-          total: cameras.length
+      // Función para probar un socket TCP
+      const checkPort = (ip, port, timeout = 750) => {
+        return new Promise(res => {
+          const s = new net.Socket();
+          s.setTimeout(timeout);
+          s.once('connect', () => {
+            s.destroy();
+            res(true);
+          });
+          s.once('timeout', () => { s.destroy(); res(false); });
+          s.once('error', () => res(false));
+          try { s.connect(port, ip); } catch(e) { res(false); }
         });
+      };
+
+      // Lista de IPs a sondear: primero las de ARP (alta prioridad), luego el resto de la subred
+      const allSubnetIps = [];
+      for (let i = 1; i <= 254; i++) {
+        const ip = `${subnetPrefix}${i}`;
+        if (ip !== LOCAL_IP && !ip.endsWith('.255') && !ip.endsWith('.1')) {
+          allSubnetIps.push(ip);
+        }
       }
+
+      // Ordenar: primero las que están en ARP
+      const sortedIps = [...arpIps, ...allSubnetIps.filter(ip => !arpIps.has(ip))];
+
+      // Probar en lotes de 25 para no saturar la pila de red de Windows
+      const BATCH_SIZE = 25;
+      for (let i = 0; i < sortedIps.length; i += BATCH_SIZE) {
+        const batch = sortedIps.slice(i, i + BATCH_SIZE);
+        await Promise.all(batch.map(async (ip) => {
+          if (discovered.has(ip)) return;
+          // Chequear puerto RTSP principal 554
+          const is554Open = await checkPort(ip, 554, 750);
+          if (is554Open) {
+            discovered.set(ip, {
+              id: `cam_${ip}_554`,
+              name: `Cámara Steren Wi-Fi (${ip})`,
+              ip,
+              port: 554,
+              type: 'wifi_url',
+              protocol: 'RTSP',
+              url: `rtsp://${ip}:554/live/ch0`
+            });
+            return;
+          }
+          // Chequear puerto Steren Action Cam 8192
+          const is8192Open = await checkPort(ip, 8192, 400);
+          if (is8192Open) {
+            discovered.set(ip, {
+              id: `cam_${ip}_8192`,
+              name: `Cámara Steren CAM-800 (${ip})`,
+              ip,
+              port: 8192,
+              type: 'wifi_url',
+              protocol: 'HTTP',
+              url: `http://${ip}:8192/`
+            });
+          }
+        }));
+
+        // Si ya encontramos cámaras en las primeras páginas de ARP, dar tiempo pero continuar
+      }
+
+      if (udpClient) {
+        try { udpClient.close(); } catch(e) {}
+      }
+
+      const cameras = Array.from(discovered.values());
+      resolve({
+        success: true,
+        cameras,
+        total: cameras.length
+      });
     });
   });
 });
