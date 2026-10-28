@@ -5,7 +5,7 @@ process.on('unhandledRejection', (reason) => {
   console.warn('[Electron Main Process UnhandledRejection]', reason);
 });
 
-const { app, BrowserWindow, Menu, ipcMain, session, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, session, shell, desktopCapturer } = require('electron');
 Menu.setApplicationMenu(null);
 const path = require('path');
 const fs = require('fs');
@@ -243,6 +243,13 @@ function startMediaServer() {
     });
 
     ffProc.stdout.pipe(res);
+
+    ffProc.on('close', (code) => {
+      if (code !== 0) {
+        console.warn(`[RTSP-FFMPEG] Proceso FFmpeg terminó con código ${code}`);
+        try { res.end(); } catch (e) {}
+      }
+    });
 
     const killProc = () => {
       try { ffProc.kill('SIGKILL'); } catch (e) {}
@@ -1246,6 +1253,25 @@ if (!gotTheLock) {
     });
   });
 }
+
+ipcMain.handle('get-desktop-sources', async (event, opts) => {
+  try {
+    const sources = await desktopCapturer.getSources(opts || { types: ['window', 'screen'], thumbnailSize: { width: 320, height: 180 } });
+    return sources.map(s => ({
+      id: s.id,
+      name: s.name,
+      thumbnail: s.thumbnail.toDataURL()
+    }));
+  } catch (err) {
+    console.error('Error obteniendo fuentes de escritorio:', err);
+    return [];
+  }
+});
+
+ipcMain.handle('open-steren-portal', () => {
+  shell.openExternal('https://protect-us.ismartlife.me');
+  return true;
+});
 
 ipcMain.handle('get-qr-url', () => `https://www.podcastudio.mx/remote-cam?auto=true`);
 

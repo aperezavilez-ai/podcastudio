@@ -27,7 +27,8 @@ import {
   Trash2,
   Camera,
   Eye,
-  EyeOff
+  EyeOff,
+  Monitor
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import styles from './CameraConnectModal.module.css';
@@ -116,6 +117,7 @@ export default function CameraConnectModal({
   onSetMaster,
   onUsbConnect,
   onWifiConnect,
+  onScreenConnect,
   onAssignRemoteStream,
   onDisconnect,
   onRenameSlot,
@@ -124,6 +126,9 @@ export default function CameraConnectModal({
 }) {
   const [targetSlot, setTargetSlot] = useState(initialSlot);
   const [activeTab, setActiveTab] = useState('usb');
+  const [desktopSources, setDesktopSources] = useState([]);
+  const [isLoadingSources, setIsLoadingSources] = useState(false);
+  const [connectingSourceId, setConnectingSourceId] = useState(null);
   const [wifiUrl, setWifiUrl] = useState('');
   const [wifiConnecting, setWifiConnecting] = useState(false);
   const [isScanningWifi, setIsScanningWifi] = useState(false);
@@ -429,6 +434,38 @@ export default function CameraConnectModal({
       setWifiConnectError(err.message || 'Error al conectar con la cámara IP/WiFi.');
     } finally {
       setWifiConnecting(false);
+    }
+  };
+
+  const handleLoadSources = async () => {
+    if (typeof window !== 'undefined' && window.api?.getDesktopSources) {
+      setIsLoadingSources(true);
+      try {
+        const sources = await window.api.getDesktopSources({
+          types: ['window', 'screen'],
+          thumbnailSize: { width: 320, height: 180 }
+        });
+        setDesktopSources(sources || []);
+      } catch (err) {
+        console.error('Error cargando ventanas:', err);
+      } finally {
+        setIsLoadingSources(false);
+      }
+    }
+  };
+
+  const handleConnectSource = async (source) => {
+    if (!onScreenConnect || !source) return;
+    setConnectingSourceId(source.id);
+    try {
+      const resStream = await onScreenConnect(source.id, targetSlot, source.name);
+      if (resStream) {
+        setWifiConnectSuccess(`¡Ventana conectada con éxito a CAM ${targetSlot + 1}!`);
+      }
+    } catch (err) {
+      setWifiConnectError(err.message || 'Error al conectar la ventana seleccionada');
+    } finally {
+      setConnectingSourceId(null);
     }
   };
 
@@ -962,6 +999,17 @@ Instrucciones:
           >
             <QrCode size={14} /> Móvil / Remota QR
           </button>
+          <button
+            type="button"
+            className={`${styles.tabBtn} ${activeTab === 'screen' ? styles.tabActive : ''}`}
+            onClick={() => {
+              setActiveTab('screen');
+              handleLoadSources();
+            }}
+            style={{ color: activeTab === 'screen' ? '#ea580c' : undefined }}
+          >
+            <Monitor size={14} /> Steren / Ventana PC
+          </button>
         </div>
 
         {/* BODY */}
@@ -1265,6 +1313,43 @@ Instrucciones:
                       1. Asegúrate de tener activado el interruptor <strong>ONVIF (dp_onvif_switch)</strong> en la app Steren Home.<br />
                       2. <strong>IMPORTANTE:</strong> Desconecta la cámara de la corriente eléctrica por 5 segundos y vuelve a conectarla (reiniciarla) para que su servicio RTSP interno despierte.<br />
                       3. Escribe la contraseña en el recuadro (usa el ícono de ojo para verificarla) y presiona <strong>Asignar a CAM {targetSlot + 1}</strong>.
+                    </div>
+
+                    <div style={{
+                      marginTop: 6,
+                      padding: '10px 14px',
+                      background: 'rgba(234, 88, 12, 0.08)',
+                      border: '1px solid rgba(234, 88, 12, 0.3)',
+                      borderRadius: 8,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: 10
+                    }}>
+                      <div style={{ fontSize: 11, color: '#f1f5f9', flex: 1, minWidth: 200 }}>
+                        <strong style={{ color: '#ea580c' }}>Portal Oficial Steren IPC (Ver hasta 16 cámaras en PC):</strong><br />
+                        <span style={{ color: '#94a3b8' }}>Abre la página oficial en Chrome y escanea el QR con Steren Home para ver todas tus cámaras al instante.</span>
+                      </div>
+                      <a
+                        href="https://protect-us.ismartlife.me"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{
+                          padding: '7px 14px',
+                          borderRadius: 6,
+                          background: '#ea580c',
+                          color: '#fff',
+                          textDecoration: 'none',
+                          fontSize: 11,
+                          fontWeight: 800,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6
+                        }}
+                      >
+                        <ExternalLink size={13} /> Abrir Portal Steren PC
+                      </a>
                     </div>
                   </div>
                 )}
@@ -1598,6 +1683,230 @@ Instrucciones:
                   </div>
                 </>
               )}
+            </div>
+          )}
+
+          {/* TAB STEREN / VENTANA PC */}
+          {activeTab === 'screen' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Tarjeta explicativa con botón para abrir portal Steren */}
+              <div style={{
+                padding: '14px 16px',
+                borderRadius: 12,
+                background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.15), rgba(15, 23, 42, 0.6))',
+                border: '1.5px solid rgba(234, 88, 12, 0.4)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.4)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: '#ea580c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Monitor size={18} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>
+                        Portal Oficial Steren IPC (CCTV-625 y CCTV-203)
+                      </div>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                        Visualiza hasta 16 cámaras Steren en Full HD y vincúlalas directo a CAM {targetSlot + 1}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== 'undefined' && window.api?.openSterenPortal) {
+                        window.api.openSterenPortal();
+                      } else {
+                        window.open('https://protect-us.ismartlife.me', '_blank');
+                      }
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: 8,
+                      background: '#ea580c',
+                      color: '#fff',
+                      border: 'none',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6
+                    }}
+                  >
+                    <ExternalLink size={14} /> Abrir Portal Steren PC
+                  </button>
+                </div>
+
+                <div style={{ fontSize: 11.5, color: '#cbd5e1', lineHeight: 1.5, background: 'rgba(0,0,0,0.3)', padding: '10px 12px', borderRadius: 8 }}>
+                  <strong>Pasos sencillos:</strong><br />
+                  1. Haz clic en <strong>"Abrir Portal Steren PC"</strong> arriba (se abrirá en tu navegador Chrome).<br />
+                  2. En tu celular, abre la app <strong>Steren Home</strong>, pulsa el botón <strong>+ (Escanear QR)</strong> y apunta a la pantalla.<br />
+                  3. Tus cámaras Steren aparecerán transmitiendo en vivo en tu monitor.<br />
+                  4. Regresa aquí, presiona <strong>"Actualizar Ventanas"</strong> y selecciona la ventana para asignarla a <strong>CAM {targetSlot + 1}</strong>.
+                </div>
+              </div>
+
+              {/* Selector de ventanas de escritorio */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#f1f5f9' }}>
+                    Ventanas y Pantallas Disponibles para Asignar a CAM {targetSlot + 1}:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleLoadSources}
+                    disabled={isLoadingSources}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: 6,
+                      background: '#1e293b',
+                      color: '#38bdf8',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5
+                    }}
+                  >
+                    {isLoadingSources ? <Loader2 size={12} className="animate-spin" /> : null}
+                    {isLoadingSources ? 'Escaneando...' : '🔄 Actualizar Ventanas'}
+                  </button>
+                </div>
+
+                {desktopSources.length === 0 ? (
+                  <div style={{
+                    padding: '24px 16px',
+                    textAlign: 'center',
+                    background: 'rgba(255,255,255,0.02)',
+                    borderRadius: 10,
+                    border: '1px dashed rgba(255,255,255,0.15)'
+                  }}>
+                    <p style={{ margin: '0 0 10px', fontSize: 12, color: '#94a3b8' }}>
+                      Presiona el botón para listar las ventanas y navegadores abiertos en tu computadora.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleLoadSources}
+                      disabled={isLoadingSources}
+                      style={{
+                        padding: '8px 18px',
+                        borderRadius: 8,
+                        background: '#38bdf8',
+                        color: '#0f172a',
+                        border: 'none',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {isLoadingSources ? 'Escaneando...' : '🔍 Cargar Ventanas Abiertas'}
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                    gap: 12,
+                    maxHeight: 280,
+                    overflowY: 'auto',
+                    padding: 4
+                  }}>
+                    {desktopSources.map(src => {
+                      const isConnecting = connectingSourceId === src.id;
+                      const isAssigned = Object.entries(cameraMeta).some(([slotStr, meta]) => meta?.deviceId === src.id);
+                      return (
+                        <div
+                          key={src.id}
+                          style={{
+                            background: '#0f172a',
+                            border: isAssigned ? '1.5px solid #22c55e' : '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: 10,
+                            overflow: 'hidden',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+                            transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{
+                            width: '100%',
+                            aspectRatio: '16/9',
+                            background: '#000',
+                            position: 'relative',
+                            overflow: 'hidden'
+                          }}>
+                            {src.thumbnail ? (
+                              <img
+                                src={src.thumbnail}
+                                alt={src.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                              />
+                            ) : (
+                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+                                <Monitor size={24} />
+                              </div>
+                            )}
+                            {isAssigned && (
+                              <span style={{
+                                position: 'absolute',
+                                top: 6,
+                                right: 6,
+                                background: '#22c55e',
+                                color: '#000',
+                                fontSize: 9,
+                                fontWeight: 800,
+                                padding: '2px 6px',
+                                borderRadius: 4
+                              }}>
+                                ACTIVA
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ padding: '8px 10px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6 }}>
+                            <div style={{
+                              fontSize: 11,
+                              fontWeight: 700,
+                              color: '#f8fafc',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }} title={src.name}>
+                              {src.name}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleConnectSource(src)}
+                              disabled={isConnecting}
+                              style={{
+                                width: '100%',
+                                padding: '6px 10px',
+                                borderRadius: 6,
+                                background: '#ea580c',
+                                color: '#fff',
+                                border: 'none',
+                                fontSize: 11,
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 6
+                              }}
+                            >
+                              {isConnecting ? <Loader2 size={12} className="animate-spin" /> : null}
+                              {isConnecting ? 'Conectando...' : `Asignar a CAM ${targetSlot + 1}`}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

@@ -2509,6 +2509,14 @@ function PodcastStudioApp() {
       img.onload = () => finishConnect();
       img.onerror = (e) => {
         console.warn('[WiFi Stream Image Error]:', e);
+        if (!resolved) {
+          resolved = true;
+          isAlive = false;
+          if (checkInterval) clearInterval(checkInterval);
+          clearTimeout(failTimeout);
+          try { img.src = ''; } catch (err) {}
+          reject(new Error('La cámara rechazó la conexión (Error 404/Sin señal). Consulta la guía Steren o el visor oficial.'));
+        }
       };
 
       checkInterval = setInterval(() => {
@@ -2568,6 +2576,45 @@ function PodcastStudioApp() {
       return stream;
     } catch (err) {
       console.error('Error conectando cámara WiFi:', err);
+      throw err;
+    }
+  };
+
+  const handleScreenConnect = async (sourceId, slot, label) => {
+    if (slotStreams[slot]) {
+      try { slotStreams[slot].getTracks().forEach(t => t.stop()); } catch (e) {}
+    }
+    if (slot === 0 && localStream) {
+      try { localStream.getTracks().forEach(t => t.stop()); } catch (e) {}
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource: 'desktop',
+            chromeMediaSourceId: sourceId,
+            minWidth: 1280,
+            maxWidth: 1920,
+            minHeight: 720,
+            maxHeight: 1080
+          }
+        }
+      });
+      if (stream) {
+        setSlotStreams(prev => ({ ...prev, [slot]: stream }));
+        setCameraMeta(prev => ({
+          ...prev,
+          [slot]: { deviceId: sourceId, label: label || `Ventana PC (CAM ${slot + 1})`, type: 'screen' }
+        }));
+        saveCameraToHistory({ deviceId: sourceId, label: label || `Ventana PC (CAM ${slot + 1})`, type: 'screen' });
+        if (slot === 0) setLocalStream(stream);
+        return stream;
+      }
+      return null;
+    } catch (err) {
+      console.error('Error conectando ventana de escritorio:', err);
       throw err;
     }
   };
@@ -5576,6 +5623,7 @@ function PodcastStudioApp() {
         onSetMaster={(slot) => setActiveCam(slot + 1)}
         onUsbConnect={handleUsbConnect}
         onWifiConnect={handleWifiConnect}
+        onScreenConnect={handleScreenConnect}
         onAssignRemoteStream={handleAssignRemoteStream}
         onDisconnect={handleDisconnectSlot}
         onRenameSlot={handleRenameSlot}
