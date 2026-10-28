@@ -573,17 +573,12 @@ export default function RemoteCam() {
         }
         if (audioSenderRef.current) applyAudioSenderParams(audioSenderRef.current)
 
-        let finalSdp = offer.sdp || ''
-        if (finalSdp && !finalSdp.includes('b=AS:')) {
-          finalSdp = finalSdp.replace(/(m=video[^\r\n]*\r\n)/, '$1b=AS:6000\r\nb=TIAS:6000000\r\n')
-        }
-
         await channel.send({
           type: 'broadcast',
           event: 'signal',
           payload: {
             type: 'offer',
-            sdp: { type: offer.type, sdp: finalSdp || offer.sdp },
+            sdp: { type: offer.type, sdp: offer.sdp },
             sender: 'phone',
             slot,
             guestName: guestName.trim() || undefined,
@@ -706,8 +701,8 @@ export default function RemoteCam() {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: targetFacing },
-            width: { ideal: 1920, min: 1280 },
-            height: { ideal: 1080, min: 720 },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
             frameRate: { ideal: 30, max: 30 },
           },
           audio: audioConstraints,
@@ -779,7 +774,7 @@ export default function RemoteCam() {
       let newStream = null
       try {
         newStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: nextFacing }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, max: 30 } },
+          video: { facingMode: { ideal: nextFacing }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } },
           audio: false,
         })
       } catch {

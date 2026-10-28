@@ -110,43 +110,9 @@ const VideoTile = React.forwardRef(({
       };
       attemptPlay();
 
-      // Detección y corrección continua cuadro a cuadro (Live Edge Synchronization < 50ms)
-      let animId = null;
-      let active = true;
-
-      const checkDrift = () => {
-        if (!active || !v) return;
-        try {
-          if (v.buffered && v.buffered.length > 0) {
-            const end = v.buffered.end(v.buffered.length - 1);
-            if (end - v.currentTime > 0.05) {
-              v.currentTime = end;
-            }
-          }
-        } catch (_) {}
-      };
-
-      if ('requestVideoFrameCallback' in v) {
-        const onRvfc = () => {
-          if (!active) return;
-          checkDrift();
-          try { v.requestVideoFrameCallback(onRvfc); } catch (_) {}
-        };
-        try { v.requestVideoFrameCallback(onRvfc); } catch (_) {}
-      }
-
-      const rafLoop = () => {
-        if (!active) return;
-        checkDrift();
-        animId = requestAnimationFrame(rafLoop);
-      };
-      animId = requestAnimationFrame(rafLoop);
-
       v.addEventListener('loadedmetadata', attemptPlay);
       v.addEventListener('canplay', attemptPlay);
       return () => {
-        active = false;
-        if (animId) cancelAnimationFrame(animId);
         v.removeEventListener('loadedmetadata', attemptPlay);
         v.removeEventListener('canplay', attemptPlay);
       };
@@ -1750,7 +1716,7 @@ function PodcastStudioApp() {
     if (window.api) {
       window.api.onMobileWsConnected((id) => setMobileStatus(`Celular conectado (${id}).`));
       
-      window.api.onRemoteOffer(async ({ id, offer }) => {
+      window.api.onRemoteOffer(async ({ id, offer, slot, name, role }) => {
         console.log(`[WebRTC] Oferta recibida de celular: ${id}`);
         
         // Cerrar conexión anterior si existía para este ID
@@ -1766,11 +1732,65 @@ function PodcastStudioApp() {
         });
         peerConnections.current[id] = pc;
 
-        // Declarar transceptores en modo recepción exclusivamente (evita que la PC intente enviar video al celular)
-        try {
-          pc.addTransceiver('video', { direction: 'recvonly' });
-          pc.addTransceiver('audio', { direction: 'recvonly' });
-        } catch (e) {}
+        const trackMap = new Map();
+        const updateStream = () => {
+          const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended');
+          if (liveTracks.length === 0) return;
+
+          liveTracks.forEach(t => {
+            try {
+              if (t.kind === 'video') t.contentHint = 'motion';
+              if (t.kind === 'audio') {
+                t.contentHint = 'speech';
+                t.enabled = true;
+              }
+            } catch {}
+          });
+
+          const stream = new MediaStream(liveTracks);
+          stream.mobileId = id;
+          console.log(`[WebRTC] Video en vivo recibido y enlazado de celular ${id} (tracks: ${liveTracks.length})`);
+
+          setRemoteCams(prev => {
+            const filtered = prev.filter(s => s.id !== id);
+            return [...filtered, { id, stream, name: name || `Celular ${id.slice(-4)}` }];
+          });
+
+          let targetSlot = null;
+          if (slot != null) {
+            const parsed = parseInt(slot, 10) - 1;
+            if (!isNaN(parsed) && parsed >= 0 && parsed <= 3) {
+              targetSlot = parsed;
+            }
+          }
+          if (targetSlot === null) {
+            for (let s = 1; s < 4; s++) {
+              if (slotStreamsRef.current[s] && slotStreamsRef.current[s].mobileId === id) {
+                targetSlot = s;
+                break;
+              }
+            }
+          }
+          if (targetSlot === null) {
+            for (let s = 1; s < 4; s++) {
+              if (!slotStreamsRef.current[s]) {
+                targetSlot = s;
+                break;
+              }
+            }
+          }
+          if (targetSlot === null) targetSlot = 1;
+
+          setSlotStreams(prevStreams => ({ ...prevStreams, [targetSlot]: stream }));
+          setCameraMeta(prevMeta => ({
+            ...prevMeta,
+            [targetSlot]: {
+              deviceId: id,
+              label: name ? (role === 'student' ? `Alumno: ${name}` : name) : `Celular Wi-Fi (CAM ${targetSlot + 1})`,
+              type: 'mobile'
+            }
+          }));
+        };
 
         pc.ontrack = (event) => {
           if (event.receiver) {
@@ -1779,62 +1799,21 @@ function PodcastStudioApp() {
               if ('jitterBufferTarget' in event.receiver) event.receiver.jitterBufferTarget = 0;
             } catch (e) {}
           }
+          if (event.track) {
+            trackMap.set(event.track.id, event.track);
+            event.track.onunmute = () => updateStream();
+            event.track.onended = () => {
+              trackMap.delete(event.track.id);
+              updateStream();
+            };
+          }
           if (event.streams && event.streams[0]) {
-            const stream = event.streams[0];
-            console.log(`[WebRTC] Video en vivo recibido de celular ${id}`);
-
-            setRemoteCams(prev => {
-              const filtered = prev.filter(s => s.id !== id);
-              return [...filtered, { id, stream }];
-            });
-
-            // Asignar automáticamente al primer slot verdaderamente libre sin sobreescribir cámaras existentes
-            setSlotStreams(prevStreams => {
-              let targetSlot = null;
-              // Si este móvil ya estaba asignado a un slot, mantenerlo
-              for (let s = 1; s < 4; s++) {
-                if (prevStreams[s] && prevStreams[s].mobileId === id) {
-                  targetSlot = s;
-                  break;
-                }
-              }
-              // Si no, buscar el primer slot libre
-              if (targetSlot === null) {
-                for (let s = 1; s < 4; s++) {
-                  if (!prevStreams[s]) {
-                    targetSlot = s;
-                    break;
-                  }
-                }
-              }
-              if (targetSlot === null) targetSlot = 1;
-              stream.mobileId = id;
-              return { ...prevStreams, [targetSlot]: stream };
-            });
-
-            setCameraMeta(prevMeta => {
-              let targetSlot = null;
-              for (let s = 1; s < 4; s++) {
-                if (prevMeta[s] && prevMeta[s].deviceId === id) {
-                  targetSlot = s;
-                  break;
-                }
-              }
-              if (targetSlot === null) {
-                for (let s = 1; s < 4; s++) {
-                  if (!prevMeta[s]) {
-                    targetSlot = s;
-                    break;
-                  }
-                }
-              }
-              if (targetSlot === null) targetSlot = 1;
-              return {
-                ...prevMeta,
-                [targetSlot]: { deviceId: id, label: `Celular (${id.slice(-4)})`, type: 'mobile' }
-              };
+            event.streams[0].getTracks().forEach(t => {
+              trackMap.set(t.id, t);
+              t.onunmute = () => updateStream();
             });
           }
+          updateStream();
         };
 
         pc.onicecandidate = (e) => {

@@ -104,22 +104,8 @@ export class P2PStreamTransport extends BaseStreamTransport {
           this.activeTracks.set(slotIndex, trackMap)
 
           const dispatchStreamUpdate = () => {
-            const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended')
-            if (liveTracks.length === 0) return
-            let stream = this.compoundStreams.get(slotIndex)
-            if (!stream) {
-              stream = new MediaStream(liveTracks)
-              this.compoundStreams.set(slotIndex, stream)
-            } else {
-              const currentIds = new Set(stream.getTracks().map(t => t.id))
-              const desiredIds = new Set(liveTracks.map(t => t.id))
-              stream.getTracks().forEach((t) => {
-                if (!desiredIds.has(t.id)) { try { stream.removeTrack(t) } catch {} }
-              })
-              liveTracks.forEach((t) => {
-                if (!currentIds.has(t.id)) { try { stream.addTrack(t) } catch {} }
-              })
-            }
+            const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended');
+            if (liveTracks.length === 0) return;
             liveTracks.forEach((t) => {
               try {
                 if (t.kind === 'video') t.contentHint = 'motion';
@@ -128,9 +114,11 @@ export class P2PStreamTransport extends BaseStreamTransport {
                   t.enabled = true;
                 }
               } catch {}
-            })
-            this.emit('statusChanged', slotIndex, 'connected')
-            this.emit('streamConnected', slotIndex, stream, callerLabel)
+            });
+            const stream = new MediaStream(liveTracks);
+            this.compoundStreams.set(slotIndex, stream);
+            this.emit('statusChanged', slotIndex, 'connected');
+            this.emit('streamConnected', slotIndex, stream, callerLabel);
           }
 
           newPc.ontrack = (trackEvent) => {

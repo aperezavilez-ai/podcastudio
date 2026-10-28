@@ -328,7 +328,13 @@ function startMediaServer() {
         // 4. WebRTC para cámaras remotas móviles
         if (!mainWindow || mainWindow.isDestroyed()) return;
         if (data.type === 'offer') {
-          mainWindow.webContents.send('remote-offer', { id: ws.clientId, offer: data.offer });
+          mainWindow.webContents.send('remote-offer', {
+            id: ws.clientId,
+            offer: data.offer,
+            slot: data.slot,
+            name: data.name,
+            role: data.role
+          });
         } else if (data.type === 'candidate') {
           mainWindow.webContents.send('remote-candidate', { id: ws.clientId, candidate: data.candidate });
         }
@@ -455,18 +461,18 @@ function startMediaServer() {
 
           function connectWebSocket() {
             return new Promise((resolve) => {
-              // Intento 1: WSS en puerto 3000
+              const isHttps = window.location.protocol === 'https:';
               const wssUrl = 'wss://' + LOCAL_IP + ':3000';
               const wsUrl = 'ws://' + LOCAL_IP + ':3001';
+              const primaryUrl = isHttps ? wssUrl : wsUrl;
 
-              let socket = new WebSocket(wssUrl);
+              let socket = new WebSocket(primaryUrl);
               let connected = false;
 
               const timer = setTimeout(() => {
                 if (!connected) {
                   try { socket.close(); } catch (e) {}
-                  // Fallback a WS estándar en puerto 3001 si WSS autofirmado es rechazado
-                  socket = new WebSocket(wsUrl);
+                  socket = new WebSocket(isHttps ? wsUrl : wssUrl);
                   bindEvents(socket, resolve);
                 }
               }, 1200);

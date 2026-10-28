@@ -215,18 +215,6 @@ function updateImages() {
 
 function drawCameraCover(video, x, y, w, h, camId = null) {
   if (video && video.readyState >= 2) {
-    // Sincronización continua de cuadro a borde en vivo (Live Edge Catch-up)
-    // Elimina de raíz cualquier descarte, buffering o retraso acumulativo de 1 a 2 segundos
-    if (video.buffered && video.buffered.length > 0) {
-      try {
-        const liveEdge = video.buffered.end(video.buffered.length - 1);
-        const drift = liveEdge - video.currentTime;
-        if (drift > 0.05) {
-          video.currentTime = liveEdge;
-        }
-      } catch {}
-    }
-
     const vw = video.videoWidth || 1280;
     const vh = video.videoHeight || 720;
     const videoRatio = vw / vh;
@@ -1190,15 +1178,21 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
     const isCam1Allowed = allowedCams.has(1);
     const isMasterMuted = Boolean(camMutedMap[1]) || !isCam1Allowed;
     if (masterAudioStream && masterAudioStream.getAudioTracks().length > 0) {
-      const masterTrack = masterAudioStream.getAudioTracks()[0];
-      masterTrack.enabled = !isMasterMuted;
       const masterKey = 'cam_1';
       if (!isMasterMuted) {
         if (!connectedAudioSources.has(masterKey) || connectedAudioSources.get(masterKey)?.stream !== masterAudioStream) {
           connectAudioSourceWithFx(masterKey, masterAudioStream, true, 'Master Mic (CAM 1)');
+        } else {
+          const entry = connectedAudioSources.get(masterKey);
+          if (entry?.strip?.muteGain) {
+            entry.strip.muteGain.gain.setValueAtTime(1.0, audioContext.currentTime);
+          }
         }
       } else {
-        disconnectAudioSource(masterKey);
+        const entry = connectedAudioSources.get(masterKey);
+        if (entry?.strip?.muteGain) {
+          entry.strip.muteGain.gain.setValueAtTime(0, audioContext.currentTime);
+        }
       }
     }
 
@@ -1211,16 +1205,21 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
         const isCamAllowed = allowedCams.has(camId);
         const isCamMuted = Boolean(camMutedMap[camId]) || !isCamAllowed;
         if (stream && stream.getAudioTracks().length > 0) {
-          const track = stream.getAudioTracks()[0];
-          track.enabled = !isCamMuted;
-
           const key = `cam_${camId}`;
           if (!isCamMuted) {
             if (!connectedAudioSources.has(key) || connectedAudioSources.get(key)?.stream !== stream) {
               connectAudioSourceWithFx(key, stream, false, `Cámara ${camId}`);
+            } else {
+              const entry = connectedAudioSources.get(key);
+              if (entry?.strip?.muteGain) {
+                entry.strip.muteGain.gain.setValueAtTime(1.0, audioContext.currentTime);
+              }
             }
           } else {
-            disconnectAudioSource(key);
+            const entry = connectedAudioSources.get(key);
+            if (entry?.strip?.muteGain) {
+              entry.strip.muteGain.gain.setValueAtTime(0, audioContext.currentTime);
+            }
           }
         }
       });
@@ -1233,15 +1232,21 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
         const isRcAllowed = allowedCams.has(rcCamId);
         const isMuted = Boolean(camMutedMap[rcCamId]) || !isRcAllowed;
         if (rc.stream && rc.stream.getAudioTracks().length > 0) {
-          const track = rc.stream.getAudioTracks()[0];
-          track.enabled = !isMuted;
           const key = `remote_${rc.id || rcCamId}`;
           if (!isMuted) {
             if (!connectedAudioSources.has(key) || connectedAudioSources.get(key)?.stream !== rc.stream) {
               connectAudioSourceWithFx(key, rc.stream, false, `Remoto (${rc.name || rcCamId})`);
+            } else {
+              const entry = connectedAudioSources.get(key);
+              if (entry?.strip?.muteGain) {
+                entry.strip.muteGain.gain.setValueAtTime(1.0, audioContext.currentTime);
+              }
             }
           } else {
-            disconnectAudioSource(key);
+            const entry = connectedAudioSources.get(key);
+            if (entry?.strip?.muteGain) {
+              entry.strip.muteGain.gain.setValueAtTime(0, audioContext.currentTime);
+            }
           }
         }
       });
