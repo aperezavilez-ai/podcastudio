@@ -100,8 +100,12 @@ export default function CameraCalibratorModal({
   // Hardware UVC states
   const [exposureMode, setExposureMode] = useState('continuous')
   const [whiteBalanceMode, setWhiteBalanceMode] = useState('continuous')
-  const [focusMode, setFocusMode] = useState(currentSlotCrop.focusMode || 'continuous')
   const [uvcMsg, setUvcMsg] = useState('')
+
+  // Control táctil y de ratón directo sobre el monitor preview
+  const [isDraggingPan, setIsDraggingPan] = useState(false)
+  const dragStartRef = useRef({ x: 0, y: 0, initFocusX: 0.5, initFocusY: 0.42, moved: false })
+  const previewFrameRef = useRef(null)
 
   // Cargar valores del slot cuando cambia de pestaña dentro del modal
   useEffect(() => {
@@ -348,6 +352,119 @@ export default function CameraCalibratorModal({
     }
   }
 
+  // Interacción directa con el mouse en el monitor Preview (Arrastrar para encuadrar)
+  const handleMouseDown = (e) => {
+    if (e.button !== 0) return // Solo botón izquierdo
+    e.preventDefault()
+    setIsDraggingPan(true)
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      initFocusX: focusX,
+      initFocusY: focusY,
+      moved: false,
+    }
+  }
+
+  const handleTouchStart = (e) => {
+    if (e.touches.length !== 1) return
+    const touch = e.touches[0]
+    setIsDraggingPan(true)
+    dragStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      initFocusX: focusX,
+      initFocusY: focusY,
+      moved: false,
+    }
+  }
+
+  useEffect(() => {
+    if (!isDraggingPan) return
+
+    const handleWindowMouseMove = (e) => {
+      const frame = previewFrameRef.current
+      if (!frame) return
+      const rect = frame.getBoundingClientRect()
+      if (rect.width <= 0 || rect.height <= 0) return
+
+      const dx = e.clientX - dragStartRef.current.x
+      const dy = e.clientY - dragStartRef.current.y
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+        dragStartRef.current.moved = true
+      }
+
+      // Sensibilidad ajustada al zoom: mayor zoom = movimiento más fino
+      const sensitivity = 1.0 / Math.max(1.0, zoom)
+      const deltaNormX = (dx / rect.width) * sensitivity
+      const deltaNormY = (dy / rect.height) * sensitivity
+
+      // Arrastrar la imagen mueve el punto focal de forma natural
+      const nextX = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusX - deltaNormX).toFixed(3))))
+      const nextY = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusY - deltaNormY).toFixed(3))))
+
+      setFocusX(nextX)
+      setFocusY(nextY)
+      autoSync({ focusX: nextX, focusY: nextY, presetId: 'custom' })
+    }
+
+    const handleWindowMouseUp = () => {
+      setIsDraggingPan(false)
+    }
+
+    const handleWindowTouchMove = (e) => {
+      if (e.touches.length !== 1) return
+      const touch = e.touches[0]
+      const frame = previewFrameRef.current
+      if (!frame) return
+      const rect = frame.getBoundingClientRect()
+      if (rect.width <= 0 || rect.height <= 0) return
+
+      const dx = touch.clientX - dragStartRef.current.x
+      const dy = touch.clientY - dragStartRef.current.y
+      const sensitivity = 1.0 / Math.max(1.0, zoom)
+      const deltaNormX = (dx / rect.width) * sensitivity
+      const deltaNormY = (dy / rect.height) * sensitivity
+
+      const nextX = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusX - deltaNormX).toFixed(3))))
+      const nextY = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusY - deltaNormY).toFixed(3))))
+
+      setFocusX(nextX)
+      setFocusY(nextY)
+      autoSync({ focusX: nextX, focusY: nextY, presetId: 'custom' })
+    }
+
+    const handleWindowTouchEnd = () => {
+      setIsDraggingPan(false)
+    }
+
+    window.addEventListener('mousemove', handleWindowMouseMove)
+    window.addEventListener('mouseup', handleWindowMouseUp)
+    window.addEventListener('touchmove', handleWindowTouchMove, { passive: false })
+    window.addEventListener('touchend', handleWindowTouchEnd)
+    window.addEventListener('touchcancel', handleWindowTouchEnd)
+
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove)
+      window.removeEventListener('mouseup', handleWindowMouseUp)
+      window.removeEventListener('touchmove', handleWindowTouchMove)
+      window.removeEventListener('touchend', handleWindowTouchEnd)
+      window.removeEventListener('touchcancel', handleWindowTouchEnd)
+    }
+  }, [isDraggingPan, zoom, autoSync])
+
+  const handleWheel = (e) => {
+    e.preventDefault()
+    const zoomStep = e.deltaY < 0 ? 0.05 : -0.05
+    setZoom((curr) => {
+      const next = Math.max(1.0, Math.min(4.0, parseFloat((curr + zoomStep).toFixed(2))))
+      const pid = next <= 1.02 ? 'wide' : 'custom'
+      setActivePreset(pid)
+      autoSync({ zoom: next, presetId: pid })
+      return next
+    })
+  }
+
   const handleSelectLookPreset = (p) => {
     setLookPreset(p.id)
     setBrightness(p.brightness)
@@ -527,7 +644,19 @@ export default function CameraCalibratorModal({
         <div className={styles.body}>
           {/* MONITOR PREVIEW (PVW) */}
           <div className={styles.monitorCol}>
-            <div className={styles.previewFrame}>
+            <div
+              ref={previewFrameRef}
+              className={styles.previewFrame}
+              onMouseDown={handleMouseDown}
+              onTouchStart={handleTouchStart}
+              onWheel={handleWheel}
+              style={{
+                cursor: isDraggingPan ? 'grabbing' : (zoom > 1.01 ? 'grab' : 'crosshair'),
+                touchAction: 'none',
+                userSelect: 'none',
+              }}
+              title="Haz clic y arrastra con el ratón para encuadrar la imagen · Usa la rueda para hacer zoom"
+            >
               {stream ? (
                 <video
                   ref={setVideoNode}
@@ -543,6 +672,7 @@ export default function CameraCalibratorModal({
                       ? `scale(${zoom.toFixed(3)})`
                       : undefined,
                     transformOrigin: `${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}%`,
+                    pointerEvents: 'none',
                   }}
                 />
               ) : (
@@ -561,6 +691,7 @@ export default function CameraCalibratorModal({
 
               <div className={styles.infoBadge}>
                 {zoom.toFixed(2)}x · Pos ({Math.round(focusX * 100)}%, {Math.round(focusY * 100)}%)
+                <span style={{ opacity: 0.8, marginLeft: 6, fontSize: '0.9em' }}>· 🖱️ Arrastra imagen</span>
               </div>
 
               {/* REGLA DE TERCIOS */}

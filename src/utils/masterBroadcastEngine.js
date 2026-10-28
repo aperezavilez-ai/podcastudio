@@ -276,13 +276,38 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
 
 // RÓTULOS DE NOMBRE INDIVIDUALES POR CÁMARA (RESTREAM / LOWER THIRDS PARA INVITADOS O CLASES)
 function drawCameraNameBadge(x, y, w, h, camId) {
-  if (!camId || !currentState.cameraBadges) return;
-  const badge = currentState.cameraBadges[camId];
-  if (!badge || !badge.enabled || !badge.name || !badge.name.trim()) return;
+  if (!camId) return;
+  const badges = currentState.cameraBadges || {};
+  const badge = badges[camId];
 
-  const name = badge.name.trim();
-  const subtitle = (badge.subtitle || '').trim();
-  const position = badge.position || 'bottom-left';
+  let name = '';
+  let subtitle = '';
+  let position = 'bottom-left';
+
+  // 1. Prioridad: Rótulo explícito configurado en badge
+  if (badge && badge.name && badge.name.trim() && badge.enabled !== false) {
+    name = badge.name.trim();
+    subtitle = (badge.subtitle || '').trim();
+    position = badge.position || 'bottom-left';
+  } else if (!badge || badge.enabled !== false) {
+    // 2. Fallback: Meta de la cámara (si fue renombrada como invitado / conductor)
+    const slotIdx = camId - 1;
+    const meta = currentState.cameraMeta ? (currentState.cameraMeta[slotIdx] || currentState.cameraMeta[camId]) : null;
+    if (meta && meta.guestName && meta.guestName.trim()) {
+      name = meta.guestName.trim();
+      subtitle = (meta.guestRole || '').trim();
+    } else if (meta && meta.label && !meta.label.startsWith('CAM') && !meta.label.startsWith('Cámara') && !meta.label.startsWith('Celular')) {
+      name = meta.label.trim();
+    } else if (camId === 1 && currentState.hostName && currentState.hostName.trim()) {
+      name = currentState.hostName.trim();
+      subtitle = (currentState.hostRole || '').trim();
+    } else if (camId === 2 && currentState.guestName && currentState.guestName.trim() && currentState.guestName !== 'Invitado Especial') {
+      name = currentState.guestName.trim();
+      subtitle = (currentState.guestRole || '').trim();
+    }
+  }
+
+  if (!name) return;
 
   ctx.save();
 

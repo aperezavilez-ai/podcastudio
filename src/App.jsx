@@ -1607,13 +1607,18 @@ function PodcastStudioApp() {
       logoBase64,
       logoConfig,
       cameraBadges,
+      cameraMeta,
+      hostName,
+      hostRole,
+      guestName,
+      guestRole,
       cintillosVisible,
       cintillo,
       topic,
       getCamStream,
       remoteCams,
     });
-  }, [activeCam, pvwCam, pipCam, camSlots, cameraCrops, cameraBadges, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
+  }, [activeCam, pvwCam, pipCam, camSlots, cameraCrops, cameraBadges, cameraMeta, hostName, hostRole, guestName, guestRole, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
     const officialQr = 'https://www.podcastudio.mx/remote-cam?auto=true';
@@ -2585,7 +2590,22 @@ function PodcastStudioApp() {
   };
 
   const handleRenameSlot = (slot, label) => {
+    const camId = slot + 1;
     setCameraMeta(prev => ({ ...prev, [slot]: { ...prev[slot], label } }));
+    setCameraBadges(prev => {
+      const next = {
+        ...prev,
+        [camId]: {
+          ...(prev[camId] || {}),
+          name: label,
+          enabled: Boolean(label && label.trim().length > 0),
+          position: prev[camId]?.position || 'bottom-left'
+        }
+      };
+      try { localStorage.setItem('podcastudio_camera_badges', JSON.stringify(next)); } catch (e) {}
+      updateBroadcastState({ cameraBadges: next });
+      return next;
+    });
   };
 
   const handleDeleteOrDisconnectCam = (camId) => {

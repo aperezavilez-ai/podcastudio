@@ -862,24 +862,26 @@ export default function RemoteCam() {
     if (node && streamRef.current) {
       node.setAttribute('playsinline', 'true')
       node.setAttribute('webkit-playsinline', 'true')
-      node.muted = speakerMuted
+      node.muted = true
+      node.defaultMuted = true
       if (node.srcObject !== streamRef.current) {
         node.srcObject = streamRef.current
       }
       node.play().catch(() => {})
     }
-  }, [speakerMuted])
+  }, [])
 
   useEffect(() => {
     if (active && videoRef.current && streamRef.current) {
       const v = videoRef.current
       v.setAttribute('playsinline', 'true')
       v.setAttribute('webkit-playsinline', 'true')
-      v.muted = speakerMuted
+      v.muted = true
+      v.defaultMuted = true
       if (v.srcObject !== streamRef.current) v.srcObject = streamRef.current
       v.play().catch(() => {})
     }
-  }, [active, speakerMuted])
+  }, [active])
 
   useEffect(() => {
     const handleVisibilityChange = async () => {
@@ -935,9 +937,14 @@ export default function RemoteCam() {
     }
   }, [active, facingMode, slot, requestWakeLock])
 
+  const stopAllRef = useRef(stopAll)
+  stopAllRef.current = stopAll
+
   useEffect(() => {
-    return () => { stopAll() }
-  }, [stopAll])
+    return () => {
+      stopAllRef.current?.()
+    }
+  }, [])
 
   return (
     <div className={styles.container}>
@@ -1037,7 +1044,7 @@ export default function RemoteCam() {
             autoPlay 
             playsInline 
             webkit-playsinline="true" 
-            muted={speakerMuted} 
+            muted
             onLoadedMetadata={(e) => e.target.play().catch(() => {})} 
           />
           <div className={styles.topOverlay}>
