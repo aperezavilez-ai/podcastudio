@@ -233,7 +233,7 @@ export default function ConnectedCamerasModal({
         {/* FOOTER */}
         <div className="px-5 py-3 border-t border-[#252837] bg-[#0c0d12] flex justify-between items-center">
           <span className="text-[11px] text-gray-500">
-            PodcaStudio recuerda automáticamente tus cámaras Wi-Fi, Steren, GoPro y USB.
+            PodcaStudio recuerda automáticamente tus cámaras Wi-Fi, IP (TP-Link Tapo, ONVIF), GoPro y USB.
           </span>
           <button
             type="button"

@@ -145,18 +145,21 @@ export default function CameraConnectModal({
   const [wifiConnectSuccess, setWifiConnectSuccess] = useState(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
   const [useCloudDomain, setUseCloudDomain] = useState(true);
-  const [copiedSlotNumber, setCopiedSlotNumber] = useState(null);
-  const [autoAssignMode, setAutoAssignMode] = useState(true);
+  const [autoAssignMode, setAutoAssignMode] = useState(false);
+  const [useLocalWifiForRemote, setUseLocalWifiForRemote] = useState(false);
+  const [localWifiGuestUrl, setLocalWifiGuestUrl] = useState('');
   const [ipadRemoteQrUrl, setIpadRemoteQrUrl] = useState('');
   const [useIpadLocalNetwork, setUseIpadLocalNetwork] = useState(false);
   const ipadRemoteLink = 'https://www.podcastudio.mx/control?room=master_studio';
   const [copiedIpadRemote, setCopiedIpadRemote] = useState(false);
 
-  // CÁMARAS IP / WI-FI REALES DETECTADAS EN LA RED LOCAL (ONVIF, RTSP, STEREN)
+  // CÁMARAS IP / WI-FI REALES DETECTADAS EN LA RED LOCAL (TP-LINK TAPO, ONVIF, RTSP)
   const [realNetworkCameras, setRealNetworkCameras] = useState([]);
   const [isScanningRealCameras, setIsScanningRealCameras] = useState(false);
   const [hasScannedRealCameras, setHasScannedRealCameras] = useState(false);
+  const [camUsers, setCamUsers] = useState({});
   const [camPasswords, setCamPasswords] = useState({});
+  const [camProfiles, setCamProfiles] = useState({});
   const [showCamPassword, setShowCamPassword] = useState({});
 
   // Formulario Universal de Registro de Cámaras
@@ -360,11 +363,29 @@ export default function CameraConnectModal({
   const isMaster = targetSlot === masterCameraSlot;
   const currentMeta = cameraMeta[targetSlot];
 
+  // Cargar URL local de cámara para Wi-Fi directo sin internet
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.api?.getGuestRoomUrl) {
+      window.api.getGuestRoomUrl().then(url => {
+        if (url) setLocalWifiGuestUrl(url);
+      }).catch(() => {});
+    }
+  }, []);
+
   // Generador de URL Remota para cualquier slot (Wi-Fi Local Directo o Enlace Cloud Seguro)
   const generateRemoteUrl = useCallback((slotIdx) => {
-    if (!useCloudDomain && localQrUrl && !localQrUrl.includes('remote-cam')) {
-      return localQrUrl;
+    const camSlotNumber = slotIdx + 1;
+    if (!useCloudDomain && localWifiGuestUrl) {
+      try {
+        const parsed = new URL(localWifiGuestUrl);
+        parsed.searchParams.set('slot', String(camSlotNumber));
+        if (guestName.trim()) parsed.searchParams.set('name', guestName.trim());
+        return parsed.toString();
+      } catch {
+        return `${localWifiGuestUrl.split('?')[0]}?slot=${camSlotNumber}${guestName.trim() ? `&name=${encodeURIComponent(guestName.trim())}` : ''}`;
+      }
     }
+
     const base = 'https://www.podcastudio.mx/remote-cam';
     if (autoAssignMode) {
       const params = new URLSearchParams({ auto: 'true' });
@@ -373,13 +394,13 @@ export default function CameraConnectModal({
       return `${base}?${params.toString()}`;
     }
     const params = new URLSearchParams({
-      slot: String(slotIdx + 1),
-      room: `studio_cam_${slotIdx + 1}`,
+      slot: String(camSlotNumber),
+      room: `studio_cam_${camSlotNumber}`,
     });
     if (guestName.trim()) params.set('name', guestName.trim());
     if (guestRole && guestRole !== 'guest') params.set('role', guestRole);
     return `${base}?${params.toString()}`;
-  }, [guestName, guestRole, useCloudDomain, localQrUrl, autoAssignMode]);
+  }, [guestName, guestRole, autoAssignMode, useCloudDomain, localWifiGuestUrl]);
 
   const remoteUrl = useMemo(() => generateRemoteUrl(targetSlot), [generateRemoteUrl, targetSlot]);
 
@@ -618,7 +639,8 @@ export default function CameraConnectModal({
           labelLower.includes('camo') ||
           labelLower.includes('epoccam') ||
           labelLower.includes('obs virtual') ||
-          labelLower.includes('steren') ||
+          labelLower.includes('tapo') ||
+          labelLower.includes('tp-link') ||
           labelLower.includes('wifi') ||
           labelLower.includes('wireless') ||
           labelLower.includes('ip camera') ||
@@ -651,7 +673,7 @@ export default function CameraConnectModal({
     }
   };
 
-  // ESCANEO REAL DE CÁMARAS IP / WI-FI EN LA RED LOCAL (ONVIF, RTSP, STEREN)
+  // ESCANEO REAL DE CÁMARAS IP / WI-FI EN LA RED LOCAL (TP-LINK TAPO, ONVIF, RTSP)
   const handleDiscoverRealCameras = async () => {
     setIsScanningRealCameras(true);
     setHasScannedRealCameras(true);
@@ -999,17 +1021,6 @@ Instrucciones:
           >
             <QrCode size={14} /> Móvil / Remota QR
           </button>
-          <button
-            type="button"
-            className={`${styles.tabBtn} ${activeTab === 'screen' ? styles.tabActive : ''}`}
-            onClick={() => {
-              setActiveTab('screen');
-              handleLoadSources();
-            }}
-            style={{ color: activeTab === 'screen' ? '#ea580c' : undefined }}
-          >
-            <Monitor size={14} /> Steren / Ventana PC
-          </button>
         </div>
 
         {/* BODY */}
@@ -1104,7 +1115,7 @@ Instrucciones:
                     <span>Búsqueda de Cámaras IP / Wi-Fi en Red Local</span>
                   </div>
                   <span className={styles.scannerSub}>
-                    Detecta cámaras activas en tu red local vía ONVIF WS-Discovery y sondeo de puertos RTSP / Steren
+                    Detecta cámaras activas en tu red local vía ONVIF WS-Discovery y sondeo RTSP (TP-Link Tapo, ONVIF, Hikvision, Dahua)
                   </span>
                 </div>
                 <button
@@ -1169,14 +1180,15 @@ Instrucciones:
                       No se detectaron cámaras en tu red local
                     </div>
                     <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4, maxWidth: 420, margin: '0 auto' }}>
-                      Asegúrate de que la cámara (Steren, ONVIF, Hikvision o Wi-Fi) esté encendida y conectada al mismo módem o router que esta computadora. O ingresa su enlace directo RTSP abajo.
+                      Asegúrate de que la cámara (TP-Link Tapo C500, ONVIF, Hikvision o Wi-Fi) esté encendida y conectada a la misma red o módem que esta computadora. O ingresa su enlace directo RTSP abajo.
                     </div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {realNetworkCameras.map((cam) => {
-                      const isAssigned = Object.entries(cameraMeta).some(([slotStr, meta]) => meta?.url === cam.url);
+                      const currentUser = camUsers[cam.ip] || 'admin';
                       const currentPass = camPasswords[cam.ip] || '';
+                      const currentProfile = camProfiles[cam.ip] || '/stream1';
                       return (
                         <div
                           key={cam.id || cam.url}
@@ -1218,40 +1230,91 @@ Instrucciones:
                                 </span>
                               </div>
                               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, fontFamily: 'monospace' }}>
-                                {cam.url}
+                                IP: {cam.ip} : {cam.port || 554}
                               </div>
                             </div>
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            {/* Selector de perfil de stream */}
+                            <select
+                              value={currentProfile}
+                              onChange={(e) => {
+                                const p = e.target.value;
+                                setCamProfiles(prev => ({ ...prev, [cam.ip]: p }));
+                                const creds = currentPass ? `${currentUser}:${encodeURIComponent(currentPass)}@` : '';
+                                setWifiUrl(`rtsp://${creds}${cam.ip}:554${p}`);
+                              }}
+                              style={{
+                                background: '#0f172a',
+                                border: '1px solid rgba(255, 255, 255, 0.25)',
+                                borderRadius: 6,
+                                padding: '6px 8px',
+                                fontSize: 11,
+                                color: '#f8fafc',
+                                cursor: 'pointer'
+                              }}
+                              title="Perfil de video RTSP"
+                            >
+                              <option value="/stream1">Tapo HD 1080p (/stream1)</option>
+                              <option value="/stream2">Tapo SD Fluido (/stream2)</option>
+                              <option value="/live/ch0">ONVIF Estándar (/live/ch0)</option>
+                              <option value="/Streaming/Channels/101">Hikvision/Dahua (/101)</option>
+                              <option value="/live">Genérico (/live)</option>
+                            </select>
+
+                            {/* Usuario */}
+                            <input
+                              type="text"
+                              placeholder="Usuario"
+                              value={currentUser}
+                              onChange={(e) => {
+                                const u = e.target.value;
+                                setCamUsers(prev => ({ ...prev, [cam.ip]: u }));
+                                const creds = currentPass ? `${u}:${encodeURIComponent(currentPass)}@` : '';
+                                setWifiUrl(`rtsp://${creds}${cam.ip}:554${currentProfile}`);
+                              }}
+                              style={{
+                                background: '#0f172a',
+                                border: '1px solid rgba(255, 255, 255, 0.25)',
+                                borderRadius: 6,
+                                padding: '6px 8px',
+                                fontSize: 11,
+                                color: '#fff',
+                                width: 75
+                              }}
+                              title="Usuario configurado en la cámara (por defecto 'admin')"
+                            />
+
+                            {/* Contraseña con toggle de ojo */}
                             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                               <input
                                 type={showCamPassword[cam.ip] ? 'text' : 'password'}
-                                placeholder="Contraseña Steren"
+                                placeholder="Contraseña cámara"
                                 value={currentPass}
                                 onChange={(e) => {
                                   const val = e.target.value;
                                   setCamPasswords(prev => ({ ...prev, [cam.ip]: val }));
-                                  const creds = val ? `admin:${encodeURIComponent(val)}@` : '';
-                                  setWifiUrl(`rtsp://${creds}${cam.ip}:554/live/ch0`);
+                                  const creds = val ? `${currentUser}:${encodeURIComponent(val)}@` : '';
+                                  setWifiUrl(`rtsp://${creds}${cam.ip}:554${currentProfile}`);
                                 }}
                                 style={{
                                   background: '#0f172a',
                                   border: '1px solid rgba(255, 255, 255, 0.25)',
                                   borderRadius: 6,
-                                  padding: '6px 32px 6px 10px',
+                                  padding: '6px 28px 6px 8px',
                                   fontSize: 11,
                                   color: '#fff',
-                                  width: 145
+                                  width: 120
                                 }}
-                                title="Contraseña configurada en la app Steren Home (en Ajustes de la cámara > ONVIF)"
+                                title="Contraseña creada en la app Tapo (Ajustes avanzados > Cuenta de la cámara) o cuenta ONVIF"
                               />
                               <button
                                 type="button"
                                 onClick={() => setShowCamPassword(prev => ({ ...prev, [cam.ip]: !prev[cam.ip] }))}
                                 style={{
                                   position: 'absolute',
-                                  right: 6,
+                                  right: 4,
                                   background: 'none',
                                   border: 'none',
                                   color: showCamPassword[cam.ip] ? '#ea580c' : '#94a3b8',
@@ -1263,16 +1326,18 @@ Instrucciones:
                                 }}
                                 title={showCamPassword[cam.ip] ? 'Ocultar contraseña' : 'Ver contraseña'}
                               >
-                                {showCamPassword[cam.ip] ? <EyeOff size={14} /> : <Eye size={14} />}
+                                {showCamPassword[cam.ip] ? <EyeOff size={13} /> : <Eye size={13} />}
                               </button>
                             </div>
 
                             <button
                               type="button"
                               onClick={async () => {
+                                const u = (camUsers[cam.ip] || 'admin').trim();
                                 const pass = (camPasswords[cam.ip] || '').trim();
-                                const creds = pass ? `admin:${encodeURIComponent(pass)}@` : '';
-                                const targetUrl = `rtsp://${creds}${cam.ip}:554/live/ch0`;
+                                const profile = camProfiles[cam.ip] || '/stream1';
+                                const creds = pass ? `${u}:${encodeURIComponent(pass)}@` : '';
+                                const targetUrl = `rtsp://${creds}${cam.ip}:554${profile}`;
                                 setWifiUrl(targetUrl);
                                 await handleConnectWifi(targetUrl, targetSlot, `${cam.name} (CAM ${targetSlot + 1})`);
                               }}
@@ -1299,57 +1364,20 @@ Instrucciones:
                     })}
 
                     <div style={{
-                      padding: '10px 14px',
+                      padding: '11px 14px',
                       background: 'rgba(56, 189, 248, 0.08)',
                       border: '1px solid rgba(56, 189, 248, 0.25)',
                       borderRadius: 8,
                       fontSize: 11,
                       color: '#cbd5e1',
-                      lineHeight: 1.45
+                      lineHeight: 1.5
                     }}>
                       <div style={{ color: '#38bdf8', fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Info size={14} /> <span>Paso obligatorio para cámaras Steren CCTV-625:</span>
+                        <Info size={14} /> <span>Guía rápida para Cámaras Wi-Fi (TP-Link Tapo C500, C200, ONVIF y marcas universales):</span>
                       </div>
-                      1. Asegúrate de tener activado el interruptor <strong>ONVIF (dp_onvif_switch)</strong> en la app Steren Home.<br />
-                      2. <strong>IMPORTANTE:</strong> Desconecta la cámara de la corriente eléctrica por 5 segundos y vuelve a conectarla (reiniciarla) para que su servicio RTSP interno despierte.<br />
-                      3. Escribe la contraseña en el recuadro (usa el ícono de ojo para verificarla) y presiona <strong>Asignar a CAM {targetSlot + 1}</strong>.
-                    </div>
-
-                    <div style={{
-                      marginTop: 6,
-                      padding: '10px 14px',
-                      background: 'rgba(234, 88, 12, 0.08)',
-                      border: '1px solid rgba(234, 88, 12, 0.3)',
-                      borderRadius: 8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: 10
-                    }}>
-                      <div style={{ fontSize: 11, color: '#f1f5f9', flex: 1, minWidth: 200 }}>
-                        <strong style={{ color: '#ea580c' }}>Portal Oficial Steren IPC (Ver hasta 16 cámaras en PC):</strong><br />
-                        <span style={{ color: '#94a3b8' }}>Abre la página oficial en Chrome y escanea el QR con Steren Home para ver todas tus cámaras al instante.</span>
-                      </div>
-                      <a
-                        href="https://protect-us.ismartlife.me"
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          padding: '7px 14px',
-                          borderRadius: 6,
-                          background: '#ea580c',
-                          color: '#fff',
-                          textDecoration: 'none',
-                          fontSize: 11,
-                          fontWeight: 800,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6
-                        }}
-                      >
-                        <ExternalLink size={13} /> Abrir Portal Steren PC
-                      </a>
+                      1. <strong>Configura la cuenta local:</strong> En la app Tapo en tu celular, ve a <em>Ajustes de la cámara &gt; Ajustes avanzados &gt; Cuenta de la cámara</em> y crea un usuario y contraseña locales.<br />
+                      2. <strong>Escribe las credenciales:</strong> Escribe tu usuario y contraseña en el recuadro de la cámara detectada arriba (usa el ícono de ojo para verificarla).<br />
+                      3. <strong>Calidad de transmisión:</strong> Selecciona el perfil <strong>/stream1</strong> (Full HD 1080p) o <strong>/stream2</strong> (SD fluido) y pulsa <strong>Asignar a CAM {targetSlot + 1}</strong>.
                     </div>
                   </div>
                 )}
@@ -1363,13 +1391,42 @@ Instrucciones:
                 border: '1px solid rgba(255, 255, 255, 0.08)',
                 marginBottom: 12
               }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#cbd5e1', marginBottom: 6 }}>
-                  O ingresar enlace directo de cámara (RTSP o HTTP):
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6, flexWrap: 'wrap', gap: 6 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#cbd5e1' }}>
+                    O ingresar enlace directo de cámara (RTSP o HTTP):
+                  </label>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      onClick={() => setWifiUrl('rtsp://admin:tu_password@192.168.1.50:554/stream1')}
+                      style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#1e293b', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.3)', cursor: 'pointer', fontWeight: 700 }}
+                      title="Plantilla para TP-Link Tapo C500 / C200 (Full HD)"
+                    >
+                      🏷️ TP-Link Tapo (/stream1)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWifiUrl('rtsp://admin:tu_password@192.168.1.50:554/live/ch0')}
+                      style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#1e293b', color: '#cbd5e1', border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer', fontWeight: 700 }}
+                      title="Plantilla para cámaras ONVIF genéricas"
+                    >
+                      🏷️ ONVIF Universal (/live/ch0)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setWifiUrl('rtsp://admin:tu_password@192.168.1.50:554/Streaming/Channels/101')}
+                      style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4, background: '#1e293b', color: '#cbd5e1', border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer', fontWeight: 700 }}
+                      title="Plantilla para cámaras Hikvision / Dahua"
+                    >
+                      🏷️ Hikvision / Dahua (/101)
+                    </button>
+                  </div>
+                </div>
+
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     type="url"
-                    placeholder="ej. rtsp://admin:TuContraseña@192.168.1.45:554/live/ch0"
+                    placeholder="ej. rtsp://admin:tu_password@192.168.1.50:554/stream1"
                     value={wifiUrl}
                     onChange={(e) => {
                       setWifiUrl(e.target.value);
@@ -1408,7 +1465,7 @@ Instrucciones:
           {/* TAB REMOTE / QR */}
           {activeTab === 'remote' && (
             <div className={styles.remoteBox}>
-              {isConnected && currentMeta?.type === 'remote' ? (
+              {isConnected && (currentMeta?.type === 'remote' || currentMeta?.type === 'mobile') ? (
                 <div className={styles.remoteConnectedBox}>
                   <div className={styles.remoteLiveBadge}>
                     <Radio size={14} />
@@ -1546,24 +1603,6 @@ Instrucciones:
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 12 }}>
                     <button
                       type="button"
-                      onClick={() => setAutoAssignMode(true)}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: 20,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        background: autoAssignMode ? '#ea580c' : 'rgba(255,255,255,0.06)',
-                        color: autoAssignMode ? '#fff' : '#94a3b8',
-                        border: autoAssignMode ? '1px solid #ea580c' : '1px solid rgba(255,255,255,0.1)',
-                        transition: 'all 0.15s ease'
-                      }}
-                      title="Permite que varios celulares escaneen el mismo QR y cada uno se conecte a la siguiente cámara libre"
-                    >
-                      ⚡ Auto-Asignación (Recomendado)
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setAutoAssignMode(false)}
                       style={{
                         padding: '6px 14px',
@@ -1571,14 +1610,32 @@ Instrucciones:
                         fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
-                        background: !autoAssignMode ? '#0284c7' : 'rgba(255,255,255,0.06)',
+                        background: !autoAssignMode ? '#ea580c' : 'rgba(255,255,255,0.06)',
                         color: !autoAssignMode ? '#fff' : '#94a3b8',
-                        border: !autoAssignMode ? '1px solid #0284c7' : '1px solid rgba(255,255,255,0.1)',
+                        border: !autoAssignMode ? '1px solid #ea580c' : '1px solid rgba(255,255,255,0.1)',
                         transition: 'all 0.15s ease'
                       }}
-                      title={`Fijar este enlace únicamente para entrar en CAM ${targetSlot + 1}`}
+                      title={`Fijar este enlace únicamente para entrar directo en CAM ${targetSlot + 1}`}
                     >
-                      🎯 Fijo a CAM {targetSlot + 1}
+                      🎯 Directo a CAM {targetSlot + 1}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAutoAssignMode(true)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 20,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        background: autoAssignMode ? '#0284c7' : 'rgba(255,255,255,0.06)',
+                        color: autoAssignMode ? '#fff' : '#94a3b8',
+                        border: autoAssignMode ? '1px solid #0284c7' : '1px solid rgba(255,255,255,0.1)',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title="Permite que varios celulares escaneen el mismo QR y cada uno tome automáticamente una ranura libre"
+                    >
+                      ⚡ Auto-Asignación Multicanal
                     </button>
                   </div>
 
@@ -1594,10 +1651,10 @@ Instrucciones:
                   </div>
 
                   <div className={styles.remoteText}>
-                    {autoAssignMode ? (
-                      <span>Escanea con tu celular o tablet. Si conectas varios dispositivos con este mismo código, cada uno tomará <strong>la siguiente ranura libre (CAM 2, 3, 4...)</strong> sin pisarse.</span>
+                    {!autoAssignMode ? (
+                      <span>Escanea con tu teléfono o abre el enlace en Chrome/Safari: tu señal de video HD entrará <strong>directo en CAM {targetSlot + 1}</strong>.</span>
                     ) : (
-                      <span>Escanea con tu smartphone. Se abrirá la cámara de tu teléfono y se conectará exclusivamente a <strong>CAM {targetSlot + 1}</strong>.</span>
+                      <span>Enlace compartido: cualquier celular o tablet que escanee este código tomará <strong>la siguiente ranura libre (CAM 2, 3, 4...)</strong> sin pisarse.</span>
                     )}
                   </div>
 
@@ -1683,230 +1740,6 @@ Instrucciones:
                   </div>
                 </>
               )}
-            </div>
-          )}
-
-          {/* TAB STEREN / VENTANA PC */}
-          {activeTab === 'screen' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {/* Tarjeta explicativa con botón para abrir portal Steren */}
-              <div style={{
-                padding: '14px 16px',
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.15), rgba(15, 23, 42, 0.6))',
-                border: '1.5px solid rgba(234, 88, 12, 0.4)',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.4)'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: '#ea580c', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Monitor size={18} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>
-                        Portal Oficial Steren IPC (CCTV-625 y CCTV-203)
-                      </div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>
-                        Visualiza hasta 16 cámaras Steren en Full HD y vincúlalas directo a CAM {targetSlot + 1}
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (typeof window !== 'undefined' && window.api?.openSterenPortal) {
-                        window.api.openSterenPortal();
-                      } else {
-                        window.open('https://protect-us.ismartlife.me', '_blank');
-                      }
-                    }}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: 8,
-                      background: '#ea580c',
-                      color: '#fff',
-                      border: 'none',
-                      fontSize: 12,
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6
-                    }}
-                  >
-                    <ExternalLink size={14} /> Abrir Portal Steren PC
-                  </button>
-                </div>
-
-                <div style={{ fontSize: 11.5, color: '#cbd5e1', lineHeight: 1.5, background: 'rgba(0,0,0,0.3)', padding: '10px 12px', borderRadius: 8 }}>
-                  <strong>Pasos sencillos:</strong><br />
-                  1. Haz clic en <strong>"Abrir Portal Steren PC"</strong> arriba (se abrirá en tu navegador Chrome).<br />
-                  2. En tu celular, abre la app <strong>Steren Home</strong>, pulsa el botón <strong>+ (Escanear QR)</strong> y apunta a la pantalla.<br />
-                  3. Tus cámaras Steren aparecerán transmitiendo en vivo en tu monitor.<br />
-                  4. Regresa aquí, presiona <strong>"Actualizar Ventanas"</strong> y selecciona la ventana para asignarla a <strong>CAM {targetSlot + 1}</strong>.
-                </div>
-              </div>
-
-              {/* Selector de ventanas de escritorio */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: '#f1f5f9' }}>
-                    Ventanas y Pantallas Disponibles para Asignar a CAM {targetSlot + 1}:
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleLoadSources}
-                    disabled={isLoadingSources}
-                    style={{
-                      padding: '5px 12px',
-                      borderRadius: 6,
-                      background: '#1e293b',
-                      color: '#38bdf8',
-                      border: '1px solid rgba(56, 189, 248, 0.3)',
-                      fontSize: 11,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 5
-                    }}
-                  >
-                    {isLoadingSources ? <Loader2 size={12} className="animate-spin" /> : null}
-                    {isLoadingSources ? 'Escaneando...' : '🔄 Actualizar Ventanas'}
-                  </button>
-                </div>
-
-                {desktopSources.length === 0 ? (
-                  <div style={{
-                    padding: '24px 16px',
-                    textAlign: 'center',
-                    background: 'rgba(255,255,255,0.02)',
-                    borderRadius: 10,
-                    border: '1px dashed rgba(255,255,255,0.15)'
-                  }}>
-                    <p style={{ margin: '0 0 10px', fontSize: 12, color: '#94a3b8' }}>
-                      Presiona el botón para listar las ventanas y navegadores abiertos en tu computadora.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleLoadSources}
-                      disabled={isLoadingSources}
-                      style={{
-                        padding: '8px 18px',
-                        borderRadius: 8,
-                        background: '#38bdf8',
-                        color: '#0f172a',
-                        border: 'none',
-                        fontSize: 12,
-                        fontWeight: 800,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      {isLoadingSources ? 'Escaneando...' : '🔍 Cargar Ventanas Abiertas'}
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-                    gap: 12,
-                    maxHeight: 280,
-                    overflowY: 'auto',
-                    padding: 4
-                  }}>
-                    {desktopSources.map(src => {
-                      const isConnecting = connectingSourceId === src.id;
-                      const isAssigned = Object.entries(cameraMeta).some(([slotStr, meta]) => meta?.deviceId === src.id);
-                      return (
-                        <div
-                          key={src.id}
-                          style={{
-                            background: '#0f172a',
-                            border: isAssigned ? '1.5px solid #22c55e' : '1px solid rgba(255,255,255,0.12)',
-                            borderRadius: 10,
-                            overflow: 'hidden',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-                            transition: 'all 0.15s ease'
-                          }}
-                        >
-                          <div style={{
-                            width: '100%',
-                            aspectRatio: '16/9',
-                            background: '#000',
-                            position: 'relative',
-                            overflow: 'hidden'
-                          }}>
-                            {src.thumbnail ? (
-                              <img
-                                src={src.thumbnail}
-                                alt={src.name}
-                                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                              />
-                            ) : (
-                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
-                                <Monitor size={24} />
-                              </div>
-                            )}
-                            {isAssigned && (
-                              <span style={{
-                                position: 'absolute',
-                                top: 6,
-                                right: 6,
-                                background: '#22c55e',
-                                color: '#000',
-                                fontSize: 9,
-                                fontWeight: 800,
-                                padding: '2px 6px',
-                                borderRadius: 4
-                              }}>
-                                ACTIVA
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ padding: '8px 10px', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 6 }}>
-                            <div style={{
-                              fontSize: 11,
-                              fontWeight: 700,
-                              color: '#f8fafc',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap'
-                            }} title={src.name}>
-                              {src.name}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleConnectSource(src)}
-                              disabled={isConnecting}
-                              style={{
-                                width: '100%',
-                                padding: '6px 10px',
-                                borderRadius: 6,
-                                background: '#ea580c',
-                                color: '#fff',
-                                border: 'none',
-                                fontSize: 11,
-                                fontWeight: 800,
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 6
-                              }}
-                            >
-                              {isConnecting ? <Loader2 size={12} className="animate-spin" /> : null}
-                              {isConnecting ? 'Conectando...' : `Asignar a CAM ${targetSlot + 1}`}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
             </div>
           )}
 

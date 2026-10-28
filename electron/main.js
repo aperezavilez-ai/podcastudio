@@ -208,7 +208,7 @@ function startMediaServer() {
     });
   }
 
-  // Transcodificador universal RTSP a MJPEG vía FFmpeg para cámaras Steren / Chinas / IP
+  // Transcodificador universal RTSP a MJPEG vía FFmpeg para cámaras Wi-Fi / IP (TP-Link Tapo, ONVIF, etc.)
   appServer.get('/api/rtsp-stream', (req, res) => {
     const rtspUrl = req.query.url;
     if (!rtspUrl) return res.status(400).send('Missing url');
@@ -1268,11 +1268,6 @@ ipcMain.handle('get-desktop-sources', async (event, opts) => {
   }
 });
 
-ipcMain.handle('open-steren-portal', () => {
-  shell.openExternal('https://protect-us.ismartlife.me');
-  return true;
-});
-
 ipcMain.handle('get-qr-url', () => `https://www.podcastudio.mx/remote-cam?auto=true`);
 
 ipcMain.handle('get-local-control-url', () => `http://${LOCAL_IP}:3001/control`);
@@ -1293,7 +1288,7 @@ ipcMain.handle('set-prompter-text', (event, text) => {
 ipcMain.handle('get-guest-room-url', () => `http://${LOCAL_IP}:3001/camara?auto=true`);
 
 // ============================================================================
-// DESCUBRIDOR REAL DE CÁMARAS IP / WI-FI EN LA RED LOCAL (ONVIF, RTSP, STEREN)
+// DESCUBRIDOR REAL DE CÁMARAS IP / WI-FI EN LA RED LOCAL (ONVIF, RTSP, TP-LINK TAPO, UNIVERSAL)
 // ============================================================================
 ipcMain.handle('discover-network-cameras', async () => {
   return new Promise((resolve) => {
@@ -1328,8 +1323,15 @@ ipcMain.handle('discover-network-cameras', async () => {
         const xaddrMatch = resp.match(/XAddrs>([^<]+)<\//i);
         const xaddr = xaddrMatch ? xaddrMatch[1].trim() : '';
 
-        let name = `Cámara Steren Wi-Fi (${ip})`;
-        if (resp.toLowerCase().includes('hikvision')) name = `Cámara Hikvision (${ip})`;
+        let name = `Cámara Wi-Fi / IP (${ip})`;
+        const respLower = resp.toLowerCase();
+        if (respLower.includes('tapo') || respLower.includes('tp-link')) {
+          name = `Cámara TP-Link Tapo (${ip})`;
+        } else if (respLower.includes('hikvision')) {
+          name = `Cámara Hikvision (${ip})`;
+        } else if (respLower.includes('dahua')) {
+          name = `Cámara Dahua (${ip})`;
+        }
 
         discovered.set(ip, {
           id: `cam_onvif_${ip}`,
@@ -1338,7 +1340,7 @@ ipcMain.handle('discover-network-cameras', async () => {
           port: 554,
           type: 'wifi_url',
           protocol: 'RTSP',
-          url: `rtsp://${ip}:554/live/ch0`,
+          url: `rtsp://${ip}:554/stream1`,
           service: xaddr
         });
       });
@@ -1402,21 +1404,21 @@ ipcMain.handle('discover-network-cameras', async () => {
           if (is554Open) {
             discovered.set(ip, {
               id: `cam_${ip}_554`,
-              name: `Cámara Steren Wi-Fi (${ip})`,
+              name: `Cámara Wi-Fi / IP (${ip})`,
               ip,
               port: 554,
               type: 'wifi_url',
               protocol: 'RTSP',
-              url: `rtsp://${ip}:554/live/ch0`
+              url: `rtsp://${ip}:554/stream1`
             });
             return;
           }
-          // Chequear puerto Steren Action Cam 8192
+          // Chequear puerto Action Cam / Web IP 8192
           const is8192Open = await checkPort(ip, 8192, 400);
           if (is8192Open) {
             discovered.set(ip, {
               id: `cam_${ip}_8192`,
-              name: `Cámara Steren CAM-800 (${ip})`,
+              name: `Cámara IP / Wi-Fi (${ip})`,
               ip,
               port: 8192,
               type: 'wifi_url',

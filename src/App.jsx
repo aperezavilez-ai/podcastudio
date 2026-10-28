@@ -1634,7 +1634,7 @@ function PodcastStudioApp() {
     if (isElectronMaster) {
       try {
         cloudTransport = createStreamTransport('p2p');
-        [0, 1, 2, 3].forEach(slotIdx => {
+        Array.from({ length: 12 }, (_, i) => i).forEach(slotIdx => {
           const roomCode = `studio_cam_${slotIdx + 1}`;
           cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
             console.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
@@ -1673,7 +1673,8 @@ function PodcastStudioApp() {
             if (!deviceId) return;
 
             let targetSlot = null;
-            for (let s = 1; s <= 3; s++) {
+            // Buscar en todas las ranuras activas (1 a 11)
+            for (let s = 1; s < 12; s++) {
               const isBusy = Boolean(slotStreamsRef.current[s]) || (assignedSlotsRef.current[s] && assignedSlotsRef.current[s] !== deviceId);
               if (!isBusy) {
                 targetSlot = s;
@@ -2515,7 +2516,7 @@ function PodcastStudioApp() {
           if (checkInterval) clearInterval(checkInterval);
           clearTimeout(failTimeout);
           try { img.src = ''; } catch (err) {}
-          reject(new Error('La cámara rechazó la conexión (Error 404/Sin señal). Consulta la guía Steren o el visor oficial.'));
+          reject(new Error('La cámara rechazó la conexión (Error 404/Sin señal). Verifica que la IP, puerto (554) y ruta (/stream1) sean correctos.'));
         }
       };
 
@@ -2536,7 +2537,7 @@ function PodcastStudioApp() {
           if (checkInterval) clearInterval(checkInterval);
           try { if (video) { video.pause(); video.src = ''; } } catch (e) {}
           try { img.src = ''; } catch (e) {}
-          reject(new Error('Tiempo de espera agotado. Verifica que la cámara esté encendida, con ONVIF activado en la app Steren y contraseña correcta.'));
+          reject(new Error('Tiempo de espera agotado. Verifica que la cámara esté encendida en la misma red Wi-Fi, con usuario y contraseña correctos.'));
         }
       }, 15000);
 
