@@ -100,6 +100,7 @@ export default function CameraCalibratorModal({
   // Hardware UVC states
   const [exposureMode, setExposureMode] = useState('continuous')
   const [whiteBalanceMode, setWhiteBalanceMode] = useState('continuous')
+  const [focusMode, setFocusMode] = useState(currentSlotCrop.focusMode || 'continuous')
   const [uvcMsg, setUvcMsg] = useState('')
 
   // Control táctil y de ratón directo sobre el monitor preview
