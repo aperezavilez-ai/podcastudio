@@ -1280,10 +1280,30 @@ export async function playBroadcastSfx(sfxUrl, volume = 0.9) {
 
     let buffer = sfxBufferCache.get(sfxUrl);
     if (!buffer) {
-      const resp = await fetch(sfxUrl);
-      const arrayBuf = await resp.arrayBuffer();
-      buffer = await audioContext.decodeAudioData(arrayBuf);
-      sfxBufferCache.set(sfxUrl, buffer);
+      try {
+        const resp = await fetch(sfxUrl);
+        const arrayBuf = await resp.arrayBuffer();
+        buffer = await audioContext.decodeAudioData(arrayBuf);
+        sfxBufferCache.set(sfxUrl, buffer);
+      } catch (fetchErr) {
+        // Fallback resiliente con MediaElementSource para que siempre ingrese al bus de mezcla y grabación
+        const audio = new Audio();
+        audio.crossOrigin = 'anonymous';
+        audio.src = sfxUrl;
+        audio.volume = 1.0;
+        const mediaElemSource = audioContext.createMediaElementSource(audio);
+        const gain = audioContext.createGain();
+        gain.gain.setValueAtTime(Math.max(0, Math.min(1.5, volume)), audioContext.currentTime);
+        mediaElemSource.connect(gain);
+        gain.connect(sfxGainNode);
+        activeSfxSources.add(mediaElemSource);
+        audio.onended = () => {
+          activeSfxSources.delete(mediaElemSource);
+          try { mediaElemSource.disconnect(); gain.disconnect(); } catch (e) {}
+        };
+        await audio.play();
+        return audio;
+      }
     }
 
     const source = audioContext.createBufferSource();

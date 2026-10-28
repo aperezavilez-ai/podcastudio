@@ -1191,6 +1191,15 @@ if (!gotTheLock) {
     }
   });
   app.whenReady().then(() => {
+    try {
+      session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+        const responseHeaders = details.responseHeaders || {};
+        responseHeaders['Access-Control-Allow-Origin'] = ['*'];
+        responseHeaders['Access-Control-Allow-Methods'] = ['GET, POST, OPTIONS, HEAD'];
+        responseHeaders['Access-Control-Allow-Headers'] = ['*'];
+        callback({ responseHeaders });
+      });
+    } catch (e) {}
     createWindow();
     setImmediate(() => {
       startMediaServer();
@@ -1547,6 +1556,7 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
         '-c:a', 'aac',
         '-b:a', '192k',
         '-ar', '48000',
+        '-af', 'aresample=async=1000:first_pts=0',
         '-movflags', '+faststart',
         '-y',
         currentRecordingPath

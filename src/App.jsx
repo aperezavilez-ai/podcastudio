@@ -1592,13 +1592,14 @@ function PodcastStudioApp() {
       virtualBg,
       logoBase64,
       logoConfig,
+      cameraBadges,
       cintillosVisible,
       cintillo,
       topic,
       getCamStream,
       remoteCams,
     });
-  }, [activeCam, pipCam, camSlots, cameraCrops, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
+  }, [activeCam, pvwCam, pipCam, camSlots, cameraCrops, cameraBadges, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
     const officialQr = 'https://www.podcastudio.mx/remote-cam?auto=true';
@@ -1905,12 +1906,16 @@ function PodcastStudioApp() {
             // Inicializar señal master del compositor broadcast con 0 congelamiento
             startBroadcastEngine({
               activeCam,
+              pvwCam,
+              pipCam,
               camSlots,
               cameraCrops,
+              cameraBadges,
               layoutMode,
               chromaKeyActive,
               virtualBg,
               logoBase64,
+              logoConfig,
               cintillosVisible,
               cintillo,
               topic,
@@ -1974,12 +1979,16 @@ function PodcastStudioApp() {
           setIsRecording(true);
           startBroadcastEngine({
             activeCam,
+            pvwCam,
+            pipCam,
             camSlots,
             cameraCrops,
+            cameraBadges,
             layoutMode,
             chromaKeyActive,
             virtualBg,
             logoBase64,
+            logoConfig,
             cintillosVisible,
             cintillo,
             topic,
@@ -2106,12 +2115,16 @@ function PodcastStudioApp() {
       // 1. Asegurar que el compositor broadcast esté activo y generando el Master con 0 retraso
       startBroadcastEngine({
         activeCam,
+        pvwCam,
+        pipCam,
         camSlots,
         cameraCrops,
+        cameraBadges,
         layoutMode,
         chromaKeyActive,
         virtualBg,
         logoBase64,
+        logoConfig,
         cintillosVisible,
         cintillo,
         topic,
