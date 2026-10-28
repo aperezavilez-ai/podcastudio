@@ -25,7 +25,9 @@ import {
   Save,
   MessageCircle,
   Trash2,
-  Camera
+  Camera,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import styles from './CameraConnectModal.module.css';
@@ -150,6 +152,7 @@ export default function CameraConnectModal({
   const [isScanningRealCameras, setIsScanningRealCameras] = useState(false);
   const [hasScannedRealCameras, setHasScannedRealCameras] = useState(false);
   const [camPasswords, setCamPasswords] = useState({});
+  const [showCamPassword, setShowCamPassword] = useState({});
 
   // Formulario Universal de Registro de Cámaras
   const [regCamName, setRegCamName] = useState('');
@@ -1173,27 +1176,48 @@ Instrucciones:
                           </div>
 
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <input
-                              type="password"
-                              placeholder="Contraseña Steren"
-                              value={currentPass}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setCamPasswords(prev => ({ ...prev, [cam.ip]: val }));
-                                const creds = val ? `admin:${encodeURIComponent(val)}@` : '';
-                                setWifiUrl(`rtsp://${creds}${cam.ip}:554/live/ch0`);
-                              }}
-                              style={{
-                                background: '#0f172a',
-                                border: '1px solid rgba(255, 255, 255, 0.25)',
-                                borderRadius: 6,
-                                padding: '6px 10px',
-                                fontSize: 11,
-                                color: '#fff',
-                                width: 140
-                              }}
-                              title="Contraseña configurada en la app Steren Home (en Ajustes de la cámara > ONVIF)"
-                            />
+                            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                              <input
+                                type={showCamPassword[cam.ip] ? 'text' : 'password'}
+                                placeholder="Contraseña Steren"
+                                value={currentPass}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCamPasswords(prev => ({ ...prev, [cam.ip]: val }));
+                                  const creds = val ? `admin:${encodeURIComponent(val)}@` : '';
+                                  setWifiUrl(`rtsp://${creds}${cam.ip}:554/live/ch0`);
+                                }}
+                                style={{
+                                  background: '#0f172a',
+                                  border: '1px solid rgba(255, 255, 255, 0.25)',
+                                  borderRadius: 6,
+                                  padding: '6px 32px 6px 10px',
+                                  fontSize: 11,
+                                  color: '#fff',
+                                  width: 145
+                                }}
+                                title="Contraseña configurada en la app Steren Home (en Ajustes de la cámara > ONVIF)"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowCamPassword(prev => ({ ...prev, [cam.ip]: !prev[cam.ip] }))}
+                                style={{
+                                  position: 'absolute',
+                                  right: 6,
+                                  background: 'none',
+                                  border: 'none',
+                                  color: showCamPassword[cam.ip] ? '#ea580c' : '#94a3b8',
+                                  cursor: 'pointer',
+                                  padding: 2,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                                title={showCamPassword[cam.ip] ? 'Ocultar contraseña' : 'Ver contraseña'}
+                              >
+                                {showCamPassword[cam.ip] ? <EyeOff size={14} /> : <Eye size={14} />}
+                              </button>
+                            </div>
 
                             <button
                               type="button"
@@ -1227,15 +1251,20 @@ Instrucciones:
                     })}
 
                     <div style={{
-                      padding: '8px 12px',
+                      padding: '10px 14px',
                       background: 'rgba(56, 189, 248, 0.08)',
                       border: '1px solid rgba(56, 189, 248, 0.25)',
                       borderRadius: 8,
                       fontSize: 11,
-                      color: '#94a3b8',
-                      lineHeight: 1.4
+                      color: '#cbd5e1',
+                      lineHeight: 1.45
                     }}>
-                      <strong style={{ color: '#38bdf8' }}>💡 Tip para cámaras Steren CCTV-625:</strong> Asegúrate de que en la app Steren Home (Ajustes de la cámara &gt; ONVIF / Ajustes de PC) esté activado el interruptor <strong>ONVIF</strong> y escribe aquí la contraseña que asignaste. También puedes visualizarla directamente en Chrome iniciando sesión en <span style={{ color: '#ea580c', fontWeight: 700 }}>protect-us.ismartlife.me</span>.
+                      <div style={{ color: '#38bdf8', fontWeight: 800, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Info size={14} /> <span>Paso obligatorio para cámaras Steren CCTV-625:</span>
+                      </div>
+                      1. Asegúrate de tener activado el interruptor <strong>ONVIF (dp_onvif_switch)</strong> en la app Steren Home.<br />
+                      2. <strong>IMPORTANTE:</strong> Desconecta la cámara de la corriente eléctrica por 5 segundos y vuelve a conectarla (reiniciarla) para que su servicio RTSP interno despierte.<br />
+                      3. Escribe la contraseña en el recuadro (usa el ícono de ojo para verificarla) y presiona <strong>Asignar a CAM {targetSlot + 1}</strong>.
                     </div>
                   </div>
                 )}
