@@ -2431,7 +2431,8 @@ function PodcastStudioApp() {
   const createWifiMediaStream = async (url) => {
     return new Promise((resolve, reject) => {
       let effectiveUrl = url;
-      if (url && url.startsWith('rtsp://')) {
+      const isRtsp = url && url.startsWith('rtsp://');
+      if (isRtsp) {
         const host = window.location.hostname || 'localhost';
         effectiveUrl = `http://${host}:3001/api/rtsp-stream?url=${encodeURIComponent(url)}`;
       }
@@ -2447,27 +2448,32 @@ function PodcastStudioApp() {
       let animId = null;
       let resolved = false;
 
-      const video = document.createElement('video');
-      video.crossOrigin = 'anonymous';
-      video.autoplay = true;
-      video.muted = true;
-      video.playsInline = true;
+      const isMjpegStream = isRtsp || (effectiveUrl && (effectiveUrl.includes('/api/rtsp-stream') || effectiveUrl.includes('.mjpg') || effectiveUrl.includes('.mjpeg')));
+
+      const video = !isMjpegStream ? document.createElement('video') : null;
+      if (video) {
+        video.crossOrigin = 'anonymous';
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true;
+      }
 
       const img = new Image();
       img.crossOrigin = 'anonymous';
 
-      let useVideo = false;
+      let checkInterval = null;
 
       const finishConnect = () => {
         if (resolved) return;
         resolved = true;
         clearTimeout(failTimeout);
+        if (checkInterval) clearInterval(checkInterval);
 
         const renderFrame = () => {
           if (!isAlive) return;
-          if (useVideo && video.readyState >= 2) {
+          if (!isMjpegStream && video && video.readyState >= 2) {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          } else if (img.complete && img.naturalWidth > 0) {
+          } else if (img && img.naturalWidth > 0) {
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           }
           animId = requestAnimationFrame(renderFrame);
@@ -2481,7 +2487,8 @@ function PodcastStudioApp() {
           track.stop = () => {
             isAlive = false;
             if (animId) cancelAnimationFrame(animId);
-            try { video.pause(); video.src = ''; } catch (e) {}
+            if (checkInterval) clearInterval(checkInterval);
+            try { if (video) { video.pause(); video.src = ''; } } catch (e) {}
             try { img.src = ''; } catch (e) {}
             origStop();
           };
@@ -2489,31 +2496,51 @@ function PodcastStudioApp() {
         resolve(stream);
       };
 
-      video.oncanplay = () => {
-        useVideo = true;
-        video.play().catch(() => {});
-        finishConnect();
+      if (video) {
+        video.oncanplay = () => finishConnect();
+        video.onerror = () => {
+          if (!resolved) {
+            // Reintentar vía Image como fallback MJPEG
+            img.src = effectiveUrl;
+          }
+        };
+      }
+
+      img.onload = () => finishConnect();
+      img.onerror = (e) => {
+        console.warn('[WiFi Stream Image Error]:', e);
       };
 
-      img.onload = () => {
-        if (!useVideo) finishConnect();
-      };
+      checkInterval = setInterval(() => {
+        if (!resolved) {
+          if (img.naturalWidth > 0) {
+            finishConnect();
+          } else if (video && video.readyState >= 2) {
+            finishConnect();
+          }
+        }
+      }, 300);
 
       const failTimeout = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           isAlive = false;
-          try { video.pause(); video.src = ''; } catch (e) {}
+          if (checkInterval) clearInterval(checkInterval);
+          try { if (video) { video.pause(); video.src = ''; } } catch (e) {}
           try { img.src = ''; } catch (e) {}
-          reject(new Error('Tiempo de espera agotado. No se recibió señal de video en ' + url));
+          reject(new Error('Tiempo de espera agotado. Verifica que la cámara esté encendida, con ONVIF activado en la app Steren y contraseña correcta.'));
         }
-      }, 5000);
+      }, 15000);
 
       try {
-        video.src = effectiveUrl;
-        img.src = effectiveUrl;
+        if (isMjpegStream) {
+          img.src = effectiveUrl;
+        } else if (video) {
+          video.src = effectiveUrl;
+        }
       } catch (err) {
         clearTimeout(failTimeout);
+        if (checkInterval) clearInterval(checkInterval);
         reject(err);
       }
     });

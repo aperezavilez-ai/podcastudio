@@ -214,15 +214,18 @@ function startMediaServer() {
     if (!rtspUrl) return res.status(400).send('Missing url');
 
     res.writeHead(200, {
-      'Content-Type': 'multipart/x-mixed-replace; boundary=--ffmpegframe',
+      'Content-Type': 'multipart/x-mixed-replace; boundary=ffmpegframe',
       'Connection': 'close',
       'Pragma': 'no-cache',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Access-Control-Allow-Origin': '*'
     });
 
+    console.log('[RTSP-STREAM] Conectando FFmpeg a URL RTSP:', rtspUrl);
+
     const ffProc = spawn(ffmpegPath, [
       '-rtsp_transport', 'tcp',
+      '-timeout', '10000000',
       '-i', rtspUrl,
       '-f', 'mpjpeg',
       '-boundary_tag', 'ffmpegframe',
@@ -230,7 +233,14 @@ function startMediaServer() {
       '-r', '25',
       '-vf', 'scale=1280:720',
       'pipe:1'
-    ], { stdio: ['ignore', 'pipe', 'ignore'] });
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    ffProc.stderr.on('data', (d) => {
+      const msg = d.toString();
+      if (msg.includes('Error') || msg.includes('404') || msg.includes('401') || msg.includes('Invalid') || msg.includes('Unauthorized')) {
+        console.warn('[RTSP-FFMPEG]:', msg.trim());
+      }
+    });
 
     ffProc.stdout.pipe(res);
 

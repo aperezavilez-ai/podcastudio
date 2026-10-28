@@ -149,6 +149,7 @@ export default function CameraConnectModal({
   const [realNetworkCameras, setRealNetworkCameras] = useState([]);
   const [isScanningRealCameras, setIsScanningRealCameras] = useState(false);
   const [hasScannedRealCameras, setHasScannedRealCameras] = useState(false);
+  const [camPasswords, setCamPasswords] = useState({});
 
   // Formulario Universal de Registro de Cámaras
   const [regCamName, setRegCamName] = useState('');
@@ -1124,6 +1125,7 @@ Instrucciones:
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {realNetworkCameras.map((cam) => {
                       const isAssigned = Object.entries(cameraMeta).some(([slotStr, meta]) => meta?.url === cam.url);
+                      const currentPass = camPasswords[cam.ip] || '';
                       return (
                         <div
                           key={cam.id || cam.url}
@@ -1135,7 +1137,8 @@ Instrucciones:
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            gap: 10
+                            gap: 12,
+                            flexWrap: 'wrap'
                           }}
                         >
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: 1 }}>
@@ -1169,41 +1172,71 @@ Instrucciones:
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              let targetUrl = cam.url;
-                              if (cam.protocol === 'RTSP' || cam.port === 554) {
-                                const pass = window.prompt(`Cámara detectada en ${cam.ip}.\n\nIngresa la contraseña configurada en la app Steren Home (si no pusiste contraseña, déjalo vacío y presiona Aceptar):`, '');
-                                if (pass === null) return;
-                                if (pass.trim()) {
-                                  targetUrl = `rtsp://admin:${encodeURIComponent(pass.trim())}@${cam.ip}:554/live/ch0`;
-                                } else {
-                                  targetUrl = `rtsp://${cam.ip}:554/live/ch0`;
-                                }
-                              }
-                              setWifiUrl(targetUrl);
-                              await handleConnectWifi(targetUrl, targetSlot, `${cam.name} (CAM ${targetSlot + 1})`);
-                            }}
-                            disabled={wifiConnecting}
-                            style={{
-                              padding: '7px 14px',
-                              borderRadius: 6,
-                              background: '#ea580c',
-                              color: '#fff',
-                              border: 'none',
-                              fontSize: 11,
-                              fontWeight: 800,
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                              flexShrink: 0
-                            }}
-                          >
-                            Asignar a CAM {targetSlot + 1}
-                          </button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <input
+                              type="password"
+                              placeholder="Contraseña Steren"
+                              value={currentPass}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setCamPasswords(prev => ({ ...prev, [cam.ip]: val }));
+                                const creds = val ? `admin:${encodeURIComponent(val)}@` : '';
+                                setWifiUrl(`rtsp://${creds}${cam.ip}:554/live/ch0`);
+                              }}
+                              style={{
+                                background: '#0f172a',
+                                border: '1px solid rgba(255, 255, 255, 0.25)',
+                                borderRadius: 6,
+                                padding: '6px 10px',
+                                fontSize: 11,
+                                color: '#fff',
+                                width: 140
+                              }}
+                              title="Contraseña configurada en la app Steren Home (en Ajustes de la cámara > ONVIF)"
+                            />
+
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const pass = (camPasswords[cam.ip] || '').trim();
+                                const creds = pass ? `admin:${encodeURIComponent(pass)}@` : '';
+                                const targetUrl = `rtsp://${creds}${cam.ip}:554/live/ch0`;
+                                setWifiUrl(targetUrl);
+                                await handleConnectWifi(targetUrl, targetSlot, `${cam.name} (CAM ${targetSlot + 1})`);
+                              }}
+                              disabled={wifiConnecting}
+                              style={{
+                                padding: '7px 14px',
+                                borderRadius: 6,
+                                background: '#ea580c',
+                                color: '#fff',
+                                border: 'none',
+                                fontSize: 11,
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0
+                              }}
+                            >
+                              {wifiConnecting ? <Loader2 size={13} className="animate-spin" /> : null}
+                              {wifiConnecting ? ' Conectando...' : `Asignar a CAM ${targetSlot + 1}`}
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
+
+                    <div style={{
+                      padding: '8px 12px',
+                      background: 'rgba(56, 189, 248, 0.08)',
+                      border: '1px solid rgba(56, 189, 248, 0.25)',
+                      borderRadius: 8,
+                      fontSize: 11,
+                      color: '#94a3b8',
+                      lineHeight: 1.4
+                    }}>
+                      <strong style={{ color: '#38bdf8' }}>💡 Tip para cámaras Steren CCTV-625:</strong> Asegúrate de que en la app Steren Home (Ajustes de la cámara &gt; ONVIF / Ajustes de PC) esté activado el interruptor <strong>ONVIF</strong> y escribe aquí la contraseña que asignaste. También puedes visualizarla directamente en Chrome iniciando sesión en <span style={{ color: '#ea580c', fontWeight: 700 }}>protect-us.ismartlife.me</span>.
+                    </div>
                   </div>
                 )}
               </div>
@@ -1222,7 +1255,7 @@ Instrucciones:
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     type="url"
-                    placeholder="ej. http://192.168.1.1:8192/ o rtsp://admin:pass@192.168.1.50:554/live/ch0"
+                    placeholder="ej. rtsp://admin:TuContraseña@192.168.1.45:554/live/ch0"
                     value={wifiUrl}
                     onChange={(e) => {
                       setWifiUrl(e.target.value);
