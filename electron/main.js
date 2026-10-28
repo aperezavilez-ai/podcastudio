@@ -184,6 +184,7 @@ const tallyClients = new Set();
 const programFeedClients = new Set();
 let latestStudioState = null;
 let latestPgmFrame = null;
+let latestCamThumbnails = {};
 let currentTallyState = {
   pgmCam: 1,
   pvwCam: 2,
@@ -269,6 +270,9 @@ function startMediaServer() {
           }
           if (latestPgmFrame && ws.readyState === 1) {
             try { ws.send(JSON.stringify({ type: 'pgm-frame', data: latestPgmFrame })); } catch(e) {}
+          }
+          if (latestCamThumbnails && Object.keys(latestCamThumbnails).length > 0 && ws.readyState === 1) {
+            try { ws.send(JSON.stringify({ type: 'cam-thumbnails', thumbnails: latestCamThumbnails })); } catch(e) {}
           }
           return;
         }
@@ -1007,6 +1011,26 @@ function startMediaServer() {
     }
   });
 
+  appServer.get('/api/cam-thumbnail/:slot', (req, res) => {
+    const slot = req.params.slot;
+    const dataUrl = latestCamThumbnails[slot];
+    if (!dataUrl) {
+      return res.status(404).send('No frame yet for cam ' + slot);
+    }
+    try {
+      const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+      res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': buffer.length,
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      });
+      res.end(buffer);
+    } catch(e) {
+      res.status(500).send('Error serving thumbnail');
+    }
+  });
+
   appServer.get(['/program/feed', '/program', '/pgm'], (req, res) => {
     res.send(`
       <!DOCTYPE html>
@@ -1385,6 +1409,18 @@ ipcMain.on('program-feed-frame', (event, frameData) => {
   if (programFeedClients.size === 0) return;
   const msg = JSON.stringify({ type: 'pgm-frame', data: frameData });
   programFeedClients.forEach(client => {
+    if (client.readyState === 1) {
+      try { client.send(msg); } catch(e) {}
+    }
+  });
+});
+
+ipcMain.on('cam-thumbnails', (event, thumbs) => {
+  if (!thumbs) return;
+  latestCamThumbnails = { ...latestCamThumbnails, ...thumbs };
+  if (remoteControlClients.size === 0) return;
+  const msg = JSON.stringify({ type: 'cam-thumbnails', thumbnails: thumbs });
+  remoteControlClients.forEach(client => {
     if (client.readyState === 1) {
       try { client.send(msg); } catch(e) {}
     }

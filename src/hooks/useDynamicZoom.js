@@ -1,15 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 
 export const ZOOM_PRESETS = [
-  { id: 'ultrawide', label: '0.5x Gran Angular', zoom: 0.5, focusX: 0.5, focusY: 0.5 },
-  { id: 'wide_open', label: '0.75x Plano Abierto', zoom: 0.75, focusX: 0.5, focusY: 0.48 },
-  { id: 'wide', label: '1.0x Plano General', zoom: 1.0, focusX: 0.5, focusY: 0.45 },
-  { id: 'medium', label: '1.35x Plano Medio', zoom: 1.35, focusX: 0.5, focusY: 0.42 },
-  { id: 'closeup', label: '1.75x Primer Plano', zoom: 1.75, focusX: 0.5, focusY: 0.38 },
-  { id: 'tight', label: '2.2x Detalle', zoom: 2.2, focusX: 0.5, focusY: 0.36 },
-  { id: 'far', label: '3.5x Distante', zoom: 3.5, focusX: 0.5, focusY: 0.35 },
-  { id: 'tele', label: '5.0x Teleobjetivo', zoom: 5.0, focusX: 0.5, focusY: 0.35 },
-  { id: 'ultra', label: '8.0x Retirada Ultra', zoom: 8.0, focusX: 0.5, focusY: 0.35 },
+  { id: 'wide', label: '1.0x Plano General (Completo)', zoom: 1.0, focusX: 0.5, focusY: 0.45 },
+  { id: 'medium_light', label: '1.25x Medio Suave', zoom: 1.25, focusX: 0.5, focusY: 0.42 },
+  { id: 'medium', label: '1.5x Primer Plano', zoom: 1.5, focusX: 0.5, focusY: 0.40 },
+  { id: 'closeup', label: '1.75x Primerisimo Plano', zoom: 1.75, focusX: 0.5, focusY: 0.38 },
+  { id: 'tight', label: '2.0x Detalle', zoom: 2.0, focusX: 0.5, focusY: 0.36 },
+  { id: 'tele', label: '3.0x Teleobjetivo', zoom: 3.0, focusX: 0.5, focusY: 0.35 },
 ]
 
 const DEFAULT_CROP = {
@@ -22,7 +19,7 @@ const DEFAULT_CROP = {
 }
 
 function clamp(val, min, max) {
-  return Math.max(min, Math.min(max, val))
+  return Math.max(Math.max(1.0, min), Math.min(max, val))
 }
 
 export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {

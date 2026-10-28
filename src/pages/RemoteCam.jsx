@@ -7,12 +7,12 @@ import styles from './RemoteCam.module.css'
 const RTC_CONFIG = getWebRtcConfig()
 
 
-// TIERS BROADCAST HD ULTRA-BAJA LATENCIA (30 FPS FIJOS)
-// Evita bufferbloat, congestión en uplink Wi-Fi y desincronización labial
+// TIERS BROADCAST FULL HD ULTRA-BAJA LATENCIA Y MÁXIMA NITIDEZ (30 FPS FIJOS)
+// Cero descarte, máxima profundidad de campo y definición nativa de sensor
 const QUALITY_TIERS = [
-  { label: 'HD 720p Fluido', maxBitrate: 2000000, width: 1280, height: 720, frameRate: 30 },
+  { label: 'Full HD 1080p Cristal', maxBitrate: 5000000, width: 1920, height: 1080, frameRate: 30 },
+  { label: 'HD 720p Fluido', maxBitrate: 2500000, width: 1280, height: 720, frameRate: 30 },
   { label: 'HD 720p Balanceado', maxBitrate: 1500000, width: 1280, height: 720, frameRate: 30 },
-  { label: 'SD+ 540p Rápido', maxBitrate: 1000000, width: 960, height: 540, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 250     
 const RTT_HEALTHY_MS = 100     
@@ -76,7 +76,7 @@ export default function RemoteCam() {
   const [micMuted, setMicMuted] = useState(false)
   // Bocina / Altavoz del celular: MUTEADA POR DEFAULT para evitar que vicie/acople con su propio micrófono
   const [speakerMuted, setSpeakerMuted] = useState(true)
-  const [qualityLabel, setQualityLabel] = useState('HD 720p')
+  const [qualityLabel, setQualityLabel] = useState('Full HD 1080p')
 
   // FASE 4: Grabación Local de Respaldo en Celular (Local Backup)
   const [localBackupActive, setLocalBackupActive] = useState(false)
@@ -688,12 +688,12 @@ export default function RemoteCam() {
 
       let stream = null
       try {
-        // Formato adaptable para Android e iOS en vertical u horizontal
+        // Formato Full HD cristalino para Android e iOS en vertical u horizontal
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: targetFacing },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 },
             frameRate: { ideal: 30, max: 30 },
           },
           audio: audioConstraints,

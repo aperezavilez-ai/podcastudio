@@ -36,7 +36,7 @@ import { useSoundEffect } from './hooks/useSoundEffect.js';
 import { 
   startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, 
   getInitHeader, captureMasterCanvasSnapshot, getMasterCanvas,
-  setVoiceMonitor, syncStudioAudio
+  setVoiceMonitor, syncStudioAudio, getCameraSnapshots
 } from './utils/masterBroadcastEngine.js';
 import { VOICE_EFFECTS } from './utils/voiceEffectsProcessor.js';
 import { createStreamTransport } from './utils/streamTransport.js';
@@ -272,6 +272,7 @@ function PodcastStudioApp() {
   const [activeCam, setActiveCam] = useState(1);
   const [layoutMode, setLayoutMode] = useState('1'); 
   const [pipCam, setPipCam] = useState(2); 
+  const [camThumbnails, setCamThumbnails] = useState({}); 
 
   // CONSOLA DE AUDIO BROADCAST PROFESIONAL (P0.4)
   const [showAudioMixerModal, setShowAudioMixerModal] = useState(false);
@@ -484,7 +485,17 @@ function PodcastStudioApp() {
   const [cameraCrops, setCameraCrops] = useState(() => {
     const saved = localStorage.getItem('podcastudio_camera_crops');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          Object.keys(parsed).forEach(k => {
+            if (parsed[k]?.zoom != null) {
+              parsed[k].zoom = Math.max(1.0, parsed[k].zoom);
+            }
+          });
+        }
+        return parsed;
+      } catch (e) {}
     }
     return {};
   });
@@ -1121,6 +1132,7 @@ function PodcastStudioApp() {
     let timer = null;
     let isBroadcasting = true;
     let lastCloudEmit = 0;
+    let lastThumbEmit = 0;
 
     // Canvas auxiliar offscreen de 640x360 para codificación ultrarrápida (1.5ms) y carga liviana (15KB)
     const previewCanvas = document.createElement('canvas');
@@ -1130,6 +1142,7 @@ function PodcastStudioApp() {
 
     const streamLoop = () => {
       if (!isBroadcasting) return;
+      const now = Date.now();
       const c = getMasterCanvas();
       if (c && c.width > 0 && c.height > 0) {
         try {
@@ -1143,8 +1156,16 @@ function PodcastStudioApp() {
             window.api.sendProgramFeedFrame(lowLatencyDataUrl);
           }
 
-          // 2. Emitir snapshot ultraliviano (15KB) cada 120ms por Supabase para iPads remotos vía Cloud
-          const now = Date.now();
+          // 2. Enviar miniaturas en vivo de todas las cámaras activas para Multiviewer en iPad
+          if (window.api?.sendCamThumbnails && (now - lastThumbEmit > 100)) {
+            lastThumbEmit = now;
+            const thumbs = getCameraSnapshots();
+            if (thumbs && Object.keys(thumbs).length > 0) {
+              window.api.sendCamThumbnails(thumbs);
+            }
+          }
+
+          // 3. Emitir snapshot ultraliviano (15KB) cada 120ms por Supabase para iPads remotos vía Cloud
           if (controlChannelRef.current && (now - lastCloudEmit > 120)) {
             lastCloudEmit = now;
             controlChannelRef.current.send({
@@ -1376,7 +1397,7 @@ function PodcastStudioApp() {
     const s = camSettings[camId] || defaultCamSettings;
     const crop = cameraCrops[camId - 1] || {};
 
-    const zoom = Math.max(0.4, crop.zoom ?? s.zoom ?? 1.0);
+    const zoom = Math.max(1.0, crop.zoom ?? s.zoom ?? 1.0);
     const focusX = crop.focusX != null ? crop.focusX : (s.panX != null ? s.panX / 100 : 0.5);
     const focusY = crop.focusY != null ? crop.focusY : (s.panY != null ? s.panY / 100 : 0.42);
 
@@ -2782,6 +2803,8 @@ function PodcastStudioApp() {
               applyRemoteStudioState(data.state);
             } else if (data.type === 'pgm-frame' && data.data) {
               window.dispatchEvent(new CustomEvent('podcastudio_pgm_feed_frame', { detail: data.data }));
+            } else if (data.type === 'cam-thumbnails' && data.thumbnails) {
+              setCamThumbnails(prev => ({ ...prev, ...data.thumbnails }));
             }
           } catch (e) {}
         };
@@ -3364,17 +3387,26 @@ function PodcastStudioApp() {
 
                 {/* Video PVW */}
                 <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-black">
-                  <VideoTile
-                    camId={pvwCam}
-                    stream={getCamStream(pvwCam)}
-                    label={null}
-                    isLocal={pvwCam === 1}
-                    muted={true}
-                    style={getVideoStyle(pvwCam, true)}
-                    chromaKey={chromaKeyActive}
-                    bgImage={virtualBg}
-                    className="w-full h-full"
-                  />
+                  {getCamStream(pvwCam) ? (
+                    <VideoTile
+                      camId={pvwCam}
+                      stream={getCamStream(pvwCam)}
+                      label={null}
+                      isLocal={pvwCam === 1}
+                      muted={true}
+                      style={getVideoStyle(pvwCam, true)}
+                      chromaKey={chromaKeyActive}
+                      bgImage={virtualBg}
+                      className="w-full h-full"
+                    />
+                  ) : camThumbnails[pvwCam] ? (
+                    <img src={camThumbnails[pvwCam]} className="w-full h-full object-cover" alt={`PVW CAM ${pvwCam}`} />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-gray-500 w-full h-full bg-[#111]">
+                      <Video size={28} className="mb-2 opacity-50" />
+                      <span className="text-[10px] uppercase tracking-wider font-bold">CAM {pvwCam}</span>
+                    </div>
+                  )}
                   <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/75 border border-emerald-500/50 text-emerald-300 text-[10px] font-bold">
                     PRÓXIMA TOMA: CAM {pvwCam}
                   </div>
@@ -3644,6 +3676,8 @@ function PodcastStudioApp() {
                 >
                    {camStream ? (
                      <VideoTile stream={camStream} isLocal={camId === 1} muted={true} className="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
+                   ) : camThumbnails[camId] ? (
+                     <img src={camThumbnails[camId]} className="w-full h-full object-cover" alt={`CAM ${camId}`} />
                    ) : (!isElectronMaster && isActive) ? (
                      <PgmFeedCanvas className="w-full h-full object-cover opacity-85" />
                    ) : (
@@ -5343,7 +5377,7 @@ function PodcastStudioApp() {
             <div className="flex-1 flex overflow-hidden">
               <div className="flex-1 p-4 bg-black flex flex-col items-center justify-center relative border-r border-[#222]"><div className="w-full max-w-2xl aspect-video bg-[#050505] border border-[#333] rounded relative overflow-hidden"><VideoTile stream={getCamStream(editingCamId)} isLocal={editingCamId === 1} className="w-full h-full" style={getVideoStyle(editingCamId)} /></div></div>
               <div className="w-[400px] overflow-y-auto p-4 space-y-6 bg-[#111] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-                <div><div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-orange-500 flex items-center gap-2"><Search size={12}/> ZOOM / ENCUADRE</span></div><div className="grid grid-cols-4 gap-1 mb-2">{[0.5, 0.75, 1, 1.5].map(z => (<button key={z} onClick={() => updateSetting('zoom', z)} className={`py-1 text-[10px] rounded border ${camSettings[editingCamId].zoom === z ? 'bg-orange-600 border-orange-500 text-white' : 'bg-[#222] border-[#333] text-gray-400'}`}>{z}x</button>))}</div><input type="range" min="0.5" max="5" step="0.05" value={camSettings[editingCamId].zoom} onChange={e => updateSetting('zoom', parseFloat(e.target.value))} className="w-full accent-orange-500" /></div>
+                <div><div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-orange-500 flex items-center gap-2"><Search size={12}/> ZOOM / ENCUADRE</span></div><div className="grid grid-cols-4 gap-1 mb-2">{[1.0, 1.25, 1.5, 2.0].map(z => (<button key={z} onClick={() => updateSetting('zoom', z)} className={`py-1 text-[10px] rounded border ${camSettings[editingCamId].zoom === z ? 'bg-orange-600 border-orange-500 text-white' : 'bg-[#222] border-[#333] text-gray-400'}`}>{z}x</button>))}</div><input type="range" min="1.0" max="4.0" step="0.05" value={camSettings[editingCamId].zoom} onChange={e => updateSetting('zoom', Math.max(1.0, parseFloat(e.target.value)))} className="w-full accent-orange-500" /></div>
               </div>
             </div>
             <div className="p-3 bg-[#16171b] border-t border-[#2a2b30] flex justify-between items-center"><button onClick={resetSettings} className="px-4 py-2 bg-transparent text-gray-400 hover:text-white flex items-center gap-2 text-xs"><Disc size={14}/> Restablecer</button><button onClick={() => setShowSettingsModal(false)} className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-bold flex items-center gap-2 shadow-lg">Guardar y Cerrar</button></div>

@@ -72,5 +72,6 @@ contextBridge.exposeInMainWorld('api', {
   // Salida LAN Program & OBS Virtual Feed (P4.4)
   getProgramFeedUrl: () => ipcRenderer.invoke('get-program-feed-url'),
   getProgramStatus: () => ipcRenderer.invoke('get-program-status'),
-  sendProgramFeedFrame: (frameData) => ipcRenderer.send('program-feed-frame', frameData)
+  sendProgramFeedFrame: (frameData) => ipcRenderer.send('program-feed-frame', frameData),
+  sendCamThumbnails: (thumbnails) => ipcRenderer.send('cam-thumbnails', thumbnails)
 });

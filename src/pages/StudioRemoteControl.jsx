@@ -28,6 +28,7 @@ export default function StudioRemoteControl() {
   const [topic, setTopic] = useState('PodcaStudio');
   const [cintillosVisible, setCintillosVisible] = useState(false);
   const [camSlots, setCamSlots] = useState([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  const [camThumbnails, setCamThumbnails] = useState({});
   const [toastMsg, setToastMsg] = useState('');
   const [hasLiveFeed, setHasLiveFeed] = useState(false);
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
@@ -175,6 +176,8 @@ export default function StudioRemoteControl() {
               }
             } else if (data.type === 'pgm-frame' && data.data) {
               drawFrameOnCanvas(data.data);
+            } else if (data.type === 'cam-thumbnails' && data.thumbnails) {
+              setCamThumbnails(prev => ({ ...prev, ...data.thumbnails }));
             }
           } catch (e) {}
         };
@@ -624,6 +627,68 @@ export default function StudioRemoteControl() {
               </span>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* MULTIVIEWER DE TODAS LAS CÁMARAS ACTIVAS EN VIVO (IPAD MULTIVIEW) */}
+      <div className="bg-[#101216] border border-[#22242a] rounded-2xl p-3 mb-3 shadow-xl">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Grid size={15} className="text-orange-400" />
+            <h3 className="text-xs font-black text-white uppercase tracking-wider">
+              Multiviewer de Todas las Cámaras Activas
+            </h3>
+          </div>
+          <span className="text-[10px] text-gray-400">Toca para poner en Preview (PVW) o Corte (PGM)</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {camSlots.slice(0, 8).map((cid) => {
+            const isPgm = activeCam === cid;
+            const isPvw = pvwCam === cid;
+            const thumb = camThumbnails[cid];
+            return (
+              <div 
+                key={`mv-cam-${cid}`}
+                onClick={() => {
+                  if (activeCam === cid) return;
+                  handleSelectPvwCam(cid);
+                }}
+                className={`relative aspect-video rounded-xl overflow-hidden border-2 cursor-pointer transition-all ${
+                  isPgm 
+                    ? 'border-red-500 ring-2 ring-red-500/50 shadow-lg shadow-red-950/60' 
+                    : isPvw 
+                      ? 'border-emerald-500 ring-2 ring-emerald-500/50 shadow-lg shadow-emerald-950/60'
+                      : 'border-[#222] hover:border-[#444] bg-[#080808]'
+                }`}
+              >
+                {thumb ? (
+                  <img src={thumb} className="w-full h-full object-cover" alt={`CAM ${cid}`} />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-[#0d0f14] text-gray-500">
+                    <Video size={20} className="mb-1 opacity-50" />
+                    <span className="text-[10px] font-bold">CAM {cid}</span>
+                  </div>
+                )}
+                <div className="absolute top-1 left-1 flex items-center gap-1 z-10">
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
+                    isPgm ? 'bg-red-600 text-white' : isPvw ? 'bg-emerald-600 text-white' : 'bg-black/75 text-gray-300 border border-white/10'
+                  }`}>
+                    CAM {cid} {isPgm ? '● PGM' : isPvw ? '★ PVW' : ''}
+                  </span>
+                </div>
+                <div className="absolute bottom-1 right-1 flex items-center gap-1 z-10">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleSelectPgmCam(cid); }}
+                    className="px-2 py-0.5 rounded bg-red-600 hover:bg-red-500 text-white font-black text-[9px] shadow cursor-pointer"
+                    title="Poner directamente al aire (PGM)"
+                  >
+                    CUT
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

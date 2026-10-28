@@ -321,18 +321,15 @@ export default function CameraCalibratorModal({
   }
 
   const handleZoomSlider = (val) => {
-    setZoom(val)
-    const pid = val <= 1.02 ? 'wide' : 'custom'
+    const cleanVal = Math.max(1.0, Math.min(4.0, val))
+    setZoom(cleanVal)
+    const pid = cleanVal <= 1.02 ? 'wide' : 'custom'
     setActivePreset(pid)
-    autoSync({ zoom: val, presetId: pid })
+    autoSync({ zoom: cleanVal, presetId: pid })
   }
 
   const handleNudge = (dx, dy) => {
-    const nextZoom = zoom <= 1.02 ? 1.15 : zoom
-    if (zoom <= 1.02) {
-      setZoom(1.15)
-      setActivePreset('custom')
-    }
+    const nextZoom = Math.max(1.0, zoom)
     const nx = Math.max(0.1, Math.min(0.9, parseFloat((focusX + dx).toFixed(2))))
     const ny = Math.max(0.1, Math.min(0.9, parseFloat((focusY + dy).toFixed(2))))
     setFocusX(nx)
@@ -341,11 +338,7 @@ export default function CameraCalibratorModal({
   }
 
   const handlePanSlider = (axis, val) => {
-    const nextZoom = zoom <= 1.02 ? 1.15 : zoom
-    if (zoom <= 1.02) {
-      setZoom(1.15)
-      setActivePreset('custom')
-    }
+    const nextZoom = Math.max(1.0, zoom)
     if (axis === 'x') {
       setFocusX(val)
       autoSync({ zoom: nextZoom, focusX: val, presetId: 'custom' })
@@ -643,13 +636,13 @@ export default function CameraCalibratorModal({
                 ))}
               </div>
 
-              {/* SLIDER DE ZOOM CONTINUO (0.5x a 8.0x) */}
+              {/* SLIDER DE ZOOM CONTINUO (1.0x a 4.0x - SIN FRANJAS NEGRAS) */}
               <div className={styles.sliderRow}>
                 <span className={styles.sliderLabel}>Acercamiento</span>
                 <input
                   type="range"
-                  min="0.5"
-                  max="8"
+                  min="1.0"
+                  max="4.0"
                   step="0.05"
                   value={zoom}
                   onChange={(e) => handleZoomSlider(parseFloat(e.target.value))}

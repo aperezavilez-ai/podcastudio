@@ -137,6 +137,32 @@ function syncVideoStreams() {
   }
 }
 
+let thumbCanvas = null;
+let thumbCtx = null;
+
+export function getCameraSnapshots() {
+  if (typeof document === 'undefined') return {};
+  if (!thumbCanvas) {
+    thumbCanvas = document.createElement('canvas');
+    thumbCanvas.width = 320;
+    thumbCanvas.height = 180;
+    thumbCtx = thumbCanvas.getContext('2d', { alpha: false });
+  }
+  if (!thumbCtx || !currentState.camSlots) return {};
+
+  const snapshots = {};
+  currentState.camSlots.forEach((camId) => {
+    const v = videoElements.get(camId);
+    if (v && v.readyState >= 2 && v.videoWidth > 0 && v.videoHeight > 0) {
+      try {
+        thumbCtx.drawImage(v, 0, 0, 320, 180);
+        snapshots[camId] = thumbCanvas.toDataURL('image/jpeg', 0.50);
+      } catch (_) {}
+    }
+  });
+  return snapshots;
+}
+
 function updateImages() {
   if (currentState.virtualBg) {
     if (!virtualBgImage || virtualBgImage.src !== currentState.virtualBg) {
@@ -227,11 +253,11 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
           hasFilter = true;
         }
 
-        const zoom = Math.max(0.4, crop.zoom || 1.0);
+        const zoom = Math.max(1.0, crop.zoom || 1.0);
         const focusX = crop.focusX != null ? crop.focusX : 0.5;
         const focusY = crop.focusY != null ? crop.focusY : 0.42;
 
-        if (zoom > 1.01) {
+        if (zoom > 1.005) {
           const origSw = sw;
           const origSh = sh;
           sw = origSw / zoom;
@@ -240,18 +266,6 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
           const maxShiftY = origSh - sh;
           sx += maxShiftX * focusX;
           sy += maxShiftY * focusY;
-        } else if (zoom < 0.99) {
-          // Zoom out (Plano General / Gran Angular): mostrar todo el campo visual sin recortar
-          const destW = w * zoom;
-          const destH = h * zoom;
-          const destX = x + (w - destW) / 2;
-          const destY = y + (h - destH) / 2;
-          ctx.fillStyle = '#0c0e14';
-          ctx.fillRect(x, y, w, h);
-          ctx.drawImage(video, 0, 0, vw, vh, destX, destY, destW, destH);
-          if (hasFilter) ctx.restore();
-          drawCameraNameBadge(x, y, w, h, camId);
-          return;
         }
       }
     }
