@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { RotateCw, Mic, MicOff, Video, VideoOff, Volume2, VolumeX, PhoneOff, Disc, Zap, Radio, Smartphone, Camera, AlertTriangle } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { getWebRtcConfig } from '../utils/rtcConfig.js'
-import styles from './RemoteCam.module.css'
 
 const RTC_CONFIG = getWebRtcConfig()
 
@@ -514,18 +513,25 @@ export default function RemoteCam() {
       }
 
       let stream = null
+      // Intento 1: calidad alta
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: { ideal: targetFacing }, 
-            width: { ideal: 1920 }, 
-            height: { ideal: 1080 },
-            frameRate: { ideal: 30 }
-          },
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
+          video: { facingMode: { ideal: targetFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         })
       } catch (e1) {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        console.warn('getUserMedia 720p falló:', e1)
+        // Intento 2: básico (máxima compatibilidad iOS/Android)
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: targetFacing },
+            audio: true
+          })
+        } catch (e2) {
+          console.warn('getUserMedia básico falló:', e2)
+          // Intento 3: solo video
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        }
       }
 
       if (stream) stream.getVideoTracks().forEach(t => { try { t.contentHint = 'detail' } catch {} })
@@ -670,7 +676,8 @@ export default function RemoteCam() {
         style={{ 
           position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', 
           objectFit: 'cover', zIndex: 1, backgroundColor: '#050505',
-          display: active ? 'block' : 'none'
+          opacity: active ? 1 : 0,
+          pointerEvents: 'none'
         }}
       />
 
