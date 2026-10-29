@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "sizeBytes": 12734,
+  "filePath": "D:\\PROGRAMAS IA\\PODCASTUDIO\\test_output\\stream_output.flv",
+  "hasAudioStream": true,
+  "audioDetails": "aac (LC), 44100 Hz, stereo, fltp, 128 kb/s",
+  "hasVideoStream": true,
+  "videoDetails": "h264, none, 2500 kb/s, 30 fps, 1k tbr, 1k tbn",
+  "ffmpegLog": "1.40 aq=0\r\nOutput #0, flv, to 'D:\\PROGRAMAS IA\\PODCASTUDIO\\test_output\\stream_output.flv':\r\n  Metadata:\r\n    encoder         : Lavf60.16.100\r\n  Stream #0:0(eng): Video: h264 ([7][0][0][0] / 0x0007), yuv420p(progressive), 1920x1080, q=2-31, 2500 kb/s, 30 fps, 1k tbn (default)\r\n    Metadata:\r\n      alpha_mode      : 1\r\n      encoder         : Lavc60.31.102 libx264\r\n    Side data:\r\n      cpb: bitrate max/min/avg: 2800000/0/2500000 buffer size: 2800000 vbv_delay: N/A\r\n  Stream #0:1(eng): Audio: aac (LC) ([10][0][0][0] / 0x000A), 44100 Hz, stereo, fltp, 128 kb/s (default)\r\n    Metadata:\r\n      encoder         : Lavc60.31.102 aac\r\nframe=    0 fps=0.0 q=0.0 size=       0kB time=00:00:01.82 bitrate=   1.6kbits/s speed=25.4x    \r[out#0/flv @ 000001f7ec7fd500] video:0kB audio:12kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 8.015947%\r\nframe=    0 fps=0.0 q=0.0 Lsize=      12kB time=00:00:01.92 bitrate=  53.0kbits/s speed=11.8x    \r\n[aac @ 000001f7ec7dfa00] Qavg: 2334.121\r\n"
+}

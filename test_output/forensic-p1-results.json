@@ -1,0 +1,96 @@
+{
+  "workspaces": {
+    "podcast": {
+      "id": "podcast",
+      "name": "Podcast Studio",
+      "defaultLayout": "4",
+      "camSlotCount": 4,
+      "dualMonitorDefault": false,
+      "valid": true
+    },
+    "interview": {
+      "id": "interview",
+      "name": "Entrevista 1 a 1",
+      "defaultLayout": "two-shot",
+      "camSlotCount": 2,
+      "dualMonitorDefault": false,
+      "valid": true
+    },
+    "talkshow": {
+      "id": "talkshow",
+      "name": "Programa en Vivo",
+      "defaultLayout": "1",
+      "camSlotCount": 6,
+      "dualMonitorDefault": true,
+      "valid": true
+    },
+    "webinar": {
+      "id": "webinar",
+      "name": "Clase / Webinar",
+      "defaultLayout": "pip",
+      "camSlotCount": 2,
+      "dualMonitorDefault": false,
+      "valid": true
+    },
+    "radio": {
+      "id": "radio",
+      "name": "Radio Virtual",
+      "defaultLayout": "speaker",
+      "camSlotCount": 3,
+      "dualMonitorDefault": false,
+      "valid": true
+    },
+    "multicam": {
+      "id": "multicam",
+      "name": "Multicámara Pro",
+      "defaultLayout": "6",
+      "camSlotCount": 8,
+      "dualMonitorDefault": true,
+      "valid": true
+    }
+  },
+  "vadEngine": {
+    "noiseIgnored": true,
+    "speechTriggered": true,
+    "debateTriggered": true,
+    "stepB": {
+      "speakingCams": [
+        2
+      ],
+      "action": "switch_cam",
+      "target": 2
+    },
+    "stepC": {
+      "speakingCams": [
+        1,
+        2
+      ],
+      "action": "switch_layout",
+      "target": "two-shot"
+    },
+    "passed": true
+  },
+  "subtitlesCanvas": {
+    "boxWidth": 1229.2978515625,
+    "boxHeight": 64,
+    "whitePixelsCount": 142,
+    "sampledTextPixelRgba": [
+      248,
+      250,
+      252,
+      255
+    ],
+    "hasReadableText": true,
+    "imagePath": "D:\\PROGRAMAS IA\\PODCASTUDIO\\test_output\\p1_subtitles_verified.png"
+  },
+  "telemetryParser": {
+    "parsedTelemetry": {
+      "fps": 29.8,
+      "bitrate": "1714.2kbits/s",
+      "droppedFrames": 2,
+      "speed": "1.00x",
+      "health": "excellent"
+    },
+    "valid": true
+  }
+}

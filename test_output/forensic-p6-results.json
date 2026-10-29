@@ -1,0 +1,33 @@
+{
+  "version": "1.1.7",
+  "testDate": "2026-10-26T17:32:09.048Z",
+  "tests": {
+    "noiseSuppressionDsp": {
+      "passed": true,
+      "initialBypass": true,
+      "activeDsp": {
+        "highPassHz": 80,
+        "thresholdDb": -42,
+        "ratio": 12
+      },
+      "restoredBypass": true
+    },
+    "isoRecordingPipeline": {
+      "passed": true,
+      "hasStartIso": true,
+      "hasRecordIsoChunk": true,
+      "hasStopIso": true,
+      "hasGetIsoStatus": true,
+      "createsIsoFolder": true,
+      "usesFaststart": true
+    },
+    "versionConsistency": {
+      "passed": true,
+      "packageVersion": "1.1.7",
+      "appJsxVersion": "v1.1.7",
+      "exeFileVersion": "1.1.7.0",
+      "exeSizeBytes": 298496,
+      "exeExists": true
+    }
+  }
+}

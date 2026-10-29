@@ -1,0 +1,54 @@
+{
+  "version": "1.1.6",
+  "testDate": "2026-10-26T17:23:38.118Z",
+  "tests": {
+    "mixMinusRouting": {
+      "passed": true,
+      "busCam2": {
+        "excludedTarget": "cam_2",
+        "isTargetExcluded": true,
+        "connectedSources": [
+          "cam_1",
+          "cam_3",
+          "cam_4",
+          "bgm",
+          "sfx"
+        ]
+      },
+      "busCam3": {
+        "excludedTarget": "cam_3",
+        "isTargetExcluded": true,
+        "connectedSources": [
+          "cam_1",
+          "cam_2",
+          "cam_4",
+          "bgm",
+          "sfx"
+        ]
+      }
+    },
+    "autoSpeakerCintillo": {
+      "passed": true,
+      "antiPopFilterWorks": true,
+      "sustainedSpeechTriggerWorks": true,
+      "hostPrioritySwitchWorks": true,
+      "minSpeechDurationMs": 350,
+      "holdSeconds": 4.5
+    },
+    "multiGuestRoomEndpoints": {
+      "passed": true,
+      "hasRoomStatusEndpoint": true,
+      "hasGuestRoomUrlIpc": true,
+      "hasWakeLock": true,
+      "hasGuestParams": true
+    },
+    "versionConsistency": {
+      "passed": true,
+      "packageVersion": "1.1.6",
+      "appJsxVersion": "v1.1.6",
+      "exeFileVersion": "1.1.6.0",
+      "exeSizeBytes": 298496,
+      "exeExists": true
+    }
+  }
+}

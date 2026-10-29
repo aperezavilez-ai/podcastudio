@@ -1,0 +1,52 @@
+{
+  "version": "1.1.5",
+  "testDate": "2026-10-26T17:08:00.374Z",
+  "tests": {
+    "hostPriorityDucking": {
+      "passed": true,
+      "hostSpeakingState": {
+        "cam1HostGain": 1,
+        "cam2GuestGain": 0.38,
+        "bgmGain": 0.2
+      },
+      "hostSilenceState": {
+        "cam2GuestGain": 1,
+        "bgmGain": 1
+      }
+    },
+    "teleprompterMetrics": {
+      "passed": true,
+      "wordCount": 20,
+      "estimatedMinutes": "0.2",
+      "mirrorTransformCss": "scaleX(-1)"
+    },
+    "soundboardPad": {
+      "passed": true,
+      "padCount": 9,
+      "samplePads": [
+        {
+          "id": "applause",
+          "hotkey": "1"
+        },
+        {
+          "id": "horn",
+          "hotkey": "2"
+        },
+        {
+          "id": "laugh",
+          "hotkey": "3"
+        },
+        {
+          "id": "cheering",
+          "hotkey": "4"
+        }
+      ]
+    },
+    "versionConsistency": {
+      "passed": true,
+      "packageVersion": "1.1.5",
+      "exeSizeBytes": 298496,
+      "exeExists": true
+    }
+  }
+}

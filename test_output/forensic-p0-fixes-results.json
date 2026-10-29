@@ -1,0 +1,165 @@
+{
+  "tBarTest": {
+    "0%": {
+      "position": 0,
+      "rgba": [
+        255,
+        0,
+        0,
+        255
+      ],
+      "hex": "#ff0000",
+      "redRatio": 1,
+      "blueRatio": 0,
+      "isMathematicalBlend": true
+    },
+    "25%": {
+      "position": 0.25,
+      "rgba": [
+        191,
+        0,
+        64,
+        255
+      ],
+      "hex": "#bf0040",
+      "redRatio": 0.75,
+      "blueRatio": 0.25,
+      "isMathematicalBlend": true
+    },
+    "50%": {
+      "position": 0.5,
+      "rgba": [
+        127,
+        0,
+        128,
+        255
+      ],
+      "hex": "#7f0080",
+      "redRatio": 0.5,
+      "blueRatio": 0.5,
+      "isMathematicalBlend": true
+    },
+    "75%": {
+      "position": 0.75,
+      "rgba": [
+        64,
+        0,
+        191,
+        255
+      ],
+      "hex": "#4000bf",
+      "redRatio": 0.25,
+      "blueRatio": 0.75,
+      "isMathematicalBlend": true
+    },
+    "100%": {
+      "position": 1,
+      "rgba": [
+        0,
+        0,
+        255,
+        255
+      ],
+      "hex": "#0000ff",
+      "redRatio": 0,
+      "blueRatio": 1,
+      "isMathematicalBlend": true
+    }
+  },
+  "autoTest": {
+    "mp4File": "D:\\PROGRAMAS IA\\PODCASTUDIO\\test_output\\auto_transition_verified.mp4",
+    "mp4Size": 347771,
+    "hasAlphaBlendedFrames": true,
+    "samples": [
+      {
+        "frame": 0,
+        "progress": 0,
+        "r": 255,
+        "b": 0
+      },
+      {
+        "frame": 4,
+        "progress": 0.25,
+        "r": 191,
+        "b": 64
+      },
+      {
+        "frame": 8,
+        "progress": 0.82,
+        "r": 47,
+        "b": 208
+      },
+      {
+        "frame": 12,
+        "progress": 0,
+        "r": 0,
+        "b": 255
+      },
+      {
+        "frame": 16,
+        "progress": 0,
+        "r": 0,
+        "b": 255
+      },
+      {
+        "frame": 20,
+        "progress": 0,
+        "r": 0,
+        "b": 255
+      },
+      {
+        "frame": 24,
+        "progress": 0,
+        "r": 0,
+        "b": 255
+      },
+      {
+        "frame": 28,
+        "progress": 0,
+        "r": 0,
+        "b": 255
+      },
+      {
+        "frame": 32,
+        "progress": 0,
+        "r": 0,
+        "b": 255
+      }
+    ]
+  },
+  "remoteControlTest": {
+    "httpTest": {
+      "statusCode": 200,
+      "hasHtml": true,
+      "contentLength": 2642
+    },
+    "wsTest": {
+      "statesReceivedCount": 3,
+      "finalState": {
+        "activeCam": 2,
+        "pvwCam": 1,
+        "layoutMode": "2",
+        "isRecording": false
+      },
+      "commandsProcessedCount": 2
+    },
+    "receivedCommands": [
+      {
+        "type": "TRIGGER_CUT"
+      },
+      {
+        "type": "SET_LAYOUT",
+        "mode": "2"
+      }
+    ]
+  },
+  "rtmpTest": {
+    "success": true,
+    "sizeBytes": 4591,
+    "filePath": "D:\\PROGRAMAS IA\\PODCASTUDIO\\test_output\\rtmp_validated.flv",
+    "hasAudioStream": true,
+    "audioDetails": "aac (LC), 44100 Hz, stereo, fltp, 128 kb/s",
+    "hasVideoStream": true,
+    "videoDetails": "h264, none, 2500 kb/s, 30 fps, 1k tbr, 1k tbn"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "version": "1.1.4",
+  "testDate": "2026-10-26T16:33:05.442Z",
+  "tests": {
+    "tallyStateModel": {
+      "passed": true,
+      "details": {
+        "pgmCam": 3,
+        "pvwCam": 2,
+        "cam1": "off",
+        "cam2": "pvw",
+        "cam3": "pgm"
+      }
+    },
+    "tallySerialProtocol": {
+      "passed": true,
+      "serialStandard": "TALLY:PGM=3,PVW=2",
+      "vMixPgm": "3=1",
+      "vMixPvw": "2=2"
+    },
+    "liveHighlightsEngine": {
+      "passed": true,
+      "count": 3,
+      "sampleHighlights": [
+        {
+          "time": "00:39",
+          "title": "Apertura Polémica",
+          "type": "manual",
+          "duration": 30
+        },
+        {
+          "time": "02:02",
+          "title": "Debate Cruzado VAD",
+          "type": "vad_debate",
+          "duration": 30
+        },
+        {
+          "time": "04:04",
+          "title": "Ovación del Público",
+          "type": "sfx_applause",
+          "duration": 30
+        }
+      ]
+    },
+    "ffmpegClipArguments": {
+      "passed": true,
+      "startParam": "122.00",
+      "durationParam": "30.00",
+      "videoFilter": "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920"
+    },
+    "versionConsistency": {
+      "passed": true,
+      "packageVersion": "1.1.4",
+      "exeSizeBytes": 298496,
+      "exeExists": true
+    }
+  }
+}

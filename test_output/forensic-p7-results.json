@@ -1,0 +1,114 @@
+{
+  "testSuite": "PodcastStudio v1.1.8 Forensic Validation (P4.3 & P4.4)",
+  "timestamp": "2026-10-26T17:50:24.965Z",
+  "targetVersion": "1.1.8",
+  "tests": [
+    {
+      "name": "package.json versión es exactamente 1.1.8",
+      "category": "VERSIONING",
+      "passed": true,
+      "details": "Versión actual: 1.1.8"
+    },
+    {
+      "name": "src/App.jsx footer refleja PODCASTUDIO v1.1.8",
+      "category": "VERSIONING",
+      "passed": true,
+      "details": "Footer sincronizado"
+    },
+    {
+      "name": "Regla de versionado estricta: NUNCA usar 1.1.10 (próxima v1.1.9 -> v1.2.1)",
+      "category": "VERSIONING",
+      "passed": true,
+      "details": "Verificación de regla de versiones respetada al 100%"
+    },
+    {
+      "name": "masterBroadcastEngine contiene estado de repetición isReplaying y replayVideoElement",
+      "category": "P4.3_INSTANT_REPLAY",
+      "passed": true,
+      "details": "Propiedades reactivas presentes en currentState"
+    },
+    {
+      "name": "masterBroadcastEngine implementa función drawReplayOverlay con bug broadcast y baliza pulsante",
+      "category": "P4.3_INSTANT_REPLAY",
+      "passed": true,
+      "details": "Overlay bug presente con animación de pulso y barra de progreso"
+    },
+    {
+      "name": "masterBroadcastEngine conmuta renderizado a replayVideoElement en pantalla completa",
+      "category": "P4.3_INSTANT_REPLAY",
+      "passed": true,
+      "details": "Renderizado de repetición full-frame 1080p integrado"
+    },
+    {
+      "name": "masterBroadcastEngine exporta getMasterCanvas y setReplayOverlay",
+      "category": "P4.3_INSTANT_REPLAY",
+      "passed": true,
+      "details": "Funciones de acceso y control exportadas correctamente"
+    },
+    {
+      "name": "Hook useInstantReplay.js gestiona búfer circular (30s) y control de velocidad variable",
+      "category": "P4.3_INSTANT_REPLAY",
+      "passed": true,
+      "details": "Búfer circular y listeners de chunks WebM implementados"
+    },
+    {
+      "name": "Componente InstantReplayControl.jsx implementa panel de cabina con atajo [R] y selector 0.25x-1.0x",
+      "category": "P4.3_INSTANT_REPLAY",
+      "passed": true,
+      "details": "Panel táctil broadcast y corte a vivo listos"
+    },
+    {
+      "name": "electron/main.js declara conjunto programFeedClients para monitores LAN y OBS",
+      "category": "P4.4_LAN_PROGRAM_FEED",
+      "passed": true,
+      "details": "Set de clientes program-feed inicializado"
+    },
+    {
+      "name": "electron/main.js expone endpoint HTTP /program/status con telemetría JSON de emisión",
+      "category": "P4.4_LAN_PROGRAM_FEED",
+      "passed": true,
+      "details": "Endpoint de telemetría HTTP /program/status activo"
+    },
+    {
+      "name": "electron/main.js expone endpoint HTTP /program/feed con reproductor HTML5 1080p60 y WakeLock",
+      "category": "P4.4_LAN_PROGRAM_FEED",
+      "passed": true,
+      "details": "Página HTML5 Fullscreen /program/feed activa para OBS Browser Source"
+    },
+    {
+      "name": "electron/main.js implementa handlers IPC get-program-feed-url, get-program-status y program-feed-frame",
+      "category": "P4.4_LAN_PROGRAM_FEED",
+      "passed": true,
+      "details": "Handlers IPC registrados en main process"
+    },
+    {
+      "name": "electron/preload.js expone getProgramFeedUrl, getProgramStatus y sendProgramFeedFrame",
+      "category": "P4.4_LAN_PROGRAM_FEED",
+      "passed": true,
+      "details": "API contextBridge expone endpoints LAN en window.api"
+    },
+    {
+      "name": "Componente LanProgramOutputModal.jsx implementa modal de configuración con QR y copia en 1 clic",
+      "category": "P4.4_LAN_PROGRAM_FEED",
+      "passed": true,
+      "details": "Modal de conexión para OBS/vMix/Smart TV presente"
+    },
+    {
+      "name": "Endpoint /program/status responde 200 OK con JSON válido y telemetría 1080p60",
+      "category": "INTEGRATION_HTTP",
+      "passed": true,
+      "details": "HTTP Status: 200, Datos: {\"status\":\"online\",\"activeCam\":1,\"pvwCam\":2,\"layout\":\"1\",\"resolution\":\"1920x1080\",\"fps\":60,\"isStreaming\":false,\"isRecording\":false,\"isReplaying\":false,\"feedClients\":1,\"lanUrl\":\"http://127.0.0.1:3199/program/feed\"}"
+    },
+    {
+      "name": "Endpoint /program/feed responde 200 OK con Canvas 1080p para OBS Browser Source",
+      "category": "INTEGRATION_HTTP",
+      "passed": true,
+      "details": "HTTP Status: 200, Bytes: 128"
+    }
+  ],
+  "summary": {
+    "total": 17,
+    "passed": 17,
+    "failed": 0
+  }
+}

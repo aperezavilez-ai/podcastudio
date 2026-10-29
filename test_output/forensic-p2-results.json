@@ -1,0 +1,53 @@
+{
+  "whiteboardCanvas": {
+    "width": 1920,
+    "height": 1080,
+    "redPixel": [
+      239,
+      68,
+      68,
+      255
+    ],
+    "yellowPixel": [
+      250,
+      204,
+      21,
+      255
+    ],
+    "passed": true
+  },
+  "studentQnA": {
+    "cintilloGenerated": {
+      "active": true,
+      "text": "¿Cómo funciona la pizarra interactiva?",
+      "subtitle": "Pregunta de Sofía Valdés",
+      "tag": "PREGUNTA",
+      "color": "#8b5cf6"
+    },
+    "passed": true
+  },
+  "numpadMapping": {
+    "totalShortcuts": 10,
+    "hasStopKey": true,
+    "passed": true
+  },
+  "splitStack9x16": {
+    "targetWidth": 1080,
+    "targetHeight": 1920,
+    "topStackHeight": 960,
+    "bottomStackHeight": 960,
+    "sourceCropWidth": 960,
+    "passed": true
+  },
+  "audioVisualizer": {
+    "barCount": 42,
+    "totalWidth": 672,
+    "sampledPixel": [
+      16,
+      184,
+      129,
+      217
+    ],
+    "passed": true
+  }
+}
