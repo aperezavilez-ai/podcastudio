@@ -37,15 +37,46 @@ function ModalVideoPreview({ stream, label }) {
   const vRef = useRef(null);
 
   useEffect(() => {
-    if (vRef.current && stream) {
-      vRef.current.setAttribute('playsinline', 'true');
-      vRef.current.setAttribute('webkit-playsinline', 'true');
-      vRef.current.muted = true;
-      if (vRef.current.srcObject !== stream) {
-        vRef.current.srcObject = stream;
-      }
-      vRef.current.play().catch(() => {});
+    const v = vRef.current;
+    if (!v || !stream) return;
+
+    v.setAttribute('playsinline', 'true');
+    v.setAttribute('webkit-playsinline', 'true');
+    v.muted = true;
+    v.defaultMuted = true;
+
+    if (v.srcObject !== stream) {
+      v.srcObject = stream;
     }
+
+    const attemptPlay = () => {
+      if (v && v.paused) {
+        v.play().catch(() => {});
+      }
+    };
+
+    attemptPlay();
+    v.addEventListener('loadedmetadata', attemptPlay);
+    v.addEventListener('canplay', attemptPlay);
+
+    const vTracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
+    vTracks.forEach(t => {
+      t.addEventListener('unmute', attemptPlay);
+    });
+    if (stream.addEventListener) {
+      stream.addEventListener('addtrack', attemptPlay);
+    }
+
+    return () => {
+      v.removeEventListener('loadedmetadata', attemptPlay);
+      v.removeEventListener('canplay', attemptPlay);
+      vTracks.forEach(t => {
+        try { t.removeEventListener('unmute', attemptPlay); } catch {}
+      });
+      if (stream.removeEventListener) {
+        try { stream.removeEventListener('addtrack', attemptPlay); } catch {}
+      }
+    };
   }, [stream]);
 
   return (

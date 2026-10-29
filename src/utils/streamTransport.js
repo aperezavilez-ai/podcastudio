@@ -103,31 +103,41 @@ export class P2PStreamTransport extends BaseStreamTransport {
           const trackMap = new Map()
           this.activeTracks.set(slotIndex, trackMap)
 
+          // MediaStream estable para evitar reinicios continuos de video en React/Electron
+          let stableStream = this.compoundStreams.get(slotIndex)
+          if (!stableStream) {
+            stableStream = new MediaStream()
+            this.compoundStreams.set(slotIndex, stableStream)
+          }
+
           const dispatchStreamUpdate = () => {
-            const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended');
-            if (liveTracks.length === 0) return;
+            const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended')
+            if (liveTracks.length === 0) return
+
             liveTracks.forEach((t) => {
               try {
-                if (t.kind === 'video') t.contentHint = 'motion';
+                if (t.kind === 'video') t.contentHint = 'motion'
                 if (t.kind === 'audio') {
-                  t.contentHint = 'speech';
-                  t.enabled = true;
+                  t.contentHint = 'speech'
+                  t.enabled = true
                 }
               } catch {}
-            });
-            const stream = new MediaStream(liveTracks);
-            this.compoundStreams.set(slotIndex, stream);
-            this.emit('statusChanged', slotIndex, 'connected');
-            this.emit('streamConnected', slotIndex, stream, callerLabel);
+              if (!stableStream.getTracks().some(existing => existing.id === t.id)) {
+                stableStream.addTrack(t)
+              }
+            })
+
+            stableStream.getTracks().forEach(existing => {
+              if (!liveTracks.some(t => t.id === existing.id)) {
+                try { stableStream.removeTrack(existing) } catch {}
+              }
+            })
+
+            this.emit('statusChanged', slotIndex, 'connected')
+            this.emit('streamConnected', slotIndex, stableStream, callerLabel)
           }
 
           newPc.ontrack = (trackEvent) => {
-            if (trackEvent.receiver) {
-              try {
-                if ('jitterBufferTarget' in trackEvent.receiver) trackEvent.receiver.jitterBufferTarget = 0;
-                if ('playoutDelayHint' in trackEvent.receiver) trackEvent.receiver.playoutDelayHint = 0;
-              } catch {}
-            }
             const track = trackEvent.track
             if (!track) return
             trackMap.set(track.id, track)
@@ -174,14 +184,6 @@ export class P2PStreamTransport extends BaseStreamTransport {
 
           await newPc.setRemoteDescription(new RTCSessionDescription(payload.sdp))
 
-          // Minimizar jitter buffer para broadcast ultra bajo retardo
-          newPc.getReceivers().forEach((receiver) => {
-            try {
-              if ('jitterBufferTarget' in receiver) receiver.jitterBufferTarget = 0
-              if ('playoutDelayHint' in receiver) receiver.playoutDelayHint = 0
-            } catch {}
-          })
-
           const initialQueue = this.iceQueues.get(slotIndex) || []
           this.iceQueues.set(slotIndex, [])
           for (const cand of initialQueue) {
@@ -189,20 +191,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
           }
 
           const answer = await newPc.createAnswer()
-          
-          // Optimizar Opus en la respuesta SDP para latencia ultra-baja (paquetes cada 10-20ms)
-          let finalAnswerSdp = answer.sdp || '';
-          if (finalAnswerSdp.includes('opus/48000')) {
-            finalAnswerSdp = finalAnswerSdp.replace(/a=fmtp:(\d+)[^\r\n]*/g, (match, pt) => {
-              if (finalAnswerSdp.includes(`a=rtpmap:${pt} opus/48000`)) {
-                return `a=fmtp:${pt} minptime=10;maxptime=20;useinbandfec=1;stereo=0;sprop-stereo=0;cbr=1`;
-              }
-              return match;
-            });
-          }
-
-          const localDesc = new RTCSessionDescription({ type: answer.type, sdp: finalAnswerSdp });
-          await newPc.setLocalDescription(localDesc)
+          await newPc.setLocalDescription(answer)
 
           const postQueue = this.iceQueues.get(slotIndex) || []
           this.iceQueues.set(slotIndex, [])
@@ -213,7 +202,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
           await channel.send({
             type: 'broadcast',
             event: 'signal',
-            payload: { type: 'answer', sdp: localDesc, sender: 'studio' },
+            payload: { type: 'answer', sdp: answer, sender: 'studio' },
           })
         } catch (err) {
           console.error('[P2PTransport] Error handling offer:', err)
@@ -277,14 +266,6 @@ export class P2PStreamTransport extends BaseStreamTransport {
     const timer = setInterval(async () => {
       const current = this.peerConnections.get(slotIndex)
       if (!current || current.connectionState !== 'connected') return
-
-      // Mantener jitter buffer y retardo en 0ms continuo para respuesta en vivo
-      current.getReceivers().forEach((receiver) => {
-        try {
-          if ('jitterBufferTarget' in receiver) receiver.jitterBufferTarget = 0;
-          if ('playoutDelayHint' in receiver) receiver.playoutDelayHint = 0;
-        } catch {}
-      });
 
       try {
         const stats = await current.getStats()

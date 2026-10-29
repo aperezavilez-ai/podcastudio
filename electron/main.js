@@ -608,16 +608,20 @@ function startMediaServer() {
                 }
               };
 
-              // Forzar preferencia de códec H.264 por hardware en el móvil para 0% lag y 0 pixelado
+              // Preferencia de códecs universales (VP8 y H.264)
               try {
                 const transceivers = pc.getTransceivers();
                 const vTransceiver = transceivers.find(t => t.sender && t.sender.track && t.sender.track.kind === 'video');
                 if (vTransceiver && 'setCodecPreferences' in vTransceiver && window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities) {
                   const caps = RTCRtpReceiver.getCapabilities('video');
                   if (caps && caps.codecs) {
+                    const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
                     const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
-                    const others = caps.codecs.filter(c => c.mimeType.toLowerCase() !== 'video/h264');
-                    vTransceiver.setCodecPreferences([...h264, ...others]);
+                    const others = caps.codecs.filter(c => !vp8.includes(c) && !h264.includes(c));
+                    const preferred = [...vp8, ...h264, ...others];
+                    if (preferred.length > 0) {
+                      try { vTransceiver.setCodecPreferences(preferred); } catch (e) {}
+                    }
                   }
                 }
               } catch (e) {}
@@ -627,28 +631,6 @@ function startMediaServer() {
                 offerToReceiveVideo: false
               });
 
-              function prioritizeH264(sdp) {
-                const lines = sdp.split('\r\n');
-                let mIdx = -1;
-                const h264Pts = [];
-                lines.forEach((l, i) => {
-                  if (l.startsWith('m=video')) mIdx = i;
-                  if (l.startsWith('a=rtpmap:') && l.toLowerCase().includes('h264')) {
-                    const pt = l.split(':')[1].split(' ')[0];
-                    if (!h264Pts.includes(pt)) h264Pts.push(pt);
-                  }
-                });
-                if (mIdx !== -1 && h264Pts.length > 0) {
-                  const parts = lines[mIdx].split(' ');
-                  const header = parts.slice(0, 3);
-                  const payloads = parts.slice(3);
-                  const rest = payloads.filter(p => !h264Pts.includes(p));
-                  lines[mIdx] = [...header, ...h264Pts, ...rest].join(' ');
-                }
-                return lines.join('\r\n');
-              }
-
-              offer.sdp = prioritizeH264(offer.sdp);
               await pc.setLocalDescription(offer);
 
               if (ws && ws.readyState === 1) {

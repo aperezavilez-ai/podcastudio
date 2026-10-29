@@ -524,22 +524,13 @@ export default function RemoteCam() {
           if (vTransceiver && 'setCodecPreferences' in vTransceiver && window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities) {
             const caps = RTCRtpReceiver.getCapabilities('video');
             if (caps && caps.codecs) {
-              const isAndroid = /Android/i.test(navigator.userAgent);
-              let preferred = [];
-              if (isAndroid) {
-                // En Android: VP8 codifica sin buffer de lookahead ni retraso de fotogramas B
-                const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
-                const h264Base = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264' && (!c.sdpFmtpLine || c.sdpFmtpLine.includes('42e01f')));
-                const others = caps.codecs.filter(c => !vp8.includes(c) && !h264Base.includes(c));
-                preferred = [...vp8, ...h264Base, ...others];
-              } else {
-                // En iOS / Safari: H264 por hardware es nativo de bajísima latencia
-                const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
-                const others = caps.codecs.filter(c => c.mimeType.toLowerCase() !== 'video/h264');
-                preferred = [...h264, ...others];
-              }
+              // Priorizar VP8 (universal sin congelamiento ni drop de frames en PC, Android, Mac y Linux) y H.264
+              const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
+              const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
+              const others = caps.codecs.filter(c => !vp8.includes(c) && !h264.includes(c));
+              const preferred = [...vp8, ...h264, ...others];
               if (preferred.length > 0) {
-                vTransceiver.setCodecPreferences(preferred);
+                try { vTransceiver.setCodecPreferences(preferred); } catch (e) {}
               }
             }
           }
@@ -551,21 +542,7 @@ export default function RemoteCam() {
           ...(isRestart ? { iceRestart: true } : {}),
         })
 
-        function optimizeOfferSdp(sdp) {
-          let mod = sdp;
-          // Optimizar audio Opus a latencia ultra-baja (paquetes cada 10-20ms)
-          if (mod.includes('opus/48000')) {
-            mod = mod.replace(/a=fmtp:(\d+)[^\r\n]*/g, (match, pt) => {
-              if (mod.includes(`a=rtpmap:${pt} opus/48000`)) {
-                return `a=fmtp:${pt} minptime=10;maxptime=20;useinbandfec=1;stereo=0;sprop-stereo=0;cbr=1`;
-              }
-              return match;
-            });
-          }
-          return mod;
-        }
-
-        offer.sdp = optimizeOfferSdp(offer.sdp);
+        // SDP nativo sin alteración regex
         await pc.setLocalDescription(offer)
 
         if (videoSenderRef.current) {
@@ -867,7 +844,10 @@ export default function RemoteCam() {
       if (node.srcObject !== streamRef.current) {
         node.srcObject = streamRef.current
       }
-      node.play().catch(() => {})
+      const play = () => { if (node && node.paused) node.play().catch(() => {}) }
+      play()
+      node.addEventListener('loadedmetadata', play)
+      node.addEventListener('canplay', play)
     }
   }, [])
 

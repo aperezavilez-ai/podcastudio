@@ -119,10 +119,14 @@ function getOrCreateVideo(camId, stream) {
     videoElements.set(camId, v);
   }
   const v = videoElements.get(camId);
-  if (stream && v.srcObject !== stream) {
-    v.srcObject = stream;
-    v.play().catch(() => {});
-  } else if (!stream && v.srcObject) {
+  if (stream) {
+    if (v.srcObject !== stream) {
+      v.srcObject = stream;
+    }
+    if (v.paused) {
+      v.play().catch(() => {});
+    }
+  } else if (v.srcObject) {
     v.srcObject = null;
   }
   return v;

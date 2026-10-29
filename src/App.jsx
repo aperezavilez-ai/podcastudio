@@ -112,9 +112,24 @@ const VideoTile = React.forwardRef(({
 
       v.addEventListener('loadedmetadata', attemptPlay);
       v.addEventListener('canplay', attemptPlay);
+
+      const vTracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
+      vTracks.forEach(t => {
+        t.addEventListener('unmute', attemptPlay);
+      });
+      if (stream.addEventListener) {
+        stream.addEventListener('addtrack', attemptPlay);
+      }
+
       return () => {
         v.removeEventListener('loadedmetadata', attemptPlay);
         v.removeEventListener('canplay', attemptPlay);
+        vTracks.forEach(t => {
+          try { t.removeEventListener('unmute', attemptPlay); } catch {}
+        });
+        if (stream.removeEventListener) {
+          try { stream.removeEventListener('addtrack', attemptPlay); } catch {}
+        }
       };
     }
   }, [stream, videoRef]);
@@ -1639,6 +1654,10 @@ function PodcastStudioApp() {
           cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
             console.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
             setSlotStreams(prev => ({ ...prev, [slotIdx]: stream }));
+            setRemoteCams(prev => [
+              ...prev.filter(r => r.id !== `cloud_${slotIdx}`),
+              { id: `cloud_${slotIdx}`, stream, name: label || `Celular CAM ${slotIdx + 1}` }
+            ]);
             setCameraMeta(prev => ({
               ...prev,
               [slotIdx]: { deviceId: `cloud_${slotIdx}`, label: label || `Celular Remoto (CAM ${slotIdx + 1})`, type: 'remote' }
@@ -1653,6 +1672,7 @@ function PodcastStudioApp() {
               delete next[slotIdx];
               return next;
             });
+            setRemoteCams(prev => prev.filter(r => r.id !== `cloud_${slotIdx}`));
             setMobileStatus('');
           });
           cloudTransport.connectSlot(slotIdx, roomCode);
@@ -1799,12 +1819,6 @@ function PodcastStudioApp() {
         };
 
         pc.ontrack = (event) => {
-          if (event.receiver) {
-            try {
-              if ('playoutDelayHint' in event.receiver) event.receiver.playoutDelayHint = 0;
-              if ('jitterBufferTarget' in event.receiver) event.receiver.jitterBufferTarget = 0;
-            } catch (e) {}
-          }
           if (event.track) {
             trackMap.set(event.track.id, event.track);
             event.track.onunmute = () => updateStream();
