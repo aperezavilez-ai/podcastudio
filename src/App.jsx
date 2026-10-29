@@ -2518,12 +2518,18 @@ function PodcastStudioApp() {
         clearTimeout(failTimeout);
         if (checkInterval) clearInterval(checkInterval);
 
+        let lastDraw = 0;
         const renderFrame = () => {
           if (!isAlive) return;
-          if (!isMjpegStream && video && video.readyState >= 2) {
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          } else if (img && img.naturalWidth > 0) {
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const now = performance.now();
+          // Limitar a ~30fps reales para evitar barrido y retraso acumulado
+          if (now - lastDraw >= 32) {
+            if (!isMjpegStream && video && video.readyState >= 2) {
+              ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            } else if (img && img.naturalWidth > 0) {
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            }
+            lastDraw = now;
           }
           animId = requestAnimationFrame(renderFrame);
         };

@@ -11,8 +11,8 @@ const QUALITY_TIERS = [
   { label: 'Full HD 1080p Alta', maxBitrate: 8000000, width: 1920, height: 1080, frameRate: 30 },
   { label: 'HD 720p Fluido', maxBitrate: 4500000, width: 1280, height: 720, frameRate: 30 },
 ]
-const RTT_DEGRADE_MS = 250     
-const RTT_HEALTHY_MS = 100     
+const RTT_DEGRADE_MS = 450     
+const RTT_HEALTHY_MS = 150     
 const HEALTHY_CHECKS_TO_RISE = 3
 
 function applyVideoSenderParams(sender, tier) {
@@ -348,7 +348,7 @@ export default function RemoteCam() {
 
     localStream.getTracks().forEach((track) => {
       try {
-        if (track.kind === 'video') track.contentHint = 'motion'
+        if (track.kind === 'video') track.contentHint = 'detail'
         if (track.kind === 'audio') track.contentHint = 'speech'
       } catch {}
       const sender = pc.addTrack(track, localStream)
@@ -518,17 +518,17 @@ export default function RemoteCam() {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { 
             facingMode: { ideal: targetFacing }, 
-            width: { ideal: 1920, min: 1280 }, 
-            height: { ideal: 1080, min: 720 },
-            frameRate: { ideal: 30, max: 60 }
+            width: { ideal: 1920 }, 
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 }
           },
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 48000 }
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
         })
       } catch (e1) {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       }
 
-      if (stream) stream.getVideoTracks().forEach(t => { try { t.contentHint = 'motion' } catch {} })
+      if (stream) stream.getVideoTracks().forEach(t => { try { t.contentHint = 'detail' } catch {} })
 
       streamRef.current = stream
 
@@ -573,15 +573,15 @@ export default function RemoteCam() {
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: { 
           facingMode: { ideal: nextFacing }, 
-          width: { ideal: 1920, min: 1280 }, 
-          height: { ideal: 1080, min: 720 },
-          frameRate: { ideal: 30, max: 60 }
+          width: { ideal: 1920 }, 
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 }
         },
         audio: false,
       })
 
       const newTrack = newStream.getVideoTracks()[0]
-      if (newTrack) { try { newTrack.contentHint = 'motion' } catch {} }
+      if (newTrack) { try { newTrack.contentHint = 'detail' } catch {} }
 
       const sender = videoSenderRef.current || pcRef.current?.getSenders?.()?.find(s => s.track?.kind === 'video' || s.kind === 'video')
       if (sender && newTrack) await sender.replaceTrack(newTrack)
