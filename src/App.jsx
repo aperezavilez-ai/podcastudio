@@ -2182,19 +2182,29 @@ function PodcastStudioApp() {
             }
           }
 
+          // Servidores por defecto robustos
           if (id === 'facebook') {
-            if (server.startsWith('rtmp://')) {
-              server = server.replace('rtmp://', 'rtmps://');
-            }
-            if (!server) {
+            if (!server || server.startsWith('rtmp://')) {
               server = 'rtmps://live-api-s.facebook.com:443/rtmp/';
             }
+          } else if (id === 'youtube') {
+            if (!server) server = 'rtmp://a.rtmp.youtube.com/live2/';
+          } else if (id === 'tiktok') {
+            if (!server) server = 'rtmp://live.tiktok.com/live/';
           }
+
           if (!server.endsWith('/')) server += '/';
+
+          // Validación básica de clave
+          const cleanKey = key.replace(/\s+/g, '');
+          if (cleanKey.length < 8) {
+            throw new Error(`Clave de ${id} demasiado corta o inválida`);
+          }
+
           return {
             id,
             name: id === 'facebook' ? 'Facebook Live' : id === 'youtube' ? 'YouTube Live' : id === 'tiktok' ? 'TikTok Live' : 'RTMP Personalizado',
-            url: server + key
+            url: server + cleanKey
           };
         });
 
@@ -2243,7 +2253,7 @@ function PodcastStudioApp() {
         } else {
           isStreamingRef.current = false;
           if (!isRecordingRef.current) stopBroadcastEngine();
-          alert('Error al conectar con Facebook / Servidor RTMP: ' + (res.error || 'Verifica la clave de transmisión y conexión'));
+          alert('Error al conectar:\n' + (res.error || 'Verifica la clave, el servidor y que la transmisión esté habilitada en la plataforma.\nRevisa la consola de Electron para más detalles de FFmpeg.'));
         }
       } else {
         isStreamingRef.current = true;
@@ -2477,8 +2487,8 @@ function PodcastStudioApp() {
       }
 
       const canvas = document.createElement('canvas');
-      canvas.width = 1280;
-      canvas.height = 720;
+      canvas.width = 1920;
+      canvas.height = 1080;
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#05070a';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -2554,7 +2564,7 @@ function PodcastStudioApp() {
           if (checkInterval) clearInterval(checkInterval);
           clearTimeout(failTimeout);
           try { img.src = ''; } catch (err) {}
-          reject(new Error('La cámara rechazó la conexión (Error 404/Sin señal). Verifica que la IP, puerto (554) y ruta (/stream1) sean correctos.'));
+          reject(new Error('La cámara rechazó la conexión. Prueba paths comunes: /live, /stream1, /Streaming/Channels/101, /cam/realmonitor?channel=1&subtype=0, /h264Preview_01_main. Verifica usuario y contraseña.'));
         }
       };
 

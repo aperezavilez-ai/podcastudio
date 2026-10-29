@@ -7,9 +7,9 @@ import styles from './RemoteCam.module.css'
 const RTC_CONFIG = getWebRtcConfig()
 
 const QUALITY_TIERS = [
-  { label: 'Full HD 1080p Cristal', maxBitrate: 6000000, width: 1920, height: 1080, frameRate: 30 },
-  { label: 'HD 720p Fluido', maxBitrate: 3500000, width: 1280, height: 720, frameRate: 30 },
-  { label: 'HD 720p Balanceado', maxBitrate: 2000000, width: 1280, height: 720, frameRate: 30 },
+  { label: 'Full HD 1080p Máxima', maxBitrate: 12000000, width: 1920, height: 1080, frameRate: 30 },
+  { label: 'Full HD 1080p Alta', maxBitrate: 8000000, width: 1920, height: 1080, frameRate: 30 },
+  { label: 'HD 720p Fluido', maxBitrate: 4500000, width: 1280, height: 720, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 250     
 const RTT_HEALTHY_MS = 100     
@@ -516,8 +516,13 @@ export default function RemoteCam() {
       let stream = null
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: targetFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
+          video: { 
+            facingMode: { ideal: targetFacing }, 
+            width: { ideal: 1920, min: 1280 }, 
+            height: { ideal: 1080, min: 720 },
+            frameRate: { ideal: 30, max: 60 }
+          },
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 48000 }
         })
       } catch (e1) {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
@@ -566,7 +571,12 @@ export default function RemoteCam() {
       if (oldTrack) { try { oldTrack.stop() } catch {} }
 
       const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: nextFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { 
+          facingMode: { ideal: nextFacing }, 
+          width: { ideal: 1920, min: 1280 }, 
+          height: { ideal: 1080, min: 720 },
+          frameRate: { ideal: 30, max: 60 }
+        },
         audio: false,
       })
 

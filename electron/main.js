@@ -225,13 +225,15 @@ function startMediaServer() {
 
     const ffProc = spawn(ffmpegPath, [
       '-rtsp_transport', 'tcp',
-      '-timeout', '10000000',
+      '-timeout', '15000000',
+      '-analyzeduration', '2000000',
+      '-probesize', '1000000',
       '-i', rtspUrl,
       '-f', 'mpjpeg',
       '-boundary_tag', 'ffmpegframe',
-      '-q:v', '4',
-      '-r', '25',
-      '-vf', 'scale=1280:720',
+      '-q:v', '2',
+      '-r', '30',
+      '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black',
       'pipe:1'
     ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -1322,7 +1324,7 @@ ipcMain.handle('discover-network-cameras', async () => {
           port: 554,
           type: 'wifi_url',
           protocol: 'RTSP',
-          url: `rtsp://${ip}:554/stream1`,
+          url: `rtsp://${ip}:554/live`,
           service: xaddr
         });
       });
@@ -1391,7 +1393,7 @@ ipcMain.handle('discover-network-cameras', async () => {
               port: 554,
               type: 'wifi_url',
               protocol: 'RTSP',
-              url: `rtsp://${ip}:554/stream1`
+              url: `rtsp://${ip}:554/live`
             });
             return;
           }
@@ -2225,11 +2227,24 @@ ipcMain.handle('scan-network-cameras', async () => {
     const ipsToScan = [...new Set([...baseGateways, ...arpIps, ...commonIps])];
 
     const cameraPorts = [
-      { port: 554, name: 'Cámara RTSP / CCTV', path: '/live', proto: 'rtsp' },
+      // RTSP genéricos y de marcas
+      { port: 554, name: 'RTSP Genérico', path: '/live', proto: 'rtsp' },
+      { port: 554, name: 'RTSP Stream1', path: '/stream1', proto: 'rtsp' },
+      { port: 554, name: 'RTSP H264', path: '/h264', proto: 'rtsp' },
+      { port: 554, name: 'RTSP Main', path: '/main', proto: 'rtsp' },
+      { port: 554, name: 'RTSP Streaming', path: '/Streaming/Channels/101', proto: 'rtsp' },
+      { port: 554, name: 'TP-Link Tapo', path: '/stream1', proto: 'rtsp' },
+      { port: 554, name: 'Hikvision', path: '/Streaming/Channels/101', proto: 'rtsp' },
+      { port: 554, name: 'Dahua', path: '/cam/realmonitor?channel=1&subtype=0', proto: 'rtsp' },
+      { port: 554, name: 'Reolink', path: '/h264Preview_01_main', proto: 'rtsp' },
+      { port: 554, name: 'Amcrest', path: '/cam/realmonitor?channel=1&subtype=0', proto: 'rtsp' },
+      { port: 554, name: 'ONVIF / Genérico', path: '/onvif1', proto: 'rtsp' },
+      { port: 8554, name: 'RTSP Alt', path: '/live', proto: 'rtsp' },
+      // HTTP / MJPEG
       { port: 8192, name: 'Cámara de Acción Wi-Fi', path: '/', proto: 'http' },
       { port: 4747, name: 'DroidCam Wi-Fi', path: '/video', proto: 'http' },
       { port: 8080, name: 'Cámara IP / Webcam', path: '/video', proto: 'http' },
-      { port: 8554, name: 'RTSP Stream', path: '/live', proto: 'rtsp' },
+      { port: 80, name: 'HTTP MJPEG', path: '/video', proto: 'http' },
     ];
 
     const verifyHttpVideo = (host, port, path) => {
@@ -2344,26 +2359,29 @@ ipcMain.handle('start-streaming', async (event, payload) => {
 
       const workerArgs = [
         '-probesize', '32M',
-        '-analyzeduration', '2000000',
-        '-fflags', '+nobuffer+flush_packets',
+        '-analyzeduration', '5000000',
+        '-fflags', '+nobuffer+flush_packets+discardcorrupt',
         '-f', 'webm',
         '-i', 'pipe:0',
         '-c:v', 'libx264',
-        '-preset', 'ultrafast',
+        '-preset', 'veryfast',
         '-tune', 'zerolatency',
-        '-b:v', '2500k',
-        '-maxrate', '2800k',
-        '-bufsize', '2800k',
+        '-profile:v', 'main',
+        '-level', '4.1',
+        '-b:v', '4500k',
+        '-maxrate', '5000k',
+        '-bufsize', '5000k',
         '-pix_fmt', 'yuv420p',
         '-g', '60',
-        '-keyint_min', '60',
+        '-keyint_min', '30',
         '-r', '30',
         '-c:a', 'aac',
-        '-b:a', '128k',
+        '-b:a', '160k',
         '-ar', '48000',
+        '-ac', '2',
         '-max_interleave_delta', '0',
         '-flvflags', 'no_duration_filesize',
-        '-rtmp_buffer', '100',
+        '-rtmp_buffer', '200',
         '-rtmp_live', 'live',
         '-f', 'flv',
         destUrl
@@ -2415,7 +2433,7 @@ ipcMain.handle('start-streaming', async (event, payload) => {
                 targetId: target.id,
                 targetName: target.name,
                 fps: fpsMatch ? parseFloat(fpsMatch[1]) : 30,
-                bitrate: bitrateMatch ? bitrateMatch[1] : '2500 kbits/s',
+                bitrate: bitrateMatch ? bitrateMatch[1] : '4500 kbits/s',
                 droppedFrames: dropped,
                 speed: speedMatch ? speedMatch[1] : '1.0x',
                 health: dropped > 15 ? 'warning' : 'excellent'

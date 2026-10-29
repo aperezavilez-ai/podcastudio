@@ -1482,7 +1482,7 @@ export function startBroadcastEngine(initialState, onChunk) {
   }
 
   try {
-    mediaRecorder = new MediaRecorder(masterStream, { mimeType: chosenMime, videoBitsPerSecond: 10000000 });
+    mediaRecorder = new MediaRecorder(masterStream, { mimeType: chosenMime, videoBitsPerSecond: 25000000 });
     mediaRecorder.ondataavailable = async (e) => {
       if (e.data && e.data.size > 0) {
         try {
@@ -1528,7 +1528,7 @@ export function createMasterRecordingSession(onChunk, timesliceMs = 500) {
     else if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) chosenMime = 'video/mp4;codecs=avc1';
   }
   try {
-    const rec = new MediaRecorder(stream, { mimeType: chosenMime, videoBitsPerSecond: 10000000 });
+    const rec = new MediaRecorder(stream, { mimeType: chosenMime, videoBitsPerSecond: 25000000 });
     rec.ondataavailable = async (e) => {
       if (e.data && e.data.size > 0 && typeof onChunk === 'function') {
         try { const buf = await e.data.arrayBuffer(); onChunk(buf); } catch (err) {}

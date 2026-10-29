@@ -215,9 +215,9 @@ export async function renderPresetThumbnail(sourceCanvas, preset) {
 
   return new Promise((resolve) => {
     canvas.toBlob((blob) => {
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
       resolve({ blob, dataUrl })
-    }, 'image/jpeg', 0.92)
+    }, 'image/jpeg', 0.95)
   })
 }
 
