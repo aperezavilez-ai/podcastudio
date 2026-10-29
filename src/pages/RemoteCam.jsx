@@ -6,7 +6,7 @@ import { getWebRtcConfig } from '../utils/rtcConfig.js'
 const RTC_CONFIG = getWebRtcConfig()
 
 const QUALITY_TIERS = [
-  { label: 'Full HD 1080p MÃ¡xima', maxBitrate: 12000000, width: 1920, height: 1080, frameRate: 30 },
+  { label: 'Full HD 1080p Máxima', maxBitrate: 12000000, width: 1920, height: 1080, frameRate: 30 },
   { label: 'Full HD 1080p Alta', maxBitrate: 8000000, width: 1920, height: 1080, frameRate: 30 },
   { label: 'HD 720p Fluido', maxBitrate: 4500000, width: 1280, height: 720, frameRate: 30 },
 ]
@@ -207,8 +207,8 @@ export default function RemoteCam() {
     const phoneId = 'phone_' + Math.random().toString(36).substring(2, 8);
     const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isAndroid = /Android/i.test(navigator.userAgent);
-    const deviceType = isIos ? 'iPhone' : isAndroid ? 'Android' : 'Celular MÃ³vil';
-    const deviceName = guestName.trim() ? `${guestName.trim()} (${deviceType})` : `${deviceType} (CÃ¡mara Wi-Fi)`;
+    const deviceType = isIos ? 'iPhone' : isAndroid ? 'Android' : 'Celular Móvil';
+    const deviceName = guestName.trim() ? `${guestName.trim()} (${deviceType})` : `${deviceType} (Cámara Wi-Fi)`;
 
     presenceChannel.on('broadcast', { event: 'ping-presence' }, () => {
       presenceChannel.send({
@@ -334,7 +334,7 @@ export default function RemoteCam() {
 
   const initSignaling = useCallback(async (localStream) => {
     if (!supabase) {
-      setErrorMsg('No se pudo inicializar la conexiÃ³n.')
+      setErrorMsg('No se pudo inicializar la conexión.')
       setStatus('error')
       return
     }
@@ -520,15 +520,15 @@ export default function RemoteCam() {
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         })
       } catch (e1) {
-        console.warn('getUserMedia 720p fallÃ³:', e1)
-        // Intento 2: bÃ¡sico (mÃ¡xima compatibilidad iOS/Android)
+        console.warn('getUserMedia 720p falló:', e1)
+        // Intento 2: básico (máxima compatibilidad iOS/Android)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: targetFacing },
             audio: true
           })
         } catch (e2) {
-          console.warn('getUserMedia bÃ¡sico fallÃ³:', e2)
+          console.warn('getUserMedia básico falló:', e2)
           // Intento 3: solo video
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
         }
@@ -560,7 +560,7 @@ export default function RemoteCam() {
       await requestWakeLock()
       await initSignaling(stream)
     } catch (err) {
-      setErrorMsg('No se pudo acceder a la cÃ¡mara. Revisa los permisos del navegador.')
+      setErrorMsg('No se pudo acceder a la cámara. Revisa los permisos del navegador.')
       setStatus('error')
     }
   }
@@ -605,7 +605,7 @@ export default function RemoteCam() {
       const caps = newTrack?.getCapabilities ? newTrack.getCapabilities() : {}
       setTorchSupported(Boolean(caps.torch))
     } catch (err) {
-      console.warn('Error al cambiar de cÃ¡mara:', err)
+      console.warn('Error al cambiar de cámara:', err)
     } finally {
       setTimeout(() => { isFlippingRef.current = false }, 350)
     }
@@ -681,7 +681,7 @@ export default function RemoteCam() {
         }}
       />
 
-      {/* PANTALLA DE INICIO (MenÃº de ConexiÃ³n) */}
+      {/* PANTALLA DE INICIO (Menú de Conexión) */}
       {!active && (
         <div style={{ position: 'relative', zIndex: 10, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f172a', padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px', background: 'rgba(0,0,0,0.3)', borderRadius: 20, marginBottom: 20 }}>
@@ -696,11 +696,11 @@ export default function RemoteCam() {
           {isAssigning ? (
             <div style={{ padding: '6px 14px', borderRadius: 20, background: 'rgba(234, 88, 12, 0.25)', border: '1px solid #ea580c', color: '#ffedd5', fontSize: 11, fontWeight: 700, margin: '6px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
               <Zap size={14} className="animate-pulse" color="#fb923c" />
-              <span>Asignando cÃ¡mara libre en Master...</span>
+              <span>Asignando cámara libre en Master...</span>
             </div>
           ) : (
             <span style={{ padding: '6px 16px', background: '#ea580c', color: '#fff', borderRadius: 8, fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-              {sessionRole === 'student' ? 'AULA VIRTUAL' : sessionRole === 'cohost' ? 'CO-PRESENTADOR' : 'INVITADO EN VIVO'} â€¢ CAM {slot}
+              {sessionRole === 'student' ? 'AULA VIRTUAL' : sessionRole === 'cohost' ? 'CO-PRESENTADOR' : 'INVITADO EN VIVO'} • CAM {slot}
             </span>
           )}
 
@@ -719,8 +719,8 @@ export default function RemoteCam() {
             ))}
           </div>
 
-          <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, textAlign: 'center', marginBottom: 10 }}>{guestName ? `Â¡Hola, ${guestName}!` : 'CÃ¡mara InalÃ¡mbrica'}</h1>
-          <p style={{ color: '#94a3b8', fontSize: 14, textAlign: 'center', maxWidth: 300, marginBottom: 24, lineHeight: 1.5 }}>Conecta la cÃ¡mara de tu smartphone en tiempo real al estudio principal.</p>
+          <h1 style={{ color: '#fff', fontSize: 24, fontWeight: 800, textAlign: 'center', marginBottom: 10 }}>{guestName ? `¡Hola, ${guestName}!` : 'Cámara Inalámbrica'}</h1>
+          <p style={{ color: '#94a3b8', fontSize: 14, textAlign: 'center', maxWidth: 300, marginBottom: 24, lineHeight: 1.5 }}>Conecta la cámara de tu smartphone en tiempo real al estudio principal.</p>
 
           <div style={{ display: 'flex', gap: 10, margin: '8px 0 24px', justifyContent: 'center' }}>
             <button
@@ -731,7 +731,7 @@ export default function RemoteCam() {
                 background: facingMode === 'environment' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.05)',
                 color: facingMode === 'environment' ? '#38bdf8' : '#94a3b8'
               }}
-            >ðŸ“· Trasera</button>
+            >📷 Trasera</button>
             <button
               type="button" onClick={() => setFacingMode('user')}
               style={{
@@ -740,12 +740,12 @@ export default function RemoteCam() {
                 background: facingMode === 'user' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.05)',
                 color: facingMode === 'user' ? '#38bdf8' : '#94a3b8'
               }}
-            >ðŸ¤³ Frontal</button>
+            >🤳 Frontal</button>
           </div>
 
           <button type="button" onClick={() => startCamera(facingMode)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: 12, padding: '16px 24px', fontSize: 16, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(56,189,248,0.4)' }}>
             <Camera size={20} />
-            <span>Activar CÃ¡mara</span>
+            <span>Activar Cámara</span>
           </button>
 
           {errorMsg && (
@@ -757,17 +757,17 @@ export default function RemoteCam() {
         </div>
       )}
 
-      {/* OVERLAYS CUANDO LA CÃMARA ESTÃ ACTIVA */}
+      {/* OVERLAYS CUANDO LA CÁMARA ESTÁ ACTIVA */}
       {active && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '24px 16px 40px', pointerEvents: 'none' }}>
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, background: 'rgba(0,0,0,0.65)', border: status === 'connected' ? '1px solid rgba(239,68,68,0.5)' : '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(4px)' }}>
               <div style={{ width: 8, height: 8, borderRadius: '50%', background: status === 'connected' ? '#ef4444' : '#facc15', boxShadow: status === 'connected' ? '0 0 8px #ef4444' : 'none', animation: status === 'connected' ? 'pulse 2s infinite' : 'none' }} />
-              <span style={{ color: '#fff', fontSize: 11, fontWeight: 800, letterSpacing: 0.5 }}>{status === 'connected' ? `AL AIRE â€¢ CAM ${slot}` : status === 'negotiating' ? 'ENLAZANDO...' : 'CONECTANDO...'}</span>
+              <span style={{ color: '#fff', fontSize: 11, fontWeight: 800, letterSpacing: 0.5 }}>{status === 'connected' ? `AL AIRE • CAM ${slot}` : status === 'negotiating' ? 'ENLAZANDO...' : 'CONECTANDO...'}</span>
             </div>
             <div style={{ padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 800, background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8', backdropFilter: 'blur(4px)' }}>
-              {qualityLabel} â€¢ AUTO-NET
+              {qualityLabel} • AUTO-NET
             </div>
           </div>
 
@@ -807,7 +807,7 @@ export default function RemoteCam() {
 
           {localBackupBlobUrl && !localBackupActive && (
             <div style={{ position: 'absolute', bottom: 100, left: '50%', transform: 'translateX(-50%)', background: 'rgba(16, 185, 129, 0.95)', color: '#fff', borderRadius: 20, padding: '6px 16px', display: 'flex', alignItems: 'center', gap: 10, zIndex: 110, pointerEvents: 'auto' }}>
-              <span style={{ fontSize: 12, fontWeight: 700 }}>ðŸ’¾ Guardado</span>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>💾 Guardado</span>
               <button type="button" onClick={downloadLocalBackup} style={{ background: '#fff', color: '#059669', border: 'none', borderRadius: 12, padding: '6px 12px', fontWeight: 800, fontSize: 11, cursor: 'pointer' }}>Descargar</button>
             </div>
           )}
@@ -816,6 +816,3 @@ export default function RemoteCam() {
     </div>
   )
 }
-
-
- 
