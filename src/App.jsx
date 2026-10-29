@@ -113,22 +113,46 @@ const VideoTile = React.forwardRef(({
       v.addEventListener('loadedmetadata', attemptPlay);
       v.addEventListener('canplay', attemptPlay);
 
-      const vTracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
-      vTracks.forEach(t => {
-        t.addEventListener('unmute', attemptPlay);
-      });
+      // Track unmute listeners for tracks that already exist
+      const unmuteCbs = new Map();
+      const wireTrackListeners = (track) => {
+        if (unmuteCbs.has(track.id)) return;
+        const cb = () => attemptPlay();
+        unmuteCbs.set(track.id, { track, cb });
+        track.addEventListener('unmute', cb);
+      };
+      const initialTracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
+      initialTracks.forEach(wireTrackListeners);
+
+      // When stable stream adds a new track, also wire its unmute listener
+      const onAddTrack = (evt) => {
+        if (evt.track) wireTrackListeners(evt.track);
+        attemptPlay();
+      };
       if (stream.addEventListener) {
-        stream.addEventListener('addtrack', attemptPlay);
+        stream.addEventListener('addtrack', onAddTrack);
       }
 
+      // Safety polling: retry play() every 500ms for 10s to handle edge cases
+      let pollCount = 0;
+      const pollTimer = setInterval(() => {
+        pollCount++;
+        if (pollCount > 20) { clearInterval(pollTimer); return; }
+        if (v && v.paused && v.srcObject && v.srcObject.getVideoTracks().some(t => t.readyState === 'live')) {
+          v.play().catch(() => {});
+        }
+      }, 500);
+
       return () => {
+        clearInterval(pollTimer);
         v.removeEventListener('loadedmetadata', attemptPlay);
         v.removeEventListener('canplay', attemptPlay);
-        vTracks.forEach(t => {
-          try { t.removeEventListener('unmute', attemptPlay); } catch {}
+        unmuteCbs.forEach(({ track, cb }) => {
+          try { track.removeEventListener('unmute', cb); } catch {}
         });
+        unmuteCbs.clear();
         if (stream.removeEventListener) {
-          try { stream.removeEventListener('addtrack', attemptPlay); } catch {}
+          try { stream.removeEventListener('addtrack', onAddTrack); } catch {}
         }
       };
     }
@@ -1750,47 +1774,36 @@ function PodcastStudioApp() {
           try { peerConnections.current[id].close(); } catch (e) {}
         }
 
-        const pc = new RTCPeerConnection({
-          iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' }
-          ]
-        });
+        const pc = new RTCPeerConnection(getWebRtcConfig());
         peerConnections.current[id] = pc;
 
-        const trackMap = new Map();
-        const updateStream = () => {
-          const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended');
+        // Stream ESTABLE que persiste toda la conexión — NUNCA crear uno nuevo por evento
+        const stableStream = new MediaStream();
+        stableStream.mobileId = id;
+        let slotAssigned = false;
+
+        const assignSlotOnce = () => {
+          if (slotAssigned) return;
+          const liveTracks = stableStream.getVideoTracks().filter(t => t.readyState !== 'ended');
           if (liveTracks.length === 0) return;
+          slotAssigned = true;
 
-          liveTracks.forEach(t => {
-            try {
-              if (t.kind === 'video') t.contentHint = 'motion';
-              if (t.kind === 'audio') {
-                t.contentHint = 'speech';
-                t.enabled = true;
-              }
-            } catch {}
-          });
-
-          const stream = new MediaStream(liveTracks);
-          stream.mobileId = id;
-          console.log(`[WebRTC] Video en vivo recibido y enlazado de celular ${id} (tracks: ${liveTracks.length})`);
+          console.log(`[WebRTC] Video en vivo recibido de celular ${id} (tracks: ${stableStream.getTracks().length})`);
 
           setRemoteCams(prev => {
             const filtered = prev.filter(s => s.id !== id);
-            return [...filtered, { id, stream, name: name || `Celular ${id.slice(-4)}` }];
+            return [...filtered, { id, stream: stableStream, name: name || `Celular ${id.slice(-4)}` }];
           });
 
           let targetSlot = null;
           if (slot != null) {
             const parsed = parseInt(slot, 10) - 1;
-            if (!isNaN(parsed) && parsed >= 0 && parsed <= 3) {
+            if (!isNaN(parsed) && parsed >= 0 && parsed < 12) {
               targetSlot = parsed;
             }
           }
           if (targetSlot === null) {
-            for (let s = 1; s < 4; s++) {
+            for (let s = 1; s < 12; s++) {
               if (slotStreamsRef.current[s] && slotStreamsRef.current[s].mobileId === id) {
                 targetSlot = s;
                 break;
@@ -1798,7 +1811,7 @@ function PodcastStudioApp() {
             }
           }
           if (targetSlot === null) {
-            for (let s = 1; s < 4; s++) {
+            for (let s = 1; s < 12; s++) {
               if (!slotStreamsRef.current[s]) {
                 targetSlot = s;
                 break;
@@ -1807,7 +1820,7 @@ function PodcastStudioApp() {
           }
           if (targetSlot === null) targetSlot = 1;
 
-          setSlotStreams(prevStreams => ({ ...prevStreams, [targetSlot]: stream }));
+          setSlotStreams(prevStreams => ({ ...prevStreams, [targetSlot]: stableStream }));
           setCameraMeta(prevMeta => ({
             ...prevMeta,
             [targetSlot]: {
@@ -1818,22 +1831,33 @@ function PodcastStudioApp() {
           }));
         };
 
+        const handleTrack = (track) => {
+          if (!track) return;
+          try {
+            if (track.kind === 'video') track.contentHint = 'motion';
+            if (track.kind === 'audio') {
+              track.contentHint = 'speech';
+              track.enabled = true;
+            }
+          } catch {}
+          if (!stableStream.getTracks().some(t => t.id === track.id)) {
+            stableStream.addTrack(track);
+          }
+          track.onunmute = () => assignSlotOnce();
+          track.onended = () => {
+            try { stableStream.removeTrack(track); } catch {}
+          };
+          assignSlotOnce();
+        };
+
         pc.ontrack = (event) => {
           if (event.track) {
-            trackMap.set(event.track.id, event.track);
-            event.track.onunmute = () => updateStream();
-            event.track.onended = () => {
-              trackMap.delete(event.track.id);
-              updateStream();
-            };
+            handleTrack(event.track);
           }
           if (event.streams && event.streams[0]) {
-            event.streams[0].getTracks().forEach(t => {
-              trackMap.set(t.id, t);
-              t.onunmute = () => updateStream();
-            });
+            event.streams[0].getTracks().forEach(handleTrack);
           }
-          updateStream();
+          assignSlotOnce();
         };
 
         pc.onicecandidate = (e) => {

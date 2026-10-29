@@ -59,22 +59,45 @@ function ModalVideoPreview({ stream, label }) {
     v.addEventListener('loadedmetadata', attemptPlay);
     v.addEventListener('canplay', attemptPlay);
 
+    const unmuteCbs = new Map();
+    const wireTrackListeners = (track) => {
+      if (unmuteCbs.has(track.id)) return;
+      const cb = () => attemptPlay();
+      unmuteCbs.set(track.id, { track, cb });
+      track.addEventListener('unmute', cb);
+    };
+
     const vTracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
-    vTracks.forEach(t => {
-      t.addEventListener('unmute', attemptPlay);
-    });
+    vTracks.forEach(wireTrackListeners);
+
+    const onAddTrack = (evt) => {
+      if (evt.track) wireTrackListeners(evt.track);
+      attemptPlay();
+    };
+
     if (stream.addEventListener) {
-      stream.addEventListener('addtrack', attemptPlay);
+      stream.addEventListener('addtrack', onAddTrack);
     }
 
+    let pollCount = 0;
+    const pollTimer = setInterval(() => {
+      pollCount++;
+      if (pollCount > 20) { clearInterval(pollTimer); return; }
+      if (v && v.paused && v.srcObject && v.srcObject.getVideoTracks().some(t => t.readyState === 'live')) {
+        v.play().catch(() => {});
+      }
+    }, 500);
+
     return () => {
+      clearInterval(pollTimer);
       v.removeEventListener('loadedmetadata', attemptPlay);
       v.removeEventListener('canplay', attemptPlay);
-      vTracks.forEach(t => {
-        try { t.removeEventListener('unmute', attemptPlay); } catch {}
+      unmuteCbs.forEach(({ track, cb }) => {
+        try { track.removeEventListener('unmute', cb); } catch {}
       });
+      unmuteCbs.clear();
       if (stream.removeEventListener) {
-        try { stream.removeEventListener('addtrack', attemptPlay); } catch {}
+        try { stream.removeEventListener('addtrack', onAddTrack); } catch {}
       }
     };
   }, [stream]);

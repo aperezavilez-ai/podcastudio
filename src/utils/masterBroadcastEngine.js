@@ -122,6 +122,17 @@ function getOrCreateVideo(camId, stream) {
   if (stream) {
     if (v.srcObject !== stream) {
       v.srcObject = stream;
+      if (stream.addEventListener) {
+        stream.addEventListener('addtrack', () => {
+          if (v && v.paused) v.play().catch(() => {});
+        });
+      }
+      const vTracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
+      vTracks.forEach(t => {
+        t.addEventListener('unmute', () => {
+          if (v && v.paused) v.play().catch(() => {});
+        });
+      });
     }
     if (v.paused) {
       v.play().catch(() => {});
