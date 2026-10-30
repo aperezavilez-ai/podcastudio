@@ -1545,9 +1545,11 @@ export function getAudioMixerTelemetry() {
 
 let chunkListeners = new Set();
 let cachedInitHeader = null;
+let pendingMediaChunkDelivery = Promise.resolve();
 
 export function addChunkListener(listener) {
   if (typeof listener === 'function') {
+    if (chunkListeners.has(listener)) return;
     chunkListeners.add(listener);
     if (cachedInitHeader) {
       try { listener(cachedInitHeader.slice(0)); } catch (e) {}
@@ -1594,63 +1596,22 @@ export function startBroadcastEngine(initialState, onChunk) {
   }
 
   try {
-    mediaRecorder = new MediaRecorder(masterStream, { mimeType: chosenMime, videoBitsPerSecond: 25000000 });
-    mediaRecorder.ondataavailable = async (e) => {
-      if (e.data && e.data.size > 0) {
-        try {
-          const buffer = await e.data.arrayBuffer();
-          if (!cachedInitHeader) cachedInitHeader = buffer.slice(0);
-          chunkListeners.forEach((listener) => { try { listener(buffer); } catch (err) {} });
-        } catch (err) {}
-      }
+    mediaRecorder = new MediaRecorder(masterStream, { mimeType: chosenMime, videoBitsPerSecond: 8000000 });
+    mediaRecorder.ondataavailable = (e) => {
+      if (!e.data || e.data.size === 0) return;
+      pendingMediaChunkDelivery = pendingMediaChunkDelivery.then(async () => {
+        const buffer = await e.data.arrayBuffer();
+        if (!cachedInitHeader) cachedInitHeader = buffer.slice(0);
+        chunkListeners.forEach((listener) => { try { listener(buffer); } catch (err) {} });
+      }).catch((err) => {
+        console.warn('[MasterRecorder] Error procesando segmento:', err?.message || err);
+      });
     };
-    mediaRecorder.start(500);
+    mediaRecorder.start(1000);
   } catch (e) {}
 
   isRunning = true;
   return masterStream;
-}
-
-export function getMasterStream() {
-  if (!masterStream || masterStream.getVideoTracks().length === 0 || masterStream.getVideoTracks()[0].readyState === 'ended') {
-    ensureMasterCanvas();
-    const canvasStream = canvas.captureStream(30);
-    const videoTrack = canvasStream.getVideoTracks()[0];
-    const audioTrack = setupAudioMixing(
-      currentState.localStream,
-      currentState.remoteCams,
-      currentState.camStreamsMap,
-      currentState.camMuted
-    );
-    const tracks = [videoTrack];
-    if (audioTrack) tracks.push(audioTrack);
-    masterStream = new MediaStream(tracks);
-  }
-  return masterStream;
-}
-
-export function createMasterRecordingSession(onChunk, timesliceMs = 500) {
-  const stream = getMasterStream();
-  if (!stream) return null;
-
-  let chosenMime = 'video/webm;codecs=vp8,opus';
-  if (!MediaRecorder.isTypeSupported(chosenMime)) {
-    if (MediaRecorder.isTypeSupported('video/webm')) chosenMime = 'video/webm';
-    else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) chosenMime = 'video/webm;codecs=h264,opus';
-    else if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) chosenMime = 'video/mp4;codecs=avc1';
-  }
-  try {
-    const rec = new MediaRecorder(stream, { mimeType: chosenMime, videoBitsPerSecond: 25000000 });
-    rec.ondataavailable = async (e) => {
-      if (e.data && e.data.size > 0 && typeof onChunk === 'function') {
-        try { const buf = await e.data.arrayBuffer(); onChunk(buf); } catch (err) {}
-      }
-    };
-    rec.start(timesliceMs);
-    return rec;
-  } catch (err) {
-    return null;
-  }
 }
 
 export function updateBroadcastState(updates) {
@@ -1707,15 +1668,26 @@ export function captureMasterCanvasSnapshot() {
   }
 }
 
-export function stopBroadcastEngine() {
+export async function stopBroadcastEngine() {
   isRunning = false;
   stopRenderLoop();
   cleanupVisibilityHandler();
 
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    try { mediaRecorder.stop(); } catch (e) {}
-    mediaRecorder = null;
+  const recorderToStop = mediaRecorder;
+  if (recorderToStop && recorderToStop.state !== 'inactive') {
+    await new Promise((resolve) => {
+      let timeout = null;
+      const finish = () => {
+        if (timeout) clearTimeout(timeout);
+        resolve();
+      };
+      timeout = setTimeout(finish, 10000);
+      recorderToStop.addEventListener('stop', finish, { once: true });
+      try { recorderToStop.stop(); } catch (e) { finish(); }
+    });
   }
+  await pendingMediaChunkDelivery;
+  if (mediaRecorder === recorderToStop) mediaRecorder = null;
 
   if (masterStream) {
     masterStream.getTracks().forEach((t) => t.stop());

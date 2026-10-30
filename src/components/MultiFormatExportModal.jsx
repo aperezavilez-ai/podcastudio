@@ -174,6 +174,7 @@ export default function MultiFormatExportModal({
           setConvertingKey(null)
           return
         }
+        throw new Error(res?.error || 'No se pudo guardar el formato o su miniatura.');
       }
 
       // 2. EN NAVEGADOR WEB O FALLBACK
@@ -236,11 +237,12 @@ export default function MultiFormatExportModal({
       try {
         if (window.api?.exportSocialFormat && recording?.filePath) {
           setProgress(50)
-          await window.api.exportSocialFormat({
+          const exportResult = await window.api.exportSocialFormat({
             sourcePath: recording.filePath,
             formatKey: preset.key,
             projectName: recording.projectName || 'Proyecto_General',
           })
+          if (!exportResult?.success) throw new Error(exportResult?.error || `No se pudo exportar ${preset.label}.`);
           setProgress(100)
         } else {
           let outputBlob = null

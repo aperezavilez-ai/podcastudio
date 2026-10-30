@@ -38,7 +38,6 @@ import {
   startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, 
   getInitHeader, captureMasterCanvasSnapshot, getMasterCanvas,
   setVoiceMonitor, syncStudioAudio, getCameraSnapshots,
-  createMasterRecordingSession
 } from './utils/masterBroadcastEngine.js';
 import { VOICE_EFFECTS } from './utils/voiceEffectsProcessor.js';
 import { createStreamTransport } from './utils/streamTransport.js';
@@ -318,9 +317,9 @@ function PodcastStudioApp() {
   const [autoSpeakerCintilloEnabled, setAutoSpeakerCintilloEnabled] = useState(false);
 
   // GRABACIÓN ISO MULTICANAL (PISTAS INDEPENDIENTES POR CÁMARA) (P4.1)
-  const [isoRecordingEnabled, setIsoRecordingEnabled] = useState(true);
+  const [isoRecordingEnabled, setIsoRecordingEnabled] = useState(false);
   const isoRecordersRef = useRef(new Map()); // slotNum -> MediaRecorder
-  const masterRecorderRef = useRef(null); // Grabador dedicado para el Master limpio en alta fidelidad
+  const isoChunkQueuesRef = useRef(new Map()); // slotNum -> Promise
 
   const [editingCamId, setEditingCamId] = useState(1);
   const [camSettings, setCamSettings] = useState({
@@ -1975,7 +1974,9 @@ function PodcastStudioApp() {
       window.api.sendStreamChunk(buffer);
     }
     if (isRecordingRef.current) {
-      recordingChunksRef.current.push(buffer);
+      // Electron escribe el archivo incrementalmente en FFmpeg; no retener el programa
+      // completo en RAM, porque una grabación larga terminaría congelando el compositor.
+      if (!window.api) recordingChunksRef.current.push(buffer);
       if (window.api?.sendRecordChunk) {
         window.api.sendRecordChunk(buffer);
       }
@@ -1997,7 +1998,11 @@ function PodcastStudioApp() {
         setCountdown(null);
 
         if (window.api) {
-          const res = await window.api.startRecording({ projectName: topic || 'Proyecto_General' });
+          const recordingHeader = getInitHeader();
+          const res = await window.api.startRecording({
+            projectName: topic || 'Proyecto_General',
+            initialHeader: recordingHeader ? Array.from(new Uint8Array(recordingHeader)) : null,
+          });
           if (res.success) {
             isRecordingRef.current = true;
             setIsRecording(true);
@@ -2027,19 +2032,6 @@ function PodcastStudioApp() {
               camMuted,
             }, handleMasterChunk);
 
-            // Iniciar sesión de grabación dedicada para el Master con cabecera EBML limpia
-            if (masterRecorderRef.current && masterRecorderRef.current.state !== 'inactive') {
-              try { masterRecorderRef.current.stop(); } catch(e) {}
-            }
-            masterRecorderRef.current = createMasterRecordingSession((buf) => {
-              if (isRecordingRef.current) {
-                recordingChunksRef.current.push(buf);
-                if (window.api?.sendRecordChunk) {
-                  window.api.sendRecordChunk(buf);
-                }
-              }
-            }, 500);
-
             // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
             if (isoRecordingEnabled && window.api?.startIsoRecording) {
               const activeSlots = [];
@@ -2065,11 +2057,14 @@ function PodcastStudioApp() {
                           ? 'video/webm;codecs=vp8,opus'
                           : 'video/webm';
                         const rec = new MediaRecorder(stream, { mimeType });
-                        rec.ondataavailable = async (e) => {
-                          if (e.data && e.data.size > 0 && window.api?.sendIsoChunk) {
-                            const buf = await e.data.arrayBuffer();
-                            window.api.sendIsoChunk({ slot: sNum, chunk: buf });
-                          }
+                        isoChunkQueuesRef.current.set(sNum, Promise.resolve());
+                        rec.ondataavailable = (e) => {
+                          if (!e.data || e.data.size === 0 || !window.api?.sendIsoChunk) return;
+                          const pending = isoChunkQueuesRef.current.get(sNum) || Promise.resolve();
+                          isoChunkQueuesRef.current.set(sNum, pending
+                            .then(() => e.data.arrayBuffer())
+                            .then(chunk => window.api.sendIsoChunk({ slot: sNum, chunk }))
+                            .catch(err => console.warn(`[ISO] Error enviando CAM ${sNum}:`, err)));
                         };
                         rec.start(1000);
                         isoRecordersRef.current.set(sNum, rec);
@@ -2115,9 +2110,6 @@ function PodcastStudioApp() {
         }
       }, 3000);
     } else {
-      isRecordingRef.current = false;
-      setIsRecording(false);
-
       // Capturar miniatura en alta resolución directamente del canvas maestro en vivo
       const snapshotCanvas = captureMasterCanvasSnapshot();
       let thumbnailDataUrl = null;
@@ -2129,45 +2121,61 @@ function PodcastStudioApp() {
         }
       }
 
-      // Detener grabador dedicado del Master
-      if (masterRecorderRef.current && masterRecorderRef.current.state !== 'inactive') {
-        try { masterRecorderRef.current.stop(); } catch (e) {}
-        masterRecorderRef.current = null;
-      }
-
       // Detener y finalizar grabadores ISO multicanal (P4.1)
-      isoRecordersRef.current.forEach((rec, sNum) => {
-        try {
-          if (rec.state !== 'inactive') rec.stop();
-        } catch (e) {}
-      });
+      const stopIsoPromises = Array.from(isoRecordersRef.current.entries()).map(([sNum, rec]) => new Promise((resolve) => {
+        if (!rec || rec.state === 'inactive') return resolve();
+        rec.addEventListener('stop', resolve, { once: true });
+        try { rec.stop(); } catch (e) { resolve(); }
+      }));
       isoRecordersRef.current.clear();
       if (window.api?.stopIsoRecording) {
         try {
+          await Promise.all(stopIsoPromises);
+          await Promise.all(isoChunkQueuesRef.current.values());
+          isoChunkQueuesRef.current.clear();
           await window.api.stopIsoRecording();
         } catch (e) {
           console.warn('[ISO] Error al detener grabación ISO:', e);
         }
+      } else {
+        await Promise.all(stopIsoPromises);
       }
 
       let stopRes = null;
+      // Si no hay directo al aire, detener el único MediaRecorder del Master y esperar
+      // su último chunk antes de cerrar FFmpeg. En vivo se conserva el encoder activo.
+      if (!isStreamingRef.current) {
+        await stopBroadcastEngine();
+      }
+      isRecordingRef.current = false;
+      setIsRecording(false);
+
       if (window.api) {
         try {
+          await window.api.flushRecordingChunks?.();
           stopRes = await window.api.stopRecording();
+          if (!stopRes?.success || !stopRes.path) {
+            recordingChunksRef.current = [];
+            alert('No se pudo finalizar el MP4: ' + (stopRes?.error || 'No se generó un archivo válido.'));
+            return;
+          }
           if (thumbnailDataUrl && window.api.saveRecordingThumbnail) {
-            window.api.saveRecordingThumbnail({
+            const thumbRes = await window.api.saveRecordingThumbnail({
               projectName: topic || 'Proyecto_General',
               base64Data: thumbnailDataUrl
-            }).catch(e => console.warn('[App] Error guardando miniatura:', e));
+            }).catch(e => ({ success: false, error: e.message }));
+            if (!thumbRes?.success) console.warn('[App] Error guardando miniatura:', thumbRes?.error);
           }
         } catch (e) {
           console.warn('Error parando grabación FFmpeg:', e);
+          recordingChunksRef.current = [];
+          alert('No se pudo finalizar la grabación: ' + (e.message || 'Error desconocido'));
+          return;
         }
       }
-      if (!isStreamingRef.current) stopBroadcastEngine();
-
       const chunks = recordingChunksRef.current;
       const recBlob = chunks.length > 0 ? new Blob(chunks, { type: 'video/webm' }) : null;
+      recordingChunksRef.current = [];
       const recUrl = recBlob ? URL.createObjectURL(recBlob) : null;
 
       const cleanTopicName = (topic || 'Episodio').replace(/[^\w\d-_]/g, '_');
@@ -3418,7 +3426,7 @@ function PodcastStudioApp() {
 
   return (
     <div 
-      className="flex flex-col h-screen h-[100dvh] max-h-screen w-screen max-w-full bg-[#0a0a0a] text-[#e0e0e0] font-sans overflow-hidden text-[13px] select-none"
+      className="fixed inset-0 flex min-h-0 min-w-0 flex-col bg-[#0a0a0a] text-[#e0e0e0] font-sans overflow-hidden text-[13px] select-none"
     >
       
       {/* ÁREA DE TRABAJO PRINCIPAL */}
@@ -5278,7 +5286,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.2.7</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.2.8</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>

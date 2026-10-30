@@ -4,7 +4,21 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.2.7 (Cámaras móviles QR Android/iOS y 12 ranuras)
+## 🚀 Versión Actual: v1.2.8 (Grabación fluida, exportaciones verificadas y ventana completa)
+- **Grabación Master y transmisión**:
+  - El mismo codificador del programa sirve para transmisión y grabación; se eliminó la segunda codificación de video que duplicaba carga y segmentos.
+  - Los segmentos se escriben secuencialmente con control de flujo, y la grabación Electron ya no guarda todo el video en memoria.
+  - La finalización espera el último segmento y el cierre real de FFmpeg; un archivo inválido ya no se reporta como grabación correcta.
+  - La grabación ISO queda desactivada inicialmente para evitar saturar el programa; se puede activar manualmente cuando se necesiten pistas aisladas.
+- **Archivos y exportaciones**:
+  - La grabación Master y su miniatura se guardan en la carpeta del proyecto; los formatos exportados incluyen nombre propio y miniatura, y Facebook/YouTube 16:9 ya no se sobreescriben.
+  - Se agregó una prueba de integración que crea un MP4, valida su reproducción y verifica cinco exportaciones con sus miniaturas.
+- **Ventana**:
+  - La ventana maximiza el área de trabajo al iniciar para que la interfaz llene el ancho visible y no quede una franja negra a la derecha.
+- **Verificación**:
+  - Se ejecutaron las pruebas automáticas de cámaras y del pipeline de grabación/exportación; el binario Windows y la versión web se reconstruyen en v1.2.8.
+
+## 📦 Versión Previa: v1.2.7 (Cámaras móviles QR Android/iOS y 12 ranuras)
 - **Conexión móvil por QR**:
   - Se corrigió el orden de inicialización de la página `/remote-cam`; el efecto de reconexión ya no referencia `initSignaling` antes de inicializarse, causa que podía dejar la vista móvil en negro.
   - La cámara remota y el mando ahora se cargan bajo demanda, sin descargar primero la cabina completa; se muestra el estado de carga mientras abre cada interfaz.

@@ -9,9 +9,9 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyTitle("PodcaStudio")]
 [assembly: System.Reflection.AssemblyProduct("PodcaStudio")]
 [assembly: System.Reflection.AssemblyCompany("PodcaStudio")]
-[assembly: System.Reflection.AssemblyVersion("1.2.7.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.2.7.0")]
-[assembly: System.Reflection.AssemblyInformationalVersion("1.2.7.0")]
+[assembly: System.Reflection.AssemblyVersion("1.2.8.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.2.8.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("1.2.8.0")]
 [assembly: System.Reflection.AssemblyDescription("PodcaStudio - Estudio Profesional de Transmisi\u00F3n & Producci\u00F3n")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 PodcaStudio")]
 

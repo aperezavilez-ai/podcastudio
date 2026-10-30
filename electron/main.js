@@ -19,6 +19,33 @@ const selfsigned = require('selfsigned');
 const { WebSocketServer } = require('ws');
 const os = require('os');
 
+function writeChunkWithBackpressure(writable, chunk) {
+  return new Promise((resolve, reject) => {
+    if (!writable || writable.destroyed || writable.writableEnded) return resolve();
+    let settled = false;
+    const cleanup = () => {
+      writable.removeListener('drain', onDrain);
+      writable.removeListener('error', onError);
+    };
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const onDrain = () => finish();
+    const onError = (error) => finish(error);
+    writable.once('error', onError);
+    try {
+      if (writable.write(chunk)) finish();
+      else writable.once('drain', onDrain);
+    } catch (error) {
+      finish(error);
+    }
+  });
+}
+
 // Configurar App ID oficial para Windows para asociar el icono de PodcastStudio en la barra de tareas
 if (process.platform === 'win32') {
   app.setAppUserModelId("com.podcaststudio.app");
@@ -34,6 +61,8 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 ffmpeg.setFfmpegPath(ffmpegPath);
 let mainWindow;
 let ffmpegRecordProcess = null;
+let recordChunkQueue = Promise.resolve();
+let recordChunkError = null;
 let ffmpegStreamProcess = null;
 let wss = null;
 
@@ -115,6 +144,9 @@ function createWindow() {
 
   mainWindow.setMenu(null);
   if (mainWindow.removeMenu) mainWindow.removeMenu();
+  // Abrir ocupando el área de trabajo completa evita que el renderer quede
+  // limitado al ancho inicial y deje una banda negra dentro de la ventana.
+  mainWindow.maximize();
 
   if (iconPath && fs.existsSync(iconPath)) {
     try { mainWindow.setIcon(iconPath); } catch (e) {}
@@ -1632,6 +1664,8 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
       .trim() || 'Proyecto_General';
     
     currentRecordingProjectName = cleanProjectName;
+    recordChunkQueue = Promise.resolve();
+    recordChunkError = null;
 
     // Carpeta raíz estructurada: D:\PROGRAMAS IA\PODCASTUDIO\proyectos\[NombreProyecto]\
     const projectsRoot = process.env.PODCASTUDIO_PROJECTS_DIR || path.join(app.getPath('videos'), 'PodcastStudio');
@@ -1657,14 +1691,13 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
       ffmpegRecordProcess = spawn(ffmpegPath, [
         '-probesize', '32M',
         '-analyzeduration', '2000000',
-        '-fflags', '+nobuffer+flush_packets',
         '-f', 'webm',
         '-i', 'pipe:0',
         '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-crf', '17',
-        '-maxrate', '12M',
-        '-bufsize', '24M',
+        '-preset', 'ultrafast',
+        '-crf', '18',
+        '-maxrate', '10M',
+        '-bufsize', '20M',
         '-pix_fmt', 'yuv420p',
         '-r', '30',
         '-g', '60',
@@ -1696,6 +1729,16 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
         ffmpegRecordProcess = null;
       });
 
+      const initialHeader = options?.initialHeader;
+      if (initialHeader && ffmpegRecordProcess.stdin && !ffmpegRecordProcess.stdin.destroyed) {
+        const headerBuffer = Buffer.isBuffer(initialHeader) ? initialHeader : Buffer.from(initialHeader);
+        const proc = ffmpegRecordProcess;
+        recordChunkQueue = writeChunkWithBackpressure(proc.stdin, headerBuffer).catch((error) => {
+          recordChunkError = error.message || String(error);
+          console.warn('[FFmpeg Grabación] No se pudo escribir la cabecera WebM:', recordChunkError);
+        });
+      }
+
       resolve({ success: true, path: currentRecordingPath, projectName: cleanProjectName });
     } catch (err) {
       console.error('Fallo al iniciar grabación FFmpeg:', err);
@@ -1705,29 +1748,38 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
 });
 
 ipcMain.on('record-chunk', (event, chunkBuffer) => {
-  if (ffmpegRecordProcess && ffmpegRecordProcess.stdin && !ffmpegRecordProcess.stdin.destroyed) {
-    try {
-      const buf = Buffer.isBuffer(chunkBuffer) ? chunkBuffer : Buffer.from(chunkBuffer);
-      ffmpegRecordProcess.stdin.write(buf);
-    } catch (e) {
-      console.warn('Error escribiendo chunk de grabación:', e.message);
-    }
-  }
+  const proc = ffmpegRecordProcess;
+  if (!proc?.stdin || proc.stdin.destroyed || !chunkBuffer) return;
+  let buf;
+  try { buf = Buffer.isBuffer(chunkBuffer) ? chunkBuffer : Buffer.from(chunkBuffer); }
+  catch (e) { recordChunkError = e.message; return; }
+  recordChunkQueue = recordChunkQueue.then(() => writeChunkWithBackpressure(proc.stdin, buf)).catch((error) => {
+    recordChunkError = error.message || String(error);
+    console.warn('Error escribiendo chunk de grabación:', recordChunkError);
+  });
+});
+
+ipcMain.handle('flush-recording-chunks', async () => {
+  await recordChunkQueue;
+  return { success: !recordChunkError, error: recordChunkError };
 });
 
 ipcMain.handle('stop-recording', async () => {
+  await recordChunkQueue;
   return new Promise((resolve) => {
     if (ffmpegRecordProcess) {
       const proc = ffmpegRecordProcess;
       const recPath = currentRecordingPath;
       let finished = false;
+      let stopTimeout = null;
+      let forcedCloseTimeout = null;
 
       const finishAndGenerateThumb = () => {
         if (finished) return;
         finished = true;
         ffmpegRecordProcess = null;
 
-        if (recPath && fs.existsSync(recPath)) {
+        if (recPath && fs.existsSync(recPath) && fs.statSync(recPath).size > 0) {
           const stats = fs.statSync(recPath);
           console.log(`[FFmpeg Grabación] Master MP4 finalizado: ${recPath} (${stats.size} bytes)`);
           const thumbPath = recPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
@@ -1740,24 +1792,48 @@ ipcMain.handle('stop-recording', async () => {
               '-q:v', '2',
               thumbPath
             ]);
-            thumbProcess.on('close', () => {
-              resolve({ success: true, path: recPath, thumbnailPath: thumbPath });
+            let thumbResolved = false;
+            const thumbTimeout = setTimeout(() => {
+              if (thumbResolved) return;
+              thumbResolved = true;
+              try { thumbProcess.kill(); } catch (e) {}
+              resolve({ success: true, path: recPath, thumbnailError: 'No se pudo generar la miniatura del video.' });
+            }, 15000);
+            thumbProcess.on('close', (code) => {
+              if (thumbResolved) return;
+              thumbResolved = true;
+              clearTimeout(thumbTimeout);
+              if (code === 0 && fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 0) {
+                resolve({ success: true, path: recPath, thumbnailPath: thumbPath });
+              } else {
+                resolve({ success: true, path: recPath, thumbnailError: 'El MP4 se guardó, pero no se pudo generar su miniatura.' });
+              }
             });
-            thumbProcess.on('error', () => {
-              resolve({ success: true, path: recPath, thumbnailPath: thumbPath });
+            thumbProcess.on('error', (err) => {
+              if (thumbResolved) return;
+              thumbResolved = true;
+              clearTimeout(thumbTimeout);
+              resolve({ success: true, path: recPath, thumbnailError: `No se pudo generar la miniatura: ${err.message}` });
             });
-            setTimeout(() => resolve({ success: true, path: recPath, thumbnailPath: thumbPath }), 1500);
             return;
           } catch (e) {
-            resolve({ success: true, path: recPath });
+            resolve({ success: true, path: recPath, thumbnailError: `No se pudo iniciar la miniatura: ${e.message}` });
             return;
           }
         }
-        resolve({ success: true, path: recPath });
+        resolve({ success: false, path: recPath, error: 'FFmpeg no creó un archivo MP4 válido.' });
       };
 
       proc.on('close', (code) => {
+        if (stopTimeout) clearTimeout(stopTimeout);
+        if (forcedCloseTimeout) clearTimeout(forcedCloseTimeout);
         console.log('[FFmpeg Grabación] Proceso cerrado limpiamente con código:', code);
+        if (code !== 0 || recordChunkError) {
+          finished = true;
+          if (ffmpegRecordProcess === proc) ffmpegRecordProcess = null;
+          resolve({ success: false, path: recPath, error: recordChunkError || `FFmpeg terminó con código ${code}.` });
+          return;
+        }
         finishAndGenerateThumb();
       });
 
@@ -1768,16 +1844,21 @@ ipcMain.handle('stop-recording', async () => {
         }
       } catch (e) {}
 
-      // Tiempo de gracia para permitir a FFmpeg escribir el moov atom
-      setTimeout(() => {
+      // Dejar que FFmpeg finalice el contenedor y mueva el índice MP4 antes de terminar.
+      stopTimeout = setTimeout(() => {
         if (!finished) {
-          console.warn('[FFmpeg Grabación] Forzando cierre tras timeout de finalización');
+          console.error('[FFmpeg Grabación] FFmpeg tardó demasiado en cerrar; terminando con error.');
           try { proc.kill(); } catch (e) {}
-          finishAndGenerateThumb();
+          forcedCloseTimeout = setTimeout(() => {
+            if (finished) return;
+            finished = true;
+            if (ffmpegRecordProcess === proc) ffmpegRecordProcess = null;
+            resolve({ success: false, path: recPath, error: 'FFmpeg no cerró el archivo de grabación dentro del tiempo permitido.' });
+          }, 5000);
         }
-      }, 4000);
+      }, 60000);
     } else {
-      resolve({ success: false });
+      resolve({ success: false, error: 'No hay una grabación activa para finalizar.' });
     }
   });
 });
@@ -1826,7 +1907,7 @@ ipcMain.handle('start-iso-recording', async (event, { slots = [], projectName = 
         '-f', 'webm',
         '-i', 'pipe:0',
         '-c:v', 'libx264',
-        '-preset', 'veryfast',
+        '-preset', 'ultrafast',
         '-crf', '18',
         '-pix_fmt', 'yuv420p',
         '-r', '30',
@@ -1847,7 +1928,7 @@ ipcMain.handle('start-iso-recording', async (event, { slots = [], projectName = 
         console.log(`[FFmpeg ISO CAM ${slotNum}] Cerrado limpiamente`);
       });
 
-      ffmpegIsoProcesses.set(slotNum, { proc, path: isoPath, slotNum });
+      ffmpegIsoProcesses.set(slotNum, { proc, path: isoPath, slotNum, writeQueue: Promise.resolve() });
       startedSlots.push(slotNum);
     } catch (err) {
       console.warn(`[start-iso-recording] Fallo al iniciar ISO para CAM ${slotNum}:`, err.message);
@@ -1860,31 +1941,40 @@ ipcMain.handle('start-iso-recording', async (event, { slots = [], projectName = 
 ipcMain.on('record-iso-chunk', (event, { slot, chunk }) => {
   const slotNum = Number(slot);
   const entry = ffmpegIsoProcesses.get(slotNum);
-  if (entry && entry.proc && entry.proc.stdin && !entry.proc.stdin.destroyed) {
-    try {
-      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-      entry.proc.stdin.write(buf);
-    } catch (e) {
-      console.warn(`[record-iso-chunk] Error escribiendo en CAM ${slotNum}:`, e.message);
-    }
-  }
+  if (!entry?.proc?.stdin || entry.proc.stdin.destroyed || !chunk) return;
+  let buf;
+  try { buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk); }
+  catch (e) { console.warn(`[record-iso-chunk] Error leyendo CAM ${slotNum}:`, e.message); return; }
+  entry.writeQueue = entry.writeQueue.then(() => writeChunkWithBackpressure(entry.proc.stdin, buf)).catch((error) => {
+    console.warn(`[record-iso-chunk] Error escribiendo en CAM ${slotNum}:`, error.message);
+  });
 });
 
 ipcMain.handle('stop-iso-recording', async () => {
   const entries = Array.from(ffmpegIsoProcesses.values());
   const completedPaths = [];
 
-  for (const entry of entries) {
+  await Promise.all(entries.map(async (entry) => {
     try {
-      if (entry.proc && entry.proc.stdin && !entry.proc.stdin.destroyed) {
-        entry.proc.stdin.end();
-      }
-      completedPaths.push({ slot: entry.slotNum, path: entry.path });
-    } catch (e) {}
-  }
-
+      await entry.writeQueue;
+      if (entry.proc?.stdin && !entry.proc.stdin.destroyed) entry.proc.stdin.end();
+      const code = await new Promise((resolve) => {
+        if (entry.proc?.exitCode != null) return resolve(entry.proc.exitCode);
+        const timeout = setTimeout(() => {
+          try { entry.proc?.kill('SIGINT'); } catch (e) {}
+          resolve(null);
+        }, 30000);
+        entry.proc?.once('close', (exitCode) => { clearTimeout(timeout); resolve(exitCode); });
+      });
+      const validFile = fs.existsSync(entry.path) && fs.statSync(entry.path).size > 0;
+      if (code === 0 && validFile) completedPaths.push({ slot: entry.slotNum, path: entry.path });
+      else console.warn(`[ISO] El archivo de CAM ${entry.slotNum} no finalizó correctamente (code=${code}).`);
+    } catch (e) {
+      console.warn(`[ISO] Error cerrando CAM ${entry.slotNum}:`, e.message);
+    }
+  }));
   ffmpegIsoProcesses.clear();
-  return { success: true, files: completedPaths };
+  return { success: completedPaths.length === entries.length, files: completedPaths };
 });
 
 ipcMain.handle('get-iso-status', () => {
@@ -1950,8 +2040,11 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
     } else if (formatKey === '4:5') {
       suffix = 'Facebook_Feed_4x5';
       filter = 'crop=ih*4/5:ih:(iw-ih*4/5)/2:0,scale=1080:1350';
+    } else if (formatKey === '16:9_yt') {
+      suffix = 'YouTube_16x9';
+      filter = 'scale=1920:1080';
     } else {
-      suffix = 'Facebook_YouTube_16x9';
+      suffix = 'Facebook_16x9';
       filter = 'scale=1920:1080';
     }
 
@@ -1978,20 +2071,43 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
         // Copiar a la carpeta Downloads del usuario automáticamente
         const downloadsFolder = app.getPath('downloads');
         const dlPath = path.join(downloadsFolder, outFilename);
-        try { fs.copyFileSync(outPath, dlPath); } catch (e) {}
+        try { fs.copyFileSync(outPath, dlPath); }
+        catch (e) { return resolve({ success: false, path: outPath, error: `El archivo quedó en el proyecto, pero no se pudo copiar a Descargas: ${e.message}` }); }
 
         // Generar miniatura JPG para el formato exportado
         const thumbPath = outPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
         try {
           const tProc = spawn(ffmpegPath, ['-y', '-ss', '00:00:00.800', '-i', outPath, '-vframes', '1', '-q:v', '2', thumbPath]);
-          tProc.on('close', () => {
+          let thumbFinished = false;
+          const thumbTimeout = setTimeout(() => {
+            if (thumbFinished) return;
+            thumbFinished = true;
+            try { tProc.kill(); } catch (e) {}
+            resolve({ success: false, path: outPath, downloadPath: dlPath, error: 'El video se guardó, pero la miniatura tardó demasiado en generarse.' });
+          }, 15000);
+          tProc.on('close', (thumbCode) => {
+            if (thumbFinished) return;
+            thumbFinished = true;
+            clearTimeout(thumbTimeout);
+            if (thumbCode !== 0 || !fs.existsSync(thumbPath) || fs.statSync(thumbPath).size === 0) {
+              return resolve({ success: false, path: outPath, downloadPath: dlPath, error: 'El video se guardó, pero no se pudo crear la miniatura.' });
+            }
             const dlThumb = dlPath.replace(/\.mp4$/i, '_Miniatura.jpg');
-            try { fs.copyFileSync(thumbPath, dlThumb); } catch (e) {}
-            resolve({ success: true, path: outPath, downloadPath: dlPath });
+            try { fs.copyFileSync(thumbPath, dlThumb); }
+            catch (e) { return resolve({ success: false, path: outPath, downloadPath: dlPath, thumbnailPath: thumbPath, error: `No se pudo copiar la miniatura a Descargas: ${e.message}` }); }
+            resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailPath: thumbPath, thumbnailDownloadPath: dlThumb });
           });
-          setTimeout(() => resolve({ success: true, path: outPath, downloadPath: dlPath }), 1200);
+          tProc.on('error', (err) => {
+            if (thumbFinished) return;
+            thumbFinished = true;
+            clearTimeout(thumbTimeout);
+            resolve({ success: false, path: outPath, downloadPath: dlPath, error: `Falló la miniatura: ${err.message}` });
+          });
           return;
-        } catch (e) {}
+        } catch (e) {
+          resolve({ success: false, path: outPath, downloadPath: dlPath, error: `El video se guardó, pero no se pudo iniciar la miniatura: ${e.message}` });
+          return;
+        }
 
         resolve({ success: true, path: outPath, downloadPath: dlPath });
       } else {
@@ -2404,7 +2520,7 @@ ipcMain.handle('start-streaming', async (event, payload) => {
         '-f', 'webm',
         '-i', 'pipe:0',
         '-c:v', 'libx264',
-        '-preset', 'veryfast',
+        '-preset', 'ultrafast',
         '-tune', 'zerolatency',
         '-profile:v', 'main',
         '-level', '4.1',
@@ -2437,14 +2553,16 @@ ipcMain.handle('start-streaming', async (event, payload) => {
           name: target.name,
           url: destUrl,
           process: proc,
-          connected: false
+          connected: false,
+          writeQueue: Promise.resolve(),
+          writeError: null,
         };
 
         // Si ya disponemos de la cabecera EBML inicial del Master, inyectarla al inicio de la tubería
         if (streamInitHeader && proc.stdin && !proc.stdin.destroyed) {
-          try {
-            proc.stdin.write(streamInitHeader);
-          } catch (e) {}
+          workerEntry.writeQueue = writeChunkWithBackpressure(proc.stdin, streamInitHeader).catch((error) => {
+            workerEntry.writeError = error.message || String(error);
+          });
         }
 
         proc.stderr.on('data', (data) => {
@@ -2522,7 +2640,7 @@ ipcMain.handle('start-streaming', async (event, payload) => {
 let streamInitHeader = null;
 
 // Receptor de chunks de audio/video del Master en vivo
-ipcMain.on('stream-chunk', async (event, chunkBuffer) => {
+ipcMain.on('stream-chunk', (event, chunkBuffer) => {
   if (!chunkBuffer) return;
   try {
     const buf = Buffer.isBuffer(chunkBuffer) ? chunkBuffer : Buffer.from(chunkBuffer);
@@ -2531,43 +2649,44 @@ ipcMain.on('stream-chunk', async (event, chunkBuffer) => {
     }
     if (activeStreamWorkers.length === 0) return;
     for (const worker of activeStreamWorkers) {
-      if (worker.process && worker.process.stdin && !worker.process.stdin.destroyed) {
-        try {
-          const ok = worker.process.stdin.write(buf);
-          if (!ok) {
-            await new Promise(resolve => worker.process.stdin.once('drain', resolve));
-          }
-        } catch (e) {
-          console.warn('[stream-chunk] write error:', e.message);
-        }
-      }
+      if (!worker.process?.stdin || worker.process.stdin.destroyed) continue;
+      worker.writeQueue = worker.writeQueue
+        .then(() => writeChunkWithBackpressure(worker.process.stdin, buf))
+        .catch((error) => {
+          worker.writeError = error.message || String(error);
+          console.warn(`[stream-chunk] ${worker.name} write error:`, worker.writeError);
+        });
     }
   } catch (err) {}
 });
 
 ipcMain.handle('stop-streaming', async () => {
-  return new Promise((resolve) => {
-    streamInitHeader = null;
-    for (const worker of activeStreamWorkers) {
-      try {
-        if (worker.process && worker.process.stdin && !worker.process.stdin.destroyed) {
-          worker.process.stdin.end();
-        }
-        setTimeout(() => {
-          try {
-            if (worker.process) worker.process.kill('SIGINT');
-          } catch (e) {}
-        }, 500);
-      } catch (e) {}
-    }
-    activeStreamWorkers = [];
-    streamDestinations = [];
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('stream-status', {
-        active: false,
-        destinations: []
+  streamInitHeader = null;
+  const workers = activeStreamWorkers.slice();
+  await Promise.all(workers.map(async (worker) => {
+    try {
+      await worker.writeQueue;
+      if (worker.process?.stdin && !worker.process.stdin.destroyed) worker.process.stdin.end();
+      await new Promise((resolve) => {
+        if (worker.process?.exitCode != null) return resolve();
+        const timeout = setTimeout(() => {
+          try { worker.process?.kill('SIGINT'); } catch (e) {}
+          resolve();
+        }, 5000);
+        worker.process?.once('close', () => { clearTimeout(timeout); resolve(); });
       });
+    } catch (e) {
+      console.warn(`[stop-streaming] Error cerrando ${worker.name}:`, e.message);
+      try { worker.process?.kill('SIGINT'); } catch (killError) {}
     }
-    resolve({ success: true });
-  });
+  }));
+  activeStreamWorkers = [];
+  streamDestinations = [];
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('stream-status', {
+      active: false,
+      destinations: []
+    });
+  }
+  return { success: true };
 });
