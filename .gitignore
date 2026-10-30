@@ -18,6 +18,7 @@ proyectos/
 .env.local
 .env.*.local
 .env*
+!.env.example
 supabase/.env*
 
 # Logs y temporales
