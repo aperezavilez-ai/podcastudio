@@ -70,10 +70,23 @@ import PgmFeedCanvas from './components/PgmFeedCanvas.jsx';
 import CameraNameBadgeModal from './components/CameraNameBadgeModal.jsx';
 
 class ErrorBoundary extends Component {
-  constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+  constructor(props) { super(props); this.state = { hasError: false, error: null, errorInfo: null }; }
   static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  componentDidCatch(error, errorInfo) {
+    console.error('[ErrorBoundary]', error, errorInfo);
+    if (window.api?.logError) {
+      window.api.logError(error.message, error.stack, errorInfo?.componentStack);
+    }
+  }
+  reset = () => { this.setState({ hasError: false, error: null, errorInfo: null }); };
   render() {
-    if (this.state.hasError) return <div style={{ color: 'red', padding: '20px', backgroundColor: 'black', height: '100vh' }}><h1> Error:</h1><pre>{this.state.error.toString()}</pre></div>;
+    if (this.state.hasError) return (
+      <div style={{ color: '#f87171', padding: '20px', backgroundColor: '#1a0a0a', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'monospace' }}>
+        <h1>⚠️ Error en la aplicación</h1>
+        <pre style={{ whiteSpace: 'pre-wrap', maxWidth: '600px' }}>{this.state.error?.toString() || 'Error desconocido'}</pre>
+        <button onClick={this.reset} style={{ marginTop: '16px', padding: '8px 16px', background: '#ea580c', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>Reintentar</button>
+      </div>
+    );
     return this.props.children;
   }
 }
@@ -2618,7 +2631,18 @@ function PodcastStudioApp() {
     }
 
     try {
-      const stream = await createWifiMediaStream(url);
+      let stream = null;
+      let lastErr = null;
+      for (let attempt = 0; attempt <= 2; attempt++) {
+        try {
+          stream = await createWifiMediaStream(url);
+          break;
+        } catch (err) {
+          lastErr = err;
+          if (attempt < 2) await new Promise(r => setTimeout(r, 1500));
+        }
+      }
+      if (!stream) throw (lastErr || new Error('No se pudo conectar'));
       if (stream) {
         setSlotStreams(prev => ({ ...prev, [slot]: stream }));
         if (slot === 0) setLocalStream(stream);
@@ -2644,19 +2668,33 @@ function PodcastStudioApp() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          mandatory: {
-            chromeMediaSource: 'desktop',
-            chromeMediaSourceId: sourceId,
-            minWidth: 1280,
-            maxWidth: 1920,
-            minHeight: 720,
-            maxHeight: 1080
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: sourceId,
+              minWidth: 1280,
+              maxWidth: 1920,
+              minHeight: 720,
+              maxHeight: 1080
+            }
           }
-        }
-      });
+        });
+      } catch (err) {
+        // Fallback moderno para Chrome 107+
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            deviceId: { exact: sourceId },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 }
+          }
+        });
+      }
       if (stream) {
         setSlotStreams(prev => ({ ...prev, [slot]: stream }));
         setCameraMeta(prev => ({
@@ -2670,6 +2708,12 @@ function PodcastStudioApp() {
       return null;
     } catch (err) {
       console.error('Error conectando ventana de escritorio:', err);
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        throw new Error('Permiso denegado para captura de pantalla. Autoriza en la configuración del navegador.');
+      }
+      if (err.name === 'NotFoundError') {
+        throw new Error('Fuente de pantalla no encontrada. Vuelve a seleccionar la ventana/pantalla.');
+      }
       throw err;
     }
   };

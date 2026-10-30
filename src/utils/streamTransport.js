@@ -110,6 +110,31 @@ export class P2PStreamTransport extends BaseStreamTransport {
             this.compoundStreams.set(slotIndex, stableStream)
           }
 
+          let iceTimeout = null
+          const clearIceTimeout = () => {
+            if (iceTimeout) {
+              clearTimeout(iceTimeout)
+              iceTimeout = null
+            }
+          }
+          const startIceTimeout = () => {
+            clearIceTimeout()
+            iceTimeout = setTimeout(() => {
+              const pc = this.peerConnections.get(slotIndex)
+              if (!pc) return
+              if (pc.iceGatheringState === 'gathering' || pc.iceConnectionState === 'checking' || pc.iceConnectionState === 'new') {
+                console.warn(`[P2PTransport] ICE gathering/connection timeout for slot ${slotIndex}, requesting new offer`)
+                try {
+                  channel.send({
+                    type: 'broadcast',
+                    event: 'signal',
+                    payload: { type: 'request-offer', slotIndex, sender: 'studio' },
+                  }).catch(() => {})
+                } catch {}
+              }
+            }, 8000)
+          }
+
           const dispatchStreamUpdate = () => {
             const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended')
             if (liveTracks.length === 0) return
@@ -159,16 +184,52 @@ export class P2PStreamTransport extends BaseStreamTransport {
                 event: 'signal',
                 payload: { type: 'candidate', candidate: iceEvent.candidate.toJSON(), sender: 'studio' },
               }).catch(() => {})
+            } else {
+              clearIceTimeout()
+            }
+          }
+
+          newPc.onicegatheringstatechange = () => {
+            if (newPc.iceGatheringState === 'gathering') {
+              startIceTimeout()
+            } else if (newPc.iceGatheringState === 'complete') {
+              clearIceTimeout()
+            }
+          }
+
+          newPc.oniceconnectionstatechange = () => {
+            const iceState = newPc.iceConnectionState
+            if (iceState === 'checking') {
+              startIceTimeout()
+            } else if (iceState === 'connected' || iceState === 'completed') {
+              clearIceTimeout()
+            } else if (iceState === 'failed' || iceState === 'disconnected') {
+              clearIceTimeout()
+              this.emit('statusChanged', slotIndex, 'waiting')
+              try {
+                newPc.restartIce();
+              } catch (e) {
+                console.warn('[P2PTransport] restartIce failed:', e);
+              }
+              try {
+                channel.send({
+                  type: 'broadcast',
+                  event: 'signal',
+                  payload: { type: 'request-offer', slotIndex, sender: 'studio' },
+                }).catch(() => {})
+              } catch {}
             }
           }
 
           newPc.onconnectionstatechange = () => {
             const state = newPc.connectionState
             if (state === 'connected') {
+              clearIceTimeout()
               this.emit('statusChanged', slotIndex, 'connected')
               dispatchStreamUpdate()
               this.startInboundStatsMonitor(slotIndex, newPc)
             } else if (state === 'disconnected' || state === 'failed') {
+              clearIceTimeout()
               this.emit('statusChanged', slotIndex, 'waiting')
               try {
                 channel.send({
@@ -178,6 +239,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
                 }).catch(() => {})
               } catch {}
             } else if (state === 'closed') {
+              clearIceTimeout()
               this.emit('statusChanged', slotIndex, 'disconnected')
             }
           }
@@ -315,8 +377,8 @@ export class P2PStreamTransport extends BaseStreamTransport {
           event: 'signal',
           payload: { type: 'studio-disconnect', slotIndex },
         }).catch(() => {})
-        channel.unsubscribe()
-      } catch {}
+        try { await channel.unsubscribe(); } catch (e) { console.warn('unsubscribe failed:', e); }
+      } catch (e) { console.warn('channel cleanup failed:', e); }
       this.channels.delete(slotIndex)
     }
 

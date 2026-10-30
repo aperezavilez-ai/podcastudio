@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import QRCode from 'qrcode';
+import { encrypt, decrypt } from '../utils/storageCrypto';
 import {
   Video,
   Usb,
@@ -228,7 +229,13 @@ export default function CameraConnectModal({
   const [registeredCameras, setRegisteredCameras] = useState(() => {
     try {
       const saved = localStorage.getItem('podcastudio_registered_cameras');
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return parsed.map(cam => ({
+        ...cam,
+        user: decrypt(cam.user || ''),
+        pass: decrypt(cam.pass || ''),
+      }));
     } catch {
       return [];
     }
@@ -564,7 +571,12 @@ export default function CameraConnectModal({
     const updated = [newCam, ...registeredCameras.filter(c => c.ip !== newCam.ip || c.port !== newCam.port)];
     setRegisteredCameras(updated);
     try {
-      localStorage.setItem('podcastudio_registered_cameras', JSON.stringify(updated));
+      const toSave = updated.map(cam => ({
+        ...cam,
+        user: cam.user ? encrypt(cam.user) : '',
+        pass: cam.pass ? encrypt(cam.pass) : '',
+      }));
+      localStorage.setItem('podcastudio_registered_cameras', JSON.stringify(toSave));
     } catch {}
     setWifiConnectSuccess(`¡Cámara "${newCam.name}" guardada en tu lista permanente!`);
   };
@@ -573,7 +585,12 @@ export default function CameraConnectModal({
     const updated = registeredCameras.filter(c => c.id !== id);
     setRegisteredCameras(updated);
     try {
-      localStorage.setItem('podcastudio_registered_cameras', JSON.stringify(updated));
+      const toSave = updated.map(cam => ({
+        ...cam,
+        user: cam.user ? encrypt(cam.user) : '',
+        pass: cam.pass ? encrypt(cam.pass) : '',
+      }));
+      localStorage.setItem('podcastudio_registered_cameras', JSON.stringify(toSave));
     } catch {}
   };
 
@@ -728,12 +745,16 @@ export default function CameraConnectModal({
   };
 
   // ESCANEO REAL DE CÁMARAS IP / WI-FI EN LA RED LOCAL (TP-LINK TAPO, ONVIF, RTSP)
+  const scanAbortRef = useRef(false);
+
   const handleDiscoverRealCameras = async () => {
+    scanAbortRef.current = false;
     setIsScanningRealCameras(true);
     setHasScannedRealCameras(true);
     try {
       if (typeof window !== 'undefined' && window.api?.discoverNetworkCameras) {
         const res = await window.api.discoverNetworkCameras();
+        if (scanAbortRef.current) return;
         if (res && res.success && Array.isArray(res.cameras)) {
           setRealNetworkCameras(res.cameras);
         } else {
@@ -743,12 +764,19 @@ export default function CameraConnectModal({
         setRealNetworkCameras([]);
       }
     } catch (err) {
-      console.warn('Error escaneando cámaras de red reales:', err);
-      setRealNetworkCameras([]);
+      if (!scanAbortRef.current) {
+        console.warn('Error escaneando cámaras de red reales:', err);
+        setRealNetworkCameras([]);
+      }
     } finally {
       setIsScanningRealCameras(false);
     }
   };
+
+  // Cleanup al desmontar o cambiar pestaña
+  useEffect(() => {
+    return () => { scanAbortRef.current = true; };
+  }, []);
 
   useEffect(() => {
     if (open && activeTab === 'wifi') {

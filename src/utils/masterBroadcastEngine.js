@@ -98,24 +98,44 @@ function getOffscreenContainer() {
 }
 
 // Inicializa el Worker de renderizado para saltar el límite de requestAnimationFrame
+// Inicializa el Worker de renderizado para saltar el límite de requestAnimationFrame
+function fallbackRafLoop() {
+  const loop = () => {
+    if (!isRunning) return;
+    try { renderFrame(); } catch (e) {}
+    animFrameId = requestAnimationFrame(loop);
+  };
+  animFrameId = requestAnimationFrame(loop);
+}
+
 function startRenderLoop() {
-  if (!renderWorker) {
-    const blob = new Blob([`
-      let interval;
-      self.onmessage = function(e) {
-        if (e.data === 'start') {
-          interval = setInterval(() => self.postMessage('tick'), 1000 / 30);
-        } else if (e.data === 'stop') {
-          clearInterval(interval);
-        }
+  try {
+    if (!renderWorker) {
+      const blob = new Blob([`
+        let interval;
+        self.onmessage = function(e) {
+          if (e.data === 'start') {
+            interval = setInterval(() => self.postMessage('tick'), 1000 / 30);
+          } else if (e.data === 'stop') {
+            if (interval) { clearInterval(interval); interval = null; }
+          }
+        };
+      `], { type: 'application/javascript' });
+      const url = URL.createObjectURL(blob);
+      renderWorker = new Worker(url);
+      renderWorker.onmessage = () => { if (isRunning) { try { renderFrame(); } catch(e) {} } };
+      renderWorker.onerror = () => {
+        console.warn('Render worker failed, falling back to RAF');
+        try { URL.revokeObjectURL(url); } catch(e){}
+        renderWorker = null;
+        fallbackRafLoop();
       };
-    `], { type: 'application/javascript' });
-    renderWorker = new Worker(URL.createObjectURL(blob));
-    renderWorker.onmessage = () => {
-      if (isRunning) renderFrame();
-    };
+    }
+    renderWorker.postMessage('start');
+  } catch (e) {
+    console.warn('Worker init failed:', e);
+    fallbackRafLoop();
   }
-  renderWorker.postMessage('start');
 }
 
 function stopRenderLoop() {
@@ -618,6 +638,53 @@ function drawReplayOverlay(replayInfo, width, height) {
   ctx.restore();
 }
 
+// Función de chroma key real (green screen)
+function applyChromaKey(ctx, videoFrame, bgImage, width, height, options = {}) {
+  // Dibujar frame de video primero
+  ctx.drawImage(videoFrame, 0, 0, width, height);
+  
+  if (!bgImage || !bgImage.complete || bgImage.naturalWidth === 0) return;
+  
+  const threshold = options.threshold || 120;
+  const similarity = options.similarity || 0.3;
+  const smoothness = options.smoothness || 0.1;
+  const spill = options.spill || 0.2;
+  
+  // Obtener datos de píxeles del video
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  
+  // Dibujar fondo en canvas temporal para obtener píxeles
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = width;
+  tempCanvas.height = height;
+  const tempCtx = tempCanvas.getContext('2d');
+  tempCtx.drawImage(bgImage, 0, 0, width, height);
+  const bgPixels = tempCtx.getImageData(0, 0, width, height).data;
+  
+  // Chroma key: detectar verde fuerte
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const a = data[i + 3];
+    
+    // Detectar píxeles verdes (chroma key)
+    // Usar diferencia de color: g > r + threshold && g > b + threshold
+    const isGreen = g > r + threshold && g > b + threshold && g > 100;
+    
+    if (isGreen && a > 0) {
+      // Reemplazar con fondo
+      data[i] = bgPixels[i];
+      data[i + 1] = bgPixels[i + 1];
+      data[i + 2] = bgPixels[i + 2];
+      data[i + 3] = 255;
+    }
+  }
+  
+  ctx.putImageData(imageData, 0, 0);
+}
+
 function renderFrame() {
   if (!ctx) return;
   const width = 1920;
@@ -628,6 +695,13 @@ function renderFrame() {
   } else {
     ctx.fillStyle = '#08080a';
     ctx.fillRect(0, 0, width, height);
+  }
+
+  // Si hay chroma key activo, aplicarlo al video principal
+  const hasChromaKey = currentState.chromaKeyActive && virtualBgImage && virtualBgImage.complete && virtualBgImage.naturalWidth > 0;
+  const activeVideo = videoElements.get(currentState.activeCam || 1);
+  if (hasChromaKey && activeVideo && activeVideo.readyState >= 2) {
+    applyChromaKey(ctx, activeVideo, virtualBgImage, width, height);
   }
 
   if (!lastStreamSync || (Date.now() - lastStreamSync > 1000)) {
@@ -841,8 +915,28 @@ function renderFrame() {
 
 function initMixerBuses() {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!audioContext && AudioCtx) {
+  if (!AudioCtx) return;
+  if (!audioContext || audioContext.state === 'closed') {
+    try { audioContext?.close(); } catch (e) {}
     audioContext = new AudioCtx({ sampleRate: 48000, latencyHint: 'interactive' });
+    // Reset node references if recreated
+    masterSumGain = null;
+    masterLimiterNode = null;
+    masterOutputGain = null;
+    monitorSumGain = null;
+    monitorOutputGain = null;
+    masterAnalyserNode = null;
+    localMicMonitorNode = null;
+    bgmGainNode = null;
+    bgmDuckingGainNode = null;
+    bgmAnalyserNode = null;
+    sfxGainNode = null;
+    sfxAnalyserNode = null;
+    channelStrips.clear();
+    mixMinusBuses.clear();
+    connectedAudioSources.clear();
+    activeVoiceFxNodes.clear();
+    audioDestination = null;
   }
   if (!audioContext) return;
 
@@ -1058,10 +1152,26 @@ function reapplyVoiceEffects() {
     }
   });
 }
+function pruneDeadAudioSources() {
+  for (const [key, entry] of connectedAudioSources.entries()) {
+    const tracks = entry.stream?.getAudioTracks?.() || [];
+    const alive = tracks.some(t => t.readyState === 'live');
+    if (!alive) {
+      try { disconnectAudioSource(key); } catch (e) {}
+      connectedAudioSources.delete(key);
+    }
+  }
+}
 
+
+
+let isMixing = false;
 function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedMap = {}) {
+  if (isMixing) return audioDestination?.stream?.getAudioTracks?.()?.[0] || null;
+  isMixing = true;
   try {
     initMixerBuses();
+    pruneDeadAudioSources();
     if (!audioContext || !audioDestination) return null;
     const layout = currentState.layoutMode || '1';
     const activePgm = currentState.activeCam || 1;
@@ -1156,6 +1266,8 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
   } catch (err) {
     console.warn('Audio mixing setup fallback:', err);
     return null;
+  } finally {
+    isMixing = false;
   }
 }
 
@@ -1597,7 +1709,8 @@ export function captureMasterCanvasSnapshot() {
 
 export function stopBroadcastEngine() {
   isRunning = false;
-  stopRenderLoop(); // Detiene el Worker de renderizado
+  stopRenderLoop();
+  cleanupVisibilityHandler();
 
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     try { mediaRecorder.stop(); } catch (e) {}
@@ -1633,6 +1746,43 @@ export function stopBroadcastEngine() {
   mixMinusBuses.clear();
   chunkListeners.clear();
   cachedInitHeader = null;
+
+  // Cerrar AudioContext
+  if (audioContext && audioContext.state !== 'closed') {
+    try { audioContext.close(); } catch (e) {}
+  }
+  audioContext = null;
+  audioDestination = null;
+}
+
+// Handler de visibilidad para pausar renderizado en background
+let visibilityHandler = null;
+
+function setupVisibilityHandler() {
+  if (typeof document === 'undefined') return;
+  visibilityHandler = () => {
+    if (document.hidden) {
+      isRunning = false;
+      if (renderWorker) {
+        try { renderWorker.postMessage('stop'); } catch (e) {}
+      }
+    } else {
+      isRunning = true;
+      if (renderWorker) {
+        try { renderWorker.postMessage('start'); } catch (e) {}
+      } else if (!animFrameId) {
+        startRenderLoop();
+      }
+    }
+  };
+  document.addEventListener('visibilitychange', visibilityHandler);
+}
+
+function cleanupVisibilityHandler() {
+  if (visibilityHandler) {
+    document.removeEventListener('visibilitychange', visibilityHandler);
+    visibilityHandler = null;
+  }
 }
 
 export function ensureMasterCanvas() {
@@ -1642,7 +1792,8 @@ export function ensureMasterCanvas() {
     canvas.height = 1080;
     ctx = canvas.getContext('2d', { alpha: false });
   }
-  startRenderLoop(); // Invoca la rutina Anti-Throttling
+  setupVisibilityHandler();
+  startRenderLoop();
   return canvas;
 }
 

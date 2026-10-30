@@ -100,5 +100,9 @@ export function loadCintilloPositions() {
 }
 
 export function saveCintilloPositions(positions) {
-  localStorage.setItem('podcastudio_cintillo_positions', JSON.stringify(positions))
+  try {
+    localStorage.setItem('podcastudio_cintillo_positions', JSON.stringify(positions))
+  } catch (e) {
+    console.warn('[Cintillo] Error guardando posiciones:', e)
+  }
 }

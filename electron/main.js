@@ -362,7 +362,21 @@ function startMediaServer() {
       }
     });
 
+    ws.isAlive = true;
+    ws.on('pong', () => { ws.isAlive = true; });
+
+    const heartbeat = setInterval(() => {
+      if (ws.isAlive === false) {
+        clearInterval(heartbeat);
+        try { ws.terminate(); } catch (e) {}
+        return;
+      }
+      ws.isAlive = false;
+      try { ws.ping(); } catch (e) {}
+    }, 10000);
+
     ws.on('close', () => {
+      clearInterval(heartbeat);
       remoteControlClients.delete(ws);
       tallyClients.delete(ws);
       programFeedClients.delete(ws);
@@ -373,6 +387,7 @@ function startMediaServer() {
     });
 
     ws.on('error', () => {
+      clearInterval(heartbeat);
       remoteControlClients.delete(ws);
       tallyClients.delete(ws);
       programFeedClients.delete(ws);
@@ -575,11 +590,17 @@ function startMediaServer() {
               await connectWebSocket();
 
               pc = new RTCPeerConnection({
-                iceServers: [
-                  { urls: 'stun:stun.l.google.com:19302' },
-                  { urls: 'stun:stun1.l.google.com:19302' }
-                ]
-              });
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:stun.cloudflare.com:3478' },
+              { urls: 'turn:turn.podcastudio.mx:3478?transport=udp', username: 'podcastudio', credential: 'Podcastudio2026!' },
+              { urls: 'turn:turn.podcastudio.mx:3478?transport=tcp', username: 'podcastudio', credential: 'Podcastudio2026!' },
+              { urls: 'turns:turn.podcastudio.mx:5349?transport=tcp', username: 'podcastudio', credential: 'Podcastudio2026!' }
+            ],
+            iceCandidatePoolSize: 0,
+            iceTransportPolicy: 'all'
+          });
 
               currentStream.getTracks().forEach(track => {
                 const sender = pc.addTrack(track, currentStream);
@@ -1280,6 +1301,12 @@ ipcMain.handle('discover-network-cameras', async () => {
     const dgram = require('dgram');
     const net = require('net');
 
+    // Timeout global de seguridad para evitar bloqueo indefinido
+    const globalTimeout = setTimeout(() => {
+      try { if (udpClient) udpClient.close(); } catch (e) {}
+      resolve({ success: true, cameras: Array.from(discovered.values()), total: discovered.size });
+    }, 8000);
+
     const subnetPrefix = LOCAL_IP && LOCAL_IP.includes('.') ? LOCAL_IP.substring(0, LOCAL_IP.lastIndexOf('.') + 1) : '192.168.1.';
     const arpIps = new Set();
 
@@ -1419,6 +1446,7 @@ ipcMain.handle('discover-network-cameras', async () => {
         try { udpClient.close(); } catch(e) {}
       }
 
+      clearTimeout(globalTimeout);
       const cameras = Array.from(discovered.values());
       resolve({
         success: true,
@@ -1496,11 +1524,14 @@ ipcMain.handle('list-serial-ports', async () => {
 ipcMain.handle('send-tally-serial', async (event, { port = 'COM3', baudRate = 9600, data = '' }) => {
   return new Promise((resolve) => {
     if (!port || !data) return resolve({ success: false, error: 'Puerto o datos no válidos' });
-    const cleanPort = String(port).replace(/[^A-Za-z0-9]/g, '');
+    const portMatch = String(port).match(/^COM(\d+)$/i);
+    if (!portMatch) return resolve({ success: false, error: 'Formato de puerto inválido (ej: COM3, COM10)' });
+    const portNum = parseInt(portMatch[1], 10);
+    if (portNum < 1 || portNum > 255) return resolve({ success: false, error: 'Número de puerto fuera de rango (1-255)' });
     const cleanBaud = parseInt(baudRate) || 9600;
     const cleanData = String(data).replace(/"/g, '`"');
 
-    const psScript = `$p = New-Object System.IO.Ports.SerialPort '${cleanPort}', ${cleanBaud}, None, 8, one; try { $p.Open(); $p.WriteLine("${cleanData}"); $p.Close(); Write-Output "OK" } catch { Write-Output "ERR:$($_.Exception.Message)" }`;
+    const psScript = `try { $p = New-Object System.IO.Ports.SerialPort 'COM${portNum}', ${cleanBaud}, None, 8, One; $p.ReadTimeout = 500; $p.WriteTimeout = 500; $p.Open(); $p.WriteLine("${cleanData}"); $p.Close(); Write-Output "OK" } catch { Write-Output "ERR:$($_.Exception.Message)" }`;
     exec(`powershell -NoProfile -Command "${psScript}"`, { timeout: 3000 }, (err, stdout) => {
       if (err) return resolve({ success: false, error: err.message });
       const out = (stdout || '').trim();
@@ -1601,7 +1632,8 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
     currentRecordingProjectName = cleanProjectName;
 
     // Carpeta raíz estructurada: D:\PROGRAMAS IA\PODCASTUDIO\proyectos\[NombreProyecto]\
-    const projectDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos', cleanProjectName);
+    const projectsRoot = process.env.PODCASTUDIO_PROJECTS_DIR || path.join(app.getPath('videos'), 'PodcastStudio');
+    const projectDir = path.join(projectsRoot, cleanProjectName);
     try {
       if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
     } catch (e) {}
@@ -1762,7 +1794,8 @@ ipcMain.handle('start-iso-recording', async (event, { slots = [], projectName = 
     .replace(/[/\\?%*:|"<>]/g, '_')
     .trim() || 'Proyecto_General';
 
-  const isoDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos', cleanProjectName, 'ISO');
+  const projectsRoot = process.env.PODCASTUDIO_PROJECTS_DIR || path.join(app.getPath('videos'), 'PodcastStudio');
+    const isoDir = path.join(projectsRoot, cleanProjectName, 'ISO');
   try {
     if (!fs.existsSync(isoDir)) fs.mkdirSync(isoDir, { recursive: true });
   } catch (e) {}
@@ -1896,7 +1929,8 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
     let projectDir = (sourcePath && fs.existsSync(sourcePath)) ? path.dirname(sourcePath) : null;
     if (!projectDir) {
       const cleanProjectName = currentRecordingProjectName || (projectName ? String(projectName).replace(/^PodcaStudio_/i, '').replace(/_\d{10,}$/, '').replace(/[/\\?%*:|"<>]/g, '_').trim() : 'Proyecto_General');
-      projectDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos', cleanProjectName);
+      const projectsRoot3 = process.env.PODCASTUDIO_PROJECTS_DIR || path.join(app.getPath('videos'), 'PodcastStudio');
+      projectDir = path.join(projectsRoot3, cleanProjectName);
     }
     if (!fs.existsSync(projectDir)) {
       try { fs.mkdirSync(projectDir, { recursive: true }); } catch (e) {}
@@ -1980,7 +2014,8 @@ ipcMain.handle('export-highlight-clip', async (event, { sourcePath, startTime, d
     }
 
     const cleanProjectName = projectName ? String(projectName).replace(/^PodcaStudio_/i, '').replace(/_\d{10,}$/, '').replace(/[/\\?%*:|"<>]/g, '_').trim() : 'Proyecto_General';
-    const projectDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos', cleanProjectName);
+    const projectsRoot4 = process.env.PODCASTUDIO_PROJECTS_DIR || path.join(app.getPath('videos'), 'PodcastStudio');
+    const projectDir = path.join(projectsRoot4, cleanProjectName);
     const clipsDir = path.join(projectDir, 'Clips');
     if (!fs.existsSync(clipsDir)) {
       try { fs.mkdirSync(clipsDir, { recursive: true }); } catch (e) {}
@@ -2304,8 +2339,11 @@ ipcMain.handle('scan-network-cameras', async () => {
       }
     }
 
-    const BATCH_SIZE = 30;
+    const BATCH_SIZE = 15;
+    const scanStart = Date.now();
+    const SCAN_TIMEOUT = 25000;
     for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
+      if (Date.now() - scanStart > SCAN_TIMEOUT) break;
       const chunk = tasks.slice(i, i + BATCH_SIZE);
       await Promise.all(chunk.map(fn => fn()));
     }
@@ -2482,7 +2520,7 @@ ipcMain.handle('start-streaming', async (event, payload) => {
 let streamInitHeader = null;
 
 // Receptor de chunks de audio/video del Master en vivo
-ipcMain.on('stream-chunk', (event, chunkBuffer) => {
+ipcMain.on('stream-chunk', async (event, chunkBuffer) => {
   if (!chunkBuffer) return;
   try {
     const buf = Buffer.isBuffer(chunkBuffer) ? chunkBuffer : Buffer.from(chunkBuffer);
@@ -2493,8 +2531,13 @@ ipcMain.on('stream-chunk', (event, chunkBuffer) => {
     for (const worker of activeStreamWorkers) {
       if (worker.process && worker.process.stdin && !worker.process.stdin.destroyed) {
         try {
-          worker.process.stdin.write(buf);
-        } catch (e) {}
+          const ok = worker.process.stdin.write(buf);
+          if (!ok) {
+            await new Promise(resolve => worker.process.stdin.once('drain', resolve));
+          }
+        } catch (e) {
+          console.warn('[stream-chunk] write error:', e.message);
+        }
       }
     }
   } catch (err) {}

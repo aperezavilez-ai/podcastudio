@@ -23,18 +23,18 @@ function clamp(val, min, max) {
 }
 
 export function useDynamicZoom({ activeCamera = 0, recording = false } = {}) {
-  const [crops, setCrops] = useState(() => {
-    try {
-      const saved = localStorage.getItem('podcastudio_camera_crops')
-      if (saved) return JSON.parse(saved)
-    } catch {}
-    return {}
-  })
+  const [crops, setCrops] = useState({});
   const cropsRef = useRef({})
   const animFrameRef = useRef(null)
   const lastTimeRef = useRef(performance.now())
 
-  const saveTimerRef = useRef(null)
+  // Cargar crops desde localStorage una sola vez al montar
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('podcastudio_camera_crops')
+      if (saved) setCrops(JSON.parse(saved))
+    } catch {}
+  }, [])
 
   useEffect(() => {
     cropsRef.current = crops
