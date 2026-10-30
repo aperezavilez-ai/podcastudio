@@ -2550,19 +2550,27 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
       }
       return safeMessage.slice(-700);
     };
+    const isWindows = process.platform === 'win32';
+    const videoEncoder = isWindows ? 'h264_mf' : 'libx264';
+    const videoEncoderArgs = videoEncoder === 'h264_mf'
+      ? ['-c:v', 'h264_mf', '-b:v', '4500k']
+      : [
+          '-c:v', 'libx264',
+          '-preset', 'ultrafast',
+          '-tune', 'zerolatency',
+          '-threads', String(threadsPerDestination),
+          '-profile:v', 'main',
+          '-level', '4.1',
+          '-b:v', '4500k',
+        ];
+
     const workerArgs = [
       '-probesize', '32M',
       '-analyzeduration', '3000000',
       '-fflags', '+discardcorrupt',
       '-f', 'webm',
       '-i', 'pipe:0',
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-tune', 'zerolatency',
-      '-threads', String(threadsPerDestination),
-      '-profile:v', 'main',
-      '-level', '4.1',
-      '-b:v', '4500k',
+      ...videoEncoderArgs,
       '-maxrate', '5000k',
       '-bufsize', '5000k',
       '-pix_fmt', 'yuv420p',

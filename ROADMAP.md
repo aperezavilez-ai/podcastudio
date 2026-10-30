@@ -5,9 +5,9 @@ PROHIBIDO reexplorar el repo entero si este documento cubre la tarea. Solo read_
 EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar codigo largo.
 
 ## Proceso
-- Fase: analisis
-- Estado: Patch OK: electron/media-engine/index.js (2026-10-30 22:26)
-- Actualizado: 2026-10-30 22:26
+- Fase: implementacion
+- Estado: Patch OK: electron/media-engine/bridge.js (2026-10-30 23:46)
+- Actualizado: 2026-10-30 23:46
 - Stack: React + Vite + Electron + Supabase
 - Entry: index.html
 - Entry: src/main.jsx
@@ -16,7 +16,10 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - Preview: desconocido — usa el preview del IDE, no inventes puertos
 
 ## Mapa
+- electron/media-engine/bridge.js
 - electron/media-engine/index.js
+- src/config/featureFlags.js
+- docs/media-engine/ARCHITECTURE.md
 - docs/baseline-v1.3.1.md
 - package.json — podcaststudio · scripts: dev, build, build:exe, build:electron, test:remote-cameras, test:recording, test:stream-config
 - stack: React + Vite + Electron + Supabase
@@ -61,22 +64,27 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - RELEASE_v1.2.9.md
 - RELEASE_v1.3.0.md
 - RELEASE_v1.3.1.md
-- scripts/
-- scripts/compile-exe.ps1
-- scripts/forensic-audio-test.js
 
 ## Archivos clave (no reexplorar)
+- electron/media-engine/bridge.js
 - electron/media-engine/index.js
+- src/config/featureFlags.js
+- docs/media-engine/ARCHITECTURE.md
 - docs/baseline-v1.3.1.md
-- src/utils/masterBroadcastEngine.js
-- electron/main.js
+- lib/livepeer/client.js
+- lib/mercadopago/client.js
+- lib/mux/client.js
+- api/mercadopago/webhook.js
+- src/utils/exportVideo.js
 - package.json
+- src/utils/masterBroadcastEngine.js
+- lib/supabase/serverLogin.js
+- electron/main.js
 - index.html
 - src/main.jsx
-- src/App.jsx
 
 ## Tarea activa
-- ok entiendo, solo quiero que hagas un analisis completo del proyecto contrastalo con mi prompt y dame tu mejor propuesta y al final yo te autorizo con la palabra procede despues de leer tus resultados y propuesta
+- te paso todo lo que estamos haciendo que veo que olvidaste......   Tú
 
 ## Bloqueos / bugs conocidos
 - Ninguno registrado
@@ -85,12 +93,24 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - Ninguna registrada
 
 ## Cambios recientes
+- electron/media-engine/bridge.js — archivo escrito (kernel) (2026-10-30 23:46)
+- electron/media-engine/index.js — archivo escrito (kernel) (2026-10-30 23:46)
+- src/config/featureFlags.js — archivo escrito (kernel) (2026-10-30 23:45)
+- docs/media-engine/ARCHITECTURE.md — archivo escrito (kernel) (2026-10-30 23:45)
+- docs/baseline-v1.3.1.md — archivo escrito (kernel) (2026-10-30 23:44)
+- lib/livepeer/client.js
+- lib/mercadopago/client.js
+- lib/mux/client.js
+- api/mercadopago/webhook.js
+- src/utils/exportVideo.js
+- package.json
+- electron/media-engine/index.js
+- docs/baseline-v1.3.1.md
+- src/utils/masterBroadcastEngine.js
+- lib/supabase/serverLogin.js
 - electron/media-engine/index.js — parche aplicado (kernel) (2026-10-30 22:26)
 - electron/media-engine/index.js — archivo escrito (kernel) (2026-10-30 22:26)
 - docs/baseline-v1.3.1.md — archivo escrito (kernel) (2026-10-30 22:26)
-- src/utils/masterBroadcastEngine.js
-- electron/main.js
-- package.json
 
 ## Verificado
 - Pendiente

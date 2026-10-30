@@ -1,39 +1,35 @@
-# Baseline v1.3.1 — Medición de referencia
+# BASELINE v1.3.1 (REFERENCIA) — PodcastStudio
 
 Fecha: 2026-10-30
 Rama: feature/native-media-engine
-Versión de referencia: v1.3.1 (tag pendiente)
+Commit base: (ver `git log -1 --oneline`)
 
-## Cadena actual (confirmada en código)
+## Cadena actual confirmada
+1. `src/utils/masterBroadcastEngine.js:1637` → `canvas.captureStream(30)`
+2. `src/utils/masterBroadcastEngine.js` → `MediaRecorder` (VP8/Opus WebM ~8 Mbps) graba/emite composición
+3. `electron/main.js:2559` → FFmpeg `libx264 ultrafast` re-codifica WebM→FLV para RTMP
 
-1. `src/utils/masterBroadcastEngine.js:1637` — `canvas.captureStream(30)` captura el Master a 30 fps.
-2. `MediaRecorder` (VP8/Opus WebM, 8 Mbps) empaqueta la señal.
-3. `electron/main.js:2559` — FFmpeg `libx264` ultrafast re-codifica WebM → FLV/RTMP.
-4. Un proceso FFmpeg por destino RTMP.
+**Problema:** doble codificación + re-empaquetado. Consumo CPU + latencia acumulada.
 
-**Doble codificación + re-empaquetado** = cuello de CPU y latencia.
+## Métricas a medir (OBLIGATORIAS)
+| Prueba | CPU (promedio) | Latencia percibida | Dropped frames | Notas |
+|---|---|---|---|---|
+| 1 destino RTMP (1080p30) | TBD | TBD | TBD | Baseline |
+| 2 destinos simultáneos | TBD | TBD | TBD | Baseline |
+| 4 cámaras remotas + local | TBD | TBD | TBD | Baseline |
+| Grabación local + emisión | TBD | TBD | TBD | Baseline |
 
-## Métricas a capturar (Fase 0)
+## Entorno
+- OS: Windows
+- Node: v24.18.0
+- Electron: ^29.1.0
+- FFmpeg: ffmpeg-static ^5.2.0 + fluent-ffmpeg ^2.1.2
 
-| Métrica | OBS Studio | PodcastStudio v1.3.1 | Objetivo v2 |
-|---|---|---|---|
-| CPU % (idle, 1 cam) | | | |
-| CPU % (4 cams + música) | | | |
-| Latencia end-to-end (voz→stream) | | | |
-| Dropped frames / 60s | | | |
-| GPU % (si HW encode) | | | |
-| RAM MB | | | |
+## Cómo reproducir
+```bash
+npm run dev
+# Emitir a endpoint RTMP de prueba
+# Medir con Task Manager/Resource Monitor + OBS/monitoreo destino
+```
 
-## Procedimiento
-
-1. Abrir OBS Studio y PodcastStudio en la misma PC.
-2. Stream a un endpoint de prueba (YouTube/Twitch test o servidor RTMP local).
-3. Anotar métricas con Task Manager / OBS Stats.
-4. Guardar capturas en `docs/baseline-v1.3.1/`.
-
-## Criterio de éxito para v2
-
-- CPU % ≤ 50% del valor de v1.3.1 con la misma carga.
-- Latencia end-to-end ≤ 2s (vs ~4-6s actual estimado).
-- Dropped frames = 0 en 5 min continuos.
-- Una sola codificación H.264 (sin MediaRecorder ni FFmpeg intermedio).
+**NOTA:** v1.3.1 se mantiene intacto como referencia hasta validar v2 con métricas mejores o iguales.
