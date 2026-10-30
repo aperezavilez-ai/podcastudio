@@ -4,7 +4,7 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.2.10 (Sincronía adaptable y respuesta fluida de la cabina)
+## 🚀 Versión Actual: v1.3.0 (Sincronía adaptable y respuesta fluida de la cabina)
 - **Rendimiento de la cabina**:
   - Los medidores de micrófono y cámaras pasan de actualizar React en cada frame a muestrear cada 200 ms y solo publicar cambios visibles. Esto evita redibujar toda la cabina 60 veces por segundo por medidor.
   - La lectura de nivel del micrófono también limita las actualizaciones de interfaz y agrupa niveles cercanos.
@@ -13,7 +13,7 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
   - Mantiene 1080p como captura inicial cuando el teléfono lo soporta, pero reduce bitrate y escala a 720p/540p cuando la red limita el video; prioriza mantener 30 fps para que la cola de video no desplace la voz.
   - La adaptación baja calidad tras dos mediciones consecutivas de congestión.
 - **Verificación**:
-  - Build web y EXE v1.2.10.0 completados.
+  - Build web y EXE v1.3.0.0 completados.
   - Grabación/exportación 1/1; destinos RTMP 4/4; asignación de cámaras 1–12, capacidades 4–12: 4/4.
   - La fluidez final y el lip-sync aún requieren una prueba física en la PC y teléfonos del estudio.
 

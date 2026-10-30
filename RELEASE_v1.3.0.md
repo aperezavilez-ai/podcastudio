@@ -1,4 +1,4 @@
-# PodcastStudio v1.2.10
+# PodcastStudio v1.3.0
 
 ## Respuesta de la cabina
 
@@ -15,6 +15,6 @@
 
 ## Verificación
 
-- Build web y EXE v1.2.10.0 completados.
+- Build web y EXE v1.3.0.0 completados.
 - Grabación/exportación: 1/1; destinos RTMP: 4/4; asignación de cámaras 1–12: 4/4.
 - La frecuencia de actualización de los medidores se redujo en código; la fluidez final y el lip-sync deben confirmarse en la PC y los teléfonos físicos del estudio.
