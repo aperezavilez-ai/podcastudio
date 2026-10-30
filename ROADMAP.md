@@ -4,7 +4,16 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.2.6 (Cámaras móviles remotas y negociación WebRTC)
+## 🚀 Versión Actual: v1.2.7 (TURN administrado para cámaras móviles)
+- **Relay TURN administrado**:
+  - `/api/turn-credentials` genera credenciales temporales de 12 horas con Cloudflare Realtime TURN; las llaves permanecen en el servidor.
+  - Se excluyen las URLs alternas del puerto 53, que pueden demorarse o estar bloqueadas en navegadores.
+  - Configuración mediante `CLOUDFLARE_TURN_KEY_ID` y `CLOUDFLARE_TURN_API_TOKEN` en Vercel.
+  - Cloudflare publica 1,000 GB mensuales de salida sin cargo y USD 0.05/GB después de ese límite.
+- **Build y cierre**:
+  - `PodcastStudio.exe` y pie de aplicación sincronizados a v1.2.7 / v1.2.7.0.
+
+## 📦 Versión Previa: v1.2.6 (Cámaras móviles remotas y negociación WebRTC)
 - **Video remoto Android/iOS**:
   - El estudio espera a que la pista de video reciba cuadros antes de asignar la cámara a una ranura, evitando presentar una pista todavía silenciada como video activo.
   - Se corrigió la actualización de parámetros de envío de video en `RTCRtpSendParameters`.
