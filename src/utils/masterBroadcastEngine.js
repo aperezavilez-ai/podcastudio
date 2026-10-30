@@ -16,6 +16,8 @@ let ctx = null;
 let animFrameId = null;
 let renderWorker = null; // Nuevo Web Worker para renderizado sin throttling
 let mediaRecorder = null;
+let teleprompterStartedAt = 0;
+let teleprompterLayoutCache = { key: '', lines: [] };
 let masterStream = null;
 let audioContext = null;
 let audioDestination = null;
@@ -73,6 +75,10 @@ let currentState = {
   isReplaying: false,
   replayVideoElement: null,
   replayOverlay: { active: false, label: 'REPLAY', speed: 0.5, progress: 0 },
+  teleprompterText: '',
+  teleprompterSpeed: 2,
+  teleprompterFontSize: 36,
+  isTeleprompterPlaying: false,
   cameraBadges: {},
 };
 
@@ -81,6 +87,17 @@ let virtualBgImage = null;
 let logoImage = null;
 let logoVideoElement = null;
 let lastStreamSync = 0;
+let lastReadyProgramCam = 1;
+
+function getReadyProgramVideo(camId) {
+  const target = videoElements.get(camId);
+  if (target && target.readyState >= 2) {
+    lastReadyProgramCam = camId;
+    return target;
+  }
+  const previous = videoElements.get(lastReadyProgramCam);
+  return previous && previous.readyState >= 2 ? previous : target;
+}
 
 let offscreenVideoContainer = null;
 function getOffscreenContainer() {
@@ -730,11 +747,11 @@ function renderFrame() {
         drawCameraCover(vFrom, 0, 0, width, height, fromCam);
         ctx.save();
         ctx.globalAlpha = transitionProgress;
-        const vTo = videoElements.get(toCam);
+        const vTo = getReadyProgramVideo(toCam);
         drawCameraCover(vTo, 0, 0, width, height, toCam);
         ctx.restore();
       } else {
-        const mainVideo = videoElements.get(activeCam);
+        const mainVideo = getReadyProgramVideo(activeCam);
         drawCameraCover(mainVideo, 0, 0, width, height, activeCam);
       }
 
@@ -811,7 +828,7 @@ function renderFrame() {
     } else if (mode === 'speaker') {
       const mainH = Math.round(height * 0.74);
       const thumbH = height - mainH - gap;
-      const mainVideo = videoElements.get(activeCam);
+      const mainVideo = getReadyProgramVideo(activeCam);
       drawCameraCover(mainVideo, 0, 0, width, mainH, activeCam);
 
       const otherSlots = slots.filter(id => id !== activeCam);
@@ -834,11 +851,11 @@ function renderFrame() {
         drawCameraCover(vFrom, 0, 0, width, height, fromCam);
         ctx.save();
         ctx.globalAlpha = transitionProgress;
-        const vTo = videoElements.get(toCam);
+        const vTo = getReadyProgramVideo(toCam);
         drawCameraCover(vTo, 0, 0, width, height, toCam);
         ctx.restore();
       } else {
-        const v = videoElements.get(activeCam);
+        const v = getReadyProgramVideo(activeCam);
         drawCameraCover(v, 0, 0, width, height, activeCam);
       }
     }
@@ -910,6 +927,48 @@ function renderFrame() {
 
   if (currentState.replayOverlay?.active) {
     drawReplayOverlay(currentState.replayOverlay, width, height);
+  }
+
+  if (currentState.isTeleprompterPlaying && currentState.teleprompterText) {
+    const text = String(currentState.teleprompterText).trim();
+    const fontSize = Math.max(24, Math.min(64, Number(currentState.teleprompterFontSize) || 36));
+    const lineHeight = Math.round(fontSize * 1.42);
+    ctx.save();
+    ctx.font = `700 ${fontSize}px Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const maxWidth = width - 220;
+    const layoutKey = `${fontSize}:${text}`;
+    if (teleprompterLayoutCache.key !== layoutKey) {
+      const lines = [];
+      let line = '';
+      for (const word of text.split(/\s+/)) {
+        const candidate = line ? `${line} ${word}` : word;
+        if (line && ctx.measureText(candidate).width > maxWidth) {
+          lines.push(line);
+          line = word;
+        } else line = candidate;
+      }
+      if (line) lines.push(line);
+      teleprompterLayoutCache = { key: layoutKey, lines };
+    }
+    const lines = teleprompterLayoutCache.lines;
+    const clipTop = 160;
+    const clipHeight = height - clipTop - 90;
+    ctx.beginPath();
+    ctx.rect(70, clipTop, width - 140, clipHeight);
+    ctx.clip();
+    const elapsed = Math.max(0, (Date.now() - (teleprompterStartedAt || Date.now())) / 1000);
+    const speed = Math.max(0.5, Math.min(6, Number(currentState.teleprompterSpeed) || 2));
+    let y = height - ((elapsed * speed * 28) % (height + lines.length * lineHeight));
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = 'rgba(0,0,0,.9)';
+    ctx.shadowBlur = 7;
+    for (const item of lines) {
+      ctx.fillText(item, width / 2, y, maxWidth);
+      y += lineHeight;
+    }
+    ctx.restore();
   }
 }
 

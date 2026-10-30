@@ -4,7 +4,25 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.3.0 (Sincronía adaptable y respuesta fluida de la cabina)
+## 🧪 Pendientes reportados durante pruebas del usuario
+- [ ] El cambio en la Cámara Master entre CAM 1, CAM 2 o cualquier otra cámara debe ser inmediato, sin flash ni bloque negro. Investigar y verificar en el estudio real cuando el usuario termine de listar los problemas.
+- [ ] El botón rojo de grabación activa el estado pero no inicia una grabación funcional; la interfaz se bloquea y el mismo botón tampoco logra detenerla. Revisar inicio, contador, cancelación y cierre del archivo.
+- [ ] No hay una pausa/cancelación de grabación fiable: el botón para detener no responde y no se puede cancelar el inicio/contador de forma segura.
+- [ ] Mientras se graba, los demás controles de la cabina deben seguir activos y sus cambios deben aplicarse al Master; actualmente no se comportan así.
+- [ ] No se oyen los efectos de sonido y los efectos de voz no producen cambios audibles. Verificar preescucha, mezcla Master, monitor y señal grabada/en vivo.
+- [ ] El teleprompter indica que está leyendo y muestra el texto en su panel, pero no aparece sobre el Master ni produce el resultado esperado.
+- [ ] La transmisión en vivo no inicia; al intentar Facebook aparece el error «La URL de transmisión de Facebook no es válida». Verificar la validación y conexión real del destino.
+- [ ] Los controles de micrófono y bocina de CAM 1 aparecen bloqueados. Verificar que funcionen para cada recuadro, de CAM 1 a CAM 12.
+
+## 🚀 Versión Actual: v1.3.1 (Controles de grabación y salida Master)
+- Se añadió cancelar durante la cuenta regresiva y pausar/reanudar o descartar la grabación activa.
+- La pausa deja seguir enviando el Master a la transmisión en vivo y detiene únicamente el envío de cuadros al archivo.
+- El compositor conserva la última cámara que ya estaba lista mientras carga la siguiente y dibuja el teleprompter en la salida Master.
+- Las miniaturas de cámara ya obedecen el control de bocina/monitor individual.
+- Facebook ahora valida el servidor RTMPS por separado y codifica la clave como un segmento opaco de ruta para evitar errores por caracteres reservados.
+- La verificación automatizada confirma el MP4 con miniaturas y cuatro relaciones de aspecto, las cámaras 1–12 y la normalización de destinos RTMP; estos resultados no sustituyen una transmisión real en Facebook ni pruebas físicas de sincronía/móviles.
+
+## 📦 Versión Previa: v1.3.0 (Sincronía adaptable y respuesta fluida de la cabina)
 - **Rendimiento de la cabina**:
   - Los medidores de micrófono y cámaras pasan de actualizar React en cada frame a muestrear cada 200 ms y solo publicar cambios visibles. Esto evita redibujar toda la cabina 60 veces por segundo por medidor.
   - La lectura de nivel del micrófono también limita las actualizaciones de interfaz y agrupa niveles cercanos.

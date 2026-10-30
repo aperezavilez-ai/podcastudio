@@ -255,6 +255,7 @@ const defaultCamSettings = { zoom: 1.0, panX: 50, panY: 50, brightness: 100, con
 
 function PodcastStudioApp() {
   const [isRecording, setIsRecording] = useState(false);
+  const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [countdown, setCountdown] = useState(null);
   const [micLevel, setMicLevel] = useState(0);
@@ -262,6 +263,11 @@ function PodcastStudioApp() {
   const [showMasterGrid, setShowMasterGrid] = useState(false);
   const [recordedVideoData, setRecordedVideoData] = useState(null);
   const recordingChunksRef = useRef([]);
+  const recordingCountdownTimersRef = useRef([]);
+  const recordingStartPendingRef = useRef(false);
+  const recordingStopPendingRef = useRef(false);
+  const isRecordingPausedRef = useRef(false);
+  const isCancelingRecordingRef = useRef(false);
 
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
@@ -1600,7 +1606,7 @@ function PodcastStudioApp() {
 
   useEffect(() => {
     let timer;
-    if (isRecording) {
+    if (isRecording && !isRecordingPaused) {
       timer = setInterval(() => {
         setRecordingTime(prev => {
           const next = prev + 1;
@@ -1614,11 +1620,11 @@ function PodcastStudioApp() {
           return next;
         });
       }, 1000);
-    } else {
+    } else if (!isRecording) {
       setRecordingTime(0);
     }
     return () => clearInterval(timer);
-  }, [isRecording]);
+  }, [isRecording, isRecordingPaused]);
 
   const formatTime = (seconds) => {
     const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
@@ -1693,10 +1699,14 @@ function PodcastStudioApp() {
       cintillosVisible,
       cintillo,
       topic,
+      teleprompterText,
+      teleprompterSpeed,
+      teleprompterFontSize,
+      isTeleprompterPlaying,
       getCamStream,
       remoteCams,
     });
-  }, [activeCam, pvwCam, pipCam, camSlots, cameraCrops, cameraBadges, cameraMeta, hostName, hostRole, guestName, guestRole, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, topic, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
+  }, [activeCam, pvwCam, pipCam, camSlots, cameraCrops, cameraBadges, cameraMeta, hostName, hostRole, guestName, guestRole, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, topic, teleprompterText, teleprompterSpeed, teleprompterFontSize, isTeleprompterPlaying, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
     const officialQr = 'https://www.podcastudio.mx/remote-cam?auto=true';
@@ -1994,7 +2004,7 @@ function PodcastStudioApp() {
     if ((isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk) {
       window.api.sendStreamChunk(buffer);
     }
-    if (isRecordingRef.current) {
+    if (isRecordingRef.current && !isRecordingPausedRef.current) {
       // Electron escribe el archivo incrementalmente en FFmpeg; no retener el programa
       // completo en RAM, porque una grabación larga terminaría congelando el compositor.
       if (!window.api) recordingChunksRef.current.push(buffer);
@@ -2005,26 +2015,41 @@ function PodcastStudioApp() {
   };
 
   const handleRecord = async () => {
+    if (recordingStopPendingRef.current || isCancelingRecordingRef.current) return;
+    if (recordingStartPendingRef.current && countdown === null) return;
     if (!isElectronMaster) {
       dispatchRemoteCommand('TOGGLE_RECORD');
       return;
     }
+    if (!isRecording && countdown !== null) {
+      recordingCountdownTimersRef.current.forEach(clearTimeout);
+      recordingCountdownTimersRef.current = [];
+      recordingStartPendingRef.current = false;
+      setCountdown(null);
+      return;
+    }
     if (!isRecording) {
+      recordingStartPendingRef.current = true;
       recordingChunksRef.current = [];
       setRecordingTime(0);
+      setIsRecordingPaused(false);
+      isRecordingPausedRef.current = false;
       setCountdown(3);
-      setTimeout(() => setCountdown(2), 1000);
-      setTimeout(() => setCountdown(1), 2000);
-      setTimeout(async () => {
+      recordingCountdownTimersRef.current = [
+        setTimeout(() => setCountdown(2), 1000),
+        setTimeout(() => setCountdown(1), 2000),
+        setTimeout(async () => {
         setCountdown(null);
+        recordingCountdownTimersRef.current = [];
 
         if (window.api) {
           const recordingHeader = getInitHeader();
           const res = await window.api.startRecording({
             projectName: topic || 'Proyecto_General',
             initialHeader: recordingHeader ? Array.from(new Uint8Array(recordingHeader)) : null,
-          });
+          }).catch(error => ({ success: false, error: error.message }));
           if (res.success) {
+            recordingStartPendingRef.current = false;
             isRecordingRef.current = true;
             setIsRecording(true);
 
@@ -2098,11 +2123,13 @@ function PodcastStudioApp() {
               }
             }
           } else {
+            recordingStartPendingRef.current = false;
             isRecordingRef.current = false;
             if (!isStreamingRef.current) stopBroadcastEngine();
             alert('Error al iniciar grabación: ' + (res.error || 'Desconocido'));
           }
         } else {
+          recordingStartPendingRef.current = false;
           isRecordingRef.current = true;
           setIsRecording(true);
           startBroadcastEngine({
@@ -2129,8 +2156,11 @@ function PodcastStudioApp() {
             camMuted,
           }, handleMasterChunk);
         }
-      }, 3000);
+        }, 3000),
+      ];
     } else {
+      if (recordingStopPendingRef.current) return;
+      recordingStopPendingRef.current = true;
       // Capturar miniatura en alta resolución directamente del canvas maestro en vivo
       const snapshotCanvas = captureMasterCanvasSnapshot();
       let thumbnailDataUrl = null;
@@ -2170,6 +2200,8 @@ function PodcastStudioApp() {
       }
       isRecordingRef.current = false;
       setIsRecording(false);
+      setIsRecordingPaused(false);
+      isRecordingPausedRef.current = false;
 
       if (window.api) {
         try {
@@ -2177,6 +2209,7 @@ function PodcastStudioApp() {
           stopRes = await window.api.stopRecording();
           if (!stopRes?.success || !stopRes.path) {
             recordingChunksRef.current = [];
+            recordingStopPendingRef.current = false;
             alert('No se pudo finalizar el MP4: ' + (stopRes?.error || 'No se generó un archivo válido.'));
             return;
           }
@@ -2190,6 +2223,7 @@ function PodcastStudioApp() {
         } catch (e) {
           console.warn('Error parando grabación FFmpeg:', e);
           recordingChunksRef.current = [];
+          recordingStopPendingRef.current = false;
           alert('No se pudo finalizar la grabación: ' + (e.message || 'Error desconocido'));
           return;
         }
@@ -2210,7 +2244,40 @@ function PodcastStudioApp() {
         name: `PodcaStudio_${cleanTopicName}_${Date.now()}`,
         duration: recordingTime || 1,
       });
+      recordingStopPendingRef.current = false;
       setShowExportModal(true);
+    }
+  };
+
+  const handleCancelRecording = async () => {
+    if (!isRecordingRef.current || isCancelingRecordingRef.current || recordingStopPendingRef.current) return;
+    isCancelingRecordingRef.current = true;
+    recordingStopPendingRef.current = true;
+    isRecordingRef.current = false;
+    isRecordingPausedRef.current = false;
+    setIsRecording(false);
+    setIsRecordingPaused(false);
+    recordingChunksRef.current = [];
+    try {
+      if (!isStreamingRef.current) await stopBroadcastEngine();
+      const isoStops = Array.from(isoRecordersRef.current.values()).map(rec => new Promise(resolve => {
+        if (!rec || rec.state === 'inactive') return resolve();
+        rec.addEventListener('stop', resolve, { once: true });
+        try { rec.stop(); } catch { resolve(); }
+      }));
+      isoRecordersRef.current.clear();
+      await Promise.all(isoStops);
+      await Promise.all(isoChunkQueuesRef.current.values());
+      isoChunkQueuesRef.current.clear();
+      await window.api?.stopIsoRecording?.();
+      const result = await window.api?.cancelRecording?.();
+      setRecordedVideoData(null);
+      if (result && !result.success) alert(`No se pudo descartar la grabación: ${result.error || 'error desconocido'}`);
+    } catch (error) {
+      alert(`No se pudo descartar la grabación: ${error.message || 'error desconocido'}`);
+    } finally {
+      isCancelingRecordingRef.current = false;
+      recordingStopPendingRef.current = false;
     }
   };
 
@@ -3924,7 +3991,7 @@ function PodcastStudioApp() {
                   title={dualMonitorMode ? `Seleccionar CAM ${camId} en PREVIEW (PVW) · Clic en CUT para conmutar a PROGRAM` : `Seleccionar CAM ${camId} como Cámara Master`}
                 >
                    {camStream ? (
-                     <VideoTile stream={camStream} isLocal={camId === 1} muted={true} className="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
+                     <VideoTile stream={camStream} isLocal={camId === 1} muted={camSpeakerMuted[camId] !== false} className="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
                    ) : camThumbnails[camId] ? (
                      <img src={camThumbnails[camId]} className="w-full h-full object-cover" alt={`CAM ${camId}`} />
                    ) : (!isElectronMaster && isActive) ? (
@@ -5275,7 +5342,7 @@ function PodcastStudioApp() {
                 ) : countdown !== null ? (
                   <>
                     <Loader2 size={14} className="animate-spin" />
-                    <span>INICIANDO EN {countdown}...</span>
+                    <span>INICIANDO EN {countdown} · CLIC PARA CANCELAR</span>
                   </>
                 ) : (
                   <>
@@ -5284,6 +5351,32 @@ function PodcastStudioApp() {
                   </>
                 )}
               </button>
+              {isRecording && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const paused = !isRecordingPausedRef.current;
+                    isRecordingPausedRef.current = paused;
+                    setIsRecordingPaused(paused);
+                  }}
+                  className="w-full py-2 rounded-lg border border-[#444] bg-[#18181b] hover:bg-[#242428] text-gray-100 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
+                  title={isRecordingPaused ? 'Continuar la grabación' : 'Pausar temporalmente la grabación'}
+                >
+                  {isRecordingPaused ? <Play size={13} /> : <PauseCircle size={13} />}
+                  {isRecordingPaused ? 'CONTINUAR GRABACIÓN' : 'PAUSAR GRABACIÓN'}
+                </button>
+              )}
+              {isRecording && (
+                <button
+                  type="button"
+                  onClick={handleCancelRecording}
+                  disabled={isCancelingRecordingRef.current}
+                  className="w-full py-2 rounded-lg border border-red-900/70 bg-red-950/30 hover:bg-red-900/50 text-red-300 font-bold text-[11px] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  title="Detener y descartar el archivo parcial de esta grabación"
+                >
+                  <X size={13} /> CANCELAR Y DESCARTAR GRABACIÓN
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -5294,7 +5387,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.0</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.1</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>

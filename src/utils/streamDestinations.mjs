@@ -27,13 +27,12 @@ export function buildStreamDestinations(streamConfigs) {
       if (streamKey && streamKey.length < 8) {
         throw new Error(`La clave de transmisión de ${id} es demasiado corta.`);
       }
-      const publishUrl = streamKey ? `${normalizedServer}/${streamKey}` : normalizedServer;
       let parsedUrl;
-      try { parsedUrl = new URL(publishUrl); }
-      catch { throw new Error(`La URL de transmisión de ${id} no es válida.`); }
+      try { parsedUrl = new URL(normalizedServer); }
+      catch { throw new Error(`La URL del servidor RTMP de ${id} no es válida.`); }
 
       if (!['rtmp:', 'rtmps:'].includes(parsedUrl.protocol) || !parsedUrl.hostname) {
-        throw new Error(`La URL de transmisión de ${id} no es válida.`);
+        throw new Error(`La URL del servidor RTMP de ${id} no es válida.`);
       }
       if (!parsedUrl.pathname || parsedUrl.pathname === '/') {
         throw new Error(`Falta la clave de transmisión de ${id}.`);
@@ -42,6 +41,13 @@ export function buildStreamDestinations(streamConfigs) {
       if (!streamKey && (pathSegments.length < 2 || pathSegments.at(-1).length < 8)) {
         throw new Error(`Falta la clave de transmisión de ${id}.`);
       }
+
+      // A stream key is an opaque path segment, not a URL. Escaping it prevents
+      // characters such as # or ? from being parsed as a fragment/query and
+      // avoids rejecting a valid RTMP server because of key contents.
+      const publishUrl = streamKey
+        ? `${normalizedServer}/${encodeURIComponent(streamKey)}`
+        : normalizedServer;
 
       return {
         id,

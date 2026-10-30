@@ -2203,6 +2203,29 @@ ipcMain.handle('export-highlight-clip', async (event, { sourcePath, startTime, d
   });
 });
 
+ipcMain.handle('cancel-recording', async () => {
+  const proc = ffmpegRecordProcess;
+  const recPath = currentRecordingPath;
+  ffmpegRecordProcess = null;
+  if (proc && proc.exitCode == null && !proc.killed) {
+    await new Promise((resolve) => {
+      const timeout = setTimeout(resolve, 2500);
+      proc.once('close', () => { clearTimeout(timeout); resolve(); });
+      try { proc.kill(); } catch { clearTimeout(timeout); resolve(); }
+    });
+  }
+  try { await recordChunkQueue; } catch {}
+  recordChunkQueue = Promise.resolve();
+  recordChunkError = null;
+  if (recPath) {
+    try { await fs.promises.unlink(recPath); } catch (error) {
+      if (error.code !== 'ENOENT') return { success: false, error: error.message };
+    }
+  }
+  currentRecordingPath = null;
+  return { success: true };
+});
+
 ipcMain.handle('save-recording-thumbnail', async (event, { base64Data, targetPath, projectName }) => {
   try {
     if (!base64Data) return { success: false };

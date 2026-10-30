@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('api', {
   sendRecordChunk: (chunk) => ipcRenderer.send('record-chunk', chunk),
   flushRecordingChunks: () => ipcRenderer.invoke('flush-recording-chunks'),
   stopRecording: () => ipcRenderer.invoke('stop-recording'),
+  cancelRecording: () => ipcRenderer.invoke('cancel-recording'),
   saveRecordingThumbnail: (payload) => ipcRenderer.invoke('save-recording-thumbnail', payload),
   saveToDownloads: (payload) => ipcRenderer.invoke('save-to-downloads', payload),
   exportSocialFormat: (payload) => ipcRenderer.invoke('export-social-format', payload),

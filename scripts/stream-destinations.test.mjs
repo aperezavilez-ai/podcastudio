@@ -17,6 +17,13 @@ test('accepts a complete RTMPS publish URL pasted into the key field', () => {
   assert.equal(targets[0].url, 'rtmps://live-api-s.facebook.com:443/rtmp/FAKE_TEST_STREAM_KEY_123');
 });
 
+test('treats a stream key as an opaque URL path segment', () => {
+  const targets = buildStreamDestinations({
+    facebook: { enabled: true, server: 'rtmps://live-api-s.facebook.com:443/rtmp/', key: 'FAKE_KEY+WITH?RESERVED#CHARS' },
+  });
+  assert.equal(targets[0].url, 'rtmps://live-api-s.facebook.com:443/rtmp/FAKE_KEY%2BWITH%3FRESERVED%23CHARS');
+});
+
 test('does not start disabled destinations or destinations without a key', () => {
   assert.deepEqual(buildStreamDestinations({
     facebook: { enabled: true, server: 'rtmps://live-api-s.facebook.com:443/rtmp/', key: '' },
