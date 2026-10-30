@@ -7,6 +7,7 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 ## 🚀 Versión Actual: v1.2.7 (Cámaras móviles QR Android/iOS y 12 ranuras)
 - **Conexión móvil por QR**:
   - Se corrigió el orden de inicialización de la página `/remote-cam`; el efecto de reconexión ya no referencia `initSignaling` antes de inicializarse, causa que podía dejar la vista móvil en negro.
+  - La cámara remota y el mando ahora se cargan bajo demanda, sin descargar primero la cabina completa; se muestra el estado de carga mientras abre cada interfaz.
   - El selector del celular incluye CAM 2 a CAM 12 y la autoasignación respeta el número de ranuras que el estudio creó (4–12), sin reutilizar CAM 2 cuando todas están ocupadas.
   - El teléfono recibe un mensaje explícito cuando el estudio no tiene una ranura libre o no responde.
 - **Verificación**:

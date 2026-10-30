@@ -1,9 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
-import RemoteCam from './pages/RemoteCam.jsx'
-import StudioRemoteControl from './pages/StudioRemoteControl.jsx'
+import { lazy, Suspense } from 'react'
 import './index.css'
+
+const App = lazy(() => import('./App.jsx'))
+const RemoteCam = lazy(() => import('./pages/RemoteCam.jsx'))
+const StudioRemoteControl = lazy(() => import('./pages/StudioRemoteControl.jsx'))
 
 // Detección de entorno Electron Master vs Navegador Móvil/Tablet
 const hasElectronApi = typeof window !== 'undefined' && Boolean(window.api);
@@ -32,7 +34,14 @@ const isRemoteCam =
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    {isRemoteCam ? <RemoteCam /> : isStudioRemote ? <StudioRemoteControl /> : <App />}
+    <Suspense fallback={(
+      <div style={{ height: '100vh', width: '100vw', background: '#0a0a0a', color: '#cbd5e1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, fontFamily: 'system-ui, sans-serif' }}>
+        <div style={{ width: 34, height: 34, borderRadius: 9, background: '#ea580c', display: 'grid', placeItems: 'center', color: '#fff', fontSize: 20 }}>🎙</div>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>{isRemoteCam ? 'Preparando cámara remota…' : 'Iniciando PodcastStudio…'}</span>
+      </div>
+    )}>
+      {isRemoteCam ? <RemoteCam /> : isStudioRemote ? <StudioRemoteControl /> : <App />}
+    </Suspense>
   </React.StrictMode>,
 );
 
