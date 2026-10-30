@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { getBroadcastAudioContext } from '../utils/masterBroadcastEngine.js';
 
 /**
  * Hook para monitorear en tiempo real los niveles de audio de cada cámara conectada (VU meter),
@@ -6,26 +7,13 @@ import { useState, useEffect, useRef } from 'react';
  */
 export function useCameraAudioLevels(camStreamsMap = {}, camMutedMap = {}) {
   const [levels, setLevels] = useState({});
-  const audioCtxRef = useRef(null);
+  const levelsRef = useRef({});
   const analysersRef = useRef(new Map()); // camId -> { source, analyser, dataArray }
-  const animFrameRef = useRef(null);
-  const streamSignaturesRef = useRef('');
 
   useEffect(() => {
-    // Generar firma de streams para reconectar solo si cambian los streams o tracks
-    const signature = Object.entries(camStreamsMap)
-      .map(([id, s]) => `${id}:${s?.id || 'none'}:${s?.getAudioTracks?.().length || 0}`)
-      .join('|');
-
-    // Inicializar AudioContext una sola vez
-    if (!audioCtxRef.current) {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) {
-        audioCtxRef.current = new AudioCtx({ latencyHint: 'interactive' });
-      }
-    }
-
-    const ctx = audioCtxRef.current;
+    // Compartir el contexto de audio broadcast evita abrir otro contexto por
+    // hook/cámara y reduce trabajo de mezcla durante la emisión.
+    const ctx = getBroadcastAudioContext();
     if (ctx && ctx.state === 'suspended') {
       ctx.resume().catch(() => {});
     }
@@ -79,16 +67,13 @@ export function useCameraAudioLevels(camStreamsMap = {}, camMutedMap = {}) {
       }
     });
 
-    streamSignaturesRef.current = signature;
   }, [camStreamsMap]);
 
-  // Bucle de medición en tiempo real
+  // El VU solo necesita muestrearse unas 5 veces por segundo. Actualizar el
+  // estado de React en cada frame (60 veces por segundo por cámara) volvía a
+  // renderizar toda la cabina y bloqueaba controles, audio y grabación.
   useEffect(() => {
-    let active = true;
-
-    const measureLoop = () => {
-      if (!active) return;
-
+    const measure = () => {
       const currentAnalysers = analysersRef.current;
       const nextLevels = {};
 
@@ -112,7 +97,7 @@ export function useCameraAudioLevels(camStreamsMap = {}, camMutedMap = {}) {
             }
             const avg = sum / entry.dataArray.length;
             // Normalizar a porcentaje 0..100 con curva perceptual
-            const normalized = Math.min(100, Math.round((avg / 110) * 100));
+            const normalized = Math.min(100, Math.round((avg / 110) * 20) * 5);
             nextLevels[id] = { hasMic: true, level: normalized, isMuted: false };
           } else {
             nextLevels[id] = { hasMic: true, level: 0, isMuted: false };
@@ -120,31 +105,34 @@ export function useCameraAudioLevels(camStreamsMap = {}, camMutedMap = {}) {
         }
       });
 
-      setLevels(nextLevels);
-      animFrameRef.current = requestAnimationFrame(measureLoop);
+      const previous = levelsRef.current;
+      const ids = new Set([...Object.keys(previous), ...Object.keys(nextLevels)]);
+      const changed = [...ids].some((id) => {
+        const before = previous[id];
+        const after = nextLevels[id];
+        return !before || !after || before.hasMic !== after.hasMic || before.isMuted !== after.isMuted || before.level !== after.level;
+      });
+      if (changed) {
+        levelsRef.current = nextLevels;
+        setLevels(nextLevels);
+      }
     };
 
-    animFrameRef.current = requestAnimationFrame(measureLoop);
+    measure();
+    const timer = setInterval(measure, 200);
 
     return () => {
-      active = false;
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current);
-      }
+      clearInterval(timer);
     };
   }, [camStreamsMap, camMutedMap]);
 
   // Limpieza al desmontar
   useEffect(() => {
     return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       analysersRef.current.forEach((entry) => {
         try { entry.source.disconnect(); } catch (e) {}
       });
       analysersRef.current.clear();
-      if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
-        try { audioCtxRef.current.close(); } catch (e) {}
-      }
     };
   }, []);
 

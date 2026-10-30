@@ -1690,7 +1690,10 @@ export async function stopBroadcastEngine() {
   if (mediaRecorder === recorderToStop) mediaRecorder = null;
 
   if (masterStream) {
-    masterStream.getTracks().forEach((t) => t.stop());
+    // El track de salida del mezclador pertenece a AudioContext y también
+    // alimenta música/monitor. Detenerlo al parar REC mata el BGM y deja su
+    // MediaElementSource atado a un contexto cerrado, imposible de reusar.
+    masterStream.getVideoTracks().forEach((track) => track.stop());
     masterStream = null;
   }
 
@@ -1708,6 +1711,11 @@ export async function stopBroadcastEngine() {
   keys.forEach((k) => disconnectAudioSource(k));
   connectedAudioSources.clear();
   activeVoiceFxNodes.clear();
+  channelStrips.forEach((strip) => {
+    ['trimGain', 'highPassFilter', 'noiseGateNode', 'faderGain', 'duckingGain', 'muteGain', 'soloGain', 'analyser']
+      .forEach((key) => { try { strip[key]?.disconnect(); } catch (e) {} });
+  });
+  channelStrips.clear();
 
   mixMinusBuses.forEach((bus) => {
     try {
@@ -1719,12 +1727,9 @@ export async function stopBroadcastEngine() {
   chunkListeners.clear();
   cachedInitHeader = null;
 
-  // Cerrar AudioContext
-  if (audioContext && audioContext.state !== 'closed') {
-    try { audioContext.close(); } catch (e) {}
-  }
-  audioContext = null;
-  audioDestination = null;
+  // El mezclador es de vida larga: el elemento de música está conectado a
+  // este AudioContext y un MediaElementSource no puede migrar a otro. Dejarlo
+  // abierto permite detener/reiniciar REC sin cortar música ni voz en monitor.
 }
 
 // Handler de visibilidad para pausar renderizado en background

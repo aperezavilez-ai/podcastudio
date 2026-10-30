@@ -4,7 +4,20 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.2.9 (Cámaras remotas estables, encuadre y conexión RTMP)
+## 🚀 Versión Actual: v1.2.10 (Sincronía adaptable y respuesta fluida de la cabina)
+- **Rendimiento de la cabina**:
+  - Los medidores de micrófono y cámaras pasan de actualizar React en cada frame a muestrear cada 200 ms y solo publicar cambios visibles. Esto evita redibujar toda la cabina 60 veces por segundo por medidor.
+  - La lectura de nivel del micrófono también limita las actualizaciones de interfaz y agrupa niveles cercanos.
+  - Se comparte el contexto de audio del mezclador y detener REC ya no lo cierra; evita cortar la fuente de música ligada al contexto y recrea los medidores en el mismo bus.
+- **Cámara remota y sincronía A/V**:
+  - Mantiene 1080p como captura inicial cuando el teléfono lo soporta, pero reduce bitrate y escala a 720p/540p cuando la red limita el video; prioriza mantener 30 fps para que la cola de video no desplace la voz.
+  - La adaptación baja calidad tras dos mediciones consecutivas de congestión.
+- **Verificación**:
+  - Build web y EXE v1.2.10.0 completados.
+  - Grabación/exportación 1/1; destinos RTMP 4/4; asignación de cámaras 1–12, capacidades 4–12: 4/4.
+  - La fluidez final y el lip-sync aún requieren una prueba física en la PC y teléfonos del estudio.
+
+## 📦 Versión Previa: v1.2.9 (Cámaras remotas estables, encuadre y conexión RTMP)
 - **Cámaras remotas Android/iOS**:
   - El celular solicita 1080p/30 como resolución ideal y negocia 720p o el perfil disponible solo si el dispositivo no puede entregar Full HD; el indicador muestra la resolución real capturada.
   - Cada negociación WebRTC lleva un identificador de sesión. Al recargar, el estudio ignora respuestas y candidatos ICE atrasados de la conexión anterior, reemplaza el PeerConnection viejo y evita duplicar codificadores.

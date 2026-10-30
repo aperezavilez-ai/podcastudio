@@ -4,9 +4,9 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
-  { label: 'Máxima · 12 Mbps', maxBitrate: 12000000, width: 1920, height: 1080, frameRate: 30 },
-  { label: 'Alta · 8 Mbps', maxBitrate: 8000000, width: 1920, height: 1080, frameRate: 30 },
-  { label: 'Estable · 5 Mbps', maxBitrate: 5000000, width: 1920, height: 1080, frameRate: 30 },
+  { label: '1080p · 3.5 Mbps', maxBitrate: 3500000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: '720p · 2 Mbps', maxBitrate: 2000000, scaleResolutionDownBy: 1.5, frameRate: 30 },
+  { label: '540p · 1.2 Mbps', maxBitrate: 1200000, scaleResolutionDownBy: 2, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 450     
 const RTT_HEALTHY_MS = 150     
@@ -29,7 +29,8 @@ function applyVideoSenderParams(sender, tier) {
     
     e.maxBitrate = tier.maxBitrate
     e.maxFramerate = tier.frameRate
-    if ('degradationPreference' in params) params.degradationPreference = 'maintain-resolution'
+    e.scaleResolutionDownBy = tier.scaleResolutionDownBy
+    params.degradationPreference = 'maintain-framerate'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }
@@ -118,7 +119,7 @@ export default function RemoteCam() {
 
   const startAdaptationEngine = useCallback(() => {
     if (adaptTimerRef.current) clearInterval(adaptTimerRef.current)
-    tierIndexRef.current = 1
+    tierIndexRef.current = 0
     healthyChecksRef.current = 0
     poorChecksRef.current = 0
     lastBytesRef.current = { bytes: 0, ts: performance.now() }
@@ -156,7 +157,7 @@ export default function RemoteCam() {
         } else {
           poorChecksRef.current = 0
         }
-        if (poorChecksRef.current >= 3 && tierIndexRef.current < QUALITY_TIERS.length - 1) {
+        if (poorChecksRef.current >= 2 && tierIndexRef.current < QUALITY_TIERS.length - 1) {
           tierIndexRef.current += 1
           poorChecksRef.current = 0
           applyTier(tierIndexRef.current)
@@ -179,7 +180,7 @@ export default function RemoteCam() {
 
     const applyTier = (idx) => {
       const tier = QUALITY_TIERS[idx]
-          setQualityLabel(`${captureResolutionRef.current} · ${tier.label}`)
+      setQualityLabel(`${captureResolutionRef.current} · ${tier.label}`)
       if (videoSenderRef.current) {
         applyVideoSenderParams(videoSenderRef.current, tier)
       }
@@ -422,7 +423,7 @@ export default function RemoteCam() {
       const sender = pc.addTrack(track, localStream)
       if (track.kind === 'video') {
         videoSenderRef.current = sender
-        applyVideoSenderParams(sender, QUALITY_TIERS[1])
+        applyVideoSenderParams(sender, QUALITY_TIERS[0])
       } else if (track.kind === 'audio') {
         audioSenderRef.current = sender
         applyAudioSenderParams(sender)
