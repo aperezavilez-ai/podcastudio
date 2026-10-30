@@ -7,7 +7,7 @@
  */
 
 import { supabase } from '../lib/supabase.js'
-import { getWebRtcConfig } from './rtcConfig.js'
+import { getConfiguredWebRtcConfig } from './rtcConfig.js'
 
 export class BaseStreamTransport {
   constructor(options = {}) {
@@ -56,7 +56,6 @@ export class P2PStreamTransport extends BaseStreamTransport {
     this.compoundStreams = new Map()
     this.statsTimers = new Map()
     this.lastInbound = new Map()
-    this.rtcConfig = getWebRtcConfig()
   }
 
   connectSlot(slotIndex, roomCode) {
@@ -98,7 +97,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
             ? (payload.sessionRole === 'student' ? `Alumno: ${payload.guestName}` : payload.guestName)
             : `Cámara ${slotIndex + 1}`
 
-          const newPc = new RTCPeerConnection(this.rtcConfig)
+          const newPc = new RTCPeerConnection(await getConfiguredWebRtcConfig())
           this.peerConnections.set(slotIndex, newPc)
           const trackMap = new Map()
           this.activeTracks.set(slotIndex, trackMap)
@@ -137,7 +136,11 @@ export class P2PStreamTransport extends BaseStreamTransport {
 
           const dispatchStreamUpdate = () => {
             const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended')
-            if (liveTracks.length === 0) return
+            const hasLiveVideo = liveTracks.some(t => t.kind === 'video' && !t.muted)
+            if (!hasLiveVideo) {
+              this.emit('statusChanged', slotIndex, 'waiting')
+              return
+            }
 
             liveTracks.forEach((t) => {
               try {
@@ -353,7 +356,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
     this.statsTimers.set(slotIndex, timer)
   }
 
-  disconnectSlot(slotIndex) {
+  async disconnectSlot(slotIndex) {
     const pc = this.peerConnections.get(slotIndex)
     if (pc) {
       try { pc.close() } catch {}

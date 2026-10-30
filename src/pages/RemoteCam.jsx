@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { RotateCw, Mic, MicOff, Video, VideoOff, Volume2, VolumeX, PhoneOff, Disc, Zap, Radio, Smartphone, Camera, AlertTriangle } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
-import { getWebRtcConfig } from '../utils/rtcConfig.js'
-
-const RTC_CONFIG = getWebRtcConfig()
+import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
   { label: 'Full HD 1080p Máxima', maxBitrate: 12000000, width: 1920, height: 1080, frameRate: 30 },
@@ -22,13 +20,8 @@ function applyVideoSenderParams(sender, tier) {
     const e = params.encodings[0]
     
     e.maxBitrate = tier.maxBitrate
-    e.maxFramerate = 30
-    e.priority = 'high'
-    e.networkPriority = 'high'
-    
-    if ('degradationPreference' in params) {
-      params.degradationPreference = 'maintain-framerate'
-    }
+    e.maxFramerate = tier.frameRate
+    if ('degradationPreference' in params) params.degradationPreference = 'maintain-framerate'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }
@@ -39,8 +32,6 @@ function applyAudioSenderParams(sender) {
     const params = sender.getParameters() || {}
     if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
     params.encodings[0].maxBitrate = 64000
-    params.encodings[0].priority = 'high'
-    params.encodings[0].networkPriority = 'high'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }
@@ -340,7 +331,7 @@ export default function RemoteCam() {
     }
 
     setStatus('connecting')
-    const pc = new RTCPeerConnection(RTC_CONFIG)
+    const pc = new RTCPeerConnection(await getConfiguredWebRtcConfig())
     pcRef.current = pc
     iceQueueRef.current = []
     reconnectAttemptsRef.current = 0
@@ -539,10 +530,13 @@ export default function RemoteCam() {
       streamRef.current = stream
 
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.muted = true;
         videoRef.current.playsInline = true;
-        videoRef.current.play().catch(e => console.warn("Auto-play error:", e));
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.setAttribute('webkit-playsinline', 'true');
+        videoRef.current.muted = true;
+        videoRef.current.defaultMuted = true;
+        videoRef.current.srcObject = stream;
+        try { videoRef.current.play().catch(e => console.warn('Auto-play error:', e)); } catch (e) {}
       }
 
       const track = stream.getVideoTracks()[0]

@@ -583,8 +583,13 @@ function startMediaServer() {
               }
 
               videoEl.srcObject = currentStream;
+              videoEl.setAttribute('playsinline', 'true');
+              videoEl.setAttribute('webkit-playsinline', 'true');
+              videoEl.muted = true;
+              videoEl.defaultMuted = true;
               videoEl.style.display = 'block';
               footerControls.style.display = 'flex';
+              videoEl.play().catch(() => { document.addEventListener('touchstart', () => videoEl.play().catch(()=>{}), {once:true}); });
 
               updateStatus('Conectando al Estudio...', '');
               await connectWebSocket();
@@ -594,9 +599,6 @@ function startMediaServer() {
               { urls: 'stun:stun.l.google.com:19302' },
               { urls: 'stun:stun1.l.google.com:19302' },
               { urls: 'stun:stun.cloudflare.com:3478' },
-              { urls: 'turn:turn.podcastudio.mx:3478?transport=udp', username: 'podcastudio', credential: 'Podcastudio2026!' },
-              { urls: 'turn:turn.podcastudio.mx:3478?transport=tcp', username: 'podcastudio', credential: 'Podcastudio2026!' },
-              { urls: 'turns:turn.podcastudio.mx:5349?transport=tcp', username: 'podcastudio', credential: 'Podcastudio2026!' }
             ],
             iceCandidatePoolSize: 0,
             iceTransportPolicy: 'all'

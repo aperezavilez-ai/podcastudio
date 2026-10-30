@@ -4,7 +4,17 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.2.5 (Auditoría Forense Integral + Seguridad + Chroma Key Real + ICE Robusto)
+## 🚀 Versión Actual: v1.2.6 (Cámaras móviles remotas y negociación WebRTC)
+- **Video remoto Android/iOS**:
+  - El estudio espera a que la pista de video reciba cuadros antes de asignar la cámara a una ranura, evitando presentar una pista todavía silenciada como video activo.
+  - Se corrigió la actualización de parámetros de envío de video en `RTCRtpSendParameters`.
+  - La configuración ICE deja de incluir un host TURN inexistente y credenciales compartidas en el cliente.
+  - Se agregó `/api/turn-credentials` para entregar credenciales TURN temporales generadas en el servidor cuando se configura un relay Coturn compatible mediante `TURN_URLS` y `TURN_SHARED_SECRET`.
+- **Build y cierre**:
+  - Se corrigió el error de sintaxis en `P2PStreamTransport.disconnectSlot()` que impedía compilar el frontend.
+  - `PodcastStudio.exe` y el pie de aplicación sincronizados a v1.2.6.0 / v1.2.6.
+
+## 📦 Versión Previa: v1.2.5 (Auditoría Forense Integral + Seguridad + Chroma Key Real + ICE Robusto)
 - **Auditoría Forense por Fases (7 fases completadas)**:
   - **Fase 1 - Conexiones WiFi/Remotas**: Timeout global 8s en descubridor ONVIF, heartbeat WebSocket 10s, reintentos RTSP/MJPEG con backoff, cancelación de escaneo al desmontar modal.
   - **Fase 2 - Audio/Mixing**: Recreación segura AudioContext, purga automática de fuentes muertas, mutex `isMixing`, cierre completo AudioContext al detener.
