@@ -4,7 +4,22 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.1.8 (Repetición Instantánea / Instant Replay & Salida LAN Program / OBS Feed)
+## 🚀 Versión Actual: v1.2.5 (Auditoría Forense Integral + Seguridad + Chroma Key Real + ICE Robusto)
+- **Auditoría Forense por Fases (7 fases completadas)**:
+  - **Fase 1 - Conexiones WiFi/Remotas**: Timeout global 8s en descubridor ONVIF, heartbeat WebSocket 10s, reintentos RTSP/MJPEG con backoff, cancelación de escaneo al desmontar modal.
+  - **Fase 2 - Audio/Mixing**: Recreación segura AudioContext, purga automática de fuentes muertas, mutex `isMixing`, cierre completo AudioContext al detener.
+  - **Fase 3 - Renderizado/Canvas**: Fallback RAF si Web Worker falla, handler de visibilidad para pausar render en background, cleanup garantizado.
+  - **Fase 4 - Grabación/Streaming**: Backpressure (`drain`) en pipe FFmpeg, reset `streamInitHeader` al detener streaming, rutas portables vía `app.getPath('videos')`/env var.
+  - **Fase 5 - WebRTC**: `restartIce()` automático en `failed/disconnected`, `unsubscribe()` seguro con try/catch, limpieza ICE queues/timers.
+  - **Fase 6 - Persistencia/Seguridad**: Encriptación XOR+Base64 para credenciales RTSP en localStorage (`storageCrypto.js`), try/catch en todos los `JSON.parse`, unificación de escrituras `cameraCrops`.
+  - **Fase 7 - Hardware/Pulido**: Serial/Tally COM10+ con validación robusta, ErrorBoundary mejorado (logging + reintento), captura de escritorio moderna con fallback.
+- **Chroma Key Real en Canvas**: Shader `applyChromaKey` con `getImageData/putImageData` para recorte verde real, reemplaza `mix-blend-screen` CSS.
+- **Compilación Nativa `PodcastStudio.exe` v1.2.5.0**:
+  - Binario ejecutable compilado con AssemblyVersion y FileVersion `1.2.5.0` (299.008 bytes).
+
+---
+
+## 📦 Versión Previa: v1.1.8 (Repetición Instantánea / Instant Replay & Salida LAN Program / OBS Feed)
 - **Motor de Repetición Instantánea Broadcast (P4.3)**:
   - **Búfer Circular en Memoria**: 30 segundos de señal PGM limpia continua en búfer circular de chunks WebM/H.264 sin penalización en GPU.
   - **Velocidad Variable de Slow-Motion**: Control táctil en cabina para reproducir a `0.25x`, `0.5x`, `0.75x` y `1.0x` con atajo global `[R]`.
