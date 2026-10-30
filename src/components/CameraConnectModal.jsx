@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import jsQR from 'jsqr';
 import styles from './CameraConnectModal.module.css';
+import { buildRemoteCameraUrl, findAvailableRemoteCameraSlot } from '../utils/remoteCameraSlots.mjs';
 
 function ModalVideoPreview({ stream, label }) {
   const vRef = useRef(null);
@@ -348,32 +349,17 @@ export default function CameraConnectModal({
 
   // Encontrar el siguiente slot disponible (libre de señal y metadatos)
   const getNextAvailableSlot = useCallback((preferredSlot) => {
-    const isOccupied = (s) => Boolean(streams[s]) || Boolean(cameraMeta[s]?.deviceId || cameraMeta[s]?.url);
-    
-    // Si preferredSlot > 0 y está libre, usarlo directamente
-    if (preferredSlot != null && preferredSlot > 0 && !isOccupied(preferredSlot)) {
-      return preferredSlot;
-    }
-
-    // Buscar primer slot libre entre 1 y slotsCount - 1 (para cámaras remotas/invitados)
-    for (let s = 1; s < slotsCount; s++) {
-      if (!isOccupied(s)) {
-        return s;
-      }
-    }
-
-    // Si slots 1..N están ocupados pero slot 0 está desocupado
-    if (!isOccupied(0)) {
-      return 0;
-    }
-
-    // Si todos los slots están llenos y se pueden añadir más
-    if (slotsCount < 12 && onAddSlot) {
+    const slot = findAvailableRemoteCameraSlot({
+      slotsCount,
+      preferredSlot,
+      streams,
+      cameraMeta,
+    });
+    if (slot === null && slotsCount < 12 && onAddSlot) {
       onAddSlot();
       return slotsCount;
     }
-
-    return preferredSlot != null ? preferredSlot : 1;
+    return slot;
   }, [streams, cameraMeta, slotsCount, onAddSlot]);
 
   // Si se abre la pestaña de celular y el slot actual está ocupado o es CAM 1, sugerir el siguiente libre
@@ -382,7 +368,7 @@ export default function CameraConnectModal({
       const isOccupied = Boolean(streams[targetSlot]) || Boolean(cameraMeta[targetSlot]?.deviceId || cameraMeta[targetSlot]?.url);
       if (targetSlot === 0 && isOccupied) {
         const nextFree = getNextAvailableSlot(targetSlot);
-        if (nextFree !== targetSlot) {
+        if (nextFree != null && nextFree !== targetSlot) {
           setTargetSlot(nextFree);
         }
       }
@@ -447,20 +433,12 @@ export default function CameraConnectModal({
       }
     }
 
-    const base = 'https://www.podcastudio.mx/remote-cam';
-    if (autoAssignMode) {
-      const params = new URLSearchParams({ auto: 'true' });
-      if (guestName.trim()) params.set('name', guestName.trim());
-      if (guestRole && guestRole !== 'guest') params.set('role', guestRole);
-      return `${base}?${params.toString()}`;
-    }
-    const params = new URLSearchParams({
-      slot: String(camSlotNumber),
-      room: `studio_cam_${camSlotNumber}`,
+    return buildRemoteCameraUrl({
+      slotIndex: slotIdx,
+      guestName,
+      guestRole,
+      autoAssign: autoAssignMode,
     });
-    if (guestName.trim()) params.set('name', guestName.trim());
-    if (guestRole && guestRole !== 'guest') params.set('role', guestRole);
-    return `${base}?${params.toString()}`;
   }, [guestName, guestRole, autoAssignMode, useCloudDomain, localWifiGuestUrl]);
 
   const remoteUrl = useMemo(() => generateRemoteUrl(targetSlot), [generateRemoteUrl, targetSlot]);
@@ -840,6 +818,10 @@ export default function CameraConnectModal({
     const isOccupied = Boolean(streams[slotToAssign]) || Boolean(cameraMeta[slotToAssign]?.deviceId || cameraMeta[slotToAssign]?.url);
     if (slotToAssign === 0 || isOccupied) {
       slotToAssign = getNextAvailableSlot(targetSlot);
+      if (slotToAssign == null) {
+        setWifiConnectError('Las 12 cámaras están ocupadas. Desconecta una cámara para liberar una ranura.');
+        return;
+      }
       setTargetSlot(slotToAssign);
     }
 
@@ -879,6 +861,10 @@ Instrucciones:
     const isOccupied = Boolean(streams[slotToAssign]) || Boolean(cameraMeta[slotToAssign]?.deviceId || cameraMeta[slotToAssign]?.url);
     if (slotToAssign === 0 || isOccupied) {
       slotToAssign = getNextAvailableSlot(targetSlot);
+      if (slotToAssign == null) {
+        setWifiConnectError('Las 12 cámaras están ocupadas. Desconecta una cámara para liberar una ranura.');
+        return;
+      }
       setTargetSlot(slotToAssign);
     }
 

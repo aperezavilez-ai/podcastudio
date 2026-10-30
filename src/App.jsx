@@ -26,6 +26,7 @@ import { buildCanvasFilter } from './utils/videoLook.js';
 import { CINTILLO_STYLES, getCintilloStyle } from './config/cintilloStyles.js';
 import { CINTILLO_PRESETS, resolveCintilloText, resolveCintilloSubtitle } from './config/cintilloPresets.js';
 import { CINTILLO_POSITION_OPTIONS } from './config/cintilloCameraMap.js';
+import { findAvailableRemoteCameraSlot } from './utils/remoteCameraSlots.mjs';
 import { useCintilloRotation } from './hooks/useCintilloRotation.js';
 
 // Componentes y Configuración de Música y Efectos importados desde PODCASTUDIO
@@ -288,6 +289,8 @@ function PodcastStudioApp() {
   };
 
   const [camSlots, setCamSlots] = useState([1, 2, 3, 4]); 
+  const camSlotsRef = useRef(camSlots);
+  useEffect(() => { camSlotsRef.current = camSlots; }, [camSlots]);
   const [activeCam, setActiveCam] = useState(1);
   const [layoutMode, setLayoutMode] = useState('1'); 
   const [pipCam, setPipCam] = useState(2); 
@@ -334,6 +337,8 @@ function PodcastStudioApp() {
   const [connectModalSlot, setConnectModalSlot] = useState(0);
   const [cameraDevices, setCameraDevices] = useState([]);
   const [cameraMeta, setCameraMeta] = useState({});
+  const cameraMetaRef = useRef(cameraMeta);
+  useEffect(() => { cameraMetaRef.current = cameraMeta; }, [cameraMeta]);
   const [slotStreams, setSlotStreams] = useState({});
   const slotStreamsRef = useRef(slotStreams);
   useEffect(() => { slotStreamsRef.current = slotStreams; }, [slotStreams]);
@@ -845,6 +850,7 @@ function PodcastStudioApp() {
     const nextCount = camSlots.length + 1;
     const newSlots = Array.from({ length: nextCount }, (_, i) => i + 1);
     setCamSlots(newSlots); 
+    camSlotsRef.current = newSlots;
     setCamSettings(prev => ({ ...prev, [nextCount]: { ...defaultCamSettings } })); 
     updateBroadcastState({ camSlots: newSlots });
     if (!isElectronMaster) {
@@ -1729,19 +1735,23 @@ function PodcastStudioApp() {
             const { deviceId, guestName } = ev?.payload || {};
             if (!deviceId) return;
 
-            let targetSlot = null;
-            // Buscar en todas las ranuras activas (1 a 11)
-            for (let s = 1; s < 12; s++) {
-              const isBusy = Boolean(slotStreamsRef.current[s]) || (assignedSlotsRef.current[s] && assignedSlotsRef.current[s] !== deviceId);
-              if (!isBusy) {
-                targetSlot = s;
-                break;
-              }
+            const targetSlot = findAvailableRemoteCameraSlot({
+              slotsCount: camSlotsRef.current.length,
+              streams: slotStreamsRef.current,
+              cameraMeta: cameraMetaRef.current,
+              assignedSlots: assignedSlotsRef.current,
+              localStreamActive: Boolean(localStreamRef.current),
+              requestingDeviceId: deviceId,
+            });
+
+            if (targetSlot === null) {
+              dispatchChannel.send({
+                type: 'broadcast',
+                event: 'slot-full',
+                payload: { targetDeviceId: deviceId },
+              }).catch(() => {});
+              return;
             }
-            if (targetSlot === null && !localStreamRef.current && !slotStreamsRef.current[0]) {
-              targetSlot = 0;
-            }
-            if (targetSlot === null) targetSlot = 1;
 
             assignedSlotsRef.current[targetSlot] = deviceId;
             const assignedCam = targetSlot + 1;
@@ -1803,11 +1813,6 @@ function PodcastStudioApp() {
 
           console.log(`[WebRTC] Video en vivo recibido de celular ${id} (tracks: ${stableStream.getTracks().length})`);
 
-          setRemoteCams(prev => {
-            const filtered = prev.filter(s => s.id !== id);
-            return [...filtered, { id, stream: stableStream, name: name || `Celular ${id.slice(-4)}` }];
-          });
-
           let targetSlot = null;
           if (slot != null) {
             const parsed = parseInt(slot, 10) - 1;
@@ -1824,14 +1829,24 @@ function PodcastStudioApp() {
             }
           }
           if (targetSlot === null) {
-            for (let s = 1; s < 12; s++) {
-              if (!slotStreamsRef.current[s]) {
-                targetSlot = s;
-                break;
-              }
-            }
+            targetSlot = findAvailableRemoteCameraSlot({
+              slotsCount: camSlotsRef.current.length,
+              streams: slotStreamsRef.current,
+              cameraMeta: cameraMetaRef.current,
+              assignedSlots: assignedSlotsRef.current,
+              localStreamActive: Boolean(localStreamRef.current),
+              requestingDeviceId: id,
+            });
           }
-          if (targetSlot === null) targetSlot = 1;
+          if (targetSlot === null) {
+            console.warn('[RemoteCam] No hay ranuras disponibles para esta cámara móvil.');
+            return;
+          }
+
+          setRemoteCams(prev => {
+            const filtered = prev.filter(s => s.id !== id);
+            return [...filtered, { id, stream: stableStream, name: name || `Celular ${id.slice(-4)}` }];
+          });
 
           setSlotStreams(prevStreams => ({ ...prevStreams, [targetSlot]: stableStream }));
           setCameraMeta(prevMeta => ({
@@ -5263,7 +5278,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.2.6</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.2.7</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>

@@ -157,18 +157,34 @@ export default function RemoteCam() {
   }, [])
 
   useEffect(() => {
-    if (!supabase || !isAuto) return;
+    if (!isAuto) return;
+    if (!supabase) {
+      setIsAssigning(false);
+      setErrorMsg('No se pudo conectar con el servicio del estudio. Comprueba tu conexión y vuelve a abrir el enlace.');
+      return;
+    }
 
     const dispatchChannel = supabase.channel('remotecam_auto_dispatch', {
       config: { broadcast: { self: false } },
     });
+    let fallbackTimer;
 
     dispatchChannel.on('broadcast', { event: 'assign-slot' }, (ev) => {
       const payload = ev?.payload;
       if (payload && payload.targetDeviceId === deviceSessionIdRef.current) {
+        clearTimeout(fallbackTimer);
         setSlot(String(payload.slot));
         setRoom(payload.room || `studio_cam_${payload.slot}`);
         setIsAssigning(false);
+        setErrorMsg(null);
+      }
+    });
+
+    dispatchChannel.on('broadcast', { event: 'slot-full' }, (ev) => {
+      if (ev?.payload?.targetDeviceId === deviceSessionIdRef.current) {
+        clearTimeout(fallbackTimer);
+        setIsAssigning(false);
+        setErrorMsg('No hay cámaras libres en el estudio. Pide que agreguen una ranura (hasta CAM 12) y vuelve a abrir el enlace.');
       }
     });
 
@@ -178,10 +194,17 @@ export default function RemoteCam() {
           type: 'broadcast', event: 'request-slot',
           payload: { deviceId: deviceSessionIdRef.current, guestName: guestName.trim() || undefined },
         }).catch(() => {});
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        clearTimeout(fallbackTimer);
+        setIsAssigning(false);
+        setErrorMsg('No se pudo conectar con el estudio. Comprueba tu conexión e inténtalo de nuevo.');
       }
     });
 
-    const fallbackTimer = setTimeout(() => setIsAssigning(false), 2500);
+    fallbackTimer = setTimeout(() => {
+      setIsAssigning(false);
+      setErrorMsg((current) => current || 'No se recibió respuesta del estudio. Comprueba la conexión e inténtalo de nuevo.');
+    }, 10000);
 
     return () => {
       clearTimeout(fallbackTimer);
@@ -211,18 +234,6 @@ export default function RemoteCam() {
     presenceChannel.subscribe();
     return () => { try { supabase.removeChannel(presenceChannel); } catch {} };
   }, [facingMode, room, slot, guestName, sessionRole]);
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && active && streamRef.current) {
-        if (!pcRef.current || pcRef.current.iceConnectionState === 'disconnected' || pcRef.current.iceConnectionState === 'failed') {
-          initSignaling(streamRef.current);
-        }
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [active, initSignaling]);
 
   const requestWakeLock = useCallback(async () => {
     try {
@@ -494,6 +505,18 @@ export default function RemoteCam() {
     startAdaptationEngine()
   }, [room, slot, guestName, sessionRole, startAdaptationEngine])
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && active && streamRef.current) {
+        if (!pcRef.current || pcRef.current.iceConnectionState === 'disconnected' || pcRef.current.iceConnectionState === 'failed') {
+          initSignaling(streamRef.current);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [active, initSignaling]);
+
   const startCamera = async (targetFacing = 'environment') => {
     setErrorMsg(null)
     offerSentRef.current = false
@@ -700,7 +723,7 @@ export default function RemoteCam() {
 
           <div style={{ display: 'flex', gap: 6, margin: '12px 0 20px', justifyContent: 'center', alignItems: 'center' }}>
             <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>Cambiar canal:</span>
-            {['2', '3', '4'].map((s) => (
+            {Array.from({ length: 11 }, (_, index) => String(index + 2)).map((s) => (
               <button
                 key={s} type="button" onClick={() => { setSlot(s); setRoom(`studio_cam_${s}`); }}
                 style={{
@@ -737,7 +760,7 @@ export default function RemoteCam() {
             >🤳 Frontal</button>
           </div>
 
-          <button type="button" onClick={() => startCamera(facingMode)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: 12, padding: '16px 24px', fontSize: 16, fontWeight: 800, cursor: 'pointer', boxShadow: '0 4px 14px rgba(56,189,248,0.4)' }}>
+          <button type="button" disabled={isAuto && (isAssigning || Boolean(errorMsg))} onClick={() => startCamera(facingMode)} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#38bdf8', color: '#0f172a', border: 'none', borderRadius: 12, padding: '16px 24px', fontSize: 16, fontWeight: 800, cursor: isAuto && (isAssigning || Boolean(errorMsg)) ? 'not-allowed' : 'pointer', opacity: isAuto && (isAssigning || Boolean(errorMsg)) ? 0.55 : 1, boxShadow: '0 4px 14px rgba(56,189,248,0.4)' }}>
             <Camera size={20} />
             <span>Activar Cámara</span>
           </button>

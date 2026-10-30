@@ -4,7 +4,17 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.2.6 (Cámaras móviles remotas y negociación WebRTC)
+## 🚀 Versión Actual: v1.2.7 (Cámaras móviles QR Android/iOS y 12 ranuras)
+- **Conexión móvil por QR**:
+  - Se corrigió el orden de inicialización de la página `/remote-cam`; el efecto de reconexión ya no referencia `initSignaling` antes de inicializarse, causa que podía dejar la vista móvil en negro.
+  - El selector del celular incluye CAM 2 a CAM 12 y la autoasignación respeta el número de ranuras que el estudio creó (4–12), sin reutilizar CAM 2 cuando todas están ocupadas.
+  - El teléfono recibe un mensaje explícito cuando el estudio no tiene una ranura libre o no responde.
+- **Verificación**:
+  - Se agregó una prueba automatizada de asignación sin colisiones para cada capacidad de 4 a 12 cámaras.
+  - La prueba del navegador confirma que `/remote-cam` renderiza; la conexión de cámara física Android/iOS requiere validación en esos dispositivos.
+  - `PodcastStudio.exe` y el pie de aplicación sincronizados a v1.2.7.0 / v1.2.7.
+
+## 📦 Versión Previa: v1.2.6 (Cámaras móviles remotas y negociación WebRTC)
 - **Video remoto Android/iOS**:
   - El estudio espera a que la pista de video reciba cuadros antes de asignar la cámara a una ranura, evitando presentar una pista todavía silenciada como video activo.
   - Se corrigió la actualización de parámetros de envío de video en `RTCRtpSendParameters`.

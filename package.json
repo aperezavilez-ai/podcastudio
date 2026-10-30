@@ -1,12 +1,13 @@
 {
   "name": "podcaststudio",
-  "version": "1.2.6",
+  "version": "1.2.7",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "build": "vite build",
     "build:exe": "powershell -ExecutionPolicy Bypass -File ./scripts/compile-exe.ps1",
-    "build:electron": "vite build && electron-builder"
+    "build:electron": "vite build && electron-builder",
+    "test:remote-cameras": "node --test scripts/remote-camera-slots.test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
