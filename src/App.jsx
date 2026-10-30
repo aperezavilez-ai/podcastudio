@@ -19,6 +19,7 @@ import CintilloEditorModal from './components/CintilloEditorModal.jsx';
 import CameraConnectModal from './components/CameraConnectModal.jsx';
 import CameraCalibratorModal from './components/CameraCalibratorModal.jsx';
 import MultiFormatExportModal from './components/MultiFormatExportModal.jsx';
+import StreamDestinationEditor from './components/StreamDestinationEditor.jsx';
 import AudioMixerDesk from './components/AudioMixerDesk.jsx';
 import { BROADCAST_LAYOUTS } from './config/cameraSlots.js';
 import { useCameraAudioLevels } from './hooks/useCameraAudioLevels.js';
@@ -27,6 +28,7 @@ import { CINTILLO_STYLES, getCintilloStyle } from './config/cintilloStyles.js';
 import { CINTILLO_PRESETS, resolveCintilloText, resolveCintilloSubtitle } from './config/cintilloPresets.js';
 import { CINTILLO_POSITION_OPTIONS } from './config/cintilloCameraMap.js';
 import { findAvailableRemoteCameraSlot } from './utils/remoteCameraSlots.mjs';
+import { buildStreamDestinations } from './utils/streamDestinations.mjs';
 import { useCintilloRotation } from './hooks/useCintilloRotation.js';
 
 // Componentes y Configuración de Música y Efectos importados desde PODCASTUDIO
@@ -586,22 +588,23 @@ function PodcastStudioApp() {
 
   // CONFIGURACIÓN DE STREAMING Y MULTI-STREAM
   const [streamConfigs, setStreamConfigs] = useState(() => {
-    const saved = localStorage.getItem('podcastStudio_streamConfigs');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.facebook && parsed.facebook.server.startsWith('rtmp://')) {
-          parsed.facebook.server = parsed.facebook.server.replace('rtmp://', 'rtmps://');
-        }
-        return parsed;
-      } catch(e) {}
-    }
-    return {
+    const defaults = {
       facebook: { server: 'rtmps://live-api-s.facebook.com:443/rtmp/', key: '', enabled: true },
       youtube: { server: 'rtmp://a.rtmp.youtube.com/live2/', key: '', enabled: false },
       tiktok: { server: 'rtmp://live.tiktok.com/live/', key: '', enabled: false },
       custom: { server: 'rtmp://live.twitch.tv/app/', key: '', enabled: false }
     };
+    const saved = localStorage.getItem('podcastStudio_streamConfigs');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.facebook?.server?.startsWith('rtmp://')) {
+          parsed.facebook.server = parsed.facebook.server.replace('rtmp://', 'rtmps://');
+        }
+        return Object.fromEntries(Object.entries(defaults).map(([id, config]) => [id, { ...config, ...(parsed[id] || {}) }]));
+      } catch(e) {}
+    }
+    return defaults;
   });
   useEffect(() => { localStorage.setItem('podcastStudio_streamConfigs', JSON.stringify(streamConfigs)); }, [streamConfigs]);
 
@@ -826,6 +829,8 @@ function PodcastStudioApp() {
   const [virtualBg, setVirtualBg] = useState('https://images.unsplash.com/photo-1598550476439-6847785fce6b?auto=format&fit=crop&w=1920&q=80');
 
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isStreamStarting, setIsStreamStarting] = useState(false);
+  const isStreamStartingRef = useRef(false);
   const [activeStreamTab, setActiveStreamTab] = useState('facebook');
   const [showKey, setShowKey] = useState(false);
 
@@ -1632,12 +1637,18 @@ function PodcastStudioApp() {
 
   useEffect(() => {
     if (window.api?.onStreamStatus) {
-      window.api.onStreamStatus((status) => {
-        if (!status.active) {
+      const unsubscribe = window.api.onStreamStatus((status) => {
+        if (status.active) {
+          if (Array.isArray(status.destinations)) setActiveLiveDestinations(status.destinations);
+        } else {
+          isStreamStartingRef.current = false;
+          setIsStreamStarting(false);
+          isStreamingRef.current = false;
           setIsStreaming(false);
           setActiveLiveDestinations([]);
         }
       });
+      return unsubscribe;
     }
   }, []);
 
@@ -1970,7 +1981,7 @@ function PodcastStudioApp() {
   }, []);
 
   const handleMasterChunk = (buffer) => {
-    if (isStreamingRef.current && window.api?.sendStreamChunk) {
+    if ((isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk) {
       window.api.sendStreamChunk(buffer);
     }
     if (isRecordingRef.current) {
@@ -2193,56 +2204,23 @@ function PodcastStudioApp() {
     }
   };
 
-  const updateStreamConfig = (field, value) => { setStreamConfigs(prev => ({ ...prev, [activeStreamTab]: { ...prev[activeStreamTab], [field]: value } })); };
-  const toggleDestination = () => { setStreamConfigs(prev => ({ ...prev, [activeStreamTab]: { ...prev[activeStreamTab], enabled: !prev[activeStreamTab].enabled } })); };
+  const updateStreamConfig = (field, value, destination = activeStreamTab) => { setStreamConfigs(prev => ({ ...prev, [destination]: { ...prev[destination], [field]: value } })); };
+  const toggleDestination = (destination = activeStreamTab) => { setStreamConfigs(prev => ({ ...prev, [destination]: { ...prev[destination], enabled: !prev[destination].enabled } })); };
 
   const handleStream = async () => {
     if (!isElectronMaster) {
       dispatchRemoteCommand('TOGGLE_STREAM');
       return;
     }
+    if (isStreamStartingRef.current) return;
     if (!isStreaming) {
-      // Recolectar todos los destinos que estén habilitados y tengan clave de transmisión
-      const activeTargets = Object.entries(streamConfigs)
-        .filter(([_, cfg]) => cfg.enabled && cfg.key && cfg.key.trim().length > 0)
-        .map(([id, cfg]) => {
-          let server = (cfg.server || '').trim();
-          let key = (cfg.key || '').trim();
-
-          // Si el usuario pegó la URL completa en el campo de clave, separarla automáticamente
-          if (key.startsWith('rtmp://') || key.startsWith('rtmps://')) {
-            const lastSlash = key.lastIndexOf('/');
-            if (lastSlash > 8) {
-              server = key.substring(0, lastSlash + 1);
-              key = key.substring(lastSlash + 1);
-            }
-          }
-
-          // Servidores por defecto robustos
-          if (id === 'facebook') {
-            if (!server || server.startsWith('rtmp://')) {
-              server = 'rtmps://live-api-s.facebook.com:443/rtmp/';
-            }
-          } else if (id === 'youtube') {
-            if (!server) server = 'rtmp://a.rtmp.youtube.com/live2/';
-          } else if (id === 'tiktok') {
-            if (!server) server = 'rtmp://live.tiktok.com/live/';
-          }
-
-          if (!server.endsWith('/')) server += '/';
-
-          // Validación básica de clave
-          const cleanKey = key.replace(/\s+/g, '');
-          if (cleanKey.length < 8) {
-            throw new Error(`Clave de ${id} demasiado corta o inválida`);
-          }
-
-          return {
-            id,
-            name: id === 'facebook' ? 'Facebook Live' : id === 'youtube' ? 'YouTube Live' : id === 'tiktok' ? 'TikTok Live' : 'RTMP Personalizado',
-            url: server + cleanKey
-          };
-        });
+      let activeTargets;
+      try {
+        activeTargets = buildStreamDestinations(streamConfigs);
+      } catch (error) {
+        alert(error.message);
+        return;
+      }
 
       if (activeTargets.length === 0) {
         return alert('Para emitir en vivo, debes habilitar al menos un destino (Facebook, YouTube, TikTok o RTMP) y escribir su Clave de Transmisión (Stream Key).');
@@ -2273,23 +2251,36 @@ function PodcastStudioApp() {
         camMuted,
       }, handleMasterChunk);
 
-      const initHeader = getInitHeader();
-
       if (window.api) {
-        const res = await window.api.startStreaming({
-          destinations: activeTargets,
-          initialHeader: initHeader ? Array.from(new Uint8Array(initHeader)) : null
-        });
-
-        if (res.success) {
-          isStreamingRef.current = true;
-          setIsStreaming(true);
-          setActiveLiveDestinations(activeTargets);
-          setShowStreamModal(false);
-        } else {
+        isStreamStartingRef.current = true;
+        setIsStreamStarting(true);
+        try {
+          const res = await window.api.startStreaming({ destinations: activeTargets });
+          if (res.success) {
+            isStreamStartingRef.current = false;
+            isStreamingRef.current = true;
+            setIsStreamStarting(false);
+            setIsStreaming(true);
+            setActiveLiveDestinations(res.connectedDestinations || activeTargets);
+            setShowStreamModal(false);
+            if (res.failures?.length) {
+              alert(`Transmisión parcial. Conectados: ${(res.connectedDestinations || []).map(target => target.name).join(', ')}.\n\n${res.failures.map(failure => `${failure.name}: ${failure.error}`).join('\n')}`);
+            }
+          } else {
+            isStreamStartingRef.current = false;
+            isStreamingRef.current = false;
+            setIsStreamStarting(false);
+            setIsStreaming(false);
+            if (!isRecordingRef.current) await stopBroadcastEngine();
+            alert('No se pudo conectar con el servidor de transmisión.\n' + (res.error || 'Verifica que la transmisión esté activa en la plataforma y revisa la clave y la URL.'));
+          }
+        } catch (error) {
+          isStreamStartingRef.current = false;
           isStreamingRef.current = false;
-          if (!isRecordingRef.current) stopBroadcastEngine();
-          alert('Error al conectar:\n' + (res.error || 'Verifica la clave, el servidor y que la transmisión esté habilitada en la plataforma.\nRevisa la consola de Electron para más detalles de FFmpeg.'));
+          setIsStreamStarting(false);
+          setIsStreaming(false);
+          if (!isRecordingRef.current) await stopBroadcastEngine();
+          alert('No se pudo iniciar la conexión RTMP/RTMPS.\n' + (error.message || 'Error de red desconocido.'));
         }
       } else {
         isStreamingRef.current = true;
@@ -3159,6 +3150,7 @@ function PodcastStudioApp() {
     const effectivePipCam = (pipCam && pipCam !== effectiveActiveCam)
       ? pipCam
       : (camSlots.find(id => id !== effectiveActiveCam) || (effectiveActiveCam === 1 ? 2 : 1));
+    const layoutCameraLimit = { '1': 1, '2': 2, 'two-shot': 2, '3': 3, '4': 4, '6': 6, '6-lead': 6, '8': 8, '10': 10 }[layoutMode];
 
     return (
       <div className="w-full h-full relative overflow-hidden bg-[#050505]">
@@ -3166,6 +3158,16 @@ function PodcastStudioApp() {
           let tileClass = "absolute transition-none";
           let tileStyle = {};
           const idx = camSlots.indexOf(id);
+          const visibleInLayout = layoutMode === 'pip'
+            ? id === effectiveActiveCam || id === effectivePipCam
+            : layoutMode === 'speaker' || layoutMode === 'gallery'
+              ? true
+              : layoutMode === '1'
+                ? id === effectiveActiveCam || (!overrideCam && id === pvwCam && tBarPosition > 0)
+                : layoutCameraLimit != null
+                  ? idx < layoutCameraLimit
+                  : id === effectiveActiveCam;
+          if (!visibleInLayout) return null;
 
           if (layoutMode === '1') {
             if (id === effectiveActiveCam) {
@@ -3765,13 +3767,9 @@ function PodcastStudioApp() {
 
             <div className="flex-1 min-h-0 w-full h-full relative overflow-hidden flex items-center justify-center p-1.5 bg-[#050505]">
               {/* CONTENEDOR MAESTRO BROADCAST CALIBRADO EXACTO (1080p / 16:9) */}
-              <div 
-                className="relative w-full h-full max-w-full max-h-full rounded-xl overflow-hidden bg-black flex items-center justify-center border border-[#222530] shadow-2xl"
-                style={{
-                  aspectRatio: '16 / 9',
-                  maxWidth: '100%',
-                  maxHeight: '100%'
-                }}
+              <div
+                className="relative h-full max-w-full max-h-full aspect-video rounded-xl overflow-hidden bg-black flex items-center justify-center border border-[#222530] shadow-2xl flex-none"
+                style={{ height: '100%', width: 'auto', aspectRatio: '16 / 9', maxWidth: '100%', maxHeight: '100%' }}
               >
                 {renderMonitorLayout()}
                 
@@ -5286,7 +5284,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.2.8</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.2.9</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>
@@ -5667,49 +5665,18 @@ function PodcastStudioApp() {
             </div>
 
             <div className="p-6 flex flex-col gap-4">
-              <div className="border border-[#2a2b30] rounded-lg p-5 bg-[#161920]">
-                
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-md font-bold text-white flex items-center gap-2 capitalize">
-                     {activeStreamTab === 'facebook' && <Facebook size={18} className="text-blue-500"/>}
-                     {activeStreamTab === 'youtube' && <Youtube size={18} className="text-red-500"/>}
-                     {activeStreamTab === 'tiktok' && <Music size={18} className="text-cyan-400"/>}
-                     {activeStreamTab === 'custom' && <Settings size={18} className="text-purple-400"/>}
-                     {activeStreamTab === 'custom' ? 'RTMP Personalizado (Twitch/Kick)' : `${activeStreamTab} Live`}
-                  </h3>
-                  <div className="flex items-center gap-2 cursor-pointer" onClick={toggleDestination}>
-                    <div className={`w-8 h-4 rounded-full relative transition-colors ${streamConfigs[activeStreamTab].enabled ? 'bg-green-500' : 'bg-gray-600'}`}>
-                      <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${streamConfigs[activeStreamTab].enabled ? 'right-0.5' : 'left-0.5'}`}></div>
-                    </div>
-                    <span className="text-xs text-white font-bold">Destino Habilitado</span>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-400 mb-1 block">URL del Servidor RTMP / RTMPS:</label>
-                    <input type="text" value={streamConfigs[activeStreamTab].server} onChange={e => updateStreamConfig('server', e.target.value)} className="w-full bg-[#0a0c10] border border-[#333] rounded p-2 text-xs text-white outline-none focus:border-blue-500" />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-bold text-gray-400 mb-1 flex justify-between">
-                      <span>Clave de Transmisión (Stream Key):</span>
-                      <button onClick={() => setShowKey(!showKey)} className="text-gray-500 hover:text-white flex items-center gap-1"><Eye size={12}/> {showKey ? 'Ocultar' : 'Mostrar'}</button>
-                    </label>
-                    <input type={showKey ? 'text' : 'password'} placeholder="Pega aquí tu Stream Key secreta..." value={streamConfigs[activeStreamTab].key} onChange={e => updateStreamConfig('key', e.target.value)} className="w-full bg-[#0a0c10] border border-[#333] rounded p-2 text-xs text-white outline-none focus:border-blue-500" />
-                  </div>
-                </div>
-
-                <div className="mt-4 p-3 bg-[#0a0c10] border border-[#222] rounded flex items-start gap-2">
-                   <div className="mt-0.5 text-orange-500"><CheckCircle size={14}/></div>
-                   <div className="text-[10px] text-gray-400 leading-relaxed">
-                      {activeStreamTab === 'facebook' && "Dónde encontrar tu clave de Facebook Live: Ve a Meta Business Suite > Live Producer. Selecciona \"Usar clave de transmisión\" y copia tu URL RTMPS y Clave de stream permanente."}
-                      {activeStreamTab === 'youtube' && "Dónde encontrar tu clave de YouTube Live: Entra a YouTube Studio > Crear > Emitir en directo. En la pestaña \"Emisión\" copia tu Clave de emisión y pégala arriba."}
-                      {activeStreamTab === 'tiktok' && "Dónde encontrar tu clave de TikTok Live: Disponible en TikTok Live Studio o para cuentas con acceso a RTMP Streaming en el Centro de Creadores Live de TikTok."}
-                      {activeStreamTab === 'custom' && "Servidor RTMP Personalizado: Compatible con Twitch (rtmp://live.twitch.tv/app/), Kick, Twitter/X o retransmisores locales como OBS Studio."}
-                   </div>
-                </div>
-
-              </div>
+              {Object.entries(streamConfigs).map(([destinationId, config]) => (
+                <StreamDestinationEditor
+                  key={destinationId}
+                  destinationId={destinationId}
+                  config={config}
+                  active={destinationId === activeStreamTab}
+                  onCommit={(field, value) => updateStreamConfig(field, value, destinationId)}
+                  onToggle={() => toggleDestination(destinationId)}
+                  showKey={showKey}
+                  onToggleKey={() => setShowKey(value => !value)}
+                />
+              ))}
             </div>
 
             <div className="p-5 border-t border-[#2a2b30] flex justify-between items-center bg-[#111317]">
@@ -5721,8 +5688,8 @@ function PodcastStudioApp() {
                   {Object.entries(streamConfigs).filter(([_, c]) => c.enabled && c.key && c.key.trim().length > 0).map(([k]) => k.toUpperCase()).join(' · ') || 'Pega tu clave en cada red para emitir simultáneamente'}
                 </div>
               </div>
-              <button onClick={handleStream} className="px-6 py-2 bg-red-600 hover:bg-red-500 text-white rounded font-bold text-xs flex items-center gap-2 shadow-lg shadow-red-900/20 transition-colors">
-                 <Wifi size={14}/> {isStreaming ? 'Detener Transmisión' : 'Iniciar Transmisión En Vivo'}
+              <button onClick={handleStream} disabled={isStreamStarting} className="px-6 py-2 bg-red-600 hover:bg-red-500 disabled:bg-red-900 disabled:cursor-wait text-white rounded font-bold text-xs flex items-center gap-2 shadow-lg shadow-red-900/20 transition-colors">
+                 <Wifi size={14}/> {isStreamStarting ? 'Conectando con RTMP…' : isStreaming ? 'Detener Transmisión' : 'Iniciar Transmisión En Vivo'}
               </button>
             </div>
 

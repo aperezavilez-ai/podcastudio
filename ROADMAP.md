@@ -4,7 +4,23 @@ Documento maestro de desarrollo, hitos alcanzados y próximas fases del estudio 
 
 ---
 
-## 🚀 Versión Actual: v1.2.8 (Grabación fluida, exportaciones verificadas y ventana completa)
+## 🚀 Versión Actual: v1.2.9 (Cámaras remotas estables, encuadre y conexión RTMP)
+- **Cámaras remotas Android/iOS**:
+  - El celular solicita 1080p/30 como resolución ideal y negocia 720p o el perfil disponible solo si el dispositivo no puede entregar Full HD; el indicador muestra la resolución real capturada.
+  - Cada negociación WebRTC lleva un identificador de sesión. Al recargar, el estudio ignora respuestas y candidatos ICE atrasados de la conexión anterior, reemplaza el PeerConnection viejo y evita duplicar codificadores.
+  - Se revisan estadísticas de cuadros recibidos y se solicita renegociación si el video remoto deja de progresar.
+  - El monitor master mantiene un contenedor 16:9 para evitar que `object-fit: cover` recorte el encuadre frente a la vista del teléfono.
+  - La prueba de asignación cubre CAM 1–12 con capacidades de 4 a 12 ranuras; se debe confirmar la calidad real con los modelos Android/iOS y redes usados en el estudio.
+- **Transmisión y configuración de destinos**:
+  - La configuración de destinos se guarda al salir de cada campo para no re-renderizar el estudio ni escribir almacenamiento local por cada tecla.
+  - El inicio RTMP espera aceptación del primer video de FFmpeg, informa fallos por destino y oculta las claves en los mensajes de error.
+  - Se valida servidor/URL y se admite pegar el enlace completo de publicación en el campo de clave.
+- **Verificación**:
+  - Pruebas de destinos RTMP y asignación de cámaras (4 pruebas cada una); revisión de sintaxis Electron y transporte WebRTC.
+  - Build web validado. La compilación informa que el bloque principal de la app excede 500 kB; sigue siendo una advertencia de tamaño.
+  - La validación sintética no reemplaza una prueba con teléfonos físicos, Facebook Live y Coturn configurado.
+
+## 📦 Versión Previa: v1.2.8 (Grabación fluida, exportaciones verificadas y ventana completa)
 - **Grabación Master y transmisión**:
   - El mismo codificador del programa sirve para transmisión y grabación; se eliminó la segunda codificación de video que duplicaba carga y segmentos.
   - Los segmentos se escriben secuencialmente con control de flujo, y la grabación Electron ya no guarda todo el video en memoria.

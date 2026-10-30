@@ -4,13 +4,21 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
-  { label: 'Full HD 1080p Máxima', maxBitrate: 12000000, width: 1920, height: 1080, frameRate: 30 },
-  { label: 'Full HD 1080p Alta', maxBitrate: 8000000, width: 1920, height: 1080, frameRate: 30 },
-  { label: 'HD 720p Fluido', maxBitrate: 4500000, width: 1280, height: 720, frameRate: 30 },
+  { label: 'Máxima · 12 Mbps', maxBitrate: 12000000, width: 1920, height: 1080, frameRate: 30 },
+  { label: 'Alta · 8 Mbps', maxBitrate: 8000000, width: 1920, height: 1080, frameRate: 30 },
+  { label: 'Estable · 5 Mbps', maxBitrate: 5000000, width: 1920, height: 1080, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 450     
 const RTT_HEALTHY_MS = 150     
 const HEALTHY_CHECKS_TO_RISE = 3
+
+function getCaptureResolutionLabel(settings = {}) {
+  const width = Number(settings.width) || 0
+  const height = Number(settings.height) || 0
+  if (width >= 1920 && height >= 1080) return 'Full HD 1080p'
+  if (width >= 1280 && height >= 720) return `HD ${Math.min(width, height)}p (límite del dispositivo)`
+  return width && height ? `${width}×${height} (límite del dispositivo)` : 'Resolución de cámara'
+}
 
 function applyVideoSenderParams(sender, tier) {
   if (!sender) return
@@ -21,7 +29,7 @@ function applyVideoSenderParams(sender, tier) {
     
     e.maxBitrate = tier.maxBitrate
     e.maxFramerate = tier.frameRate
-    if ('degradationPreference' in params) params.degradationPreference = 'maintain-framerate'
+    if ('degradationPreference' in params) params.degradationPreference = 'maintain-resolution'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }
@@ -34,6 +42,19 @@ function applyAudioSenderParams(sender) {
     params.encodings[0].maxBitrate = 64000
     sender.setParameters(params).catch(() => {})
   } catch {}
+}
+
+function getRemoteCameraSessionId() {
+  const storageKey = 'podcaststudio_remote_camera_session_v1'
+  try {
+    const saved = window.sessionStorage.getItem(storageKey)
+    if (saved) return saved
+    const sessionId = `phone_${Math.random().toString(36).slice(2, 12)}`
+    window.sessionStorage.setItem(storageKey, sessionId)
+    return sessionId
+  } catch {
+    return `phone_${Math.random().toString(36).slice(2, 12)}`
+  }
 }
 
 export default function RemoteCam() {
@@ -49,7 +70,10 @@ export default function RemoteCam() {
   const [guestName, setGuestName] = useState(searchParams.get('name') || '');
   const sessionRole = searchParams.get('role') || 'guest';
   const [isAssigning, setIsAssigning] = useState(isAuto);
-  const deviceSessionIdRef = useRef('phone_' + Math.random().toString(36).substring(2, 9));
+  // Mantener el mismo ID al recargar la página permite reutilizar la ranura existente
+  // y reemplazar el PeerConnection viejo en vez de abrir otra cámara duplicada.
+  const deviceSessionIdRef = useRef(null);
+  if (!deviceSessionIdRef.current) deviceSessionIdRef.current = getRemoteCameraSessionId();
 
   const [active, setActive] = useState(false)
   const [status, setStatus] = useState('idle')
@@ -60,7 +84,7 @@ export default function RemoteCam() {
   const [videoPaused, setVideoPaused] = useState(false)
   const [micMuted, setMicMuted] = useState(false)
   const [speakerMuted, setSpeakerMuted] = useState(true)
-  const [qualityLabel, setQualityLabel] = useState('HD 720p')
+  const [qualityLabel, setQualityLabel] = useState('Full HD 1080p · Conectando')
 
   const [localBackupActive, setLocalBackupActive] = useState(false)
   const [localBackupDuration, setLocalBackupDuration] = useState(0)
@@ -72,6 +96,9 @@ export default function RemoteCam() {
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const pcRef = useRef(null)
+  const connectionIdRef = useRef('')
+  const connectionStartedAtRef = useRef(0)
+  const isSignalingInitializingRef = useRef(false)
   const channelRef = useRef(null)
   const iceQueueRef = useRef([])
   const wakeLockRef = useRef(null)
@@ -85,12 +112,15 @@ export default function RemoteCam() {
   const adaptTimerRef = useRef(null)
   const tierIndexRef = useRef(1)
   const healthyChecksRef = useRef(0)
+  const poorChecksRef = useRef(0)
+  const captureResolutionRef = useRef('Full HD 1080p')
   const lastBytesRef = useRef({ bytes: 0, ts: 0 })
 
   const startAdaptationEngine = useCallback(() => {
     if (adaptTimerRef.current) clearInterval(adaptTimerRef.current)
     tierIndexRef.current = 1
     healthyChecksRef.current = 0
+    poorChecksRef.current = 0
     lastBytesRef.current = { bytes: 0, ts: performance.now() }
 
     adaptTimerRef.current = setInterval(async () => {
@@ -102,11 +132,13 @@ export default function RemoteCam() {
         let fps = 0
         let limitation = ''
         let bytes = 0
-        stats.forEach((r) => {
-          if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime != null) {
-            rttMs = Math.round(r.currentRoundTripTime * 1000)
-          }
-          if (r.type === 'outbound-rtp' && r.kind === 'video') {
+        const reports = Array.from(stats.values())
+        const selectedPairId = reports.find(report => report.type === 'transport')?.selectedCandidatePairId
+        const candidatePair = reports.find(report => report.type === 'candidate-pair' && report.id === selectedPairId)
+          || reports.find(report => report.type === 'candidate-pair' && report.state === 'succeeded' && report.nominated)
+        if (candidatePair?.currentRoundTripTime != null) rttMs = Math.round(candidatePair.currentRoundTripTime * 1000)
+        reports.forEach((r) => {
+          if (r.type === 'outbound-rtp' && r.kind === 'video' && !r.isRemote) {
             fps = r.framesPerSecond || 0
             limitation = r.qualityLimitationReason || ''
             bytes = r.bytesSent || 0
@@ -118,10 +150,15 @@ export default function RemoteCam() {
         lastBytesRef.current = { bytes, ts: now }
 
         const mustDegrade = rttMs > RTT_DEGRADE_MS || limitation === 'bandwidth' || limitation === 'cpu'
-          
-        if (mustDegrade && tierIndexRef.current < QUALITY_TIERS.length - 1) {
-          tierIndexRef.current += 1
+        if (mustDegrade) {
+          poorChecksRef.current += 1
           healthyChecksRef.current = 0
+        } else {
+          poorChecksRef.current = 0
+        }
+        if (poorChecksRef.current >= 3 && tierIndexRef.current < QUALITY_TIERS.length - 1) {
+          tierIndexRef.current += 1
+          poorChecksRef.current = 0
           applyTier(tierIndexRef.current)
           return
         }
@@ -142,7 +179,7 @@ export default function RemoteCam() {
 
     const applyTier = (idx) => {
       const tier = QUALITY_TIERS[idx]
-      setQualityLabel(tier.label)
+          setQualityLabel(`${captureResolutionRef.current} · ${tier.label}`)
       if (videoSenderRef.current) {
         applyVideoSenderParams(videoSenderRef.current, tier)
       }
@@ -218,7 +255,7 @@ export default function RemoteCam() {
       config: { broadcast: { self: false } },
     });
 
-    const phoneId = 'phone_' + Math.random().toString(36).substring(2, 8);
+    const phoneId = deviceSessionIdRef.current;
     const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isAndroid = /Android/i.test(navigator.userAgent);
     const deviceType = isIos ? 'iPhone' : isAndroid ? 'Android' : 'Celular Móvil';
@@ -312,7 +349,7 @@ export default function RemoteCam() {
 
     if (channelRef.current) {
       try {
-        channelRef.current.send({ type: 'broadcast', event: 'signal', payload: { type: 'phone-disconnect', slot, sender: 'phone' } }).catch(() => {})
+        channelRef.current.send({ type: 'broadcast', event: 'signal', payload: { type: 'phone-disconnect', slot, connectionId: connectionIdRef.current, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone' } }).catch(() => {})
       } catch {}
       try { supabase.removeChannel(channelRef.current) } catch {}
       channelRef.current = null
@@ -335,6 +372,9 @@ export default function RemoteCam() {
   }, [releaseWakeLock, stopAdaptationEngine, slot, stopLocalBackup])
 
   const initSignaling = useCallback(async (localStream) => {
+    if (isSignalingInitializingRef.current) return
+    isSignalingInitializingRef.current = true
+    try {
     if (!supabase) {
       setErrorMsg('No se pudo inicializar la conexión.')
       setStatus('error')
@@ -342,7 +382,34 @@ export default function RemoteCam() {
     }
 
     setStatus('connecting')
-    const pc = new RTCPeerConnection(await getConfiguredWebRtcConfig())
+    stopAdaptationEngine()
+    if (handshakeTimerRef.current) clearInterval(handshakeTimerRef.current)
+    if (iceRecoveryTimerRef.current) clearTimeout(iceRecoveryTimerRef.current)
+    const rtcConfig = await getConfiguredWebRtcConfig()
+    const connectionId = `conn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`
+    connectionIdRef.current = connectionId
+    connectionStartedAtRef.current = Date.now()
+
+    // Una reconexión reutiliza la misma cámara y ranura, pero nunca conserva
+    // el PeerConnection anterior enviando cuadros en paralelo.
+    const previousPc = pcRef.current
+    pcRef.current = null
+    if (previousPc && previousPc.signalingState !== 'closed') {
+      try { previousPc.close() } catch {}
+    }
+    const previousChannel = channelRef.current
+    channelRef.current = null
+    if (previousChannel) {
+      try {
+        await Promise.race([
+          previousChannel.send({ type: 'broadcast', event: 'signal', payload: { type: 'phone-disconnect', slot, connectionId: connectionIdRef.current, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone' } }),
+          new Promise(resolve => setTimeout(resolve, 500)),
+        ])
+      } catch {}
+      try { await supabase.removeChannel(previousChannel) } catch {}
+    }
+
+    const pc = new RTCPeerConnection(rtcConfig)
     pcRef.current = pc
     iceQueueRef.current = []
     reconnectAttemptsRef.current = 0
@@ -375,7 +442,7 @@ export default function RemoteCam() {
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         channel.send({
-          type: 'broadcast', event: 'signal', payload: { type: 'candidate', candidate: event.candidate.toJSON(), sender: 'phone' },
+          type: 'broadcast', event: 'signal', payload: { type: 'candidate', candidate: event.candidate.toJSON(), connectionId, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone' },
         }).catch(() => {})
       }
     }
@@ -400,7 +467,7 @@ export default function RemoteCam() {
       } else if (ice === 'disconnected' || ice === 'failed') {
         if (iceRecoveryTimerRef.current) clearTimeout(iceRecoveryTimerRef.current)
         iceRecoveryTimerRef.current = setTimeout(async () => {
-          if (pcRef.current && pcRef.current.iceConnectionState !== 'connected') {
+          if (pcRef.current === pc && !['connected', 'completed'].includes(pc.iceConnectionState)) {
             offerSentRef.current = false
             await sendOffer(true)
           }
@@ -439,7 +506,7 @@ export default function RemoteCam() {
 
         await channel.send({
           type: 'broadcast', event: 'signal',
-          payload: { type: 'offer', sdp: { type: offer.type, sdp: offer.sdp }, sender: 'phone', slot, guestName: guestName.trim() || undefined, sessionRole },
+          payload: { type: 'offer', sdp: { type: offer.type, sdp: offer.sdp }, connectionId, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone', slot, guestName: guestName.trim() || undefined, sessionRole },
         })
         offerSentRef.current = true
       } catch (err) {
@@ -451,6 +518,7 @@ export default function RemoteCam() {
     channel.on('broadcast', { event: 'signal' }, async (event) => {
       const payload = event?.payload
       if (!payload || payload.sender === 'phone') return
+      if (payload.connectionId && payload.connectionId !== connectionId) return
 
       if (payload.type === 'studio-ready') {
         if (!offerSentRef.current && pc.signalingState === 'stable') await sendOffer()
@@ -497,12 +565,15 @@ export default function RemoteCam() {
 
     channel.subscribe(async (subStatus) => {
       if (subStatus === 'SUBSCRIBED') {
-        channelRef.current.send({ type: 'broadcast', event: 'signal', payload: { type: 'phone-ready', slot, sender: 'phone' } }).catch(() => {})
+          channelRef.current.send({ type: 'broadcast', event: 'signal', payload: { type: 'phone-ready', slot, connectionId, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone' } }).catch(() => {})
         setTimeout(() => { if (!offerSentRef.current && pc.signalingState === 'stable') sendOffer() }, 300)
       }
     })
 
     startAdaptationEngine()
+    } finally {
+      isSignalingInitializingRef.current = false
+    }
   }, [room, slot, guestName, sessionRole, startAdaptationEngine])
 
   useEffect(() => {
@@ -527,24 +598,31 @@ export default function RemoteCam() {
       }
 
       let stream = null
-      // Intento 1: calidad alta
+      // Pedir Full HD primero; los perfiles adaptativos reducen bitrate, no resolución.
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: targetFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: {
+            facingMode: { ideal: targetFacing },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30, max: 30 },
+          },
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         })
       } catch (e1) {
-        console.warn('getUserMedia 720p falló:', e1)
-        // Intento 2: básico (máxima compatibilidad iOS/Android)
+        console.warn('getUserMedia 1080p falló; intentando 720p compatible:', e1)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: targetFacing },
-            audio: true
+            video: { facingMode: { ideal: targetFacing }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           })
         } catch (e2) {
-          console.warn('getUserMedia básico falló:', e2)
-          // Intento 3: solo video
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+          console.warn('getUserMedia 720p falló; intentando perfil del dispositivo:', e2)
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: targetFacing } }, audio: true })
+          } catch {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+          }
         }
       }
 
@@ -564,6 +642,9 @@ export default function RemoteCam() {
 
       const track = stream.getVideoTracks()[0]
       if (track) {
+        const settings = track.getSettings?.() || {}
+        captureResolutionRef.current = getCaptureResolutionLabel(settings)
+        setQualityLabel(`${captureResolutionRef.current} · ${Math.round(settings.frameRate || 30)} fps`)
         try {
           const caps = track.getCapabilities ? track.getCapabilities() : {}
           setTorchSupported(Boolean(caps.torch))

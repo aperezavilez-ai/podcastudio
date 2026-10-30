@@ -12,7 +12,11 @@ contextBridge.exposeInMainWorld('api', {
   startStreaming: (payload) => ipcRenderer.invoke('start-streaming', payload),
   sendStreamChunk: (chunk) => ipcRenderer.send('stream-chunk', chunk),
   stopStreaming: () => ipcRenderer.invoke('stop-streaming'),
-  onStreamStatus: (cb) => ipcRenderer.on('stream-status', (e, data) => cb(data)),
+  onStreamStatus: (cb) => {
+    const handler = (e, data) => cb(data);
+    ipcRenderer.on('stream-status', handler);
+    return () => ipcRenderer.removeListener('stream-status', handler);
+  },
   onStreamTelemetry: (cb) => {
     const handler = (e, data) => cb(data);
     ipcRenderer.on('stream-telemetry', handler);

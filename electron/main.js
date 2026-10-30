@@ -1648,6 +1648,7 @@ ipcMain.on('open-recordings-folder', (event, projectName) => {
 let currentRecordingPath = null;
 let streamDestinations = [];
 let activeStreamWorkers = [];
+let streamStartupInProgress = false;
 let currentRecordingProjectName = 'Proyecto_General';
 
 // ============================================================================
@@ -2477,164 +2478,177 @@ ipcMain.handle('scan-network-cameras', async () => {
 // TRANSMISIÓN EN VIVO REAL / MULTI-STREAMING SIMULTÁNEO (FACEBOOK LIVE RTMPS + YOUTUBE + TIKTOK)
 // Cada destino corre en su propio worker FFmpeg dedicado para evitar caídas y asegurar handshake TLS
 // ============================================================================
-ipcMain.handle('start-streaming', async (event, payload) => {
-  return new Promise((resolve) => {
-    let targets = [];
-    if (typeof payload === 'string') {
-      targets = [{ id: 'custom', name: 'Stream', url: payload.trim() }];
-    } else if (payload && Array.isArray(payload.destinations)) {
-      targets = payload.destinations.filter(d => d.url && d.url.trim().length > 0);
-    }
+ipcMain.handle('start-streaming', async (_event, payload = {}) => {
+  const targets = typeof payload === 'string'
+    ? [{ id: 'custom', name: 'Stream', url: payload.trim() }]
+    : Array.isArray(payload.destinations)
+      ? payload.destinations.filter(target => target?.url && target.url.trim())
+      : [];
 
-    if (targets.length === 0) {
-      return resolve({ success: false, error: "No se proporcionaron destinos válidos con clave de transmisión." });
-    }
+  if (!targets.length) return { success: false, error: 'No se proporcionaron destinos con una clave de transmisión.' };
 
-    if (payload && payload.initialHeader && Array.isArray(payload.initialHeader)) {
-      streamInitHeader = Buffer.from(payload.initialHeader);
-    }
+  for (const worker of activeStreamWorkers) {
+    try { worker.process?.stdin?.destroy(); worker.process?.kill('SIGINT'); } catch (error) {}
+  }
+  activeStreamWorkers = [];
+  streamDestinations = targets;
+  streamStartupInProgress = true;
+  // La cabecera WebM llegará junto con el primer segmento del MediaRecorder.
+  streamInitHeader = null;
 
-    // Detener cualquier worker anterior
-    for (const worker of activeStreamWorkers) {
+  const availableCores = Math.max(1, os.cpus().length - 1);
+  const threadsPerDestination = Math.max(1, Math.min(4, Math.floor(availableCores / targets.length)));
+  const startupResults = await Promise.all(targets.map((target) => new Promise((resolve) => {
+    const destUrl = target.url.trim();
+    let settled = false;
+    let startupTimer;
+    let workerEntry = null;
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(startupTimer);
+      if (!result.success && workerEntry && !workerEntry.connected) {
+        activeStreamWorkers = activeStreamWorkers.filter(worker => worker !== workerEntry);
+        try { workerEntry.process?.stdin?.destroy(); workerEntry.process?.kill('SIGINT'); } catch (error) {}
+      }
+      resolve(result);
+    };
+    const safeError = (message) => {
+      let safeMessage = String(message || 'Error de conexión RTMP/RTMPS.');
       try {
-        if (worker.process && worker.process.stdin && !worker.process.stdin.destroyed) {
-          worker.process.stdin.end();
+        const parsed = new URL(destUrl);
+        const segments = parsed.pathname.split('/').filter(Boolean);
+        if (segments.length) segments[segments.length - 1] = '[clave oculta]';
+        parsed.pathname = `/${segments.join('/')}`;
+        parsed.search = '';
+        safeMessage = safeMessage.replaceAll(destUrl, parsed.toString());
+      } catch (error) {
+        safeMessage = safeMessage.replaceAll(destUrl, '[URL RTMP oculta]');
+      }
+      return safeMessage.slice(-700);
+    };
+    const workerArgs = [
+      '-probesize', '32M',
+      '-analyzeduration', '3000000',
+      '-fflags', '+discardcorrupt',
+      '-f', 'webm',
+      '-i', 'pipe:0',
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-tune', 'zerolatency',
+      '-threads', String(threadsPerDestination),
+      '-profile:v', 'main',
+      '-level', '4.1',
+      '-b:v', '4500k',
+      '-maxrate', '5000k',
+      '-bufsize', '5000k',
+      '-pix_fmt', 'yuv420p',
+      '-g', '60',
+      '-keyint_min', '30',
+      '-r', '30',
+      '-c:a', 'aac',
+      '-b:a', '160k',
+      '-ar', '48000',
+      '-ac', '2',
+      '-max_interleave_delta', '0',
+      '-flvflags', 'no_duration_filesize',
+      '-rtmp_buffer', '200',
+      '-rtmp_live', 'live',
+      '-rw_timeout', '12000000',
+      '-f', 'flv',
+      destUrl,
+    ];
+
+    let proc;
+    try {
+      proc = spawn(ffmpegPath, workerArgs, { stdio: ['pipe', 'ignore', 'pipe'] });
+    } catch (error) {
+      settle({ target, success: false, error: safeError(error.message) });
+      return;
+    }
+
+    workerEntry = {
+      id: target.id,
+      name: target.name,
+      url: destUrl,
+      process: proc,
+      connected: false,
+      writeQueue: Promise.resolve(),
+      writeError: null,
+    };
+    activeStreamWorkers.push(workerEntry);
+
+    proc.stderr.on('data', (data) => {
+      const message = data.toString();
+      const connectionError = message.match(/connection refused|connection timed out|network is unreachable|could not write header|error opening output|server error|authorization failed|access denied|invalid stream key|handshake failed|tls[^\r\n]*(?:error|fail)|failed to resolve|no route to host|input\/output error|broken pipe|permission denied/i);
+      if (connectionError && !workerEntry.connected) {
+        settle({ target, success: false, error: safeError(connectionError[0]) });
+      }
+
+      if (!workerEntry.connected && /frame=\s*\d+/.test(message)) {
+        workerEntry.connected = true;
+        settle({ target, success: true, worker: workerEntry });
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('stream-status', { active: true, destinations: activeStreamWorkers.filter(worker => worker.connected) });
         }
-        worker.process.kill('SIGINT');
-      } catch (e) {}
+      }
+
+      if (/frame=|bitrate=/.test(message) && mainWindow && !mainWindow.isDestroyed()) {
+        const fpsMatch = message.match(/fps=\s*([\d.]+)/);
+        const bitrateMatch = message.match(/bitrate=\s*([\d.]+\s*\w+\/s)/);
+        const dropMatch = message.match(/drop=\s*(\d+)/);
+        const speedMatch = message.match(/speed=\s*([\d.]+x)/);
+        const dropped = dropMatch ? parseInt(dropMatch[1], 10) : 0;
+        mainWindow.webContents.send('stream-telemetry', {
+          targetId: target.id,
+          targetName: target.name,
+          fps: fpsMatch ? parseFloat(fpsMatch[1]) : 30,
+          bitrate: bitrateMatch ? bitrateMatch[1] : '4500 kbits/s',
+          droppedFrames: dropped,
+          speed: speedMatch ? speedMatch[1] : '1.0x',
+          health: dropped > 15 ? 'warning' : 'excellent',
+        });
+      }
+    });
+
+    proc.once('error', (error) => {
+      settle({ target, success: false, error: safeError(error.message) });
+    });
+    proc.once('close', (code, signal) => {
+      workerEntry.closed = true;
+      if (!workerEntry.connected) {
+        settle({ target, success: false, error: `FFmpeg cerró antes de conectar (código ${code ?? signal ?? 'desconocido'}).` });
+      }
+      activeStreamWorkers = activeStreamWorkers.filter(worker => worker !== workerEntry);
+      if (workerEntry.connected && !streamStartupInProgress && activeStreamWorkers.every(worker => !worker.connected) && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('stream-status', { active: false, destinations: [] });
+      }
+    });
+
+    startupTimer = setTimeout(() => {
+      settle({ target, success: false, error: 'Tiempo agotado esperando que el servidor acepte el video. Verifica que el evento esté activo.' });
+      try { proc.kill('SIGINT'); } catch (error) {}
+    }, 15000);
+  })));
+
+  streamStartupInProgress = false;
+  const connectedDestinations = startupResults
+    .filter(result => result.success && result.worker && !result.worker.closed)
+    .map(result => result.target);
+  const failures = startupResults.filter(result => !result.success).map(result => ({ name: result.target.name, error: result.error }));
+  if (!connectedDestinations.length) {
+    for (const worker of activeStreamWorkers) {
+      try { worker.process?.stdin?.destroy(); worker.process?.kill('SIGINT'); } catch (error) {}
     }
     activeStreamWorkers = [];
-    streamDestinations = targets;
+    streamDestinations = [];
+    return { success: false, error: failures.map(failure => `${failure.name}: ${failure.error}`).join('\n') || 'No se pudo conectar con el servidor de transmisión.', failures };
+  }
 
-    let startedCount = 0;
-    const errors = [];
-
-    // Spawnea un proceso FFmpeg independiente para cada destino configurado
-    for (const target of targets) {
-      const destUrl = target.url.trim();
-
-      const workerArgs = [
-        '-probesize', '32M',
-        '-analyzeduration', '5000000',
-        '-fflags', '+nobuffer+flush_packets+discardcorrupt',
-        '-f', 'webm',
-        '-i', 'pipe:0',
-        '-c:v', 'libx264',
-        '-preset', 'ultrafast',
-        '-tune', 'zerolatency',
-        '-profile:v', 'main',
-        '-level', '4.1',
-        '-b:v', '4500k',
-        '-maxrate', '5000k',
-        '-bufsize', '5000k',
-        '-pix_fmt', 'yuv420p',
-        '-g', '60',
-        '-keyint_min', '30',
-        '-r', '30',
-        '-c:a', 'aac',
-        '-b:a', '160k',
-        '-ar', '48000',
-        '-ac', '2',
-        '-max_interleave_delta', '0',
-        '-flvflags', 'no_duration_filesize',
-        '-rtmp_buffer', '200',
-        '-rtmp_live', 'live',
-        '-f', 'flv',
-        destUrl
-      ];
-
-      try {
-        const proc = spawn(ffmpegPath, workerArgs, {
-          stdio: ['pipe', 'ignore', 'pipe']
-        });
-
-        const workerEntry = {
-          id: target.id,
-          name: target.name,
-          url: destUrl,
-          process: proc,
-          connected: false,
-          writeQueue: Promise.resolve(),
-          writeError: null,
-        };
-
-        // Si ya disponemos de la cabecera EBML inicial del Master, inyectarla al inicio de la tubería
-        if (streamInitHeader && proc.stdin && !proc.stdin.destroyed) {
-          workerEntry.writeQueue = writeChunkWithBackpressure(proc.stdin, streamInitHeader).catch((error) => {
-            workerEntry.writeError = error.message || String(error);
-          });
-        }
-
-        proc.stderr.on('data', (data) => {
-          const msg = data.toString();
-          console.log(`[FFmpeg Stream ${target.name}]:`, msg);
-          if (!workerEntry.connected && (msg.includes('Output #0') || msg.includes('Stream #0') || msg.includes('frame='))) {
-            workerEntry.connected = true;
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('stream-status', {
-                active: true,
-                destinations: streamDestinations
-              });
-            }
-          }
-
-          // Telemetría de salud y estabilidad de streaming (Fase P1.4)
-          if (msg.includes('frame=') || msg.includes('bitrate=')) {
-            const fpsMatch = msg.match(/fps=\s*([\d.]+)/);
-            const bitrateMatch = msg.match(/bitrate=\s*([\d.]+\s*\w+\/s)/);
-            const dropMatch = msg.match(/drop=\s*(\d+)/);
-            const speedMatch = msg.match(/speed=\s*([\d.]+x)/);
-
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              const dropped = dropMatch ? parseInt(dropMatch[1], 10) : 0;
-              mainWindow.webContents.send('stream-telemetry', {
-                targetId: target.id,
-                targetName: target.name,
-                fps: fpsMatch ? parseFloat(fpsMatch[1]) : 30,
-                bitrate: bitrateMatch ? bitrateMatch[1] : '4500 kbits/s',
-                droppedFrames: dropped,
-                speed: speedMatch ? speedMatch[1] : '1.0x',
-                health: dropped > 15 ? 'warning' : 'excellent'
-              });
-            }
-          }
-        });
-
-        proc.on('error', (err) => {
-          console.error(`Error en worker stream (${target.name}):`, err.message);
-          errors.push(`${target.name}: ${err.message}`);
-        });
-
-        proc.on('close', (code) => {
-          console.log(`Worker stream (${target.name}) cerrado con código: ${code}`);
-          activeStreamWorkers = activeStreamWorkers.filter(w => w !== workerEntry);
-          if (activeStreamWorkers.length === 0 && mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('stream-status', {
-              active: false,
-              destinations: []
-            });
-          }
-        });
-
-        activeStreamWorkers.push(workerEntry);
-        startedCount++;
-      } catch (err) {
-        errors.push(`${target.name}: ${err.message}`);
-      }
-    }
-
-    if (startedCount > 0) {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('stream-status', {
-          active: true,
-          destinations: streamDestinations
-        });
-      }
-      resolve({ success: true, destinations: targets });
-    } else {
-      resolve({ success: false, error: errors.join(', ') || 'No se pudo conectar a los servidores de streaming.' });
-    }
-  });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('stream-status', { active: true, destinations: connectedDestinations });
+  }
+  return { success: true, connectedDestinations, failures };
 });
 
 let streamInitHeader = null;
@@ -2661,6 +2675,7 @@ ipcMain.on('stream-chunk', (event, chunkBuffer) => {
 });
 
 ipcMain.handle('stop-streaming', async () => {
+  streamStartupInProgress = false;
   streamInitHeader = null;
   const workers = activeStreamWorkers.slice();
   await Promise.all(workers.map(async (worker) => {
