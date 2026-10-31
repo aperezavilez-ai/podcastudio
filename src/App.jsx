@@ -270,6 +270,9 @@ function PodcastStudioApp() {
   const recordingStopPendingRef = useRef(false);
   const isRecordingPausedRef = useRef(false);
   const isCancelingRecordingRef = useRef(false);
+  const recordingStartTimeRef = useRef(null);
+  const pausedDurationRef = useRef(0);
+  const pauseStartRef = useRef(null);
 
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
@@ -283,13 +286,20 @@ function PodcastStudioApp() {
     setVoiceMonitorActive(prev => {
       const next = !prev;
       setVoiceMonitor(next);
+      updateBroadcastState({ voiceMonitor: next });
       return next;
     });
   };
 
   const handleSelectVoiceEffect = (effectId) => {
     setVoiceEffect(effectId);
-    updateBroadcastState({ voiceEffect: effectId, voiceTarget });
+    if (effectId !== 'normal') {
+      setVoiceMonitorActive(true);
+      setVoiceMonitor(true);
+      updateBroadcastState({ voiceEffect: effectId, voiceTarget, voiceMonitor: true });
+    } else {
+      updateBroadcastState({ voiceEffect: effectId, voiceTarget });
+    }
   };
 
   const handleSelectVoiceTarget = (target) => {
@@ -993,6 +1003,11 @@ function PodcastStudioApp() {
     setActiveCam(toPgm);
     setPvwCam(fromPgm);
     setTBarPosition(0);
+    setCamMuted(prev => {
+      const next = { ...prev };
+      camSlots.forEach(id => { next[id] = (id !== toPgm); });
+      return next;
+    });
     updateBroadcastState({
       activeCam: toPgm,
       pvwCam: fromPgm,
@@ -1003,7 +1018,7 @@ function PodcastStudioApp() {
     if (!isElectronMaster) {
       dispatchRemoteCommand('TRIGGER_CUT');
     }
-  }, [activeCam, pvwCam, isElectronMaster, dispatchRemoteCommand]);
+  }, [activeCam, pvwCam, camSlots, isElectronMaster, dispatchRemoteCommand]);
 
   // Transición suave AUTO (Disolvencia / Mix real en Master Canvas y grabación)
   const handleAutoTransition = useCallback(() => {
@@ -1035,6 +1050,11 @@ function PodcastStudioApp() {
         setActiveCam(toPgm);
         setPvwCam(fromPgm);
         setTBarPosition(0);
+        setCamMuted(prev => {
+          const next = { ...prev };
+          camSlots.forEach(id => { next[id] = (id !== toPgm); });
+          return next;
+        });
         updateBroadcastState({
           activeCam: toPgm,
           pvwCam: fromPgm,
@@ -1046,7 +1066,7 @@ function PodcastStudioApp() {
       }
     };
     requestAnimationFrame(step);
-  }, [isTransitioning, transitionDuration, activeCam, pvwCam, isElectronMaster, dispatchRemoteCommand]);
+  }, [isTransitioning, transitionDuration, activeCam, pvwCam, camSlots, isElectronMaster, dispatchRemoteCommand]);
 
   // Control manual palanca T-Bar con mezcla proporcional real en Master Canvas
   const handleTBarChange = useCallback((val) => {
@@ -1062,6 +1082,11 @@ function PodcastStudioApp() {
       setActiveCam(toPgm);
       setPvwCam(fromPgm);
       setTBarPosition(0);
+      setCamMuted(prev => {
+        const next = { ...prev };
+        camSlots.forEach(id => { next[id] = (id !== toPgm); });
+        return next;
+      });
       updateBroadcastState({
         activeCam: toPgm,
         pvwCam: fromPgm,
@@ -1076,7 +1101,7 @@ function PodcastStudioApp() {
         transitionToCam: pvwCam,
       });
     }
-  }, [activeCam, pvwCam, isElectronMaster, dispatchRemoteCommand]);
+  }, [activeCam, pvwCam, camSlots, isElectronMaster, dispatchRemoteCommand]);
   
   const getCamStream = (id) => { 
     const slotIdx = id - 1;
@@ -1093,6 +1118,21 @@ function PodcastStudioApp() {
     });
     return map;
   }, [camSlots, localStream, remoteCams, slotStreams]);
+
+  // AFV Estricto por Pistas de Audio: Solo la cámara activa en Master tiene audio habilitado
+  useEffect(() => {
+    camSlots.forEach(id => {
+      const stream = getCamStream(id);
+      if (stream) {
+        const shouldMute = Boolean(camMuted[id]);
+        stream.getAudioTracks().forEach(track => {
+          if (track.enabled === shouldMute) {
+            track.enabled = !shouldMute;
+          }
+        });
+      }
+    });
+  }, [camSlots, camMuted, localStream, slotStreams]);
 
   // Hook de niveles de percepción de micrófono y estado de silencio por cámara
   const camAudioLevels = useCameraAudioLevels(camStreamsMap, camMuted);
@@ -1574,61 +1614,74 @@ function PodcastStudioApp() {
     startCamera();
   }, []);
 
-  // LÓGICA DE SCROLL FLUIDO CON TRANSFORM (TELEPROMPTER HACIA ARRIBA)
+  // LÓGICA DE SCROLL FLUIDO 60FPS CON TRANSFORM 3D (TELEPROMPTER SIN BRINCO NI VIBRACIÓN)
   useEffect(() => {
     let animationFrameId;
-    let lastTime = performance.now();
+    let lastTime = null;
 
     if (teleprompterTextRef.current && teleprompterYRef.current === 0) {
-        teleprompterYRef.current = window.innerHeight;
-        teleprompterTextRef.current.style.transform = `translateY(${window.innerHeight}px)`;
+      const containerH = teleprompterTextRef.current.parentElement?.clientHeight || 450;
+      teleprompterYRef.current = containerH;
+      teleprompterTextRef.current.style.transform = `translate3d(0, ${containerH}px, 0)`;
+      teleprompterTextRef.current.style.willChange = 'transform';
     }
 
     const animate = (time) => {
+      if (!lastTime) lastTime = time;
+      const delta = Math.min(33, Math.max(1, time - lastTime));
+      lastTime = time;
+
       if (isTeleprompterPlaying && teleprompterTextRef.current) {
-        const delta = time - lastTime;
-        const speed = teleprompterSpeed * 2.5;
-        const moveAmount = speed * (delta / 16.66);
+        const speed = (teleprompterSpeed || 3) * 1.8;
+        const moveAmount = speed * (delta / 16.666);
         
         teleprompterYRef.current -= moveAmount;
-        teleprompterTextRef.current.style.transform = `translateY(${teleprompterYRef.current}px)`;
+        teleprompterTextRef.current.style.transform = `translate3d(0, ${teleprompterYRef.current.toFixed(2)}px, 0)`;
       }
-      lastTime = time;
       if (isTeleprompterPlaying) {
         animationFrameId = requestAnimationFrame(animate);
       }
     };
 
     if (isTeleprompterPlaying) {
+      if (teleprompterTextRef.current) teleprompterTextRef.current.style.willChange = 'transform';
       animationFrameId = requestAnimationFrame(animate);
     }
     return () => cancelAnimationFrame(animationFrameId);
   }, [isTeleprompterPlaying, teleprompterSpeed]);
 
   const handlePlayTeleprompter = () => {
-      if (teleprompterYRef.current < -window.innerHeight) {
-          teleprompterYRef.current = window.innerHeight;
-      }
-      setIsTeleprompterPlaying(true);
+    const containerH = teleprompterTextRef.current?.parentElement?.clientHeight || 450;
+    if (teleprompterYRef.current < -1000) {
+      teleprompterYRef.current = containerH;
+    }
+    setIsTeleprompterPlaying(true);
   };
 
+  // TEMPORIZADOR PRECISO DE GRABACIÓN BASADO EN RELOJ REAL (Date.now)
   useEffect(() => {
     let timer;
-    if (isRecording && !isRecordingPaused) {
-      timer = setInterval(() => {
-        setRecordingTime(prev => {
-          const next = prev + 1;
-          if (controlChannelRef.current) {
-            controlChannelRef.current.send({
-              type: 'broadcast',
-              event: 'studio_state',
-              payload: { type: 'REC_TICK', recordingTime: next }
-            }).catch(() => {});
-          }
-          return next;
-        });
-      }, 1000);
-    } else if (!isRecording) {
+    if (isRecording) {
+      if (!isRecordingPaused) {
+        if (!recordingStartTimeRef.current) {
+          recordingStartTimeRef.current = Date.now();
+          pausedDurationRef.current = 0;
+        } else if (pauseStartRef.current) {
+          pausedDurationRef.current += (Date.now() - pauseStartRef.current);
+          pauseStartRef.current = null;
+        }
+        timer = setInterval(() => {
+          if (!recordingStartTimeRef.current) return;
+          const elapsed = Math.max(0, Math.floor((Date.now() - recordingStartTimeRef.current - pausedDurationRef.current) / 1000));
+          setRecordingTime(elapsed);
+        }, 500);
+      } else {
+        if (!pauseStartRef.current) pauseStartRef.current = Date.now();
+      }
+    } else {
+      recordingStartTimeRef.current = null;
+      pausedDurationRef.current = 0;
+      pauseStartRef.current = null;
       setRecordingTime(0);
     }
     return () => clearInterval(timer);
@@ -2030,7 +2083,7 @@ function PodcastStudioApp() {
 
   const handleRecord = async () => {
     if (recordingStopPendingRef.current || isCancelingRecordingRef.current) return;
-    if (recordingStartPendingRef.current && countdown === null) return;
+    if (recordingStartPendingRef.current && countdown === null && !isRecordingRef.current) return;
     if (!isElectronMaster) {
       dispatchRemoteCommand('TOGGLE_RECORD');
       return;
@@ -2058,14 +2111,22 @@ function PodcastStudioApp() {
 
         if (window.api) {
           const recordingHeader = getInitHeader();
-          const res = await window.api.startRecording({
-            projectName: topic || 'Proyecto_General',
-            initialHeader: recordingHeader ? Array.from(new Uint8Array(recordingHeader)) : null,
-          }).catch(error => ({ success: false, error: error.message }));
-          if (res.success) {
-            recordingStartPendingRef.current = false;
+          let res;
+          try {
+            res = await window.api.startRecording({
+              projectName: topic || 'Proyecto_General',
+              initialHeader: recordingHeader ? Array.from(new Uint8Array(recordingHeader)) : null,
+            });
+          } catch (error) {
+            res = { success: false, error: error.message };
+          }
+          recordingStartPendingRef.current = false;
+          if (res?.success) {
             isRecordingRef.current = true;
             setIsRecording(true);
+            recordingStartTimeRef.current = Date.now();
+            pausedDurationRef.current = 0;
+            pauseStartRef.current = null;
 
             // Inicializar señal master del compositor broadcast con 0 congelamiento
             startBroadcastEngine({
@@ -2140,12 +2201,15 @@ function PodcastStudioApp() {
             recordingStartPendingRef.current = false;
             isRecordingRef.current = false;
             if (!isStreamingRef.current) stopBroadcastEngine();
-            alert('Error al iniciar grabación: ' + (res.error || 'Desconocido'));
+            alert('Error al iniciar grabación: ' + (res?.error || 'Desconocido'));
           }
         } else {
           recordingStartPendingRef.current = false;
           isRecordingRef.current = true;
           setIsRecording(true);
+          recordingStartTimeRef.current = Date.now();
+          pausedDurationRef.current = 0;
+          pauseStartRef.current = null;
           startBroadcastEngine({
             activeCam,
             pvwCam,
@@ -2175,92 +2239,100 @@ function PodcastStudioApp() {
     } else {
       if (recordingStopPendingRef.current) return;
       recordingStopPendingRef.current = true;
-      // Capturar miniatura en alta resolución directamente del canvas maestro en vivo
-      const snapshotCanvas = captureMasterCanvasSnapshot();
-      let thumbnailDataUrl = null;
-      if (snapshotCanvas) {
-        try {
-          thumbnailDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.92);
-        } catch (e) {
-          console.warn('[handleRecord] No se pudo obtener toDataURL del canvas:', e);
+      try {
+        // Capturar miniatura en alta resolución directamente del canvas maestro en vivo
+        const snapshotCanvas = captureMasterCanvasSnapshot();
+        let thumbnailDataUrl = null;
+        if (snapshotCanvas) {
+          try {
+            thumbnailDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.92);
+          } catch (e) {
+            console.warn('[handleRecord] No se pudo obtener toDataURL del canvas:', e);
+          }
         }
-      }
 
-      // Detener y finalizar grabadores ISO multicanal (P4.1)
-      const stopIsoPromises = Array.from(isoRecordersRef.current.entries()).map(([sNum, rec]) => new Promise((resolve) => {
-        if (!rec || rec.state === 'inactive') return resolve();
-        rec.addEventListener('stop', resolve, { once: true });
-        try { rec.stop(); } catch (e) { resolve(); }
-      }));
-      isoRecordersRef.current.clear();
-      if (window.api?.stopIsoRecording) {
-        try {
+        // Detener y finalizar grabadores ISO multicanal (P4.1)
+        const stopIsoPromises = Array.from(isoRecordersRef.current.entries()).map(([sNum, rec]) => new Promise((resolve) => {
+          if (!rec || rec.state === 'inactive') return resolve();
+          rec.addEventListener('stop', resolve, { once: true });
+          try { rec.stop(); } catch (e) { resolve(); }
+        }));
+        isoRecordersRef.current.clear();
+        if (window.api?.stopIsoRecording) {
+          try {
+            await Promise.all(stopIsoPromises);
+            await Promise.all(isoChunkQueuesRef.current.values());
+            isoChunkQueuesRef.current.clear();
+            await window.api.stopIsoRecording();
+          } catch (e) {
+            console.warn('[ISO] Error al detener grabación ISO:', e);
+          }
+        } else {
           await Promise.all(stopIsoPromises);
-          await Promise.all(isoChunkQueuesRef.current.values());
-          isoChunkQueuesRef.current.clear();
-          await window.api.stopIsoRecording();
-        } catch (e) {
-          console.warn('[ISO] Error al detener grabación ISO:', e);
         }
-      } else {
-        await Promise.all(stopIsoPromises);
-      }
 
-      let stopRes = null;
-      // Si no hay directo al aire, detener el único MediaRecorder del Master y esperar
-      // su último chunk antes de cerrar FFmpeg. En vivo se conserva el encoder activo.
-      if (!isStreamingRef.current) {
-        await stopBroadcastEngine();
-      }
-      isRecordingRef.current = false;
-      setIsRecording(false);
-      setIsRecordingPaused(false);
-      isRecordingPausedRef.current = false;
+        let stopRes = null;
+        // Si no hay directo al aire, detener el único MediaRecorder del Master y esperar
+        // su último chunk antes de cerrar FFmpeg. En vivo se conserva el encoder activo.
+        if (!isStreamingRef.current) {
+          await stopBroadcastEngine();
+        }
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        setIsRecordingPaused(false);
+        isRecordingPausedRef.current = false;
 
-      if (window.api) {
-        try {
-          await window.api.flushRecordingChunks?.();
-          stopRes = await window.api.stopRecording();
-          if (!stopRes?.success || !stopRes.path) {
+        if (window.api) {
+          try {
+            await window.api.flushRecordingChunks?.();
+            stopRes = await window.api.stopRecording();
+            if (!stopRes?.success || !stopRes.path) {
+              recordingChunksRef.current = [];
+              alert('No se pudo finalizar el MP4: ' + (stopRes?.error || 'No se generó un archivo válido.'));
+              return;
+            }
+            if (thumbnailDataUrl && window.api.saveRecordingThumbnail) {
+              const thumbRes = await window.api.saveRecordingThumbnail({
+                projectName: topic || 'Proyecto_General',
+                base64Data: thumbnailDataUrl
+              }).catch(e => ({ success: false, error: e.message }));
+              if (!thumbRes?.success) console.warn('[App] Error guardando miniatura:', thumbRes?.error);
+            }
+          } catch (e) {
+            console.warn('Error parando grabación FFmpeg:', e);
             recordingChunksRef.current = [];
-            recordingStopPendingRef.current = false;
-            alert('No se pudo finalizar el MP4: ' + (stopRes?.error || 'No se generó un archivo válido.'));
+            alert('No se pudo finalizar la grabación: ' + (e.message || 'Error desconocido'));
             return;
           }
-          if (thumbnailDataUrl && window.api.saveRecordingThumbnail) {
-            const thumbRes = await window.api.saveRecordingThumbnail({
-              projectName: topic || 'Proyecto_General',
-              base64Data: thumbnailDataUrl
-            }).catch(e => ({ success: false, error: e.message }));
-            if (!thumbRes?.success) console.warn('[App] Error guardando miniatura:', thumbRes?.error);
-          }
-        } catch (e) {
-          console.warn('Error parando grabación FFmpeg:', e);
-          recordingChunksRef.current = [];
-          recordingStopPendingRef.current = false;
-          alert('No se pudo finalizar la grabación: ' + (e.message || 'Error desconocido'));
-          return;
         }
-      }
-      const chunks = recordingChunksRef.current;
-      const recBlob = chunks.length > 0 ? new Blob(chunks, { type: 'video/webm' }) : null;
-      recordingChunksRef.current = [];
-      const recUrl = recBlob ? URL.createObjectURL(recBlob) : null;
+        const chunks = recordingChunksRef.current;
+        const recBlob = chunks.length > 0 ? new Blob(chunks, { type: 'video/webm' }) : null;
+        recordingChunksRef.current = [];
+        const recUrl = recBlob ? URL.createObjectURL(recBlob) : null;
 
-      const cleanTopicName = (topic || 'Episodio').replace(/[^\w\d-_]/g, '_');
-      setRecordedVideoData({
-        blob: recBlob,
-        url: recUrl,
-        snapshotCanvas,
-        thumbnailDataUrl,
-        filePath: stopRes?.path || null,
-        projectName: stopRes?.projectName || topic || 'Proyecto_General',
-        name: `PodcaStudio_${cleanTopicName}_${Date.now()}`,
-        duration: recordingTime || 1,
-      });
-      recordingStopPendingRef.current = false;
-      setShowExportModal(true);
+        const cleanTopicName = (topic || 'Episodio').replace(/[^\w\d-_]/g, '_');
+        setRecordedVideoData({
+          blob: recBlob,
+          url: recUrl,
+          snapshotCanvas,
+          thumbnailDataUrl,
+          filePath: stopRes?.path || null,
+          projectName: stopRes?.projectName || topic || 'Proyecto_General',
+          name: `PodcaStudio_${cleanTopicName}_${Date.now()}`,
+          duration: recordingTime || 1,
+        });
+        setShowExportModal(true);
+      } finally {
+        recordingStopPendingRef.current = false;
+        recordingStartPendingRef.current = false;
+      }
     }
+  };
+
+  const handlePauseRecording = () => {
+    const next = !isRecordingPausedRef.current;
+    isRecordingPausedRef.current = next;
+    setIsRecordingPaused(next);
   };
 
   const handleCancelRecording = async () => {
@@ -2933,6 +3005,11 @@ function PodcastStudioApp() {
       setLayoutMode('1');
       updateBroadcastState({ activeCam: camId, layoutMode: '1' });
     }
+    setCamMuted(prev => {
+      const next = { ...prev };
+      camSlots.forEach(id => { next[id] = (id !== camId); });
+      return next;
+    });
     if (!isElectronMaster) {
       dispatchRemoteCommand('SET_ACTIVE_CAM', { camId });
     }
@@ -3956,8 +4033,8 @@ function PodcastStudioApp() {
               )}
 
 
-              {/* CINTILLO BROADCAST TRANSLÚCIDO 3D (Solo en PC Master; iPad ya lo recibe en el fotograma PGM sin encimar recuadros) */}
-              {isElectronMaster && cintillosVisible && cintillo?.active && (
+              {/* CINTILLO BROADCAST TRANSLÚCIDO 3D */}
+              {cintillosVisible && cintillo?.active && (
                 <CintilloOverlay
                   styleId={cintilloStyle}
                   tag={cintillo.tag || 'TEMA'}
@@ -3972,6 +4049,7 @@ function PodcastStudioApp() {
                   liveOn={isStreaming || isRecording}
                   animPhase={animPhase}
                   animKey={animKey}
+                  className="z-40"
                   onClose={() => setCintillosVisible(false)}
                 />
               )}

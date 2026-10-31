@@ -1,6 +1,6 @@
 .wrap {
   position: absolute;
-  z-index: 10;
+  z-index: 40;
   display: flex;
   align-items: flex-end;
   gap: 0;
@@ -34,7 +34,7 @@
 /* VISOR PRINCIPAL (MASTER) EN 16:9 - NUNCA SOBREPASAR LA MITAD DE PANTALLA */
 .wrapLarge {
   max-width: min(48%, 460px);
-  z-index: 11;
+  z-index: 40;
 }
 
 .wrapLarge.posBl { bottom: 20px; left: 20px; }

@@ -189,42 +189,72 @@ export function applyVoiceEffectChain(ctx, sourceNode, destNode, effectId = 'nor
       activeNodes.push(hp, lp, shaper);
 
     } else if (effectId === 'monster') {
+      // Efecto Voz Grave / Monstruo: Textura oscura, sub-graves profundos y saturación cinematográfica
       const lp = ctx.createBiquadFilter();
       lp.type = 'lowpass';
-      lp.frequency.setValueAtTime(1100, ctx.currentTime);
+      lp.frequency.setValueAtTime(850, ctx.currentTime);
+      lp.Q.setValueAtTime(1.8, ctx.currentTime);
 
-      const bass = ctx.createBiquadFilter();
-      bass.type = 'lowshelf';
-      bass.frequency.setValueAtTime(110, ctx.currentTime);
-      bass.gain.setValueAtTime(9, ctx.currentTime);
+      const subBass = ctx.createBiquadFilter();
+      subBass.type = 'lowshelf';
+      subBass.frequency.setValueAtTime(120, ctx.currentTime);
+      subBass.gain.setValueAtTime(14, ctx.currentTime);
+
+      const growlShaper = ctx.createWaveShaper();
+      const n = 512;
+      const curve = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const x = (i * 2) / n - 1;
+        curve[i] = Math.tanh(2.2 * x);
+      }
+      growlShaper.curve = curve;
 
       sourceNode.connect(lp);
-      lp.connect(bass);
-      bass.connect(destNode);
+      lp.connect(subBass);
+      subBass.connect(growlShaper);
+      growlShaper.connect(destNode);
 
-      activeNodes.push(lp, bass);
+      activeNodes.push(lp, subBass, growlShaper);
 
     } else if (effectId === 'chipmunk') {
+      // Efecto Ardilla / Agudo Cómico: Modulación vocal caricatura con realce hiperagudo y formante nasal
       const hp = ctx.createBiquadFilter();
       hp.type = 'highpass';
-      hp.frequency.setValueAtTime(750, ctx.currentTime);
+      hp.frequency.setValueAtTime(900, ctx.currentTime);
+      hp.Q.setValueAtTime(2.0, ctx.currentTime);
+
+      const formant = ctx.createBiquadFilter();
+      formant.type = 'peaking';
+      formant.frequency.setValueAtTime(2800, ctx.currentTime);
+      formant.gain.setValueAtTime(12, ctx.currentTime);
+      formant.Q.setValueAtTime(3.0, ctx.currentTime);
 
       const treble = ctx.createBiquadFilter();
       treble.type = 'highshelf';
-      treble.frequency.setValueAtTime(3800, ctx.currentTime);
-      treble.gain.setValueAtTime(8, ctx.currentTime);
+      treble.frequency.setValueAtTime(4200, ctx.currentTime);
+      treble.gain.setValueAtTime(10, ctx.currentTime);
 
-      const presence = ctx.createBiquadFilter();
-      presence.type = 'peaking';
-      presence.frequency.setValueAtTime(2600, ctx.currentTime);
-      presence.gain.setValueAtTime(6, ctx.currentTime);
+      // Modulador de timbre agudo animado
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(420, ctx.currentTime);
 
+      const modGain = ctx.createGain();
+      modGain.gain.setValueAtTime(0.35, ctx.currentTime);
+
+      const mixGain = ctx.createGain();
+      mixGain.gain.setValueAtTime(1.1, ctx.currentTime);
+
+      osc.connect(modGain.gain);
       sourceNode.connect(hp);
-      hp.connect(treble);
-      treble.connect(presence);
-      presence.connect(destNode);
+      hp.connect(formant);
+      formant.connect(treble);
+      treble.connect(mixGain);
+      mixGain.connect(destNode);
 
-      activeNodes.push(hp, treble, presence);
+      try { osc.start(); } catch (e) {}
+
+      activeNodes.push(hp, formant, treble, osc, modGain, mixGain);
     }
   } catch (err) {
     console.warn('[voiceEffectsProcessor] Error al montar cadena DSP:', err);

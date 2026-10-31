@@ -1276,10 +1276,13 @@ function reapplyVoiceEffects() {
     setupAudioMixing(currentState.localStream, currentState.remoteCams, currentState.camStreamsMap, currentState.camMuted);
     return;
   }
+  const activePgm = currentState.activeCam || 1;
   const currentEntries = Array.from(connectedAudioSources.entries());
   currentEntries.forEach(([key, entry]) => {
     if (entry && entry.stream) {
-      connectAudioSourceWithFx(key, entry.stream, entry.isMasterCam, entry.strip?.label);
+      const camNum = parseInt(key.replace(/\D/g, ''), 10) || 1;
+      const isMaster = (camNum === activePgm);
+      connectAudioSourceWithFx(key, entry.stream, isMaster, entry.strip?.label);
     }
   });
 }
@@ -1334,11 +1337,12 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
     const masterAudioStream = (camStreamsMap && camStreamsMap[1]) || localStream;
     const isCam1Allowed = allowedCams.has(1);
     const isMasterMuted = Boolean(camMutedMap[1]) || !isCam1Allowed;
+    const isCam1Master = (activePgm === 1);
     if (masterAudioStream && masterAudioStream.getAudioTracks().length > 0) {
       const masterKey = 'cam_1';
       if (!isMasterMuted) {
         if (!connectedAudioSources.has(masterKey) || connectedAudioSources.get(masterKey)?.stream !== masterAudioStream) {
-          connectAudioSourceWithFx(masterKey, masterAudioStream, true, 'Master Mic (CAM 1)');
+          connectAudioSourceWithFx(masterKey, masterAudioStream, isCam1Master, 'Master Mic (CAM 1)');
         } else {
           const entry = connectedAudioSources.get(masterKey);
           if (entry?.strip?.muteGain) entry.strip.muteGain.gain.setValueAtTime(1.0, audioContext.currentTime);
@@ -1349,17 +1353,22 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
       }
     }
 
+    const processedStreams = new Set();
+    if (masterAudioStream) processedStreams.add(masterAudioStream);
+
     if (camStreamsMap && Object.keys(camStreamsMap).length > 0) {
       Object.entries(camStreamsMap).forEach(([camIdStr, stream]) => {
         const camId = Number(camIdStr);
         if (camId === 1) return;
+        if (stream) processedStreams.add(stream);
         const isCamAllowed = allowedCams.has(camId);
         const isCamMuted = Boolean(camMutedMap[camId]) || !isCamAllowed;
+        const isCamMaster = (camId === activePgm);
         if (stream && stream.getAudioTracks().length > 0) {
           const key = `cam_${camId}`;
           if (!isCamMuted) {
             if (!connectedAudioSources.has(key) || connectedAudioSources.get(key)?.stream !== stream) {
-              connectAudioSourceWithFx(key, stream, false, `Cámara ${camId}`);
+              connectAudioSourceWithFx(key, stream, isCamMaster, `Cámara ${camId}`);
             } else {
               const entry = connectedAudioSources.get(key);
               if (entry?.strip?.muteGain) entry.strip.muteGain.gain.setValueAtTime(1.0, audioContext.currentTime);
@@ -1374,14 +1383,16 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
 
     if (Array.isArray(remoteCams)) {
       remoteCams.forEach((rc) => {
+        if (!rc.stream || processedStreams.has(rc.stream)) return;
         const rcCamId = rc.slot ? rc.slot + 1 : 2;
         const isRcAllowed = allowedCams.has(rcCamId);
         const isMuted = Boolean(camMutedMap[rcCamId]) || !isRcAllowed;
+        const isRcMaster = (rcCamId === activePgm);
         if (rc.stream && rc.stream.getAudioTracks().length > 0) {
           const key = `remote_${rc.id || rcCamId}`;
           if (!isMuted) {
             if (!connectedAudioSources.has(key) || connectedAudioSources.get(key)?.stream !== rc.stream) {
-              connectAudioSourceWithFx(key, rc.stream, false, `Remoto (${rc.name || rcCamId})`);
+              connectAudioSourceWithFx(key, rc.stream, isRcMaster, `Remoto (${rc.name || rcCamId})`);
             } else {
               const entry = connectedAudioSources.get(key);
               if (entry?.strip?.muteGain) entry.strip.muteGain.gain.setValueAtTime(1.0, audioContext.currentTime);
