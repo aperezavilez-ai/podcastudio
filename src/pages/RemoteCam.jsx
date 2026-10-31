@@ -4,9 +4,9 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
-  { label: 'Full HD 1080p Broadcast · 8 Mbps', maxBitrate: 8000000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'Full HD 1080p · 6 Mbps', maxBitrate: 6000000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 720p Pro · 4 Mbps', maxBitrate: 4000000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'Full HD 1080p · 5 Mbps', maxBitrate: 5000000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 720p · 3 Mbps', maxBitrate: 3000000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'Fluido 720p · 2 Mbps', maxBitrate: 2000000, scaleResolutionDownBy: 1.25, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 600     
 const RTT_HEALTHY_MS = 200     
@@ -29,10 +29,9 @@ function applyVideoSenderParams(sender, tier) {
     
     e.maxBitrate = tier.maxBitrate
     e.maxFramerate = tier.frameRate || 30
-    e.scaleResolutionDownBy = 1.0 // NUNCA degradar la escala del sensor (conservar 1080p nativo)
-    // 'maintain-resolution' preserva nitidez cristalina en S22 Ultra y iPhone 14 Pro Max
-    // evitando desfragmentación, macrobloques o pixelación al mover la cámara
-    params.degradationPreference = 'maintain-resolution'
+    e.scaleResolutionDownBy = tier.scaleResolutionDownBy
+    // 'maintain-framerate' garantiza cero desfase de audio/video y fluidez constante sin acumular cola de paquetes
+    params.degradationPreference = 'maintain-framerate'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }
@@ -508,15 +507,11 @@ export default function RemoteCam() {
         } catch (e) {}
 
         const offer = await pc.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false, ...(isRestart ? { iceRestart: true } : {}) })
-        let sdpText = offer.sdp
-        if (sdpText && sdpText.includes('m=video')) {
-          sdpText = sdpText.replace(/(a=fmtp:\d+ .*)/g, '$1;x-google-min-bitrate=3000;x-google-start-bitrate=6000;x-google-max-bitrate=8000')
-        }
-        await pc.setLocalDescription({ type: offer.type, sdp: sdpText })
+        await pc.setLocalDescription(offer)
 
         await channel.send({
           type: 'broadcast', event: 'signal',
-          payload: { type: 'offer', sdp: { type: offer.type, sdp: sdpText }, connectionId, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone', slot, guestName: guestName.trim() || undefined, sessionRole },
+          payload: { type: 'offer', sdp: offer, connectionId, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone', slot, guestName: guestName.trim() || undefined, sessionRole },
         })
         offerSentRef.current = true
       } catch (err) {

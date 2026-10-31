@@ -224,10 +224,10 @@ export class P2PStreamTransport extends BaseStreamTransport {
             if (trackEvent.receiver) {
               try {
                 if ('playoutDelayHint' in trackEvent.receiver) {
-                  trackEvent.receiver.playoutDelayHint = 0; // 0 indica reproducción inmediata sin retraso de búfer
+                  trackEvent.receiver.playoutDelayHint = 0.05;
                 }
                 if ('jitterBufferTarget' in trackEvent.receiver) {
-                  trackEvent.receiver.jitterBufferTarget = 20; // 20ms de jitter buffer mínimo
+                  trackEvent.receiver.jitterBufferTarget = 50; // 50ms buffer mínimo en lugar de acumular 5 segundos
                 }
               } catch (e) {}
             }
@@ -312,11 +312,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
           }
 
           const answer = await newPc.createAnswer()
-          let ansSdp = answer.sdp
-          if (ansSdp && ansSdp.includes('m=video')) {
-            ansSdp = ansSdp.replace(/(a=fmtp:\d+ .*)/g, '$1;x-google-min-bitrate=3000;x-google-start-bitrate=6000;x-google-max-bitrate=8000')
-          }
-          await newPc.setLocalDescription({ type: answer.type, sdp: ansSdp })
+          await newPc.setLocalDescription(answer)
           if (this.peerConnections.get(slotIndex) !== newPc) { newPc.close(); return }
 
           const postQueue = this.iceQueues.get(slotIndex) || []
