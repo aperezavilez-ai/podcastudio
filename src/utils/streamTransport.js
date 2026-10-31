@@ -311,6 +311,22 @@ export class P2PStreamTransport extends BaseStreamTransport {
             try { await newPc.addIceCandidate(cand) } catch {}
           }
 
+          try {
+            const transceivers = newPc.getTransceivers ? newPc.getTransceivers() : [];
+            const vTransceiver = transceivers.find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'video');
+            if (vTransceiver && 'setCodecPreferences' in vTransceiver && window.RTCRtpReceiver?.getCapabilities) {
+              const caps = RTCRtpReceiver.getCapabilities('video');
+              if (caps?.codecs) {
+                const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
+                const h264Mode1 = h264.filter(c => c.sdpFmtpLine && c.sdpFmtpLine.includes('packetization-mode=1'));
+                const h264Others = h264.filter(c => !h264Mode1.includes(c));
+                const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
+                const others = caps.codecs.filter(c => !h264.includes(c) && !vp8.includes(c));
+                vTransceiver.setCodecPreferences([...h264Mode1, ...h264Others, ...vp8, ...others]);
+              }
+            }
+          } catch (e) {}
+
           const answer = await newPc.createAnswer()
           await newPc.setLocalDescription(answer)
           if (this.peerConnections.get(slotIndex) !== newPc) { newPc.close(); return }

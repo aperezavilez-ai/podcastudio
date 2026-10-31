@@ -114,8 +114,11 @@ export function ensureNativeAudioTap() {
       }
       window.api.nativeEngine.writeAudio(pcm16.buffer);
     };
+    const silentSink = audioContext.createGain();
+    silentSink.gain.value = 0;
     masterLimiterNode.connect(nativeAudioProcessor);
-    nativeAudioProcessor.connect(audioContext.destination);
+    nativeAudioProcessor.connect(silentSink);
+    silentSink.connect(audioContext.destination);
   } catch (err) {
     console.warn('[NativeEngine] No se pudo conectar captura de audio PCM:', err);
   }

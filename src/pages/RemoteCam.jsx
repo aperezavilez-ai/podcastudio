@@ -5,8 +5,8 @@ import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
   { label: 'Full HD 1080p · 5 Mbps', maxBitrate: 5000000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 720p · 3 Mbps', maxBitrate: 3000000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'Fluido 720p · 2 Mbps', maxBitrate: 2000000, scaleResolutionDownBy: 1.25, frameRate: 30 },
+  { label: 'Full HD 1080p · 3.5 Mbps', maxBitrate: 3500000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 720p · 2.5 Mbps', maxBitrate: 2500000, scaleResolutionDownBy: 1, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 600     
 const RTT_HEALTHY_MS = 200     
@@ -29,7 +29,9 @@ function applyVideoSenderParams(sender, tier) {
     
     e.maxBitrate = tier.maxBitrate
     e.maxFramerate = tier.frameRate || 30
-    e.scaleResolutionDownBy = tier.scaleResolutionDownBy
+    e.scaleResolutionDownBy = tier.scaleResolutionDownBy || 1
+    e.networkPriority = 'high'
+    e.priority = 'high'
     // 'maintain-framerate' garantiza cero desfase de audio/video y fluidez constante sin acumular cola de paquetes
     params.degradationPreference = 'maintain-framerate'
     sender.setParameters(params).catch(() => {})
@@ -497,10 +499,12 @@ export default function RemoteCam() {
             const caps = RTCRtpReceiver.getCapabilities('video');
             if (caps && caps.codecs) {
               const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
+              // Priorizar packetization-mode=1 (FU-A fragmentation units) para evitar que cuadros I grandes o movimientos de cámara rompan el video en fragmentos
+              const h264Mode1 = h264.filter(c => c.sdpFmtpLine && c.sdpFmtpLine.includes('packetization-mode=1'));
+              const h264Others = h264.filter(c => !h264Mode1.includes(c));
               const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
               const others = caps.codecs.filter(c => !h264.includes(c) && !vp8.includes(c));
-              // H.264 primero: ambos dispositivos (S22 Ultra Snapdragon y iPhone 14 Pro Max) cuentan con codificadores de hardware H.264 nativos dedicados
-              const preferred = [...h264, ...vp8, ...others];
+              const preferred = [...h264Mode1, ...h264Others, ...vp8, ...others];
               try { vTransceiver.setCodecPreferences(preferred); } catch (e) {}
             }
           }
@@ -603,35 +607,45 @@ export default function RemoteCam() {
         throw new Error('Navegador no compatible. Abre el enlace en Safari o Chrome usando HTTPS.');
       }
 
-      // Captura nítida 1080p nativa compatible 100% con iOS Safari y Android Chrome
+      // Captura nítida 1080p nativa en 16:9 compatible con iOS Safari y Android Chrome
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: targetFacing ? { ideal: targetFacing } : 'environment',
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 },
+            aspectRatio: { ideal: 1.7777777778 },
             frameRate: { ideal: 30, max: 30 },
           },
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          audio: {
+            echoCancellation: { ideal: true },
+            noiseSuppression: { ideal: true },
+            autoGainControl: { ideal: true },
+          }
         })
       } catch (e1) {
-        console.warn('getUserMedia 1080p falló; intentando 720p compatible:', e1)
+        console.warn('getUserMedia 1080p falló; intentando 720p 16:9 compatible:', e1)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: targetFacing ? { ideal: targetFacing } : 'environment',
               width: { ideal: 1280 },
               height: { ideal: 720 },
+              aspectRatio: { ideal: 1.7777777778 },
               frameRate: { ideal: 30 },
             },
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            audio: {
+              echoCancellation: { ideal: true },
+              noiseSuppression: { ideal: true },
+              autoGainControl: { ideal: true },
+            },
           })
         } catch (e2) {
           console.warn('Fallback 720p falló; usando resolución máxima disponible:', e2)
           try {
             stream = await navigator.mediaDevices.getUserMedia({
               video: { facingMode: targetFacing || 'environment' },
-              audio: true
+              audio: { echoCancellation: true, noiseSuppression: true }
             })
           } catch {
             stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
@@ -690,15 +704,16 @@ export default function RemoteCam() {
       const newStream = await navigator.mediaDevices.getUserMedia({
         video: { 
           facingMode: { ideal: nextFacing }, 
-          width: { ideal: 1920 }, 
-          height: { ideal: 1080 },
+          width: { ideal: 1920, min: 1280 }, 
+          height: { ideal: 1080, min: 720 },
+          aspectRatio: { ideal: 1.7777777778 },
           frameRate: { ideal: 30 }
         },
         audio: false,
       })
 
       const newTrack = newStream.getVideoTracks()[0]
-      if (newTrack) { try { newTrack.contentHint = 'detail' } catch {} }
+      if (newTrack) { try { newTrack.contentHint = 'motion' } catch {} }
 
       const sender = videoSenderRef.current || pcRef.current?.getSenders?.()?.find(s => s.track?.kind === 'video' || s.kind === 'video')
       if (sender && newTrack) await sender.replaceTrack(newTrack)
@@ -763,8 +778,8 @@ export default function RemoteCam() {
     setSpeakerMuted(prev => {
       const next = !prev
       if (videoRef.current) {
-        videoRef.current.muted = next
-        if (!next && videoRef.current.paused) videoRef.current.play().catch(() => {})
+        // La vista previa de la cámara local SIEMPRE debe permanecer silenciada para evitar acople acústico (efecto Larsen)
+        videoRef.current.muted = true
       }
       return next
     })
