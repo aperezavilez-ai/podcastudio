@@ -6,6 +6,13 @@ const STUN_SERVERS = [
   { urls: 'stun:stun.services.mozilla.com:3478' },
 ];
 
+// Fallback público (no ideal, pero evita que la conexión falle por completo cuando no hay TURN propio)
+const PUBLIC_TURN_FALLBACK = [
+  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+];
+
 let configuredServersPromise = null;
 let configuredServersCache = null;
 
@@ -37,7 +44,7 @@ export async function getConfiguredIceServers() {
       .catch(() => null)
       .then((cache) => {
         configuredServersCache = cache || {
-          iceServers: getIceServers(),
+          iceServers: [...getIceServers(), ...PUBLIC_TURN_FALLBACK],
           expiresAt: Date.now() + 60000,
         };
         return configuredServersCache.iceServers;

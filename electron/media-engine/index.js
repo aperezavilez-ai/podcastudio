@@ -79,10 +79,11 @@ function buildArgs(destUrl, cfg) {
     '-ar', String(aSr),
     '-ac', String(aCh),
 
-    // Formato de salida de emisión RTMP / FLV de latencia ultra baja
+    // Formato de salida de emisión RTMP / FLV estable
     '-max_interleave_delta', '0',
     '-flvflags', 'no_duration_filesize',
-    '-rtmp_buffer', '200',
+    '-rtmp_buffer', '100',
+    '-bufsize', `${vBufsize}k`,
     '-rtmp_live', 'live',
     '-rw_timeout', '12000000',
     '-f', 'flv',

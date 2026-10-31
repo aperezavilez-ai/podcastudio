@@ -2438,7 +2438,7 @@ function PodcastStudioApp() {
               throw new Error(nativeRes?.error || 'Error iniciando motor nativo');
             }
           } catch (neErr) {
-            console.warn('[handleStream] Fallback automático a pipeline v1.3.1:', neErr);
+            console.warn('[handleStream] Fallback automático a pipeline v1.3.2:', neErr);
           }
         }
 
@@ -5514,7 +5514,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.1</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.2</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>

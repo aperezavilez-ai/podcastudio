@@ -4,13 +4,15 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
-  { label: 'Full HD 1080p · 2.8 Mbps', maxBitrate: 2800000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'Full HD 1080p · 2.0 Mbps', maxBitrate: 2000000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 720p · 1.4 Mbps', maxBitrate: 1400000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'Full HD 1080p · 2.5 Mbps', maxBitrate: 2500000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'Full HD 1080p · 1.8 Mbps', maxBitrate: 1800000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 720p · 1.2 Mbps', maxBitrate: 1200000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 540p · 800 kbps', maxBitrate: 800000, scaleResolutionDownBy: 1.5, frameRate: 30 },
 ]
-const RTT_DEGRADE_MS = 600     
-const RTT_HEALTHY_MS = 200     
-const HEALTHY_CHECKS_TO_RISE = 3
+const RTT_DEGRADE_MS = 350
+const RTT_HEALTHY_MS = 180
+const HEALTHY_CHECKS_TO_RISE = 4
+const PACKET_LOSS_DEGRADE = 0.05
 
 function getCaptureResolutionLabel(settings = {}) {
   const width = Number(settings.width) || 0
@@ -141,11 +143,16 @@ export default function RemoteCam() {
         const candidatePair = reports.find(report => report.type === 'candidate-pair' && report.id === selectedPairId)
           || reports.find(report => report.type === 'candidate-pair' && report.state === 'succeeded' && report.nominated)
         if (candidatePair?.currentRoundTripTime != null) rttMs = Math.round(candidatePair.currentRoundTripTime * 1000)
+
+        let packetsLost = 0
+        let packetsSent = 0
         reports.forEach((r) => {
           if (r.type === 'outbound-rtp' && r.kind === 'video' && !r.isRemote) {
             fps = r.framesPerSecond || 0
             limitation = r.qualityLimitationReason || ''
             bytes = r.bytesSent || 0
+            packetsLost = r.packetsLost || 0
+            packetsSent = r.packetsSent || 0
           }
         })
 
@@ -153,22 +160,24 @@ export default function RemoteCam() {
         const dtSec = (now - lastBytesRef.current.ts) / 1000
         lastBytesRef.current = { bytes, ts: now }
 
-        // Solo degradar si la latencia real (RTT) supera 600ms continuos, evitando caídas falsas por handshake
-        const mustDegrade = rttMs > RTT_DEGRADE_MS
+        const lossRate = packetsSent > 0 ? packetsLost / packetsSent : 0
+        const bandwidthLimited = limitation === 'bandwidth' || limitation === 'cpu'
+        const mustDegrade = rttMs > RTT_DEGRADE_MS || lossRate > PACKET_LOSS_DEGRADE || bandwidthLimited
+
         if (mustDegrade) {
           poorChecksRef.current += 1
           healthyChecksRef.current = 0
         } else {
           poorChecksRef.current = 0
         }
-        if (poorChecksRef.current >= 3 && tierIndexRef.current < QUALITY_TIERS.length - 1) {
+        if (poorChecksRef.current >= 2 && tierIndexRef.current < QUALITY_TIERS.length - 1) {
           tierIndexRef.current += 1
           poorChecksRef.current = 0
           applyTier(tierIndexRef.current)
           return
         }
 
-        const isHealthy = rttMs > 0 && rttMs < RTT_HEALTHY_MS && (fps === 0 || fps >= 25)
+        const isHealthy = rttMs > 0 && rttMs < RTT_HEALTHY_MS && lossRate < 0.02 && !bandwidthLimited && (fps === 0 || fps >= 25)
         if (isHealthy) {
           healthyChecksRef.current += 1
           if (healthyChecksRef.current >= HEALTHY_CHECKS_TO_RISE && tierIndexRef.current > 0) {

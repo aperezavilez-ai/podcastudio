@@ -5,9 +5,9 @@ PROHIBIDO reexplorar el repo entero si este documento cubre la tarea. Solo read_
 EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar codigo largo.
 
 ## Proceso
-- Fase: implementacion
-- Estado: Patch OK: electron/media-engine/bridge.js (2026-10-30 23:46)
-- Actualizado: 2026-10-30 23:46
+- Fase: release
+- Estado: Release v1.3.2 OK (2026-10-31 15:25)
+- Actualizado: 2026-10-31 15:25
 - Stack: React + Vite + Electron + Supabase
 - Entry: index.html
 - Entry: src/main.jsx
@@ -64,6 +64,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - RELEASE_v1.2.9.md
 - RELEASE_v1.3.0.md
 - RELEASE_v1.3.1.md
+- RELEASE_v1.3.2.md
 
 ## Archivos clave (no reexplorar)
 - electron/media-engine/bridge.js
@@ -84,39 +85,34 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - src/main.jsx
 
 ## Tarea activa
-- te paso todo lo que estamos haciendo que veo que olvidaste......   Tú
+- Compilación, verificación integral y despliegue de versión v1.3.2.
 
 ## Bloqueos / bugs conocidos
 - Ninguno registrado
 
 ## Decisiones
-- Ninguna registrada
+- v1.3.2 estabiliza arranque síncrono (eliminación de Suspense/pantalla negra), modal de cámaras remotas (fix copiedSlotNumber) y calidad de streaming/grabación nativa con buffer adaptativo.
 
 ## Cambios recientes
-- electron/media-engine/bridge.js — archivo escrito (kernel) (2026-10-30 23:46)
-- electron/media-engine/index.js — archivo escrito (kernel) (2026-10-30 23:46)
-- src/config/featureFlags.js — archivo escrito (kernel) (2026-10-30 23:45)
-- docs/media-engine/ARCHITECTURE.md — archivo escrito (kernel) (2026-10-30 23:45)
-- docs/baseline-v1.3.1.md — archivo escrito (kernel) (2026-10-30 23:44)
-- lib/livepeer/client.js
-- lib/mercadopago/client.js
-- lib/mux/client.js
-- api/mercadopago/webhook.js
-- src/utils/exportVideo.js
-- package.json
-- electron/media-engine/index.js
-- docs/baseline-v1.3.1.md
-- src/utils/masterBroadcastEngine.js
-- lib/supabase/serverLogin.js
-- electron/media-engine/index.js — parche aplicado (kernel) (2026-10-30 22:26)
-- electron/media-engine/index.js — archivo escrito (kernel) (2026-10-30 22:26)
-- docs/baseline-v1.3.1.md — archivo escrito (kernel) (2026-10-30 22:26)
+- RELEASE_v1.3.2.md — notas de release v1.3.2 (2026-10-31 15:32)
+- package.json — bump version a 1.3.2 (2026-10-31 15:32)
+- src/App.jsx — footer y logs sincronizados con v1.3.2 (2026-10-31 15:32)
+- src/pages/RemoteCam.jsx — adaptación dinámica por pérdida de paquetes y latencia (2026-10-31 15:30)
+- src/utils/streamTransport.js — buffer de jitter estabilizado a 60 ms para A/V sincronizado (2026-10-31 15:30)
+- src/utils/rtcConfig.js — inclusión de fallback TURN público (2026-10-31 15:30)
+- electron/main.js — ajuste de perfiles de codificación FFmpeg a veryfast con control de bitrate (2026-10-31 15:30)
+- electron/media-engine/index.js — estabilización de buffers RTMP para baja latencia (2026-10-31 15:30)
+- launcher.cs / PodcastStudio.exe — binario ejecutable compilado con assembly version 1.3.2.0
 
 ## Verificado
-- Pendiente
+- npm run test:remote-cameras (4/4 passed)
+- npm run test:recording (1/1 passed)
+- npm run test:stream-config (5/5 passed)
+- npm run build (Vite production bundle OK)
+- npm run build:exe (PodcastStudio.exe v1.3.2.0 OK)
 
 ## Siguiente
-- Proponer optimización o nueva funcionalidad.
+- Monitoreo de producción y feedback de usuario.
 
 ## Regla anti-reexploracion
 - Si el pedido del usuario apunta a un archivo ya listado arriba: ve DIRECTO a read_file/replace_in_file de ese path.

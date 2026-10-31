@@ -1736,10 +1736,10 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
         '-map', '0:v:0',
         '-map', '0:a?',
         '-c:v', 'libx264',
-        '-preset', 'ultrafast',
+        '-preset', 'veryfast',
         '-crf', '18',
-        '-maxrate', '10M',
-        '-bufsize', '20M',
+        '-maxrate', '8M',
+        '-bufsize', '16M',
         '-pix_fmt', 'yuv420p',
         '-r', '30',
         '-g', '60',
@@ -2598,7 +2598,7 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
       ? ['-c:v', 'h264_mf', '-b:v', '4500k']
       : [
           '-c:v', 'libx264',
-          '-preset', 'ultrafast',
+          '-preset', 'veryfast',
           '-tune', 'zerolatency',
           '-threads', String(threadsPerDestination),
           '-profile:v', 'main',

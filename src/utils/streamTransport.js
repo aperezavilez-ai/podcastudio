@@ -220,14 +220,15 @@ export class P2PStreamTransport extends BaseStreamTransport {
             const track = trackEvent.track
             if (!track) return
 
-            // Reducir latencia de buffer del decodificador Chromium/Electron a tiempo real (cero retraso acumulativo)
+            // Buffer de jitter estable (60 ms). Cero genera pixelado, barrido y desfase en redes reales.
+            // Un valor pequeño absorbe pérdida de paquetes y jitter sin añadir latencia perceptible.
             if (trackEvent.receiver) {
               try {
                 if ('playoutDelayHint' in trackEvent.receiver) {
-                  trackEvent.receiver.playoutDelayHint = 0;
+                  trackEvent.receiver.playoutDelayHint = 0.06;
                 }
                 if ('jitterBufferTarget' in trackEvent.receiver) {
-                  trackEvent.receiver.jitterBufferTarget = 0; // Buffer cero para eliminar retardo de sincronía A/V
+                  trackEvent.receiver.jitterBufferTarget = 0.06;
                 }
               } catch (e) {}
             }
