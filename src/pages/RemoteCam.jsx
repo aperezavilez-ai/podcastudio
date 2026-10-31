@@ -602,33 +602,42 @@ export default function RemoteCam() {
     setErrorMsg(null)
     offerSentRef.current = false
     isOfferingRef.current = false
+    let stream = null
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error('Navegador no compatible. Abre el enlace en Safari o Chrome usando HTTPS.');
       }
 
-      // Forzar captura nítida 1080p (Full HD) nativa del sensor
+      // Captura nítida 1080p nativa compatible 100% con iOS Safari y Android Chrome
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: { ideal: targetFacing },
-            width: { ideal: 1920, min: 1280 },
-            height: { ideal: 1080, min: 720 },
-            frameRate: { ideal: 30, min: 24, max: 30 },
+            facingMode: targetFacing ? { ideal: targetFacing } : 'environment',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30, max: 30 },
           },
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         })
       } catch (e1) {
-        console.warn('getUserMedia 1080p estricto falló; intentando fallback general:', e1)
+        console.warn('getUserMedia 1080p falló; intentando 720p compatible:', e1)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: targetFacing }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
+            video: {
+              facingMode: targetFacing ? { ideal: targetFacing } : 'environment',
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 30 },
+            },
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           })
         } catch (e2) {
-          console.warn('Fallback 1080p falló; usando resolución máxima disponible:', e2)
+          console.warn('Fallback 720p falló; usando resolución máxima disponible:', e2)
           try {
-            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: targetFacing } }, audio: true })
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: targetFacing || 'environment' },
+              audio: true
+            })
           } catch {
             stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
           }
