@@ -1637,11 +1637,20 @@ ipcMain.on('send-candidate', (event, { id, candidate }) => {
   }
 });
 
+function getProjectsRootDir() {
+  if (process.env.PODCASTUDIO_PROJECTS_DIR) return process.env.PODCASTUDIO_PROJECTS_DIR;
+  const preferredD = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos');
+  if (fs.existsSync(path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO'))) {
+    return preferredD;
+  }
+  return path.join(app.getPath('videos'), 'PodcastStudio');
+}
+
 ipcMain.on('open-external', (event, url) => shell.openExternal(url));
 
 ipcMain.on('open-recordings-folder', (event, projectName) => {
   const cleanProjectName = projectName ? String(projectName).replace(/[/\\?%*:|"<>]/g, '_').trim() : '';
-  let recDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos');
+  let recDir = getProjectsRootDir();
   if (cleanProjectName) {
     const subDir = path.join(recDir, cleanProjectName);
     if (fs.existsSync(subDir)) recDir = subDir;
@@ -1675,8 +1684,8 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
     recordChunkQueue = Promise.resolve();
     recordChunkError = null;
 
-    // Carpeta raíz estructurada: D:\PROGRAMAS IA\PODCASTUDIO\proyectos\[NombreProyecto]\
-    const projectsRoot = process.env.PODCASTUDIO_PROJECTS_DIR || path.join(app.getPath('videos'), 'PodcastStudio');
+    // Carpeta raíz estructurada garantizada en D:\PROGRAMAS IA\PODCASTUDIO\proyectos\[NombreProyecto]\
+    const projectsRoot = getProjectsRootDir();
     const projectDir = path.join(projectsRoot, cleanProjectName);
     try {
       if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
@@ -1695,12 +1704,14 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
     }
 
     try {
-      // Configuración de codificación de calidad broadcast Full HD 1080p real a 30fps sin pixelación
+      // Configuración de codificación Full HD broadcast instantánea (probesize optimizado + auto mapping de audio)
       ffmpegRecordProcess = spawn(ffmpegPath, [
-        '-probesize', '32M',
-        '-analyzeduration', '2000000',
+        '-probesize', '2M',
+        '-analyzeduration', '1000000',
         '-f', 'webm',
         '-i', 'pipe:0',
+        '-map', '0:v:0',
+        '-map', '0:a?',
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
         '-crf', '18',
@@ -1733,7 +1744,8 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
         console.error('Error FFmpeg Grabación:', err.message);
       });
 
-      ffmpegRecordProcess.on('close', () => {
+      ffmpegRecordProcess.on('close', (code) => {
+        console.log('[FFmpeg Grabación] Proceso finalizó con código:', code);
         ffmpegRecordProcess = null;
       });
 
@@ -1885,8 +1897,8 @@ ipcMain.handle('start-iso-recording', async (event, { slots = [], projectName = 
     .replace(/[/\\?%*:|"<>]/g, '_')
     .trim() || 'Proyecto_General';
 
-  const projectsRoot = process.env.PODCASTUDIO_PROJECTS_DIR || path.join(app.getPath('videos'), 'PodcastStudio');
-    const isoDir = path.join(projectsRoot, cleanProjectName, 'ISO');
+  const projectsRoot = getProjectsRootDir();
+  const isoDir = path.join(projectsRoot, cleanProjectName, 'ISO');
   try {
     if (!fs.existsSync(isoDir)) fs.mkdirSync(isoDir, { recursive: true });
   } catch (e) {}
@@ -2029,7 +2041,7 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
     let projectDir = (sourcePath && fs.existsSync(sourcePath)) ? path.dirname(sourcePath) : null;
     if (!projectDir) {
       const cleanProjectName = currentRecordingProjectName || (projectName ? String(projectName).replace(/^PodcaStudio_/i, '').replace(/_\d{10,}$/, '').replace(/[/\\?%*:|"<>]/g, '_').trim() : 'Proyecto_General');
-      const projectsRoot3 = process.env.PODCASTUDIO_PROJECTS_DIR || path.join(app.getPath('videos'), 'PodcastStudio');
+      const projectsRoot3 = getProjectsRootDir();
       projectDir = path.join(projectsRoot3, cleanProjectName);
     }
     if (!fs.existsSync(projectDir)) {
@@ -2140,7 +2152,7 @@ ipcMain.handle('export-highlight-clip', async (event, { sourcePath, startTime, d
     }
 
     const cleanProjectName = projectName ? String(projectName).replace(/^PodcaStudio_/i, '').replace(/_\d{10,}$/, '').replace(/[/\\?%*:|"<>]/g, '_').trim() : 'Proyecto_General';
-    const projectsRoot4 = process.env.PODCASTUDIO_PROJECTS_DIR || path.join(app.getPath('videos'), 'PodcastStudio');
+    const projectsRoot4 = getProjectsRootDir();
     const projectDir = path.join(projectsRoot4, cleanProjectName);
     const clipsDir = path.join(projectDir, 'Clips');
     if (!fs.existsSync(clipsDir)) {
@@ -2241,7 +2253,7 @@ ipcMain.handle('save-recording-thumbnail', async (event, { base64Data, targetPat
     let dest = targetPath || (currentRecordingPath ? currentRecordingPath.replace(/\.mp4$/i, '_Thumbnail.jpg') : null);
     if (!dest) {
       const cleanProjectName = projectName ? String(projectName).replace(/[/\\?%*:|"<>]/g, '_').trim() : 'Proyecto_General';
-      const projectDir = path.join('D:', 'PROGRAMAS IA', 'PODCASTUDIO', 'proyectos', cleanProjectName);
+      const projectDir = path.join(getProjectsRootDir(), cleanProjectName);
       if (!fs.existsSync(projectDir)) {
         try { fs.mkdirSync(projectDir, { recursive: true }); } catch (e) {}
       }

@@ -26,8 +26,9 @@ function runFfmpeg(args) {
 async function feedWebmToMasterRecorder(sourcePath, outputPath) {
   const source = await fs.readFile(sourcePath);
   const proc = spawn(ffmpegPath, [
-    '-probesize', '32M', '-analyzeduration', '2000000',
+    '-probesize', '2M', '-analyzeduration', '1000000',
     '-f', 'webm', '-i', 'pipe:0',
+    '-map', '0:v:0', '-map', '0:a?',
     '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
     '-maxrate', '10M', '-bufsize', '20M', '-pix_fmt', 'yuv420p',
     '-r', '30', '-g', '60', '-keyint_min', '30',

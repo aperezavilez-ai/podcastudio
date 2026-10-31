@@ -23,7 +23,8 @@ let audioContext = null;
 let audioDestination = null;
 let connectedAudioSources = new Map();
 let activeVoiceFxNodes = new Map();
-let isRunning = false;
+let isCanvasRenderLoopActive = false;
+let isBroadcastEngineActive = false;
 
 // NODOS DEL MEZCLADOR DE AUDIO BROADCAST PROFESIONAL
 let masterSumGain = null;
@@ -179,7 +180,7 @@ function getOffscreenContainer() {
 // Inicializa el Worker de renderizado para saltar el límite de requestAnimationFrame
 function fallbackRafLoop() {
   const loop = () => {
-    if (!isRunning) return;
+    if (!isCanvasRenderLoopActive) return;
     try { renderFrame(); } catch (e) {}
     animFrameId = requestAnimationFrame(loop);
   };
@@ -187,6 +188,7 @@ function fallbackRafLoop() {
 }
 
 function startRenderLoop() {
+  isCanvasRenderLoopActive = true;
   try {
     if (!renderWorker) {
       const blob = new Blob([`
@@ -201,7 +203,7 @@ function startRenderLoop() {
       `], { type: 'application/javascript' });
       const url = URL.createObjectURL(blob);
       renderWorker = new Worker(url);
-      renderWorker.onmessage = () => { if (isRunning) { try { renderFrame(); } catch(e) {} } };
+      renderWorker.onmessage = () => { if (isCanvasRenderLoopActive) { try { renderFrame(); } catch(e) {} } };
       renderWorker.onerror = () => {
         console.warn('Render worker failed, falling back to RAF');
         try { URL.revokeObjectURL(url); } catch(e){}
@@ -217,6 +219,7 @@ function startRenderLoop() {
 }
 
 function stopRenderLoop() {
+  isCanvasRenderLoopActive = false;
   if (renderWorker) renderWorker.postMessage('stop');
   if (animFrameId) {
     cancelAnimationFrame(animFrameId);
@@ -1709,13 +1712,24 @@ export function getInitHeader() {
 
 export function startBroadcastEngine(initialState, onChunk) {
   if (onChunk) addChunkListener(onChunk);
-  if (isRunning) {
-    updateBroadcastState(initialState);
-    return masterStream;
-  }
+  
   currentState = { ...currentState, ...initialState };
   updateImages();
   ensureMasterCanvas();
+
+  // Si ya está activo y grabando con chunks fluyendo, devolver el masterStream
+  if (isBroadcastEngineActive && mediaRecorder && mediaRecorder.state === 'recording') {
+    updateBroadcastState(initialState);
+    if (cachedInitHeader && onChunk) {
+      try { onChunk(cachedInitHeader.slice(0)); } catch (e) {}
+    }
+    return masterStream;
+  }
+
+  // Si el mediaRecorder previo existe pero no está grabando activamente, detenerlo
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try { mediaRecorder.stop(); } catch (e) {}
+  }
 
   const canvasStream = canvas.captureStream(30);
   const videoTrack = canvasStream.getVideoTracks()[0];
@@ -1749,10 +1763,13 @@ export function startBroadcastEngine(initialState, onChunk) {
         console.warn('[MasterRecorder] Error procesando segmento:', err?.message || err);
       });
     };
-    mediaRecorder.start(1000);
-  } catch (e) {}
+    // Segmentos cada 250ms para latencia ultrabaja de arranque y respuesta instantánea
+    mediaRecorder.start(250);
+  } catch (e) {
+    console.error('[MasterRecorder] Error al arrancar MediaRecorder:', e);
+  }
 
-  isRunning = true;
+  isBroadcastEngineActive = true;
   return masterStream;
 }
 
@@ -1811,9 +1828,7 @@ export function captureMasterCanvasSnapshot() {
 }
 
 export async function stopBroadcastEngine() {
-  isRunning = false;
-  stopRenderLoop();
-  cleanupVisibilityHandler();
+  isBroadcastEngineActive = false;
 
   const recorderToStop = mediaRecorder;
   if (recorderToStop && recorderToStop.state !== 'inactive') {
@@ -1823,7 +1838,7 @@ export async function stopBroadcastEngine() {
         if (timeout) clearTimeout(timeout);
         resolve();
       };
-      timeout = setTimeout(finish, 10000);
+      timeout = setTimeout(finish, 5000);
       recorderToStop.addEventListener('stop', finish, { once: true });
       try { recorderToStop.stop(); } catch (e) { finish(); }
     });
@@ -1832,46 +1847,12 @@ export async function stopBroadcastEngine() {
   if (mediaRecorder === recorderToStop) mediaRecorder = null;
 
   if (masterStream) {
-    // El track de salida del mezclador pertenece a AudioContext y también
-    // alimenta música/monitor. Detenerlo al parar REC mata el BGM y deja su
-    // MediaElementSource atado a un contexto cerrado, imposible de reusar.
     masterStream.getVideoTracks().forEach((track) => track.stop());
     masterStream = null;
   }
 
-  // LIMPIEZA PROFUNDA DE MEMORIA PARA EL DOM
-  videoElements.forEach((v) => {
-    try {
-      v.pause();
-      v.srcObject = null;
-      if (v.parentNode) v.parentNode.removeChild(v);
-    } catch (e) {}
-  });
-  videoElements.clear(); // Previene Fuga de Memoria
-
-  const keys = Array.from(connectedAudioSources.keys());
-  keys.forEach((k) => disconnectAudioSource(k));
-  connectedAudioSources.clear();
-  activeVoiceFxNodes.clear();
-  channelStrips.forEach((strip) => {
-    ['trimGain', 'highPassFilter', 'noiseGateNode', 'faderGain', 'duckingGain', 'muteGain', 'soloGain', 'analyser']
-      .forEach((key) => { try { strip[key]?.disconnect(); } catch (e) {} });
-  });
-  channelStrips.clear();
-
-  mixMinusBuses.forEach((bus) => {
-    try {
-      bus.busGain.disconnect();
-      if (bus.destination?.stream) bus.destination.stream.getTracks().forEach((t) => t.stop());
-    } catch (e) {}
-  });
-  mixMinusBuses.clear();
   chunkListeners.clear();
   cachedInitHeader = null;
-
-  // El mezclador es de vida larga: el elemento de música está conectado a
-  // este AudioContext y un MediaElementSource no puede migrar a otro. Dejarlo
-  // abierto permite detener/reiniciar REC sin cortar música ni voz en monitor.
 }
 
 // Handler de visibilidad para pausar renderizado en background
@@ -1881,12 +1862,12 @@ function setupVisibilityHandler() {
   if (typeof document === 'undefined') return;
   visibilityHandler = () => {
     if (document.hidden) {
-      isRunning = false;
+      isCanvasRenderLoopActive = false;
       if (renderWorker) {
         try { renderWorker.postMessage('stop'); } catch (e) {}
       }
     } else {
-      isRunning = true;
+      isCanvasRenderLoopActive = true;
       if (renderWorker) {
         try { renderWorker.postMessage('start'); } catch (e) {}
       } else if (!animFrameId) {
