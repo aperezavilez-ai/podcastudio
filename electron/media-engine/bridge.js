@@ -1,5 +1,5 @@
 const { ipcMain } = require('electron');
-const nativeEngine = require('./media-engine');
+const nativeEngine = require('./index');
 
 let nativeEngineRunning = false;
 
