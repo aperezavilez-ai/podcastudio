@@ -533,7 +533,9 @@ function PodcastStudioApp() {
   });
   const [camMuted, setCamMuted] = useState({ 1: false, 2: true, 3: true, 4: true });
   // Control de retorno de audio local (bocina / parlante de monitoreo en estudio para cada cámara)
-  const [camSpeakerMuted, setCamSpeakerMuted] = useState({ 1: true, 2: false, 3: false, 4: false });
+  // POR SEGURIDAD: Silenciado por defecto en todas las cámaras para evitar retroalimentación ("vicio/acople")
+  // El usuario puede activar la bocina manualmente con el botón de cada ranura si cuenta con audífonos.
+  const [camSpeakerMuted, setCamSpeakerMuted] = useState({ 1: true, 2: true, 3: true, 4: true, 5: true, 6: true, 7: true, 8: true, 9: true, 10: true, 11: true, 12: true });
 
   // AFV (Audio Follows Video): Solo el micrófono de la cámara activa al aire (PGM) está abierto.
   // Todas las demás cámaras permanecen silenciadas en la línea de tiempo inferior para evitar
@@ -1909,6 +1911,12 @@ function PodcastStudioApp() {
         };
 
         pc.ontrack = (event) => {
+          if (event.receiver) {
+            try {
+              if ('playoutDelayHint' in event.receiver) event.receiver.playoutDelayHint = 0.05;
+              if ('jitterBufferTarget' in event.receiver) event.receiver.jitterBufferTarget = 50;
+            } catch (e) {}
+          }
           if (event.track) {
             handleTrack(event.track);
           }

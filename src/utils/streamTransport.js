@@ -219,6 +219,19 @@ export class P2PStreamTransport extends BaseStreamTransport {
           newPc.ontrack = (trackEvent) => {
             const track = trackEvent.track
             if (!track) return
+
+            // Reducir latencia de buffer del decodificador Chromium/Electron a tiempo real (cero retraso acumulativo)
+            if (trackEvent.receiver) {
+              try {
+                if ('playoutDelayHint' in trackEvent.receiver) {
+                  trackEvent.receiver.playoutDelayHint = 0.05;
+                }
+                if ('jitterBufferTarget' in trackEvent.receiver) {
+                  trackEvent.receiver.jitterBufferTarget = 50; // 50ms buffer mínimo en lugar de acumular 5 segundos
+                }
+              } catch (e) {}
+            }
+
             trackMap.set(track.id, track)
             track.onunmute = () => dispatchStreamUpdate()
             track.onended = () => { trackMap.delete(track.id); dispatchStreamUpdate() }
