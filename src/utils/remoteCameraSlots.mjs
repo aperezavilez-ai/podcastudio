@@ -2,7 +2,7 @@ export const MAX_REMOTE_CAMERA_SLOTS = 12;
 
 export function buildRemoteCameraUrl({
   baseUrl = 'https://www.podcastudio.mx/remote-cam',
-  slotIndex,
+  slotIndex = 0,
   guestName = '',
   guestRole = 'guest',
   autoAssign = false,
@@ -11,15 +11,15 @@ export function buildRemoteCameraUrl({
   if (autoAssign) {
     url.searchParams.set('auto', 'true');
   } else {
-    const slot = Number(slotIndex);
-    if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_REMOTE_CAMERA_SLOTS) {
-      throw new RangeError(`slotIndex must be between 0 and ${MAX_REMOTE_CAMERA_SLOTS - 1}`);
-    }
+    const rawSlot = Number(slotIndex);
+    const slot = (Number.isInteger(rawSlot) && rawSlot >= 0 && rawSlot < MAX_REMOTE_CAMERA_SLOTS)
+      ? rawSlot
+      : 0;
     const cameraNumber = slot + 1;
     url.searchParams.set('slot', String(cameraNumber));
     url.searchParams.set('room', `studio_cam_${cameraNumber}`);
   }
-  if (guestName.trim()) url.searchParams.set('name', guestName.trim());
+  if (guestName && guestName.trim()) url.searchParams.set('name', guestName.trim());
   if (guestRole && guestRole !== 'guest') url.searchParams.set('role', guestRole);
   return url.toString();
 }

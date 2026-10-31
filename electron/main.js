@@ -171,12 +171,12 @@ function createWindow() {
     }
   };
 
-  // Mostrar inmediatamente al estar listo el renderizado (<300ms)
-  mainWindow.once('ready-to-show', showWindowSafely);
+  // Mostrar la ventana ÚNICAMENTE cuando la app React esté completamente montada y lista
   ipcMain.once('app-ui-ready', showWindowSafely);
-
-  // Failsafe de seguridad (3s máximo) por si algún evento se demora
-  setTimeout(showWindowSafely, 3000);
+  mainWindow.once('ready-to-show', () => {
+    // Failsafe: Si por alguna razón app-ui-ready se retrasa, mostrar a los 2.5s
+    setTimeout(showWindowSafely, 2500);
+  });
 
   if (process.env.NODE_ENV !== 'development') {
     mainWindow.webContents.on('devtools-opened', () => {

@@ -193,6 +193,7 @@ export default function CameraConnectModal({
   const [customLabel, setCustomLabel] = useState('');
   const [copied, setCopied] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
+  const [copiedSlotNumber, setCopiedSlotNumber] = useState(null);
   const [guestName, setGuestName] = useState('');
   const [guestRole, setGuestRole] = useState('guest');
   const [connectingUsbId, setConnectingUsbId] = useState(null);

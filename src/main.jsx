@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { lazy, Suspense } from 'react'
 import './index.css'
 
-const App = lazy(() => import('./App.jsx'))
+import App from './App.jsx'
 const RemoteCam = lazy(() => import('./pages/RemoteCam.jsx'))
 const StudioRemoteControl = lazy(() => import('./pages/StudioRemoteControl.jsx'))
 
