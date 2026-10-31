@@ -3243,16 +3243,11 @@ function PodcastStudioApp() {
           let tileClass = "absolute transition-none";
           let tileStyle = {};
           const idx = camSlots.indexOf(id);
-          const visibleInLayout = layoutMode === 'pip'
-            ? id === effectiveActiveCam || id === effectivePipCam
-            : layoutMode === 'speaker' || layoutMode === 'gallery'
-              ? true
-              : layoutMode === '1'
-                ? id === effectiveActiveCam || (!overrideCam && id === pvwCam && tBarPosition > 0)
-                : layoutCameraLimit != null
-                  ? idx < layoutCameraLimit
-                  : id === effectiveActiveCam;
-          if (!visibleInLayout) return null;
+          // MANTENER SIEMPRE MONTADOS TODOS LOS ELEMENTOS EN EL DOM:
+          // Si un slot se desmonta con return null, al conmutar a esa cámara el elemento <video>
+          // se crea desde cero y el decodificador de video tarda 200-400ms en calentarse,
+          // produciendo el desagradable "parche/cuadro negro" en medio del cambio.
+          // Al mantenerlos vivos en el DOM con z-0 y opacity-0, el cambio es instantáneo (cero negro).
 
           if (layoutMode === '1') {
             if (id === effectiveActiveCam) {

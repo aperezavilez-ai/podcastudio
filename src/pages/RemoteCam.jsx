@@ -601,27 +601,26 @@ export default function RemoteCam() {
         throw new Error('Navegador no compatible. Abre el enlace en Safari o Chrome usando HTTPS.');
       }
 
-      let stream = null
-      // Pedir Full HD primero; los perfiles adaptativos reducen bitrate, no resolución.
+      // Forzar captura nítida 1080p (Full HD) nativa del sensor
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: { ideal: targetFacing },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            frameRate: { ideal: 30, max: 30 },
+            width: { ideal: 1920, min: 1280 },
+            height: { ideal: 1080, min: 720 },
+            frameRate: { ideal: 30, min: 24, max: 30 },
           },
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
         })
       } catch (e1) {
-        console.warn('getUserMedia 1080p falló; intentando 720p compatible:', e1)
+        console.warn('getUserMedia 1080p estricto falló; intentando fallback general:', e1)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: targetFacing }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+            video: { facingMode: { ideal: targetFacing }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
           })
         } catch (e2) {
-          console.warn('getUserMedia 720p falló; intentando perfil del dispositivo:', e2)
+          console.warn('Fallback 1080p falló; usando resolución máxima disponible:', e2)
           try {
             stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: targetFacing } }, audio: true })
           } catch {
