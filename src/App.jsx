@@ -40,7 +40,9 @@ import {
   startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, 
   getInitHeader, captureMasterCanvasSnapshot, getMasterCanvas,
   setVoiceMonitor, syncStudioAudio, getCameraSnapshots,
+  startNativeEngineBroadcast, stopNativeEngineBroadcast,
 } from './utils/masterBroadcastEngine.js';
+import { isNativeEngineEnabled, getNativeEngineConfig, FEATURE_FLAGS } from './config/featureFlags.js';
 import { VOICE_EFFECTS } from './utils/voiceEffectsProcessor.js';
 import { createStreamTransport } from './utils/streamTransport.js';
 import { supabase } from './lib/supabase.js';
@@ -2343,9 +2345,28 @@ function PodcastStudioApp() {
       if (window.api) {
         isStreamStartingRef.current = true;
         setIsStreamStarting(true);
+        let nativeStarted = false;
+
+        // FASE 4: Iniciar emisión directa con codificación por hardware si está habilitado
+        if (isNativeEngineEnabled() && window.api.nativeEngine) {
+          try {
+            const nativeRes = await startNativeEngineBroadcast(activeTargets, getNativeEngineConfig());
+            if (nativeRes?.success) {
+              nativeStarted = true;
+            } else if (!FEATURE_FLAGS.NATIVE_ENGINE_FALLBACK) {
+              throw new Error(nativeRes?.error || 'Error iniciando motor nativo');
+            }
+          } catch (neErr) {
+            console.warn('[handleStream] Fallback automático a pipeline v1.3.1:', neErr);
+          }
+        }
+
         try {
-          const res = await window.api.startStreaming({ destinations: activeTargets });
-          if (res.success) {
+          let res = { success: true };
+          if (!nativeStarted) {
+            res = await window.api.startStreaming({ destinations: activeTargets });
+          }
+          if (res.success || nativeStarted) {
             isStreamStartingRef.current = false;
             isStreamingRef.current = true;
             setIsStreamStarting(false);
@@ -2379,7 +2400,10 @@ function PodcastStudioApp() {
       }
     } else {
       isStreamingRef.current = false;
-      if (window.api) await window.api.stopStreaming();
+      if (window.api) {
+        await stopNativeEngineBroadcast();
+        await window.api.stopStreaming();
+      }
       setIsStreaming(false);
       setActiveLiveDestinations([]);
       if (!isRecordingRef.current) stopBroadcastEngine();

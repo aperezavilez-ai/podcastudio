@@ -2,13 +2,13 @@
 // Controla activación del motor nativo sin tocar código de producción
 
 export const FEATURE_FLAGS = {
-  // Motor de medios nativo (FFmpeg rawvideo input, una sola codificación)
+  // Motor de medios nativo (FFmpeg rawvideo input, una sola codificación por Hardware)
   // false = v1.3.1 (canvas.captureStream + MediaRecorder + FFmpeg re-encode)
-  // true  = v2 (frames raw -> FFmpeg rawvideo -> H.264 directo)
-  USE_NATIVE_ENGINE: false,
+  // true  = v2 (frames raw -> FFmpeg rawvideo -> H.264 directo por hardware)
+  USE_NATIVE_ENGINE: true,
 
   // Logging detallado del motor nativo
-  NATIVE_ENGINE_DEBUG: false,
+  NATIVE_ENGINE_DEBUG: true,
 
   // Fallback automático si el motor nativo falla al arrancar
   NATIVE_ENGINE_FALLBACK: true,

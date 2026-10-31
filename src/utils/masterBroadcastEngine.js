@@ -88,6 +88,60 @@ let logoImage = null;
 let logoVideoElement = null;
 let lastStreamSync = 0;
 let lastReadyProgramCam = 1;
+let isNativeEngineActive = false;
+let nativeAudioProcessor = null;
+
+export function isNativeEngineBroadcasting() {
+  return isNativeEngineActive;
+}
+
+export function ensureNativeAudioTap() {
+  if (!audioContext || !masterLimiterNode) return;
+  if (nativeAudioProcessor) return;
+  try {
+    nativeAudioProcessor = audioContext.createScriptProcessor(4096, 2, 2);
+    nativeAudioProcessor.onaudioprocess = (e) => {
+      if (!isNativeEngineActive || !window.api?.nativeEngine) return;
+      const left = e.inputBuffer.getChannelData(0);
+      const right = e.inputBuffer.getChannelData(1);
+      const len = left.length;
+      const pcm16 = new Int16Array(len * 2);
+      for (let i = 0; i < len; i++) {
+        const sL = Math.max(-1, Math.min(1, left[i]));
+        const sR = Math.max(-1, Math.min(1, right[i]));
+        pcm16[i * 2] = sL < 0 ? sL * 32768 : sL * 32767;
+        pcm16[i * 2 + 1] = sR < 0 ? sR * 32768 : sR * 32767;
+      }
+      window.api.nativeEngine.writeAudio(pcm16.buffer);
+    };
+    masterLimiterNode.connect(nativeAudioProcessor);
+    nativeAudioProcessor.connect(audioContext.destination);
+  } catch (err) {
+    console.warn('[NativeEngine] No se pudo conectar captura de audio PCM:', err);
+  }
+}
+
+export async function startNativeEngineBroadcast(destinations, config) {
+  if (!window.api?.nativeEngine) return { success: false, error: 'API nativa no disponible' };
+  try {
+    const res = await window.api.nativeEngine.start({ destinations, config });
+    if (res.success) {
+      isNativeEngineActive = true;
+      ensureNativeAudioTap();
+    }
+    return res;
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+export async function stopNativeEngineBroadcast() {
+  isNativeEngineActive = false;
+  if (window.api?.nativeEngine) {
+    try { await window.api.nativeEngine.stop(); } catch (e) {}
+  }
+  return { success: true };
+}
 
 function getReadyProgramVideo(camId) {
   const target = videoElements.get(camId);
@@ -976,6 +1030,14 @@ function renderFrame() {
       y += lineHeight;
     }
     ctx.restore();
+  }
+
+  // Emisión nativa v2: enviar fotograma crudo RGBA al motor nativo sin recodificar en WebM
+  if (isNativeEngineActive && window.api?.nativeEngine) {
+    try {
+      const imgData = ctx.getImageData(0, 0, width, height);
+      window.api.nativeEngine.writeFrame(imgData.data.buffer);
+    } catch (e) {}
   }
 }
 
