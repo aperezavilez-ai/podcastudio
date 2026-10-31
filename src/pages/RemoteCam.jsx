@@ -4,12 +4,12 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
-  { label: '1080p · 3.5 Mbps', maxBitrate: 3500000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: '720p · 2 Mbps', maxBitrate: 2000000, scaleResolutionDownBy: 1.5, frameRate: 30 },
-  { label: '540p · 1.2 Mbps', maxBitrate: 1200000, scaleResolutionDownBy: 2, frameRate: 30 },
+  { label: 'Full HD 1080p · 6 Mbps', maxBitrate: 6000000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 720p · 3.5 Mbps', maxBitrate: 3500000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'Fluido 720p · 2 Mbps', maxBitrate: 2000000, scaleResolutionDownBy: 1.25, frameRate: 30 },
 ]
-const RTT_DEGRADE_MS = 450     
-const RTT_HEALTHY_MS = 150     
+const RTT_DEGRADE_MS = 600     
+const RTT_HEALTHY_MS = 200     
 const HEALTHY_CHECKS_TO_RISE = 3
 
 function getCaptureResolutionLabel(settings = {}) {
@@ -30,7 +30,8 @@ function applyVideoSenderParams(sender, tier) {
     e.maxBitrate = tier.maxBitrate
     e.maxFramerate = tier.frameRate
     e.scaleResolutionDownBy = tier.scaleResolutionDownBy
-    params.degradationPreference = 'maintain-framerate'
+    // 'balanced' evita pixelación masiva por movimiento rápido y previene caída brusca de resolución
+    params.degradationPreference = 'balanced'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }
@@ -494,9 +495,11 @@ export default function RemoteCam() {
           if (vTransceiver && 'setCodecPreferences' in vTransceiver && window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities) {
             const caps = RTCRtpReceiver.getCapabilities('video');
             if (caps && caps.codecs) {
-              const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
               const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
-              const preferred = [...vp8, ...h264, ...caps.codecs];
+              const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
+              const others = caps.codecs.filter(c => !h264.includes(c) && !vp8.includes(c));
+              // H.264 primero: ambos dispositivos (S22 Ultra Snapdragon y iPhone 14 Pro Max) cuentan con codificadores de hardware H.264 nativos dedicados
+              const preferred = [...h264, ...vp8, ...others];
               try { vTransceiver.setCodecPreferences(preferred); } catch (e) {}
             }
           }
