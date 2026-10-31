@@ -224,10 +224,10 @@ export class P2PStreamTransport extends BaseStreamTransport {
             if (trackEvent.receiver) {
               try {
                 if ('playoutDelayHint' in trackEvent.receiver) {
-                  trackEvent.receiver.playoutDelayHint = 0.05;
+                  trackEvent.receiver.playoutDelayHint = 0;
                 }
                 if ('jitterBufferTarget' in trackEvent.receiver) {
-                  trackEvent.receiver.jitterBufferTarget = 50; // 50ms buffer mínimo en lugar de acumular 5 segundos
+                  trackEvent.receiver.jitterBufferTarget = 0; // Buffer cero para eliminar retardo de sincronía A/V
                 }
               } catch (e) {}
             }

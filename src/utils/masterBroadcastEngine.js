@@ -168,8 +168,8 @@ function getOffscreenContainer() {
     if (!offscreenVideoContainer && document.body) {
       offscreenVideoContainer = document.createElement('div');
       offscreenVideoContainer.id = 'broadcast-offscreen-videos';
-      // Dimensiones reales y opacidad 1 para que Chromium NUNCA suspenda o reduzca la tasa de cuadros
-      offscreenVideoContainer.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:320px;height:180px;opacity:1;pointer-events:none;z-index:-9999;overflow:hidden;';
+      // Mantener dentro del viewport activo (bottom/right con opacidad mínima) para que Chromium NUNCA suspenda ni desacelere la decodificación de cuadros
+      offscreenVideoContainer.style.cssText = 'position:fixed;bottom:0;right:0;width:8px;height:8px;opacity:0.001;pointer-events:none;z-index:-9999;overflow:hidden;';
       document.body.appendChild(offscreenVideoContainer);
     }
   }
@@ -1197,10 +1197,6 @@ function getOrCreateChannelStrip(channelId, label = '') {
   soloGain.connect(analyser);
   analyser.connect(masterSumGain);
 
-  if (channelId.startsWith('remote_') || (channelId.startsWith('cam_') && channelId !== 'cam_1')) {
-    try { analyser.connect(monitorSumGain); } catch {}
-  }
-
   const strip = {
     id: channelId,
     label: label || channelId,
@@ -1710,6 +1706,18 @@ export function getInitHeader() {
   return cachedInitHeader ? cachedInitHeader.slice(0) : null;
 }
 
+export async function getOrWaitForInitHeader(timeoutMs = 1500) {
+  if (cachedInitHeader) return cachedInitHeader.slice(0);
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    try { mediaRecorder.requestData(); } catch (e) {}
+  }
+  const start = Date.now();
+  while (!cachedInitHeader && (Date.now() - start < timeoutMs)) {
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  return cachedInitHeader ? cachedInitHeader.slice(0) : null;
+}
+
 export function startBroadcastEngine(initialState, onChunk) {
   if (onChunk) addChunkListener(onChunk);
   
@@ -1765,6 +1773,8 @@ export function startBroadcastEngine(initialState, onChunk) {
     };
     // Segmentos cada 250ms para latencia ultrabaja de arranque y respuesta instantánea
     mediaRecorder.start(250);
+    // Solicitar inmediatamente el primer fragmento (cabecera EBML) para alimentar FFmpeg sin retraso
+    try { mediaRecorder.requestData(); } catch (e) {}
   } catch (e) {
     console.error('[MasterRecorder] Error al arrancar MediaRecorder:', e);
   }

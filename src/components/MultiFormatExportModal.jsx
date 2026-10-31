@@ -170,7 +170,7 @@ export default function MultiFormatExportModal({
         })
         setProgress(100)
         if (res.success) {
-          // Guardado directamente en la carpeta del proyecto en disco sin abrir diálogos del navegador
+          setClipNotice({ type: 'success', text: `¡Formato ${preset.label} guardado en tu proyecto con éxito!` })
           setConvertingKey(null)
           return
         }
@@ -284,6 +284,8 @@ export default function MultiFormatExportModal({
     // Solo descargar miniaturas en el navegador; en Electron ya se guardan en disco
     if (!window.api) {
       handleDownloadAllThumbnails()
+    } else {
+      setClipNotice({ type: 'success', text: `¡Pack de formatos para redes exportado con éxito en tu proyecto!` })
     }
 
     setPackProgress(null)

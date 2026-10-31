@@ -4,9 +4,9 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
-  { label: 'Full HD 1080p · 5 Mbps', maxBitrate: 5000000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'Full HD 1080p · 3.5 Mbps', maxBitrate: 3500000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 720p · 2.5 Mbps', maxBitrate: 2500000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'Full HD 1080p · 2.8 Mbps', maxBitrate: 2800000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'Full HD 1080p · 2.0 Mbps', maxBitrate: 2000000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 720p · 1.4 Mbps', maxBitrate: 1400000, scaleResolutionDownBy: 1, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 600     
 const RTT_HEALTHY_MS = 200     

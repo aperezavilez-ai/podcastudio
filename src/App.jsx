@@ -38,7 +38,7 @@ import { useBackgroundMusic } from './hooks/useBackgroundMusic.js';
 import { useSoundEffect } from './hooks/useSoundEffect.js';
 import { 
   startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, 
-  getInitHeader, captureMasterCanvasSnapshot, getMasterCanvas,
+  getInitHeader, getOrWaitForInitHeader, captureMasterCanvasSnapshot, getMasterCanvas,
   setVoiceMonitor, syncStudioAudio, getCameraSnapshots,
   startNativeEngineBroadcast, stopNativeEngineBroadcast,
 } from './utils/masterBroadcastEngine.js';
@@ -1974,8 +1974,8 @@ function PodcastStudioApp() {
         pc.ontrack = (event) => {
           if (event.receiver) {
             try {
-              if ('playoutDelayHint' in event.receiver) event.receiver.playoutDelayHint = 0.05;
-              if ('jitterBufferTarget' in event.receiver) event.receiver.jitterBufferTarget = 50;
+              if ('playoutDelayHint' in event.receiver) event.receiver.playoutDelayHint = 0;
+              if ('jitterBufferTarget' in event.receiver) event.receiver.jitterBufferTarget = 0;
             } catch (e) {}
           }
           if (event.track) {
@@ -2073,7 +2073,7 @@ function PodcastStudioApp() {
     if ((isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk) {
       window.api.sendStreamChunk(buffer);
     }
-    if (isRecordingRef.current && !isRecordingPausedRef.current) {
+    if ((isRecordingRef.current || recordingStartPendingRef.current) && !isRecordingPausedRef.current) {
       // Electron escribe el archivo incrementalmente en FFmpeg; no retener el programa
       // completo en RAM, porque una grabación larga terminaría congelando el compositor.
       if (!window.api) recordingChunksRef.current.push(buffer);
@@ -2124,7 +2124,8 @@ function PodcastStudioApp() {
       }, handleMasterChunk);
 
       if (window.api) {
-        const recordingHeader = getInitHeader();
+        // Asegurar que la cabecera EBML/WebM esté capturada antes de inicializar FFmpeg
+        const recordingHeader = await getOrWaitForInitHeader(1000);
         let res;
         try {
           res = await window.api.startRecording({
@@ -6065,6 +6066,19 @@ function PodcastStudioApp() {
         recording={recordedVideoData}
         highlights={highlights}
         onDownloadMp4={async (rec) => {
+          if (window.api?.saveToDownloads && rec?.filePath) {
+            const dlRes = await window.api.saveToDownloads({
+              sourcePath: rec.filePath,
+              filename: `${rec.name || 'PodcaStudio_Master'}.mp4`,
+            });
+            if (dlRes?.success) {
+              if (window.api.openRecordingsFolder) {
+                window.api.openRecordingsFolder(rec.projectName || topic || 'Proyecto_General');
+              }
+              alert(`¡Video Master MP4 descargado con éxito en tu carpeta de Descargas!\n${dlRes.path}`);
+              return;
+            }
+          }
           if (window.api?.openRecordingsFolder) {
             window.api.openRecordingsFolder(rec?.projectName || topic || 'Proyecto_General');
             return;
