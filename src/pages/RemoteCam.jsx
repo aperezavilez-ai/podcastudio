@@ -4,9 +4,9 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
+  { label: 'Full HD 1080p Broadcast · 8 Mbps', maxBitrate: 8000000, scaleResolutionDownBy: 1, frameRate: 30 },
   { label: 'Full HD 1080p · 6 Mbps', maxBitrate: 6000000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 720p · 3.5 Mbps', maxBitrate: 3500000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'Fluido 720p · 2 Mbps', maxBitrate: 2000000, scaleResolutionDownBy: 1.25, frameRate: 30 },
+  { label: 'HD 720p Pro · 4 Mbps', maxBitrate: 4000000, scaleResolutionDownBy: 1, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 600     
 const RTT_HEALTHY_MS = 200     
@@ -28,10 +28,11 @@ function applyVideoSenderParams(sender, tier) {
     const e = params.encodings[0]
     
     e.maxBitrate = tier.maxBitrate
-    e.maxFramerate = tier.frameRate
-    e.scaleResolutionDownBy = tier.scaleResolutionDownBy
-    // 'balanced' evita pixelación masiva por movimiento rápido y previene caída brusca de resolución
-    params.degradationPreference = 'balanced'
+    e.maxFramerate = tier.frameRate || 30
+    e.scaleResolutionDownBy = 1.0 // NUNCA degradar la escala del sensor (conservar 1080p nativo)
+    // 'maintain-resolution' preserva nitidez cristalina en S22 Ultra y iPhone 14 Pro Max
+    // evitando desfragmentación, macrobloques o pixelación al mover la cámara
+    params.degradationPreference = 'maintain-resolution'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }
@@ -151,21 +152,22 @@ export default function RemoteCam() {
         const dtSec = (now - lastBytesRef.current.ts) / 1000
         lastBytesRef.current = { bytes, ts: now }
 
-        const mustDegrade = rttMs > RTT_DEGRADE_MS || limitation === 'bandwidth' || limitation === 'cpu'
+        // Solo degradar si la latencia real (RTT) supera 600ms continuos, evitando caídas falsas por handshake
+        const mustDegrade = rttMs > RTT_DEGRADE_MS
         if (mustDegrade) {
           poorChecksRef.current += 1
           healthyChecksRef.current = 0
         } else {
           poorChecksRef.current = 0
         }
-        if (poorChecksRef.current >= 2 && tierIndexRef.current < QUALITY_TIERS.length - 1) {
+        if (poorChecksRef.current >= 3 && tierIndexRef.current < QUALITY_TIERS.length - 1) {
           tierIndexRef.current += 1
           poorChecksRef.current = 0
           applyTier(tierIndexRef.current)
           return
         }
 
-        const isHealthy = rttMs > 0 && rttMs < RTT_HEALTHY_MS && (fps === 0 || fps >= 25) && limitation === ''
+        const isHealthy = rttMs > 0 && rttMs < RTT_HEALTHY_MS && (fps === 0 || fps >= 25)
         if (isHealthy) {
           healthyChecksRef.current += 1
           if (healthyChecksRef.current >= HEALTHY_CHECKS_TO_RISE && tierIndexRef.current > 0) {
@@ -418,7 +420,7 @@ export default function RemoteCam() {
 
     localStream.getTracks().forEach((track) => {
       try {
-        if (track.kind === 'video') track.contentHint = 'detail'
+        if (track.kind === 'video') track.contentHint = 'motion' // 'motion' garantiza transmision en tiempo real sin búfer de diapositivas
         if (track.kind === 'audio') track.contentHint = 'speech'
       } catch {}
       const sender = pc.addTrack(track, localStream)
@@ -506,11 +508,15 @@ export default function RemoteCam() {
         } catch (e) {}
 
         const offer = await pc.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false, ...(isRestart ? { iceRestart: true } : {}) })
-        await pc.setLocalDescription(offer)
+        let sdpText = offer.sdp
+        if (sdpText && sdpText.includes('m=video')) {
+          sdpText = sdpText.replace(/(a=fmtp:\d+ .*)/g, '$1;x-google-min-bitrate=3000;x-google-start-bitrate=6000;x-google-max-bitrate=8000')
+        }
+        await pc.setLocalDescription({ type: offer.type, sdp: sdpText })
 
         await channel.send({
           type: 'broadcast', event: 'signal',
-          payload: { type: 'offer', sdp: { type: offer.type, sdp: offer.sdp }, connectionId, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone', slot, guestName: guestName.trim() || undefined, sessionRole },
+          payload: { type: 'offer', sdp: { type: offer.type, sdp: sdpText }, connectionId, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone', slot, guestName: guestName.trim() || undefined, sessionRole },
         })
         offerSentRef.current = true
       } catch (err) {
@@ -629,7 +635,7 @@ export default function RemoteCam() {
         }
       }
 
-      if (stream) stream.getVideoTracks().forEach(t => { try { t.contentHint = 'detail' } catch {} })
+      if (stream) stream.getVideoTracks().forEach(t => { try { t.contentHint = 'motion' } catch {} })
 
       streamRef.current = stream
 

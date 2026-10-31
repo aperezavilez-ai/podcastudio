@@ -91,12 +91,15 @@ let lastReadyProgramCam = 1;
 
 function getReadyProgramVideo(camId) {
   const target = videoElements.get(camId);
-  if (target && target.readyState >= 2) {
+  if (target && target.readyState >= 2 && target.videoWidth > 0) {
     lastReadyProgramCam = camId;
     return target;
   }
   const previous = videoElements.get(lastReadyProgramCam);
-  return previous && previous.readyState >= 2 ? previous : target;
+  if (previous && previous.readyState >= 2 && previous.videoWidth > 0) {
+    return previous;
+  }
+  return target || previous;
 }
 
 let offscreenVideoContainer = null;
@@ -107,7 +110,8 @@ function getOffscreenContainer() {
     if (!offscreenVideoContainer && document.body) {
       offscreenVideoContainer = document.createElement('div');
       offscreenVideoContainer.id = 'broadcast-offscreen-videos';
-      offscreenVideoContainer.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:2px;height:2px;opacity:0.001;pointer-events:none;z-index:-9999;overflow:hidden;';
+      // Dimensiones reales y opacidad 1 para que Chromium NUNCA suspenda o reduzca la tasa de cuadros
+      offscreenVideoContainer.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:320px;height:180px;opacity:1;pointer-events:none;z-index:-9999;overflow:hidden;';
       document.body.appendChild(offscreenVideoContainer);
     }
   }

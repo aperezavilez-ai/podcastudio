@@ -299,6 +299,10 @@ function PodcastStudioApp() {
   const camSlotsRef = useRef(camSlots);
   useEffect(() => { camSlotsRef.current = camSlots; }, [camSlots]);
   const [activeCam, setActiveCam] = useState(1);
+  const prevActiveCamRef = useRef(1);
+  useEffect(() => {
+    prevActiveCamRef.current = activeCam;
+  }, [activeCam]);
   const [layoutMode, setLayoutMode] = useState('1'); 
   const [pipCam, setPipCam] = useState(2); 
   const [camThumbnails, setCamThumbnails] = useState({}); 
@@ -2897,9 +2901,13 @@ function PodcastStudioApp() {
       if (pipCam === camId) {
         const altPip = camSlots.find(id => id !== camId) || (camId === 1 ? 2 : 1);
         setPipCam(altPip);
+        updateBroadcastState({ activeCam: camId, pipCam: altPip });
+      } else {
+        updateBroadcastState({ activeCam: camId });
       }
     } else {
       setLayoutMode('1');
+      updateBroadcastState({ activeCam: camId, layoutMode: '1' });
     }
     if (!isElectronMaster) {
       dispatchRemoteCommand('SET_ACTIVE_CAM', { camId });
@@ -3251,12 +3259,16 @@ function PodcastStudioApp() {
 
           if (layoutMode === '1') {
             if (id === effectiveActiveCam) {
-              tileClass += " inset-0 w-full h-full z-10 pointer-events-auto opacity-100";
+              tileClass += " inset-0 w-full h-full z-20 pointer-events-auto opacity-100";
+            } else if (id === prevActiveCamRef.current) {
+              // La toma anterior se conserva al 100% en z-10 debajo para CERO parche negro durante la conmutación
+              tileClass += " inset-0 w-full h-full z-10 pointer-events-none opacity-100";
             } else if (id === pvwCam && tBarPosition > 0 && !overrideCam) {
-              tileClass += " inset-0 w-full h-full z-20 pointer-events-auto";
+              tileClass += " inset-0 w-full h-full z-30 pointer-events-auto";
               tileStyle.opacity = tBarPosition;
             } else {
-              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              // Mantener vivas en z-0 con opacity-100 para que Chromium NUNCA suspenda el decodificador de video
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
             }
           } else if (layoutMode === 'pip') {
             if (id === effectiveActiveCam) {
@@ -3264,7 +3276,7 @@ function PodcastStudioApp() {
             } else if (id === effectivePipCam) {
               tileClass += " top-[3.7%] right-[2.1%] w-[24%] aspect-video border-2 border-orange-500 rounded-lg z-20 overflow-hidden shadow-2xl pointer-events-auto opacity-100 bg-black";
             } else {
-              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
             }
           } else if (layoutMode === '2') {
             if (idx === 0) {
@@ -3272,7 +3284,7 @@ function PodcastStudioApp() {
             } else if (idx === 1) {
               tileClass += " right-0 top-0 w-[calc(50%-3px)] h-full z-10 pointer-events-auto opacity-100";
             } else {
-              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
             }
           } else if (layoutMode === 'two-shot') {
             if (idx === 0) {
@@ -3280,7 +3292,7 @@ function PodcastStudioApp() {
             } else if (idx === 1) {
               tileClass += " right-[2%] top-[8%] w-[47%] h-[84%] rounded-xl overflow-hidden shadow-2xl border border-orange-500/40 z-10 pointer-events-auto opacity-100";
             } else {
-              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
             }
           } else if (layoutMode === '3') {
             if (idx === 0) {
@@ -3290,7 +3302,7 @@ function PodcastStudioApp() {
             } else if (idx === 2) {
               tileClass += " right-0 bottom-0 w-[calc(50%-3px)] h-[calc(50%-3px)] z-10 pointer-events-auto opacity-100";
             } else {
-              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
             }
           } else if (layoutMode === '4') {
             if (idx === 0) {
@@ -3302,7 +3314,7 @@ function PodcastStudioApp() {
             } else if (idx === 3) {
               tileClass += " right-0 bottom-0 w-[calc(50%-3px)] h-[calc(50%-3px)] z-10 pointer-events-auto opacity-100";
             } else {
-              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
             }
           } else if (layoutMode === '6') {
             if (idx < 6) {
@@ -3316,7 +3328,7 @@ function PodcastStudioApp() {
               };
               tileClass += " z-10 pointer-events-auto opacity-100";
             } else {
-              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
             }
           } else if (layoutMode === '6-lead') {
             if (idx === 0) {
@@ -3333,7 +3345,7 @@ function PodcastStudioApp() {
               };
               tileClass += " z-10 pointer-events-auto opacity-100";
             } else {
-              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
             }
           } else if (layoutMode === '8') {
             if (idx < 8) {
@@ -3347,7 +3359,7 @@ function PodcastStudioApp() {
               };
               tileClass += " z-10 pointer-events-auto opacity-100";
             } else {
-              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
             }
           } else if (layoutMode === '10') {
             if (idx < 10) {
@@ -3361,7 +3373,7 @@ function PodcastStudioApp() {
               };
               tileClass += " z-10 pointer-events-auto opacity-100";
             } else {
-              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
             }
           } else if (layoutMode === 'speaker') {
             if (id === effectiveActiveCam) {
@@ -3379,7 +3391,7 @@ function PodcastStudioApp() {
                 };
                 tileClass += " z-15 pointer-events-auto opacity-100 border border-[#333]";
               } else {
-                tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+                tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
               }
             }
           } else if (layoutMode === 'gallery') {
@@ -3401,7 +3413,7 @@ function PodcastStudioApp() {
             if (id === effectiveActiveCam) {
               tileClass += " inset-0 w-full h-full z-10 pointer-events-auto opacity-100";
             } else {
-              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-0";
+              tileClass += " inset-0 w-full h-full z-0 pointer-events-none opacity-100";
             }
           }
 
