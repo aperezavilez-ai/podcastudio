@@ -134,31 +134,49 @@ public class SplashForm : Form
                 psi.UseShellExecute = true;
                 psi.WindowStyle = ProcessWindowStyle.Normal;
 
+                string signalFile = Path.Combine(Path.GetTempPath(), "podcaststudio_ready.signal");
+                try { if (File.Exists(signalFile)) File.Delete(signalFile); } catch {}
+
                 Process electronProc = Process.Start(psi);
 
                 UpdateStatus("Conectando interfaz gr\u00E1fica...");
 
-                // Deteccion ultrarrapida de la ventana de PodcastStudio (<1 segundo)
+                // Detección precisa de la ventana de PodcastStudio sincronizada con señal de Electron
                 int waitedMs = 0;
-                while (waitedMs < 10000)
+                while (waitedMs < 15000)
                 {
                     Thread.Sleep(50);
                     waitedMs += 50;
 
+                    // 1. Detección inmediata por señal directa emitida por Electron al terminar el renderizado
+                    if (File.Exists(signalFile))
+                    {
+                        try { File.Delete(signalFile); } catch {}
+                        Thread.Sleep(80);
+                        try
+                        {
+                            IntPtr winHwnd = FindWindow(null, "PodcastStudio");
+                            if (winHwnd != IntPtr.Zero) SetForegroundWindow(winHwnd);
+                        }
+                        catch {}
+                        break;
+                    }
+
                     IntPtr hWnd = IntPtr.Zero;
 
-                    // 1. Buscar en todos los procesos electron si alguno ya tiene ventana visible
+                    // 2. Buscar en procesos electron si alguno ya tiene ventana visible
                     try
                     {
                         Process[] procs = Process.GetProcessesByName("electron");
-                        if (waitedMs > 2000 && procs.Length == 0)
+                        if (waitedMs > 3000 && procs.Length == 0)
                         {
-                            // Ningun proceso de electron sigue activo
+                            // Ningún proceso de electron sigue activo
                             break;
                         }
 
                         foreach (Process p in procs)
                         {
+                            try { p.Refresh(); } catch {}
                             if (p.MainWindowHandle != IntPtr.Zero && IsWindowVisible(p.MainWindowHandle))
                             {
                                 hWnd = p.MainWindowHandle;
@@ -169,7 +187,7 @@ public class SplashForm : Form
                     }
                     catch {}
 
-                    // 2. Buscar por titulo en el administrador de ventanas de Windows
+                    // 3. Buscar por titulo en el administrador de ventanas de Windows
                     if (hWnd == IntPtr.Zero)
                     {
                         try

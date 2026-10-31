@@ -18,6 +18,8 @@ const https = require('https');
 const selfsigned = require('selfsigned');
 const { WebSocketServer } = require('ws');
 const os = require('os');
+const readySignalPath = path.join(os.tmpdir(), 'podcaststudio_ready.signal');
+try { if (fs.existsSync(readySignalPath)) fs.unlinkSync(readySignalPath); } catch (e) {}
 const { setupNativeEngineIPC } = require('./media-engine/bridge');
 
 try {
@@ -151,9 +153,6 @@ function createWindow() {
 
   mainWindow.setMenu(null);
   if (mainWindow.removeMenu) mainWindow.removeMenu();
-  // Abrir ocupando el área de trabajo completa evita que el renderer quede
-  // limitado al ancho inicial y deje una banda negra dentro de la ventana.
-  mainWindow.maximize();
 
   if (iconPath && fs.existsSync(iconPath)) {
     try { mainWindow.setIcon(iconPath); } catch (e) {}
@@ -162,9 +161,13 @@ function createWindow() {
   const showWindowSafely = () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (!mainWindow.isVisible()) {
+        mainWindow.maximize();
         mainWindow.show();
       }
       mainWindow.focus();
+      try {
+        fs.writeFileSync(readySignalPath, '1', 'utf8');
+      } catch (e) {}
     }
   };
 
@@ -172,8 +175,8 @@ function createWindow() {
   mainWindow.once('ready-to-show', showWindowSafely);
   ipcMain.once('app-ui-ready', showWindowSafely);
 
-  // Failsafe rápido de seguridad (1.5s máximo) por si algún evento se demora
-  setTimeout(showWindowSafely, 1500);
+  // Failsafe de seguridad (3s máximo) por si algún evento se demora
+  setTimeout(showWindowSafely, 3000);
 
   if (process.env.NODE_ENV !== 'development') {
     mainWindow.webContents.on('devtools-opened', () => {
@@ -232,6 +235,22 @@ let currentTallyState = {
 };
 let currentPrompterScript = 'Bienvenido a PodcastStudio Broadcast Pro.\n\nHoy conversaremos sobre los últimos avances en producción virtual, inteligencia artificial y realización multicámara.\n\nMantén la mirada fija en este recuadro para conservar un contacto visual 100% natural con tu audiencia.';
 let httpWsServer = null;
+
+function notifyClientCounts() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.webContents.send('feed-clients-change', {
+        feedClients: programFeedClients.size,
+        remoteClients: remoteControlClients.size
+      });
+    } catch (e) {}
+  }
+}
+
+ipcMain.handle('get-feed-client-count', () => ({
+  feedClients: programFeedClients.size,
+  remoteClients: remoteControlClients.size
+}));
 
 function startMediaServer() {
   const appServer = express();
@@ -322,6 +341,7 @@ function startMediaServer() {
           ws.isRemoteControl = true;
           remoteControlClients.add(ws);
           programFeedClients.add(ws);
+          notifyClientCounts();
           console.log(`[RemoteControl] iPad / Tablet conectada a consola de estudio (${ws.clientId})`);
           if (latestStudioState && ws.readyState === 1) {
             ws.send(JSON.stringify({ type: 'studio-state', state: latestStudioState }));
@@ -350,6 +370,7 @@ function startMediaServer() {
         if (data.type === 'identify' && data.role === 'program-feed') {
           ws.isProgramFeed = true;
           programFeedClients.add(ws);
+          notifyClientCounts();
           console.log(`[ProgramFeed] Cliente OBS / vMix / Pantalla conectado a salida PGM (${ws.clientId})`);
           if (latestStudioState && ws.readyState === 1) {
             ws.send(JSON.stringify({ type: 'studio-state', state: latestStudioState }));
@@ -420,6 +441,7 @@ function startMediaServer() {
       tallyClients.delete(ws);
       programFeedClients.delete(ws);
       mobileClients.delete(ws.clientId);
+      notifyClientCounts();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('remote-disconnected', ws.clientId);
       }
@@ -431,6 +453,7 @@ function startMediaServer() {
       tallyClients.delete(ws);
       programFeedClients.delete(ws);
       mobileClients.delete(ws.clientId);
+      notifyClientCounts();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('remote-disconnected', ws.clientId);
       }

@@ -1235,6 +1235,39 @@ function PodcastStudioApp() {
     }
   }, []);
 
+  // 1. Notificar a Electron que el estudio está completamente montado y listo
+  useEffect(() => {
+    if (window.api?.signalReady) {
+      window.api.signalReady();
+    }
+  }, []);
+
+  // 2. Monitorización de clientes remotos LAN y Cloud para no consumir CPU en vacío
+  const feedClientsCountRef = useRef(0);
+  const remoteClientsCountRef = useRef(0);
+  const hasCloudClientsRef = useRef(false);
+
+  useEffect(() => {
+    if (!isElectronMaster) return;
+    if (window.api?.getFeedClientCount) {
+      window.api.getFeedClientCount().then(counts => {
+        if (counts) {
+          feedClientsCountRef.current = counts.feedClients || 0;
+          remoteClientsCountRef.current = counts.remoteClients || 0;
+        }
+      }).catch(() => {});
+    }
+    if (window.api?.onFeedClientsChange) {
+      const unsub = window.api.onFeedClientsChange(counts => {
+        if (counts) {
+          feedClientsCountRef.current = counts.feedClients || 0;
+          remoteClientsCountRef.current = counts.remoteClients || 0;
+        }
+      });
+      return unsub;
+    }
+  }, [isElectronMaster]);
+
   // Emisión continua de fotogramas PGM al servidor HTTP/WS para clientes OBS/vMix e iPad en LAN y Cloud (Ultra Baja Latencia)
   useEffect(() => {
     if (!isElectronMaster) return;
@@ -1252,21 +1285,32 @@ function PodcastStudioApp() {
     const streamLoop = () => {
       if (!isBroadcasting) return;
       const now = Date.now();
+      const hasLanFeed = feedClientsCountRef.current > 0;
+      const hasRemoteCtrl = remoteClientsCountRef.current > 0;
+      const hasCloudFeed = hasCloudClientsRef.current;
+
+      // Si no hay ningún cliente LAN ni Cloud esperando fotogramas, NO procesar canvas.
+      // Esto libera el 100% del hilo principal y evita cualquier congelamiento de la UI.
+      if (!hasLanFeed && !hasRemoteCtrl && !hasCloudFeed) {
+        timer = setTimeout(streamLoop, 1000);
+        return;
+      }
+
       const c = getMasterCanvas();
       if (c && c.width > 0 && c.height > 0) {
         try {
           if (previewCtx) {
             previewCtx.drawImage(c, 0, 0, 640, 360);
           }
-          const lowLatencyDataUrl = previewCanvas.toDataURL('image/jpeg', 0.55);
+          const lowLatencyDataUrl = previewCanvas.toDataURL('image/jpeg', 0.50);
 
-          // 1. Enviar a clientes WebSocket LAN (iPad / OBS en red local)
-          if (window.api?.sendProgramFeedFrame) {
+          // 1. Enviar a clientes WebSocket LAN (iPad / OBS en red local) si están conectados
+          if (hasLanFeed && window.api?.sendProgramFeedFrame) {
             window.api.sendProgramFeedFrame(lowLatencyDataUrl);
           }
 
-          // 2. Enviar miniaturas de cámaras para Multiviewer en iPad a ritmo descansado (1Hz)
-          if (window.api?.sendCamThumbnails && (now - lastThumbEmit > 1000)) {
+          // 2. Enviar miniaturas de cámaras para Multiviewer en iPad sólo si hay control remoto activo (cada 2.5s)
+          if (hasRemoteCtrl && window.api?.sendCamThumbnails && (now - lastThumbEmit > 2500)) {
             lastThumbEmit = now;
             const thumbs = getCameraSnapshots();
             if (thumbs && Object.keys(thumbs).length > 0) {
@@ -1274,8 +1318,8 @@ function PodcastStudioApp() {
             }
           }
 
-          // 3. Emitir snapshot ultraliviano cada 200ms por Supabase para iPads remotos vía Cloud
-          if (controlChannelRef.current && (now - lastCloudEmit > 200)) {
+          // 3. Emitir snapshot ultraliviano cada 350ms por Supabase para iPads remotos vía Cloud
+          if (hasCloudFeed && controlChannelRef.current && (now - lastCloudEmit > 350)) {
             lastCloudEmit = now;
             controlChannelRef.current.send({
               type: 'broadcast',
@@ -1285,7 +1329,7 @@ function PodcastStudioApp() {
           }
         } catch(e) {}
       }
-      timer = setTimeout(streamLoop, 100);
+      timer = setTimeout(streamLoop, 150);
     };
 
     streamLoop();
@@ -1293,7 +1337,7 @@ function PodcastStudioApp() {
       isBroadcasting = false;
       if (timer) clearTimeout(timer);
     };
-  }, []);
+  }, [isElectronMaster]);
 
   // Guardar calibración de cámara (zoom, pan, color, LUT, audio)
   const handleSaveSlotProfile = (slotIndex, profile) => {
@@ -3230,6 +3274,7 @@ function PodcastStudioApp() {
     controlChannelRef.current = channel;
 
     channel.on('broadcast', { event: 'studio_command' }, (event) => {
+      hasCloudClientsRef.current = true;
       const payload = event?.payload;
       if (payload && isElectronMaster) handleRemoteStudioCommand(payload);
     });
