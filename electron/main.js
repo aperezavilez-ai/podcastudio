@@ -18,6 +18,13 @@ const https = require('https');
 const selfsigned = require('selfsigned');
 const { WebSocketServer } = require('ws');
 const os = require('os');
+const { setupNativeEngineIPC } = require('./media-engine/bridge');
+
+try {
+  setupNativeEngineIPC();
+} catch (e) {
+  console.warn('[Native Engine IPC] Init warning:', e.message);
+}
 
 function writeChunkWithBackpressure(writable, chunk) {
   return new Promise((resolve, reject) => {

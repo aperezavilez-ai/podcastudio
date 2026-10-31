@@ -80,5 +80,14 @@ contextBridge.exposeInMainWorld('api', {
   getProgramFeedUrl: () => ipcRenderer.invoke('get-program-feed-url'),
   getProgramStatus: () => ipcRenderer.invoke('get-program-status'),
   sendProgramFeedFrame: (frameData) => ipcRenderer.send('program-feed-frame', frameData),
-  sendCamThumbnails: (thumbnails) => ipcRenderer.send('cam-thumbnails', thumbnails)
+  sendCamThumbnails: (thumbnails) => ipcRenderer.send('cam-thumbnails', thumbnails),
+
+  // Motor de Medios Nativo v2
+  nativeEngine: {
+    start: (opts) => ipcRenderer.invoke('native-engine:start', opts),
+    writeFrame: (buffer) => ipcRenderer.invoke('native-engine:write-frame', buffer),
+    writeAudio: (buffer) => ipcRenderer.invoke('native-engine:write-audio', buffer),
+    stop: () => ipcRenderer.invoke('native-engine:stop'),
+    getStatus: () => ipcRenderer.invoke('native-engine:status'),
+  }
 });
