@@ -811,7 +811,10 @@ function renderFrame() {
       else if (total <= 4) { cols = 2; rows = 2; }
       else if (total <= 6) { cols = 3; rows = 2; }
       else if (total <= 8) { cols = 4; rows = 2; }
-      else { cols = 5; rows = 2; }
+      else if (total <= 9) { cols = 3; rows = 3; }
+      else if (total <= 12) { cols = 4; rows = 3; }
+      else if (total <= 16) { cols = 4; rows = 4; }
+      else { cols = Math.ceil(Math.sqrt(total)); rows = Math.ceil(total / cols); }
 
       const cellW = (width - gap * (cols - 1)) / cols;
       const cellH = (height - gap * (rows - 1)) / rows;
