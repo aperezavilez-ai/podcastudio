@@ -1829,7 +1829,7 @@ function PodcastStudioApp() {
     if (isElectronMaster) {
       try {
         cloudTransport = createStreamTransport('p2p');
-        Array.from({ length: 12 }, (_, i) => i).forEach(slotIdx => {
+        const setupSlot = (slotIdx) => {
           const roomCode = `studio_cam_${slotIdx + 1}`;
           cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
             console.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
@@ -1856,7 +1856,18 @@ function PodcastStudioApp() {
             setMobileStatus('');
           });
           cloudTransport.connectSlot(slotIdx, roomCode);
-        });
+        };
+
+        // Conectar inicialmente las ranuras activas (CAM 1 a 4) de forma inmediata
+        const initialSlots = camSlotsRef.current?.length ? camSlotsRef.current.map(c => c - 1) : [0, 1, 2, 3];
+        initialSlots.forEach(slotIdx => setupSlot(slotIdx));
+
+        // Conectar ranuras superiores en segundo plano diferido sin saturar el arranque
+        const deferredTimer = setTimeout(() => {
+          Array.from({ length: 12 }, (_, i) => i)
+            .filter(slotIdx => !initialSlots.includes(slotIdx))
+            .forEach(slotIdx => setupSlot(slotIdx));
+        }, 3000);
       } catch (e) {
         console.warn('Transporte cloud:', e);
       }

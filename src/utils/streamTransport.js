@@ -220,15 +220,15 @@ export class P2PStreamTransport extends BaseStreamTransport {
             const track = trackEvent.track
             if (!track) return
 
-            // Buffer de jitter estable (60 ms). Cero genera pixelado, barrido y desfase en redes reales.
-            // Un valor pequeño absorbe pérdida de paquetes y jitter sin añadir latencia perceptible.
+            // Buffer de jitter estable (50 ms). En Chromium playoutDelayHint es en segundos (0.05) y jitterBufferTarget en milisegundos (50).
+            // Un valor adecuado absorbe fluctuaciones de red móvil sin añadir retardo perceptible.
             if (trackEvent.receiver) {
               try {
                 if ('playoutDelayHint' in trackEvent.receiver) {
-                  trackEvent.receiver.playoutDelayHint = 0.06;
+                  trackEvent.receiver.playoutDelayHint = 0.05;
                 }
                 if ('jitterBufferTarget' in trackEvent.receiver) {
-                  trackEvent.receiver.jitterBufferTarget = 0.06;
+                  trackEvent.receiver.jitterBufferTarget = 50;
                 }
               } catch (e) {}
             }

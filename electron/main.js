@@ -211,6 +211,11 @@ function createWindow() {
   });
   session.defaultSession.setDevicePermissionHandler(() => true);
 
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    app.quit();
+  });
+
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://localhost:5173');
   } else {
@@ -1265,7 +1270,12 @@ function startMediaServer() {
 
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
-      console.warn('[MediaServer] Puerto 3000 ocupado por Docker/WSL u otra instancia. Servidor local seguro omitido.');
+      console.warn('[MediaServer] Puerto 3000 ocupado por Docker/WSL u otra instancia. Intentando puerto alternativo 3002...');
+      try {
+        server.listen(3002, '0.0.0.0', () => {
+          console.log('[MediaServer] Servidor HTTPS activo en puerto 3002 (fallback)');
+        });
+      } catch (e) {}
     } else {
       console.warn('[MediaServer] Error:', err.message);
     }
@@ -1301,10 +1311,30 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
       mainWindow.focus();
+    } else {
+      createWindow();
     }
+  });
+
+  app.on('window-all-closed', () => {
+    app.quit();
+  });
+
+  app.on('before-quit', () => {
+    try {
+      if (ffmpegRecordProcess) ffmpegRecordProcess.kill('SIGKILL');
+    } catch (e) {}
+    try {
+      if (ffmpegStreamProcess) ffmpegStreamProcess.kill('SIGKILL');
+    } catch (e) {}
+    try {
+      if (httpWsServer) httpWsServer.close();
+      if (wss) wss.close();
+    } catch (e) {}
   });
   app.whenReady().then(() => {
     try {

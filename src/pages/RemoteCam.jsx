@@ -9,10 +9,9 @@ const QUALITY_TIERS = [
   { label: 'HD 720p · 1.2 Mbps', maxBitrate: 1200000, scaleResolutionDownBy: 1, frameRate: 30 },
   { label: 'HD 540p · 800 kbps', maxBitrate: 800000, scaleResolutionDownBy: 1.5, frameRate: 30 },
 ]
-const RTT_DEGRADE_MS = 350
-const RTT_HEALTHY_MS = 180
-const HEALTHY_CHECKS_TO_RISE = 4
-const PACKET_LOSS_DEGRADE = 0.05
+const RTT_DEGRADE_MS = 500
+const RTT_HEALTHY_MS = 220
+const HEALTHY_CHECKS_TO_RISE = 3
 
 function getCaptureResolutionLabel(settings = {}) {
   const width = Number(settings.width) || 0
@@ -160,24 +159,21 @@ export default function RemoteCam() {
         const dtSec = (now - lastBytesRef.current.ts) / 1000
         lastBytesRef.current = { bytes, ts: now }
 
-        const lossRate = packetsSent > 0 ? packetsLost / packetsSent : 0
-        const bandwidthLimited = limitation === 'bandwidth' || limitation === 'cpu'
-        const mustDegrade = rttMs > RTT_DEGRADE_MS || lossRate > PACKET_LOSS_DEGRADE || bandwidthLimited
-
+        const mustDegrade = rttMs > RTT_DEGRADE_MS || (limitation === 'bandwidth' && rttMs > 300)
         if (mustDegrade) {
           poorChecksRef.current += 1
           healthyChecksRef.current = 0
         } else {
           poorChecksRef.current = 0
         }
-        if (poorChecksRef.current >= 2 && tierIndexRef.current < QUALITY_TIERS.length - 1) {
+        if (poorChecksRef.current >= 3 && tierIndexRef.current < QUALITY_TIERS.length - 1) {
           tierIndexRef.current += 1
           poorChecksRef.current = 0
           applyTier(tierIndexRef.current)
           return
         }
 
-        const isHealthy = rttMs > 0 && rttMs < RTT_HEALTHY_MS && lossRate < 0.02 && !bandwidthLimited && (fps === 0 || fps >= 25)
+        const isHealthy = rttMs > 0 && rttMs < RTT_HEALTHY_MS && limitation !== 'bandwidth' && (fps === 0 || fps >= 25)
         if (isHealthy) {
           healthyChecksRef.current += 1
           if (healthyChecksRef.current >= HEALTHY_CHECKS_TO_RISE && tierIndexRef.current > 0) {

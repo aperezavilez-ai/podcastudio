@@ -85,23 +85,23 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - src/main.jsx
 
 ## Tarea activa
-- Compilación, verificación integral y despliegue de versión v1.3.2.
+- Optimización de arranque, resolución de video negro en cámara remota y sincronización de ciclo de vida.
 
 ## Bloqueos / bugs conocidos
 - Ninguno registrado
 
 ## Decisiones
-- v1.3.2 estabiliza arranque síncrono (eliminación de Suspense/pantalla negra), modal de cámaras remotas (fix copiedSlotNumber) y calidad de streaming/grabación nativa con buffer adaptativo.
+- Se mantiene el motor en base Chromium/Electron: Tauri usa WebView2 (mismo motor Chromium) pero carece de Node.js nativo, lo que obligaría a reescribir todo el backend FFmpeg/WebRTC en Rust sin aportar ventajas de renderizado.
+- Corrección de `jitterBufferTarget` (50ms en milisegundos) y `playoutDelayHint` (0.05s) en WebRTC: restaura decodificación de cuadros en cámaras remotas evitando pantalla negra.
+- Limpieza de procesos en `electron/main.js`: `mainWindow.on('closed')` y `app.on('window-all-closed')` garantizan que no queden procesos zombie en segundo plano bloqueando arranques posteriores.
 
 ## Cambios recientes
-- RELEASE_v1.3.2.md — notas de release v1.3.2 (2026-10-31 15:32)
-- package.json — bump version a 1.3.2 (2026-10-31 15:32)
-- src/App.jsx — footer y logs sincronizados con v1.3.2 (2026-10-31 15:32)
-- src/pages/RemoteCam.jsx — adaptación dinámica por pérdida de paquetes y latencia (2026-10-31 15:30)
-- src/utils/streamTransport.js — buffer de jitter estabilizado a 60 ms para A/V sincronizado (2026-10-31 15:30)
-- src/utils/rtcConfig.js — inclusión de fallback TURN público (2026-10-31 15:30)
-- electron/main.js — ajuste de perfiles de codificación FFmpeg a veryfast con control de bitrate (2026-10-31 15:30)
-- electron/media-engine/index.js — estabilización de buffers RTMP para baja latencia (2026-10-31 15:30)
+- src/utils/streamTransport.js — corrección de unidad de jitterBufferTarget a 50ms para decodificación fluida sin pantalla negra (2026-11-01 12:08)
+- src/utils/rtcConfig.js — STUN de baja latencia directo de Google y Cloudflare sin demoras de servidores TURN saturados (2026-11-01 12:08)
+- src/pages/RemoteCam.jsx — umbrales de red calibrados y eliminación de degradaciones espurias en arranque (2026-11-01 12:08)
+- electron/main.js — ciclo de vida de cierre completo, fallback a puerto 3002 por colisión con Docker y auto-recreación en second-instance (2026-11-01 12:08)
+- src/App.jsx — conexión escalonada de canales en arranque (2026-11-01 12:08)
+- src/config/featureFlags.js — USE_NATIVE_ENGINE en false para baseline v1.3.1 ultra estable (2026-11-01 12:08)
 - launcher.cs / PodcastStudio.exe — binario ejecutable compilado con assembly version 1.3.2.0
 
 ## Verificado

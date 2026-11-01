@@ -125,6 +125,8 @@ function ModalVideoPreview({ stream, label }) {
         autoPlay
         playsInline
         muted
+        onLoadedMetadata={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); }}
+        onCanPlay={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); }}
       />
       <div
         style={{

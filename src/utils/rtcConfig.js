@@ -26,6 +26,16 @@ export async function getConfiguredIceServers() {
     return configuredServersCache.iceServers;
   }
   if (!configuredServersPromise) {
+    // En Electron (file://), evitar peticiones de red fallidas relativas
+    const isFileProto = typeof window !== 'undefined' && window.location?.protocol === 'file:';
+    if (isFileProto) {
+      configuredServersCache = {
+        iceServers: getIceServers(),
+        expiresAt: Date.now() + 3600000,
+      };
+      return configuredServersCache.iceServers;
+    }
+
     configuredServersPromise = fetch('/api/turn-credentials', { cache: 'no-store' })
       .then(async (response) => {
         if (!response.ok) return null;
@@ -44,7 +54,7 @@ export async function getConfiguredIceServers() {
       .catch(() => null)
       .then((cache) => {
         configuredServersCache = cache || {
-          iceServers: [...getIceServers(), ...PUBLIC_TURN_FALLBACK],
+          iceServers: getIceServers(),
           expiresAt: Date.now() + 60000,
         };
         return configuredServersCache.iceServers;
