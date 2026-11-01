@@ -1587,6 +1587,7 @@ function PodcastStudioApp() {
     const startCamera = async () => {
       try {
         const attempts = [
+          { video: { width: { min: 1280, ideal: 1920 }, height: { min: 720, ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
           { video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
           { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
           { video: true, audio: false }
@@ -2128,9 +2129,9 @@ function PodcastStudioApp() {
     if ((isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk) {
       window.api.sendStreamChunk(buffer);
     }
-    if ((isRecordingRef.current || recordingStartPendingRef.current) && !isRecordingPausedRef.current) {
-      // Electron escribe el archivo incrementalmente en FFmpeg; no retener el programa
-      // completo en RAM, porque una grabación larga terminaría congelando el compositor.
+    // Solo enviar fragmentos a FFmpeg cuando la grabación esté formalmente activa.
+    // Esto evita enviar la cabecera por duplicado a FFmpeg durante la inicialización.
+    if (isRecordingRef.current && !isRecordingPausedRef.current) {
       if (!window.api) recordingChunksRef.current.push(buffer);
       if (window.api?.sendRecordChunk) {
         window.api.sendRecordChunk(buffer);
@@ -2185,7 +2186,7 @@ function PodcastStudioApp() {
         try {
           res = await window.api.startRecording({
             projectName: topic || 'Proyecto_General',
-            initialHeader: recordingHeader ? Array.from(new Uint8Array(recordingHeader)) : null,
+            initialHeader: recordingHeader ? new Uint8Array(recordingHeader) : null,
           });
         } catch (error) {
           res = { success: false, error: error.message };

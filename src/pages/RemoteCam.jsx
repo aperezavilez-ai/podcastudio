@@ -4,10 +4,10 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
-  { label: 'Full HD 1080p · 2.5 Mbps', maxBitrate: 2500000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'Full HD 1080p · 1.8 Mbps', maxBitrate: 1800000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 720p · 1.2 Mbps', maxBitrate: 1200000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 540p · 800 kbps', maxBitrate: 800000, scaleResolutionDownBy: 1.5, frameRate: 30 },
+  { label: 'Full HD 1080p · 4.5 Mbps', maxBitrate: 4500000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'Full HD 1080p · 3.2 Mbps', maxBitrate: 3200000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 720p · 2.0 Mbps', maxBitrate: 2000000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 540p · 1.2 Mbps', maxBitrate: 1200000, scaleResolutionDownBy: 1.5, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 500
 const RTT_HEALTHY_MS = 220
@@ -33,8 +33,8 @@ function applyVideoSenderParams(sender, tier) {
     e.scaleResolutionDownBy = tier.scaleResolutionDownBy || 1
     e.networkPriority = 'high'
     e.priority = 'high'
-    // 'maintain-framerate' garantiza cero desfase de audio/video y fluidez constante sin acumular cola de paquetes
-    params.degradationPreference = 'maintain-framerate'
+    // 'maintain-resolution' previene pixelación o caída a resoluciones bajas al haber movimiento
+    params.degradationPreference = 'maintain-resolution'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }

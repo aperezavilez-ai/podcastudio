@@ -10,15 +10,14 @@ import {
   DEFAULT_CINTILLO_POSITIONS,
 } from '../config/cintilloCameraMap.js'
 
-const ENTER_MS = 600
+const ENTER_MS = 500
 const EXIT_MS = 400
-const DEFAULT_DISPLAY_SEC = 10
+const DEFAULT_DISPLAY_SEC = 8
 
 function buildCintilloState(preset, project, positions, masterPosition, overrides = {}) {
   const presetId = preset?.id || overrides.presetId || 'custom'
   const text = overrides.text ?? (preset ? resolveCintilloText(preset.id, project) : '')
   const subtitle = overrides.subtitle ?? (preset ? resolveCintilloSubtitle(preset.id, project) : '')
-  // Mantener estrictamente la posición fijada por el usuario (sin brincar entre bl/bc/br)
   const fixedPos = overrides.position || masterPosition || positions?.master || 'bl'
 
   return {
@@ -62,13 +61,12 @@ export function useCintilloRotation({
   const masterPosRef = useRef(masterPosition)
   const projectRef = useRef(project)
   const enabledRef = useRef(enabled)
+  const runCycleRef = useRef(null)
 
   positionsRef.current = positions
   masterPosRef.current = masterPosition
   projectRef.current = project
   enabledRef.current = enabled
-
-  const cintillosKey = JSON.stringify(project?.cintillos || {})
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach(clearTimeout)
@@ -98,24 +96,37 @@ export function useCintilloRotation({
     const preset = items[indexRef.current % items.length]
     showPreset(preset)
 
+    // Fase 1: Enter -> Hold
     schedule(() => setAnimPhase('hold'), ENTER_MS)
+
+    // Fase 2: Hold -> Exit
+    const holdDuration = Math.max(3000, displaySec * 1000)
+    schedule(() => {
+      setAnimPhase('exit')
+    }, ENTER_MS + holdDuration)
+
+    // Fase 3: Exit -> Siguiente Preset
     schedule(() => {
       indexRef.current = (indexRef.current + 1) % items.length
-      runCycle()
-    }, ENTER_MS + displaySec * 1000)
+      if (runCycleRef.current && enabledRef.current) {
+        runCycleRef.current()
+      }
+    }, ENTER_MS + holdDuration + EXIT_MS)
   }, [displaySec, clearTimers, schedule, showPreset])
+
+  runCycleRef.current = runCycle
 
   useEffect(() => {
     if (!enabled) {
       clearTimers()
       return
     }
-    indexRef.current = 0
+    // Iniciar ciclo de rotación continua
     runCycle()
     return clearTimers
-  }, [enabled, displaySec, cintillosKey, runCycle, clearTimers])
+  }, [enabled, runCycle, clearTimers])
 
-  // Selección manual o por voz: entra de inmediato en Master y si la rotación está activa, continúa después
+  // Selección manual o por botón: entra de inmediato y si la rotación está activa, continúa al siguiente
   const showManual = useCallback((presetOrId) => {
     clearTimers()
     const preset = typeof presetOrId === 'string'
@@ -133,13 +144,20 @@ export function useCintilloRotation({
     setCintillo(buildCintilloState(preset, projectRef.current, positionsRef.current, masterPosRef.current))
     schedule(() => setAnimPhase('hold'), ENTER_MS)
 
-    // Si la rotación automática está activada por el usuario, reanudar tras la duración
-    if (enabledRef.current && items.length > 1) {
-      schedule(() => {
-        runCycle()
-      }, ENTER_MS + displaySec * 1000)
-    }
-  }, [clearTimers, schedule, displaySec, runCycle])
+    const holdDuration = Math.max(3000, displaySec * 1000)
+    // Programar salida y avance automático al siguiente cintillo
+    schedule(() => {
+      if (enabledRef.current && items.length > 1) {
+        setAnimPhase('exit')
+      }
+    }, ENTER_MS + holdDuration)
+
+    schedule(() => {
+      if (enabledRef.current && items.length > 1 && runCycleRef.current) {
+        runCycleRef.current()
+      }
+    }, ENTER_MS + holdDuration + EXIT_MS)
+  }, [clearTimers, schedule, displaySec])
 
   const showCustom = useCallback(({ tag, text, subtitle, color = '#e8612a', targetSlot, position, presetId = 'custom', logoUrl, socials }) => {
     clearTimers()
@@ -166,3 +184,4 @@ export function useCintilloRotation({
     hide,
   }
 }
+

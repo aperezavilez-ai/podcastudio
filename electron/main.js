@@ -66,6 +66,10 @@ app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-features', 'MediaFoundationVideoCapture,ZeroCopyVideoCapture');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 let mainWindow;
@@ -613,15 +617,24 @@ function startMediaServer() {
           }
 
           async function startCameraAndStream() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+              updateStatus('HTTPS Requerido', '');
+              const h2 = document.querySelector('#startDialog h2');
+              if (h2) h2.innerText = 'Cámara Bloqueada por Seguridad';
+              const p = document.querySelector('#startDialog p');
+              if (p) p.innerHTML = '<span style="color:#ef4444;font-weight:bold;">Safari (iPhone) y Chrome requieren conexión segura HTTPS para dar acceso a la cámara.</span><br><br>Abre el enlace seguro oficial de PodcastStudio:<br><strong style="color:#ff6b00;word-break:break-all;">https://www.podcastudio.mx/remote-cam' + window.location.search + '</strong>';
+              const btn = document.getElementById('startBtn');
+              if (btn) {
+                btn.innerText = 'ABRIR ENLACE SEGURO (HTTPS)';
+                btn.onclick = () => { window.location.href = 'https://www.podcastudio.mx/remote-cam' + window.location.search; };
+              }
+              return;
+            }
+
             startDialog.style.display = 'none';
             updateStatus('Solicitando cámara...', '');
 
             try {
-              if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                alert('El navegador bloqueó la cámara por seguridad. En Android, abre en Chrome y asegúrate de dar permisos de cámara.');
-                return;
-              }
-
               try {
                 currentStream = await navigator.mediaDevices.getUserMedia({
                   video: { 

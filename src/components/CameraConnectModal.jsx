@@ -203,7 +203,7 @@ export default function CameraConnectModal({
   const [wifiConnectError, setWifiConnectError] = useState(null);
   const [wifiConnectSuccess, setWifiConnectSuccess] = useState(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
-  const [useCloudDomain, setUseCloudDomain] = useState(false);
+  const [useCloudDomain, setUseCloudDomain] = useState(true);
   const [autoAssignMode, setAutoAssignMode] = useState(false);
   const [useLocalWifiForRemote, setUseLocalWifiForRemote] = useState(false);
   const [localWifiGuestUrl, setLocalWifiGuestUrl] = useState('');

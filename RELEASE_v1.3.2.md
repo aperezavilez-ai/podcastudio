@@ -11,12 +11,16 @@
 
 ## Conexión de cámaras y WebRTC
 
-- **Pestaña Móvil / Remota QR y Preview**: Corrección de unidad en `jitterBufferTarget` (50 ms) y `playoutDelayHint` (0.05 s) en `streamTransport.js` y `App.jsx`. Esto soluciona la falla donde la cámara remota decía conectada pero el recuadro de video quedaba en negro sin decodificar cuadros.
-- **Predeterminado Wi-Fi Local Directo (LAN)**: El modal de conexión de cámaras remotas ahora predetermina la conexión por red local directa (`http://${LOCAL_IP}:3001/camara`), eliminando el salto innecesario por servidores cloud/TURN y reduciendo la latencia de 2 segundos a <80 ms sin pixelación por barrido en movimiento.
-- **Optimización de codificación en emisión**: En `electron/main.js`, configuración explícita de `maxFramerate: 30`, `maxBitrate: 5 Mbps`, `maintain-resolution` para video y `128 kbps` para audio en el stream local directo.
-- **Handshake ultrarrápido sin retrasos**: Uso directo de servidores STUN de Google y Cloudflare en `rtcConfig.js` (<100 ms de negociación ICE), eliminando servidores TURN públicos sobrecargados que demoraban la conexión por más de 30 segundos.
-- **Adaptación suave de calidad en celular**: Calibración de umbrales RTT en `RemoteCam.jsx` para evitar degradaciones y reconexiones espurias durante el arranque de la cámara en dispositivos iOS y Android.
-- **Validación robusta de slots**: Función `clampSlotIndex` en `remoteCameraSlots.mjs` que previene excepciones por índices fuera de rango al reconectar cámaras en caliente.
+- **Pestaña Móvil / Remota QR y Preview**: Conexión HTTPS segura predeterminada (`https://www.podcastudio.mx/remote-cam`), eliminando bloqueos de seguridad de Safari en iPhone y Chrome en Android. Parámetros de emisión calibrados a 4.5 Mbps con política `maintain-resolution` para video continuo sin pixelación por movimiento.
+- **Grabación Master Instantánea sin Congelamiento**:
+  - Eliminada la serialización pesada de `Array.from()` en el paso de la cabecera EBML a través del puente IPC de Electron, reemplazándola por transferencia directa en búfer tipado zero-copy.
+  - Corrección de condición de carrera en la alimentación de chunks: los fragmentos sólo se envían a FFmpeg una vez inicializada la grabación, eliminando la escritura duplicada de la cabecera que abortaba el proceso de grabación en disco.
+- **Rendimiento de Cámara Local (Webcam CAM 1)**:
+  - Activada aceleración de rasterizado por GPU (`enable-gpu-rasterization`, `enable-zero-copy`) y captura directa por hardware con `MediaFoundationVideoCapture`.
+  - Restricciones de captura con resolución mínima garantizada (1280x720 / 1920x1080) para evitar que Windows degrade la webcam a 640x480 VGA.
+- **Rotación Automática de Cintillos TV**:
+  - Reestructurado el ciclo de rotación en `useCintilloRotation.js` para alternar secuencialmente uno por uno (Tema, Conductor, Invitado, Redes Sociales, Contacto) sin detenerse.
+  - Sincronización completa de fases de transición (`enter` -> `hold` -> `exit`) con duraciones de guardas limpias de estilo broadcast.
 
 ## Verificación de calidad
 
