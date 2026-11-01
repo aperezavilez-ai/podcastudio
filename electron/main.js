@@ -678,9 +678,17 @@ function startMediaServer() {
                     const params = sender.getParameters();
                     if (!params.encodings) params.encodings = [{}];
                     params.encodings[0].maxBitrate = 5000000;
+                    params.encodings[0].maxFramerate = 30;
                     params.encodings[0].networkPriority = 'high';
                     params.encodings[0].priority = 'high';
                     params.degradationPreference = 'maintain-resolution';
+                    sender.setParameters(params);
+                  } catch (e) {}
+                } else if (track.kind === 'audio') {
+                  try {
+                    const params = sender.getParameters();
+                    if (!params.encodings) params.encodings = [{}];
+                    params.encodings[0].maxBitrate = 128000;
                     sender.setParameters(params);
                   } catch (e) {}
                 }

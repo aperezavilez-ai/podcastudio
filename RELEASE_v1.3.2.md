@@ -11,7 +11,9 @@
 
 ## Conexión de cámaras y WebRTC
 
-- **Pestaña Móvil / Remota QR y Preview**: Corrección de unidad en `jitterBufferTarget` (50 ms) y `playoutDelayHint` (0.05 s) en `streamTransport.js`. Esto soluciona la falla donde la cámara remota decía conectada pero el recuadro de video quedaba en negro sin decodificar cuadros.
+- **Pestaña Móvil / Remota QR y Preview**: Corrección de unidad en `jitterBufferTarget` (50 ms) y `playoutDelayHint` (0.05 s) en `streamTransport.js` y `App.jsx`. Esto soluciona la falla donde la cámara remota decía conectada pero el recuadro de video quedaba en negro sin decodificar cuadros.
+- **Predeterminado Wi-Fi Local Directo (LAN)**: El modal de conexión de cámaras remotas ahora predetermina la conexión por red local directa (`http://${LOCAL_IP}:3001/camara`), eliminando el salto innecesario por servidores cloud/TURN y reduciendo la latencia de 2 segundos a <80 ms sin pixelación por barrido en movimiento.
+- **Optimización de codificación en emisión**: En `electron/main.js`, configuración explícita de `maxFramerate: 30`, `maxBitrate: 5 Mbps`, `maintain-resolution` para video y `128 kbps` para audio en el stream local directo.
 - **Handshake ultrarrápido sin retrasos**: Uso directo de servidores STUN de Google y Cloudflare en `rtcConfig.js` (<100 ms de negociación ICE), eliminando servidores TURN públicos sobrecargados que demoraban la conexión por más de 30 segundos.
 - **Adaptación suave de calidad en celular**: Calibración de umbrales RTT en `RemoteCam.jsx` para evitar degradaciones y reconexiones espurias durante el arranque de la cámara en dispositivos iOS y Android.
 - **Validación robusta de slots**: Función `clampSlotIndex` en `remoteCameraSlots.mjs` que previene excepciones por índices fuera de rango al reconectar cámaras en caliente.

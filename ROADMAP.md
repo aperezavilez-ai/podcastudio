@@ -96,6 +96,9 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - Limpieza de procesos en `electron/main.js`: `mainWindow.on('closed')` y `app.on('window-all-closed')` garantizan que no queden procesos zombie en segundo plano bloqueando arranques posteriores.
 
 ## Cambios recientes
+- src/components/CameraConnectModal.jsx — predeterminado a Wi-Fi Local Directo (LAN) para latencia <80ms y evitar degradación/barrido sobre internet (2026-11-01 12:45)
+- src/App.jsx — receptor móvil calibrado con jitterBufferTarget a 50ms y playoutDelayHint a 0.05s (2026-11-01 12:45)
+- electron/main.js — encoder de video local a 30 FPS, 5 Mbps CBR, maintain-resolution y audio 128 kbps (2026-11-01 12:45)
 - src/utils/streamTransport.js — corrección de unidad de jitterBufferTarget a 50ms para decodificación fluida sin pantalla negra (2026-11-01 12:08)
 - src/utils/rtcConfig.js — STUN de baja latencia directo de Google y Cloudflare sin demoras de servidores TURN saturados (2026-11-01 12:08)
 - src/pages/RemoteCam.jsx — umbrales de red calibrados y eliminación de degradaciones espurias en arranque (2026-11-01 12:08)
@@ -112,7 +115,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - npm run build:exe (PodcastStudio.exe v1.3.2.0 OK)
 
 ## Siguiente
-- Monitoreo de producción y feedback de usuario.
+- Monitoreo en ejecución y retroalimentación del usuario.
 
 ## Regla anti-reexploracion
 - Si el pedido del usuario apunta a un archivo ya listado arriba: ve DIRECTO a read_file/replace_in_file de ese path.

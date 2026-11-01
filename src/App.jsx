@@ -2029,8 +2029,8 @@ function PodcastStudioApp() {
         pc.ontrack = (event) => {
           if (event.receiver) {
             try {
-              if ('playoutDelayHint' in event.receiver) event.receiver.playoutDelayHint = 0;
-              if ('jitterBufferTarget' in event.receiver) event.receiver.jitterBufferTarget = 0;
+              if ('playoutDelayHint' in event.receiver) event.receiver.playoutDelayHint = 0.05;
+              if ('jitterBufferTarget' in event.receiver) event.receiver.jitterBufferTarget = 50;
             } catch (e) {}
           }
           if (event.track) {
