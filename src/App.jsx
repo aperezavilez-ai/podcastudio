@@ -116,63 +116,68 @@ const VideoTile = React.forwardRef(({
 
   useEffect(() => {
     const v = videoRef.current;
-    if (v && stream) {
-      if (v.srcObject !== stream) {
-        v.srcObject = stream;
+    if (!v) return;
+    if (!stream) {
+      if (v.srcObject) {
+        try { v.srcObject = null; } catch (e) {}
       }
-      const attemptPlay = () => {
-        if (v && v.paused) {
-          v.play().catch(() => {});
-        }
-      };
-      attemptPlay();
-
-      v.addEventListener('loadedmetadata', attemptPlay);
-      v.addEventListener('canplay', attemptPlay);
-
-      // Track unmute listeners for tracks that already exist
-      const unmuteCbs = new Map();
-      const wireTrackListeners = (track) => {
-        if (unmuteCbs.has(track.id)) return;
-        const cb = () => attemptPlay();
-        unmuteCbs.set(track.id, { track, cb });
-        track.addEventListener('unmute', cb);
-      };
-      const initialTracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
-      initialTracks.forEach(wireTrackListeners);
-
-      // When stable stream adds a new track, also wire its unmute listener
-      const onAddTrack = (evt) => {
-        if (evt.track) wireTrackListeners(evt.track);
-        attemptPlay();
-      };
-      if (stream.addEventListener) {
-        stream.addEventListener('addtrack', onAddTrack);
-      }
-
-      // Safety polling: retry play() every 500ms for 10s to handle edge cases
-      let pollCount = 0;
-      const pollTimer = setInterval(() => {
-        pollCount++;
-        if (pollCount > 20) { clearInterval(pollTimer); return; }
-        if (v && v.paused && v.srcObject && v.srcObject.getVideoTracks().some(t => t.readyState === 'live')) {
-          v.play().catch(() => {});
-        }
-      }, 500);
-
-      return () => {
-        clearInterval(pollTimer);
-        v.removeEventListener('loadedmetadata', attemptPlay);
-        v.removeEventListener('canplay', attemptPlay);
-        unmuteCbs.forEach(({ track, cb }) => {
-          try { track.removeEventListener('unmute', cb); } catch {}
-        });
-        unmuteCbs.clear();
-        if (stream.removeEventListener) {
-          try { stream.removeEventListener('addtrack', onAddTrack); } catch {}
-        }
-      };
+      return;
     }
+    if (v.srcObject !== stream) {
+      v.srcObject = stream;
+    }
+    const attemptPlay = () => {
+      if (v && v.paused) {
+        v.play().catch(() => {});
+      }
+    };
+    attemptPlay();
+
+    v.addEventListener('loadedmetadata', attemptPlay);
+    v.addEventListener('canplay', attemptPlay);
+
+    // Track unmute listeners for tracks that already exist
+    const unmuteCbs = new Map();
+    const wireTrackListeners = (track) => {
+      if (unmuteCbs.has(track.id)) return;
+      const cb = () => attemptPlay();
+      unmuteCbs.set(track.id, { track, cb });
+      track.addEventListener('unmute', cb);
+    };
+    const initialTracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
+    initialTracks.forEach(wireTrackListeners);
+
+    // When stable stream adds a new track, also wire its unmute listener
+    const onAddTrack = (evt) => {
+      if (evt.track) wireTrackListeners(evt.track);
+      attemptPlay();
+    };
+    if (stream.addEventListener) {
+      stream.addEventListener('addtrack', onAddTrack);
+    }
+
+    // Safety polling: retry play() every 500ms for 10s to handle edge cases
+    let pollCount = 0;
+    const pollTimer = setInterval(() => {
+      pollCount++;
+      if (pollCount > 20) { clearInterval(pollTimer); return; }
+      if (v && v.paused && v.srcObject && v.srcObject.getVideoTracks().some(t => t.readyState === 'live')) {
+        v.play().catch(() => {});
+      }
+    }, 500);
+
+    return () => {
+      clearInterval(pollTimer);
+      v.removeEventListener('loadedmetadata', attemptPlay);
+      v.removeEventListener('canplay', attemptPlay);
+      unmuteCbs.forEach(({ track, cb }) => {
+        try { track.removeEventListener('unmute', cb); } catch {}
+      });
+      unmuteCbs.clear();
+      if (stream.removeEventListener) {
+        try { stream.removeEventListener('addtrack', onAddTrack); } catch {}
+      }
+    };
   }, [stream, videoRef]);
 
   const isMuted = muted !== undefined ? muted : isLocal;
@@ -470,6 +475,10 @@ function PodcastStudioApp() {
 
   const assignedSlotsRef = useRef({});
   const controlChannelRef = useRef(null);
+  const cloudTransportRef = useRef(null);
+  const recordingStartPendingTimeRef = useRef(0);
+  const activeCamRef = useRef(activeCam);
+  useEffect(() => { activeCamRef.current = activeCam; }, [activeCam]);
   const isElectronMaster = typeof window !== 'undefined' && Boolean(window.api);
   const remoteWsRef = useRef(null);
 
@@ -836,7 +845,7 @@ function PodcastStudioApp() {
   } = useCintilloRotation({
     project: projectConfig,
     enabled: cintillosVisible && autoRotateCintillos,
-    displaySec: 10,
+    displaySec: 7,
     masterPosition: cintilloPosition
   });
   showCustomRef.current = showCustom;
@@ -1105,8 +1114,21 @@ function PodcastStudioApp() {
   
   const getCamStream = (id) => { 
     const slotIdx = id - 1;
-    if (slotStreams[slotIdx]) return slotStreams[slotIdx];
-    if (id === 1 && localStream) return localStream; 
+    const st = slotStreams[slotIdx];
+    if (st) {
+      const vTracks = st.getVideoTracks ? st.getVideoTracks() : [];
+      if (vTracks.length === 0 || vTracks.every(t => t.readyState === 'ended')) {
+        return null;
+      }
+      return st;
+    }
+    if (id === 1 && localStream) {
+      const vTracks = localStream.getVideoTracks ? localStream.getVideoTracks() : [];
+      if (vTracks.length === 0 || vTracks.every(t => t.readyState === 'ended')) {
+        return null;
+      }
+      return localStream;
+    }
     return null; 
   };
 
@@ -1587,9 +1609,9 @@ function PodcastStudioApp() {
     const startCamera = async () => {
       try {
         const attempts = [
-          { video: { width: { min: 1280, ideal: 1920 }, height: { min: 720, ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
           { video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
-          { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+          { video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false },
+          { video: { frameRate: { ideal: 30 } }, audio: false },
           { video: true, audio: false }
         ];
 
@@ -1830,6 +1852,7 @@ function PodcastStudioApp() {
     if (isElectronMaster) {
       try {
         cloudTransport = createStreamTransport('p2p');
+        cloudTransportRef.current = cloudTransport;
         const setupSlot = (slotIdx) => {
           const roomCode = `studio_cam_${slotIdx + 1}`;
           cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
@@ -1854,6 +1877,17 @@ function PodcastStudioApp() {
               return next;
             });
             setRemoteCams(prev => prev.filter(r => r.id !== `cloud_${slotIdx}`));
+            setCameraMeta(prev => {
+              const next = { ...prev };
+              delete next[slotIdx];
+              return next;
+            });
+            if (activeCamRef.current === slotIdx + 1) {
+              setActiveCam(1);
+              updateBroadcastState({ activeCam: 1 });
+            }
+            if (pvwCam === slotIdx + 1) setPvwCam(null);
+            if (pipCam === slotIdx + 1) setPipCam(null);
             setMobileStatus('');
           });
           cloudTransport.connectSlot(slotIdx, roomCode);
@@ -2119,21 +2153,46 @@ function PodcastStudioApp() {
       });
     }
 
+    let unsubRecErr = null;
+    if (window.api?.onRecordingProcessError) {
+      unsubRecErr = window.api.onRecordingProcessError((data) => {
+        console.error('[Recording Error IPC]:', data);
+        if (isRecordingRef.current) {
+          isRecordingRef.current = false;
+          setIsRecording(false);
+          setIsRecordingPaused(false);
+          isRecordingPausedRef.current = false;
+          if (!isStreamingRef.current) stopBroadcastEngine();
+          alert('Error en grabación FFmpeg: ' + (data?.error || 'El proceso se detuvo inesperadamente'));
+        }
+      });
+    }
+
     return () => {
       if (cloudTransport) { try { cloudTransport.destroy(); } catch {} }
+      cloudTransportRef.current = null;
       if (dispatchChannel && supabase) { try { supabase.removeChannel(dispatchChannel); } catch {} }
+      if (unsubRecErr) unsubRecErr();
     };
   }, []);
+
+  const hasSentHeaderRef = useRef(false);
 
   const handleMasterChunk = (buffer) => {
     if ((isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk) {
       window.api.sendStreamChunk(buffer);
     }
     // Solo enviar fragmentos a FFmpeg cuando la grabación esté formalmente activa.
-    // Esto evita enviar la cabecera por duplicado a FFmpeg durante la inicialización.
     if (isRecordingRef.current && !isRecordingPausedRef.current) {
       if (!window.api) recordingChunksRef.current.push(buffer);
       if (window.api?.sendRecordChunk) {
+        if (!hasSentHeaderRef.current) {
+          const header = getInitHeader();
+          if (header && header !== buffer) {
+            window.api.sendRecordChunk(header);
+          }
+          hasSentHeaderRef.current = true;
+        }
         window.api.sendRecordChunk(buffer);
       }
     }
@@ -2141,121 +2200,146 @@ function PodcastStudioApp() {
 
   const handleRecord = async () => {
     if (recordingStopPendingRef.current || isCancelingRecordingRef.current) return;
-    if (recordingStartPendingRef.current && !isRecordingRef.current) return;
+    if (recordingStartPendingRef.current && !isRecordingRef.current) {
+      if (Date.now() - recordingStartPendingTimeRef.current < 4000) {
+        return;
+      }
+      console.warn('[handleRecord] Timeout de inicio previo detectado, desbloqueando botón...');
+      recordingStartPendingRef.current = false;
+    }
     if (!isElectronMaster) {
       dispatchRemoteCommand('TOGGLE_RECORD');
       return;
     }
     if (!isRecording) {
-      recordingStartPendingRef.current = true;
-      recordingChunksRef.current = [];
-      setRecordingTime(0);
-      setIsRecordingPaused(false);
-      isRecordingPausedRef.current = false;
-      setCountdown(null);
+      try {
+        recordingStartPendingRef.current = true;
+        recordingStartPendingTimeRef.current = Date.now();
+        hasSentHeaderRef.current = false;
+        recordingChunksRef.current = [];
+        setRecordingTime(0);
+        setIsRecordingPaused(false);
+        isRecordingPausedRef.current = false;
+        setCountdown(null);
 
-      // Iniciar señal master del compositor broadcast inmediatamente con chunks de 250ms
-      startBroadcastEngine({
-        activeCam,
-        pvwCam,
-        pipCam,
-        camSlots,
-        cameraCrops,
-        cameraBadges,
-        layoutMode,
-        chromaKeyActive,
-        virtualBg,
-        logoBase64,
-        logoConfig,
-        cintillosVisible,
-        cintillo,
-        topic,
-        voiceEffect,
-        voiceTarget,
-        getCamStream,
-        localStream,
-        remoteCams,
-        camStreamsMap,
-        camMuted,
-      }, handleMasterChunk);
+        // Iniciar señal master del compositor broadcast inmediatamente con chunks de 250ms
+        startBroadcastEngine({
+          activeCam,
+          pvwCam,
+          pipCam,
+          camSlots,
+          cameraCrops,
+          cameraBadges,
+          layoutMode,
+          chromaKeyActive,
+          virtualBg,
+          logoBase64,
+          logoConfig,
+          cintillosVisible,
+          cintillo,
+          topic,
+          voiceEffect,
+          voiceTarget,
+          getCamStream,
+          localStream,
+          remoteCams,
+          camStreamsMap,
+          camMuted,
+        }, handleMasterChunk);
 
-      if (window.api) {
-        // Asegurar que la cabecera EBML/WebM esté capturada antes de inicializar FFmpeg
-        const recordingHeader = await getOrWaitForInitHeader(1000);
-        let res;
-        try {
-          res = await window.api.startRecording({
-            projectName: topic || 'Proyecto_General',
-            initialHeader: recordingHeader ? new Uint8Array(recordingHeader) : null,
-          });
-        } catch (error) {
-          res = { success: false, error: error.message };
-        }
-        recordingStartPendingRef.current = false;
-        if (res?.success) {
+        if (window.api) {
+          // Asegurar que la cabecera EBML/WebM esté capturada antes de inicializar FFmpeg
+          let recordingHeader = null;
+          try {
+            recordingHeader = await getOrWaitForInitHeader(1200);
+          } catch (hErr) {
+            console.warn('[handleRecord] Warning esperando cabecera:', hErr);
+          }
+          if (recordingHeader) {
+            hasSentHeaderRef.current = true;
+          }
+
+          let res;
+          try {
+            res = await window.api.startRecording({
+              projectName: topic || 'Proyecto_General',
+              initialHeader: recordingHeader ? new Uint8Array(recordingHeader) : null,
+            });
+          } catch (error) {
+            res = { success: false, error: error.message };
+          }
+          if (res?.success) {
+            isRecordingRef.current = true;
+            setIsRecording(true);
+            recordingStartTimeRef.current = Date.now();
+            pausedDurationRef.current = 0;
+            pauseStartRef.current = null;
+
+            // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
+            if (isoRecordingEnabled && window.api?.startIsoRecording) {
+              const activeSlots = [];
+              Object.entries(camStreamsMap).forEach(([slotStr, stream]) => {
+                const sNum = Number(slotStr);
+                const vTracks = stream?.getVideoTracks?.() || [];
+                if (vTracks.length > 0 && vTracks[0].readyState === 'live') {
+                  activeSlots.push(sNum);
+                }
+              });
+
+              if (activeSlots.length > 0) {
+                window.api.startIsoRecording({
+                  slots: activeSlots,
+                  projectName: topic || 'Proyecto_General',
+                }).then(isoRes => {
+                  if (isoRes?.success) {
+                    activeSlots.forEach(sNum => {
+                      const stream = camStreamsMap[sNum];
+                      if (!stream) return;
+                      try {
+                        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+                          ? 'video/webm;codecs=vp8,opus'
+                          : 'video/webm';
+                        const rec = new MediaRecorder(stream, { mimeType });
+                        isoChunkQueuesRef.current.set(sNum, Promise.resolve());
+                        rec.ondataavailable = (e) => {
+                          if (!e.data || e.data.size === 0 || !window.api?.sendIsoChunk) return;
+                          const pending = isoChunkQueuesRef.current.get(sNum) || Promise.resolve();
+                          isoChunkQueuesRef.current.set(sNum, pending
+                            .then(() => e.data.arrayBuffer())
+                            .then(chunk => window.api.sendIsoChunk({ slot: sNum, chunk }))
+                            .catch(err => console.warn(`[ISO] Error enviando CAM ${sNum}:`, err)));
+                        };
+                        rec.start(1000);
+                        isoRecordersRef.current.set(sNum, rec);
+                      } catch (err) {
+                        console.warn(`[ISO] Error iniciando recorder para CAM ${sNum}:`, err);
+                      }
+                    });
+                  }
+                }).catch(e => console.warn('[ISO] Fallo al iniciar ISO:', e));
+              }
+            }
+          } else {
+            isRecordingRef.current = false;
+            setIsRecording(false);
+            if (!isStreamingRef.current) stopBroadcastEngine();
+            alert('Error al iniciar grabación: ' + (res?.error || 'Desconocido'));
+          }
+        } else {
           isRecordingRef.current = true;
           setIsRecording(true);
           recordingStartTimeRef.current = Date.now();
           pausedDurationRef.current = 0;
           pauseStartRef.current = null;
-
-          // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
-          if (isoRecordingEnabled && window.api?.startIsoRecording) {
-            const activeSlots = [];
-            Object.entries(camStreamsMap).forEach(([slotStr, stream]) => {
-              const sNum = Number(slotStr);
-              const vTracks = stream?.getVideoTracks?.() || [];
-              if (vTracks.length > 0 && vTracks[0].readyState === 'live') {
-                activeSlots.push(sNum);
-              }
-            });
-
-            if (activeSlots.length > 0) {
-              window.api.startIsoRecording({
-                slots: activeSlots,
-                projectName: topic || 'Proyecto_General',
-              }).then(isoRes => {
-                if (isoRes?.success) {
-                  activeSlots.forEach(sNum => {
-                    const stream = camStreamsMap[sNum];
-                    if (!stream) return;
-                    try {
-                      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-                        ? 'video/webm;codecs=vp8,opus'
-                        : 'video/webm';
-                      const rec = new MediaRecorder(stream, { mimeType });
-                      isoChunkQueuesRef.current.set(sNum, Promise.resolve());
-                      rec.ondataavailable = (e) => {
-                        if (!e.data || e.data.size === 0 || !window.api?.sendIsoChunk) return;
-                        const pending = isoChunkQueuesRef.current.get(sNum) || Promise.resolve();
-                        isoChunkQueuesRef.current.set(sNum, pending
-                          .then(() => e.data.arrayBuffer())
-                          .then(chunk => window.api.sendIsoChunk({ slot: sNum, chunk }))
-                          .catch(err => console.warn(`[ISO] Error enviando CAM ${sNum}:`, err)));
-                      };
-                      rec.start(1000);
-                      isoRecordersRef.current.set(sNum, rec);
-                    } catch (err) {
-                      console.warn(`[ISO] Error iniciando recorder para CAM ${sNum}:`, err);
-                    }
-                  });
-                }
-              }).catch(e => console.warn('[ISO] Fallo al iniciar ISO:', e));
-            }
-          }
-        } else {
-          recordingStartPendingRef.current = false;
-          isRecordingRef.current = false;
-          if (!isStreamingRef.current) stopBroadcastEngine();
-          alert('Error al iniciar grabación: ' + (res?.error || 'Desconocido'));
         }
-      } else {
+      } catch (err) {
+        console.error('[handleRecord] Error inesperado iniciando grabación:', err);
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        if (!isStreamingRef.current) stopBroadcastEngine();
+        alert('Error al iniciar grabación: ' + (err?.message || 'Desconocido'));
+      } finally {
         recordingStartPendingRef.current = false;
-        isRecordingRef.current = true;
-        setIsRecording(true);
-        recordingStartTimeRef.current = Date.now();
-        pausedDurationRef.current = 0;
-        pauseStartRef.current = null;
       }
     } else {
       if (recordingStopPendingRef.current) return;
@@ -2963,6 +3047,27 @@ function PodcastStudioApp() {
   }, [camSlots, slotStreams, activeCam, handleWifiConnect, handleUsbConnect]);
 
   const handleDisconnectSlot = (slot) => {
+    // 1. Desconectar y liberar transporte WebRTC cloud si existe
+    if (cloudTransportRef.current) {
+      try {
+        cloudTransportRef.current.disconnectSlot(slot);
+        // Volver a reconectar la ranura en modo escucha para aceptar una nueva conexión limpia
+        const roomCode = `studio_cam_${slot + 1}`;
+        cloudTransportRef.current.connectSlot(slot, roomCode);
+      } catch (e) {
+        console.warn(`[handleDisconnectSlot] Error en disconnectSlot:`, e);
+      }
+    }
+
+    // 2. Liberar WebRTC peer connection de celular local si existía
+    const localStreamId = slotStreams[slot]?.mobileId;
+    if (localStreamId && peerConnections.current[localStreamId]) {
+      try { peerConnections.current[localStreamId].close(); } catch (e) {}
+      delete peerConnections.current[localStreamId];
+      delete candidateBuffers.current[localStreamId];
+    }
+
+    // 3. Detener tracks y limpiar MediaStream
     if (slotStreams[slot]) {
       try { slotStreams[slot].getTracks().forEach(t => t.stop()); } catch (e) {}
       setSlotStreams(prev => {
@@ -2975,11 +3080,23 @@ function PodcastStudioApp() {
       try { localStream.getTracks().forEach(t => t.stop()); } catch (e) {}
       setLocalStream(null);
     }
+
+    // 4. Limpiar metadatos y listas de cámaras remotas
+    delete assignedSlotsRef.current[slot];
+    setRemoteCams(prev => prev.filter(r => r.id !== `cloud_${slot}` && (!localStreamId || r.id !== localStreamId)));
     setCameraMeta(prev => {
       const next = { ...prev };
       delete next[slot];
       return next;
     });
+
+    // 5. Si la cámara desconectada estaba activa en PGM (Programa), conmutar a CAM 1 para no dejar pantalla negra
+    if (activeCamRef.current === slot + 1) {
+      setActiveCam(1);
+      updateBroadcastState({ activeCam: 1 });
+    }
+    if (pvwCam === slot + 1) setPvwCam(null);
+    if (pipCam === slot + 1) setPipCam(null);
   };
 
   const handleRenameSlot = (slot, label) => {
@@ -4566,9 +4683,15 @@ function PodcastStudioApp() {
                         <input 
                           type="checkbox" 
                           checked={autoRotateCintillos} 
-                          onChange={e => setAutoRotateCintillos(e.target.checked)} 
+                          onChange={e => {
+                            const val = e.target.checked;
+                            setAutoRotateCintillos(val);
+                            if (val) {
+                              setCintillosVisible(true);
+                            }
+                          }} 
                           className="accent-orange-500 w-4 h-4 cursor-pointer" 
-                          title="Rotar automáticamente tema, invitado, conductor y redes cada 10 segundos"
+                          title="Rotar automáticamente tema, invitado, conductor y redes uno por uno"
                         />
                       </div>
                     </div>

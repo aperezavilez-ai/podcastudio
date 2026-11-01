@@ -6,6 +6,11 @@ contextBridge.exposeInMainWorld('api', {
   flushRecordingChunks: () => ipcRenderer.invoke('flush-recording-chunks'),
   stopRecording: () => ipcRenderer.invoke('stop-recording'),
   cancelRecording: () => ipcRenderer.invoke('cancel-recording'),
+  onRecordingProcessError: (cb) => {
+    const handler = (e, data) => cb(data);
+    ipcRenderer.on('recording-process-error', handler);
+    return () => ipcRenderer.removeListener('recording-process-error', handler);
+  },
   saveRecordingThumbnail: (payload) => ipcRenderer.invoke('save-recording-thumbnail', payload),
   saveToDownloads: (payload) => ipcRenderer.invoke('save-to-downloads', payload),
   exportSocialFormat: (payload) => ipcRenderer.invoke('export-social-format', payload),

@@ -4,10 +4,10 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
+  { label: 'Full HD 1080p · 6.0 Mbps', maxBitrate: 6000000, scaleResolutionDownBy: 1, frameRate: 30 },
   { label: 'Full HD 1080p · 4.5 Mbps', maxBitrate: 4500000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'Full HD 1080p · 3.2 Mbps', maxBitrate: 3200000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 720p · 3.0 Mbps', maxBitrate: 3000000, scaleResolutionDownBy: 1, frameRate: 30 },
   { label: 'HD 720p · 2.0 Mbps', maxBitrate: 2000000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 540p · 1.2 Mbps', maxBitrate: 1200000, scaleResolutionDownBy: 1.5, frameRate: 30 },
 ]
 const RTT_DEGRADE_MS = 500
 const RTT_HEALTHY_MS = 220
@@ -30,11 +30,11 @@ function applyVideoSenderParams(sender, tier) {
     
     e.maxBitrate = tier.maxBitrate
     e.maxFramerate = tier.frameRate || 30
-    e.scaleResolutionDownBy = tier.scaleResolutionDownBy || 1
+    e.scaleResolutionDownBy = 1
     e.networkPriority = 'high'
     e.priority = 'high'
-    // 'maintain-resolution' previene pixelación o caída a resoluciones bajas al haber movimiento
-    params.degradationPreference = 'maintain-resolution'
+    // 'balanced' previene caídas bruscas de fps que causan video arrastrado
+    params.degradationPreference = 'balanced'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }
@@ -641,13 +641,13 @@ export default function RemoteCam() {
         throw new Error('Navegador no compatible. Abre el enlace en Safari o Chrome usando HTTPS.');
       }
 
-      // Captura nítida 1080p nativa en 16:9 compatible con iOS Safari y Android Chrome
+      // Captura nítida 1080p nativa compatible con iOS Safari y Android Chrome en cualquier orientación
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: targetFacing ? { ideal: targetFacing } : 'environment',
-            width: { ideal: 1920, min: 1280 },
-            height: { ideal: 1080, min: 720 },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
             aspectRatio: { ideal: 1.7777777778 },
             frameRate: { ideal: 30, max: 30 },
           },
@@ -658,14 +658,13 @@ export default function RemoteCam() {
           }
         })
       } catch (e1) {
-        console.warn('getUserMedia 1080p falló; intentando 720p 16:9 compatible:', e1)
+        console.warn('getUserMedia 1080p falló; intentando 720p compatible:', e1)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
               facingMode: targetFacing ? { ideal: targetFacing } : 'environment',
               width: { ideal: 1280 },
               height: { ideal: 720 },
-              aspectRatio: { ideal: 1.7777777778 },
               frameRate: { ideal: 30 },
             },
             audio: {

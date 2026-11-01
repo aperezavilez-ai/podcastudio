@@ -67,13 +67,13 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
-app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
-app.commandLine.appendSwitch('enable-features', 'MediaFoundationVideoCapture,ZeroCopyVideoCapture');
+app.commandLine.appendSwitch('enable-features', 'MediaFoundationVideoCapture');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 let mainWindow;
 let ffmpegRecordProcess = null;
+let isStoppingRecording = false;
 let recordChunkQueue = Promise.resolve();
 let recordChunkError = null;
 let ffmpegStreamProcess = null;
@@ -1757,6 +1757,7 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
     currentRecordingProjectName = cleanProjectName;
     recordChunkQueue = Promise.resolve();
     recordChunkError = null;
+    isStoppingRecording = false;
 
     // Carpeta raíz estructurada garantizada en D:\PROGRAMAS IA\PODCASTUDIO\proyectos\[NombreProyecto]\
     const projectsRoot = getProjectsRootDir();
@@ -1816,10 +1817,16 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
 
       ffmpegRecordProcess.on('error', (err) => {
         console.error('Error FFmpeg Grabación:', err.message);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('recording-process-error', { error: err.message });
+        }
       });
 
       ffmpegRecordProcess.on('close', (code) => {
         console.log('[FFmpeg Grabación] Proceso finalizó con código:', code);
+        if (code !== 0 && !isStoppingRecording && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('recording-process-error', { code, error: `FFmpeg finalizó con código ${code}` });
+        }
         ffmpegRecordProcess = null;
       });
 
@@ -1859,6 +1866,7 @@ ipcMain.handle('flush-recording-chunks', async () => {
 });
 
 ipcMain.handle('stop-recording', async () => {
+  isStoppingRecording = true;
   await recordChunkQueue;
   return new Promise((resolve) => {
     if (ffmpegRecordProcess) {
