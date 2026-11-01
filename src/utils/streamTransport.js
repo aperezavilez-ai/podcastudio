@@ -80,12 +80,9 @@ export class P2PStreamTransport extends BaseStreamTransport {
 
       if (payload.type === 'phone-ready' || payload.type === 'request-offer') {
         this.emit('statusChanged', slotIndex, 'waiting')
-        const activeStartedAt = this.connectionStartedAt.get(slotIndex) || 0
-        if (payload.connectionStartedAt && payload.connectionStartedAt < activeStartedAt) return
         const connectionId = payload.connectionId || this.connectionIds.get(slotIndex)
         if (payload.connectionId) {
           this.connectionIds.set(slotIndex, payload.connectionId)
-          this.connectionStartedAt.set(slotIndex, payload.connectionStartedAt || Date.now())
         }
         try {
           await channel.send({
@@ -100,11 +97,8 @@ export class P2PStreamTransport extends BaseStreamTransport {
       if (payload.type === 'offer') {
         try {
           const previousConnectionId = this.connectionIds.get(slotIndex)
-          const activeStartedAt = this.connectionStartedAt.get(slotIndex) || 0
-          if (payload.connectionStartedAt && payload.connectionStartedAt < activeStartedAt) return
           if (payload.connectionId) {
             this.connectionIds.set(slotIndex, payload.connectionId)
-            this.connectionStartedAt.set(slotIndex, payload.connectionStartedAt || Date.now())
           }
           const queuedCandidates = this.iceQueues.get(slotIndex) || []
           this.iceQueues.set(slotIndex, payload.connectionId && previousConnectionId !== payload.connectionId
@@ -187,8 +181,8 @@ export class P2PStreamTransport extends BaseStreamTransport {
 
           const dispatchStreamUpdate = () => {
             const liveTracks = Array.from(trackMap.values()).filter(t => t && t.readyState !== 'ended')
-            const hasLiveVideo = liveTracks.some(t => t.kind === 'video' && !t.muted)
-            if (!hasLiveVideo) {
+            const hasVideoTrack = liveTracks.some(t => t.kind === 'video')
+            if (!hasVideoTrack) {
               this.emit('statusChanged', slotIndex, 'waiting')
               return
             }
@@ -404,6 +398,12 @@ export class P2PStreamTransport extends BaseStreamTransport {
           event: 'signal',
           payload: { type: 'studio-ready', slotIndex, connectionId: this.connectionIds.get(slotIndex), sender: 'studio' },
         }).catch(() => {})
+      } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
+        setTimeout(() => {
+          if (this.channels.get(slotIndex) === channel) {
+            channel.subscribe()
+          }
+        }, 2000)
       }
     })
     this.channels.set(slotIndex, channel)

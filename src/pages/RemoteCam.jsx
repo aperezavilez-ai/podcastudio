@@ -460,6 +460,10 @@ export default function RemoteCam() {
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState
       if (s === 'connected') {
+        if (handshakeTimerRef.current) {
+          clearInterval(handshakeTimerRef.current)
+          handshakeTimerRef.current = null
+        }
         setStatus('connected')
         reconnectAttemptsRef.current = 0
       } else if (s === 'disconnected' || s === 'failed') {
@@ -535,7 +539,10 @@ export default function RemoteCam() {
       if (payload.connectionId && payload.connectionId !== connectionId) return
 
       if (payload.type === 'studio-ready') {
-        if (!offerSentRef.current && pc.signalingState === 'stable') await sendOffer()
+        if (pc.connectionState !== 'connected') {
+          offerSentRef.current = false
+          await sendOffer(pc.signalingState !== 'stable')
+        }
         return
       }
       if (payload.type === 'request-offer') {
@@ -579,10 +586,32 @@ export default function RemoteCam() {
 
     channel.subscribe(async (subStatus) => {
       if (subStatus === 'SUBSCRIBED') {
-          channelRef.current.send({ type: 'broadcast', event: 'signal', payload: { type: 'phone-ready', slot, connectionId, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone' } }).catch(() => {})
+        channel.send({ type: 'broadcast', event: 'signal', payload: { type: 'phone-ready', slot, connectionId, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone' } }).catch(() => {})
         setTimeout(() => { if (!offerSentRef.current && pc.signalingState === 'stable') sendOffer() }, 300)
+      } else if (subStatus === 'TIMED_OUT' || subStatus === 'CHANNEL_ERROR') {
+        setTimeout(() => {
+          if (channelRef.current === channel) channel.subscribe()
+        }, 2000)
       }
     })
+
+    if (handshakeTimerRef.current) clearInterval(handshakeTimerRef.current)
+    handshakeTimerRef.current = setInterval(() => {
+      if (pcRef.current === pc && pc.connectionState !== 'connected') {
+        channel.send({
+          type: 'broadcast',
+          event: 'signal',
+          payload: { type: 'phone-ready', slot, connectionId, connectionStartedAt: connectionStartedAtRef.current, sender: 'phone' },
+        }).catch(() => {})
+        if (pc.signalingState === 'stable') {
+          offerSentRef.current = false
+          sendOffer()
+        }
+      } else if (pc.connectionState === 'connected') {
+        clearInterval(handshakeTimerRef.current)
+        handshakeTimerRef.current = null
+      }
+    }, 2500)
 
     startAdaptationEngine()
     } finally {

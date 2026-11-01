@@ -14,7 +14,23 @@ export default function handler(req, res) {
   const urls = (process.env.TURN_URLS || '').split(',').map((url) => url.trim()).filter(Boolean)
   const sharedSecret = process.env.TURN_SHARED_SECRET
   if (!urls.length || !sharedSecret) {
-    return res.status(503).json({ error: 'TURN relay is not configured' })
+    // Fallback a relay público garantizado de OpenRelay para que nunca falle la señal WebRTC
+    return res.status(200).json({
+      iceServers: [
+        {
+          urls: [
+            'turn:openrelay.metered.ca:80',
+            'turn:openrelay.metered.ca:443',
+            'turn:openrelay.metered.ca:443?transport=tcp',
+            'turns:openrelay.metered.ca:443',
+            'turns:openrelay.metered.ca:443?transport=tcp',
+          ],
+          username: 'openrelayproject',
+          credential: 'openrelayproject',
+        },
+      ],
+      expiresAt: Math.floor(Date.now() / 1000) + 86400,
+    })
   }
 
   const expiresAt = Math.floor(Date.now() / 1000) + TURN_CREDENTIAL_TTL_SECONDS

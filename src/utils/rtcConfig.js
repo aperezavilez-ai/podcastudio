@@ -6,18 +6,23 @@ const STUN_SERVERS = [
   { urls: 'stun:stun.services.mozilla.com:3478' },
 ];
 
-// Fallback público (no ideal, pero evita que la conexión falle por completo cuando no hay TURN propio)
+// Fallback público garantizado de OpenRelay (evita que la conexión falle detrás de NAT/Firewall/4G)
 const PUBLIC_TURN_FALLBACK = [
   { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
   { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
   { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turns:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
 ];
 
 let configuredServersPromise = null;
 let configuredServersCache = null;
 
 export function getIceServers() {
-  return STUN_SERVERS.map((server) => ({ ...server }));
+  return [
+    ...STUN_SERVERS.map((server) => ({ ...server })),
+    ...PUBLIC_TURN_FALLBACK.map((server) => ({ ...server })),
+  ];
 }
 
 /** Fetch short-lived TURN credentials from the server; never ship a shared secret to browsers. */
@@ -47,7 +52,7 @@ export async function getConfiguredIceServers() {
         );
         if (!turnServers.length) return null;
         return {
-          iceServers: [...getIceServers(), ...turnServers],
+          iceServers: [...STUN_SERVERS.map((s) => ({ ...s })), ...turnServers],
           expiresAt: Number(data.expiresAt || 0) * 1000,
         };
       })
