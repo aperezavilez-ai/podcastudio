@@ -1,6 +1,7 @@
+import React, { Component } from 'react';
 import { logger } from '../utils/logger.js';
 
-export default class ErrorBoundary extends React.Component {
+export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false, error: null, errorInfo: null };
