@@ -176,16 +176,21 @@ function createWindow() {
   };
 
   // Mostrar la ventana ÚNICAMENTE cuando la app React esté completamente montada y lista
-  ipcMain.once('app-ui-ready', (event) => {
+  ipcMain.on('app-ui-ready', (event) => {
     console.log('[Main] Received app-ui-ready signal from renderer');
     showWindowSafely();
   });
+
   mainWindow.once('ready-to-show', () => {
-    // Failsafe: Si por alguna razón app-ui-ready se retrasa, mostrar a los 8s (era 2.5s)
+    console.log('[Main] ready-to-show fired - mostrando ventana');
+    showWindowSafely();
+  });
+
+  mainWindow.webContents.once('did-finish-load', () => {
+    console.log('[Main] did-finish-load fired');
     setTimeout(() => {
-      console.log('[Main] Failsafe timeout reached, showing window');
       showWindowSafely();
-    }, 8000);
+    }, 300);
   });
 
   // Detectar crash del renderer

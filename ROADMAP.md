@@ -6,8 +6,8 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 
 ## Proceso
 - Fase: release
-- Estado: Release v1.3.3 OK (2026-11-03 11:30)
-- Actualizado: 2026-11-03 11:30
+- Estado: Release v1.3.4 OK (2026-11-03 12:35)
+- Actualizado: 2026-11-03 12:35
 - Stack: React + Vite + Electron + Supabase
 - Entry: index.html
 - Entry: src/main.jsx
@@ -66,6 +66,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - RELEASE_v1.3.1.md
 - RELEASE_v1.3.2.md
 - RELEASE_v1.3.3.md
+- RELEASE_v1.3.4.md
 
 ## Archivos clave (no reexplorar)
 - electron/media-engine/bridge.js
@@ -112,13 +113,17 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - src/main.jsx — sistema robusto signalReady (sendSignalReady + ensureSignalReady + retry interval + error handlers) garantiza app-ui-ready (2026-11-03 11:55)
 - electron/main.js — failsafe 8s, logging app-ui-ready, detectores render-process-gone/unresponsive/responsive (2026-11-03 11:50)
 - launcher.cs / PodcastStudio.exe — recompilado v1.3.3.0 con fixes arranque (2026-11-03 11:57)
+- electron/main.js — eliminado retardo artificial de 8s en ready-to-show, apertura instantánea en ready-to-show y app-ui-ready, did-finish-load fallback 300ms (2026-11-03 12:33)
+- src/App.jsx — footer sincronizado a PODCASTUDIO v1.3.4 (2026-11-03 12:33)
+- package.json — versión 1.3.4 (2026-11-03 12:33)
+- launcher.cs / PodcastStudio.exe — recompilado v1.3.4.0 con ciclo de vida instantáneo y cierre inmediato de splash (2026-11-03 12:35)
 
 ## Verificado
 - npm run test:remote-cameras (4/4 passed)
 - npm run test:recording (1/1 passed)
 - npm run test:stream-config (5/5 passed)
 - npm run build (Vite production bundle OK)
-- npm run build:exe (PodcastStudio.exe v1.3.3.0 OK)
+- npm run build:exe (PodcastStudio.exe v1.3.4.0 OK)
 
 ## Siguiente
 - Monitoreo en ejecución y retroalimentación del usuario.
