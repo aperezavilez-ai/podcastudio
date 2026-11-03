@@ -4,14 +4,14 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
-  { label: 'Full HD 1080p · 6.0 Mbps', maxBitrate: 6000000, scaleResolutionDownBy: 1, frameRate: 30 },
   { label: 'Full HD 1080p · 4.5 Mbps', maxBitrate: 4500000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 720p · 3.0 Mbps', maxBitrate: 3000000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 720p · 2.0 Mbps', maxBitrate: 2000000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 720p · 2.5 Mbps', maxBitrate: 2500000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 720p · 1.5 Mbps', maxBitrate: 1500000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'SD 480p · 800 Kbps', maxBitrate: 800000, scaleResolutionDownBy: 1, frameRate: 25 },
 ]
-const RTT_DEGRADE_MS = 500
-const RTT_HEALTHY_MS = 220
-const HEALTHY_CHECKS_TO_RISE = 3
+const RTT_DEGRADE_MS = 400
+const RTT_HEALTHY_MS = 150
+const HEALTHY_CHECKS_TO_RISE = 2
 
 function getCaptureResolutionLabel(settings = {}) {
   const width = Number(settings.width) || 0
@@ -34,7 +34,7 @@ function applyVideoSenderParams(sender, tier) {
     e.networkPriority = 'high'
     e.priority = 'high'
     // 'balanced' previene caídas bruscas de fps que causan video arrastrado
-    params.degradationPreference = 'balanced'
+    params.degradationPreference = 'maintain-framerate'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }

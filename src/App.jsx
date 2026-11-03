@@ -42,6 +42,7 @@ import {
   setVoiceMonitor, syncStudioAudio, getCameraSnapshots,
   startNativeEngineBroadcast, stopNativeEngineBroadcast,
 } from './utils/masterBroadcastEngine.js';
+import { logger } from './utils/logger.js';
 import { isNativeEngineEnabled, getNativeEngineConfig, FEATURE_FLAGS } from './config/featureFlags.js';
 import { VOICE_EFFECTS } from './utils/voiceEffectsProcessor.js';
 import { createStreamTransport } from './utils/streamTransport.js';
@@ -77,7 +78,7 @@ class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null, errorInfo: null }; }
   static getDerivedStateFromError(error) { return { hasError: true, error }; }
   componentDidCatch(error, errorInfo) {
-    console.error('[ErrorBoundary]', error, errorInfo);
+    logger.error('[ErrorBoundary]', error, errorInfo);
     if (window.api?.logError) {
       window.api.logError(error.message, error.stack, errorInfo?.componentStack);
     }
@@ -186,7 +187,7 @@ const VideoTile = React.forwardRef(({
     if (videoRef.current) {
       videoRef.current.muted = isMuted;
       if (!isMuted && videoRef.current.paused) {
-        videoRef.current.play().catch(e => console.log("Audio un-mute play error:", e));
+        videoRef.current.play().catch(e => logger.log("Audio un-mute play error:", e));
       }
     }
   }, [isMuted, videoRef]);
@@ -850,12 +851,8 @@ function PodcastStudioApp() {
   });
   showCustomRef.current = showCustom;
 
-  // Notificar a Electron que la UI está 100% montada (cintillos inician desactivados)
-  useEffect(() => {
-    if (window.api && window.api.signalReady) {
-      window.api.signalReady();
-    }
-  }, []);
+  // Notificar a Electron que la UI está 100% montada (señal enviada desde main.jsx para evitar duplicación)
+  // Esta señal ya fue enviada desde main.jsx con requestAnimationFrame. No duplicar.
 
   // ESCENARIOS Y CROMA KEY
   const [chromaKeyActive, setChromaKeyActive] = useState(false);
@@ -1603,7 +1600,7 @@ function PodcastStudioApp() {
 
   useEffect(() => {
     if (!isElectronMaster) {
-      console.log('[PodcastStudio] Cliente remoto / iPad: Modo Switcher Espejo activo. Cámara local desactivada.');
+      logger.log('[PodcastStudio] Cliente remoto / iPad: Modo Switcher Espejo activo. Cámara local desactivada.');
       return;
     }
     const startCamera = async () => {
@@ -1676,7 +1673,7 @@ function PodcastStudioApp() {
             } catch (e) {}
           }
         }
-      } catch (err) { console.error("Error cámara inicial:", err); }
+      } catch (err) { logger.error("Error cámara inicial:", err); }
     };
     startCamera();
   }, []);
@@ -1856,7 +1853,7 @@ function PodcastStudioApp() {
         const setupSlot = (slotIdx) => {
           const roomCode = `studio_cam_${slotIdx + 1}`;
           cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
-            console.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
+            logger.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
             setSlotStreams(prev => ({ ...prev, [slotIdx]: stream }));
             setRemoteCams(prev => [
               ...prev.filter(r => r.id !== `cloud_${slotIdx}`),
@@ -1869,7 +1866,7 @@ function PodcastStudioApp() {
             setMobileStatus(`Celular en vivo conectado en CAM ${slotIdx + 1}`);
           });
           cloudTransport.on('streamDisconnected', slotIdx => {
-            console.log(`[Cloud WebRTC] Cámara desconectada en slot ${slotIdx + 1}`);
+            logger.log(`[Cloud WebRTC] Cámara desconectada en slot ${slotIdx + 1}`);
             delete assignedSlotsRef.current[slotIdx];
             setSlotStreams(prev => {
               const next = { ...prev };
@@ -1904,7 +1901,7 @@ function PodcastStudioApp() {
             .forEach(slotIdx => setupSlot(slotIdx));
         }, 3000);
       } catch (e) {
-        console.warn('Transporte cloud:', e);
+        logger.warn('Transporte cloud:', e);
       }
 
       // Auto-asignación dinámica de cámaras en la nube (Supabase)
@@ -1939,7 +1936,7 @@ function PodcastStudioApp() {
             assignedSlotsRef.current[targetSlot] = deviceId;
             const assignedCam = targetSlot + 1;
             const assignedRoom = `studio_cam_${assignedCam}`;
-            console.log(`[Auto-Dispatch Master] Asignando CAM ${assignedCam} (${assignedRoom}) a ${deviceId}`);
+            logger.log(`[Auto-Dispatch Master] Asignando CAM ${assignedCam} (${assignedRoom}) a ${deviceId}`);
 
             dispatchChannel.send({
               type: 'broadcast',
@@ -1964,7 +1961,7 @@ function PodcastStudioApp() {
 
           dispatchChannel.subscribe();
         } catch (err) {
-          console.warn('Error configurando auto-dispatch:', err);
+          logger.warn('Error configurando auto-dispatch:', err);
         }
       }
     }
@@ -1973,7 +1970,7 @@ function PodcastStudioApp() {
       window.api.onMobileWsConnected((id) => setMobileStatus(`Celular conectado (${id}).`));
       
       window.api.onRemoteOffer(async ({ id, offer, slot, name, role }) => {
-        console.log(`[WebRTC] Oferta recibida de celular: ${id}`);
+        logger.log(`[WebRTC] Oferta recibida de celular: ${id}`);
         
         // Cerrar conexión anterior si existía para este ID
         if (peerConnections.current[id]) {
@@ -1994,7 +1991,7 @@ function PodcastStudioApp() {
           if (liveTracks.length === 0) return;
           slotAssigned = true;
 
-          console.log(`[WebRTC] Video en vivo recibido de celular ${id} (tracks: ${stableStream.getTracks().length})`);
+          logger.log(`[WebRTC] Video en vivo recibido de celular ${id} (tracks: ${stableStream.getTracks().length})`);
 
           let targetSlot = null;
           if (slot != null) {
@@ -2022,7 +2019,7 @@ function PodcastStudioApp() {
             });
           }
           if (targetSlot === null) {
-            console.warn('[RemoteCam] No hay ranuras disponibles para esta cámara móvil.');
+            logger.warn('[RemoteCam] No hay ranuras disponibles para esta cámara móvil.');
             return;
           }
 
@@ -2042,6 +2039,7 @@ function PodcastStudioApp() {
           }));
         };
 
+        const trackListeners = new Map();
         const handleTrack = (track) => {
           if (!track) return;
           try {
@@ -2054,10 +2052,19 @@ function PodcastStudioApp() {
           if (!stableStream.getTracks().some(t => t.id === track.id)) {
             stableStream.addTrack(track);
           }
-          track.onunmute = () => assignSlotOnce();
-          track.onended = () => {
+          if (trackListeners.has(track.id)) return;
+          const onUnmute = () => assignSlotOnce();
+          const onEnded = () => {
             try { stableStream.removeTrack(track); } catch {}
+            if (trackListeners.has(track.id)) {
+              const l = trackListeners.get(track.id);
+              try { track.removeEventListener('unmute', l.onUnmute); track.removeEventListener('ended', l.onEnded); } catch {}
+              trackListeners.delete(track.id);
+            }
           };
+          trackListeners.set(track.id, { track, onUnmute, onEnded });
+          track.addEventListener('unmute', onUnmute);
+          track.addEventListener('ended', onEnded);
           assignSlotOnce();
         };
 
@@ -2084,7 +2091,14 @@ function PodcastStudioApp() {
         };
 
         pc.oniceconnectionstatechange = () => {
-          console.log(`[WebRTC ${id}] Estado ICE:`, pc.iceConnectionState);
+          const state = pc.iceConnectionState;
+          logger.log(`[WebRTC ${id}] Estado ICE:`, state);
+          if (state === 'closed' || state === 'failed' || state === 'disconnected') {
+            trackListeners.forEach(({ track, onUnmute, onEnded }) => {
+              try { track.removeEventListener('unmute', onUnmute); track.removeEventListener('ended', onEnded); } catch {}
+            });
+            trackListeners.clear();
+          }
         };
 
         try {
@@ -2100,9 +2114,9 @@ function PodcastStudioApp() {
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           window.api.sendAnswer(id, answer);
-          console.log(`[WebRTC] Answer enviado a celular: ${id}`);
+          logger.log(`[WebRTC] Answer enviado a celular: ${id}`);
         } catch (err) {
-          console.error(`[WebRTC] Error negociando conexión con ${id}:`, err);
+          logger.error(`[WebRTC] Error negociando conexión con ${id}:`, err);
         }
       });
 
@@ -2122,7 +2136,7 @@ function PodcastStudioApp() {
       });
 
       window.api.onRemoteDisconnected((id) => {
-        console.log(`[WebRTC] Celular desconectado: ${id}`);
+        logger.log(`[WebRTC] Celular desconectado: ${id}`);
         setRemoteCams(prev => prev.filter(s => s.id !== id));
         if (peerConnections.current[id]) {
           try { peerConnections.current[id].close(); } catch (e) {}
@@ -2156,7 +2170,7 @@ function PodcastStudioApp() {
     let unsubRecErr = null;
     if (window.api?.onRecordingProcessError) {
       unsubRecErr = window.api.onRecordingProcessError((data) => {
-        console.error('[Recording Error IPC]:', data);
+        logger.error('[Recording Error IPC]:', data);
         if (isRecordingRef.current) {
           isRecordingRef.current = false;
           setIsRecording(false);
@@ -2204,7 +2218,7 @@ function PodcastStudioApp() {
       if (Date.now() - recordingStartPendingTimeRef.current < 4000) {
         return;
       }
-      console.warn('[handleRecord] Timeout de inicio previo detectado, desbloqueando botón...');
+      logger.warn('[handleRecord] Timeout de inicio previo detectado, desbloqueando botón...');
       recordingStartPendingRef.current = false;
     }
     if (!isElectronMaster) {
@@ -2253,11 +2267,20 @@ function PodcastStudioApp() {
           try {
             recordingHeader = await getOrWaitForInitHeader(1200);
           } catch (hErr) {
-            console.warn('[handleRecord] Warning esperando cabecera:', hErr);
+            logger.warn('[handleRecord] Warning esperando cabecera:', hErr);
           }
           if (recordingHeader) {
             hasSentHeaderRef.current = true;
           }
+
+          // INICIAR TIMER INMEDIATAMENTE antes de llamar a FFmpeg
+          recordingStartTimeRef.current = Date.now();
+          pausedDurationRef.current = 0;
+          pauseStartRef.current = null;
+
+          // Activar estado de grabación inmediatamente para que el timer arranque
+          isRecordingRef.current = true;
+          setIsRecording(true);
 
           let res;
           try {
@@ -2274,6 +2297,13 @@ function PodcastStudioApp() {
             recordingStartTimeRef.current = Date.now();
             pausedDurationRef.current = 0;
             pauseStartRef.current = null;
+          } else {
+            // Si falló, revertir el estado
+            isRecordingRef.current = false;
+            setIsRecording(false);
+            recordingStartTimeRef.current = null;
+            logger.error('[handleRecord] Falló el inicio de grabación:', res?.error);
+          }
 
             // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
             if (isoRecordingEnabled && window.api?.startIsoRecording) {
@@ -2307,16 +2337,16 @@ function PodcastStudioApp() {
                           isoChunkQueuesRef.current.set(sNum, pending
                             .then(() => e.data.arrayBuffer())
                             .then(chunk => window.api.sendIsoChunk({ slot: sNum, chunk }))
-                            .catch(err => console.warn(`[ISO] Error enviando CAM ${sNum}:`, err)));
+                            .catch(err => logger.warn(`[ISO] Error enviando CAM ${sNum}:`, err)));
                         };
                         rec.start(1000);
                         isoRecordersRef.current.set(sNum, rec);
                       } catch (err) {
-                        console.warn(`[ISO] Error iniciando recorder para CAM ${sNum}:`, err);
+                        logger.warn(`[ISO] Error iniciando recorder para CAM ${sNum}:`, err);
                       }
                     });
                   }
-                }).catch(e => console.warn('[ISO] Fallo al iniciar ISO:', e));
+                }).catch(e => logger.warn('[ISO] Fallo al iniciar ISO:', e));
               }
             }
           } else {
@@ -2325,15 +2355,6 @@ function PodcastStudioApp() {
             if (!isStreamingRef.current) stopBroadcastEngine();
             alert('Error al iniciar grabación: ' + (res?.error || 'Desconocido'));
           }
-        } else {
-          isRecordingRef.current = true;
-          setIsRecording(true);
-          recordingStartTimeRef.current = Date.now();
-          pausedDurationRef.current = 0;
-          pauseStartRef.current = null;
-        }
-      } catch (err) {
-        console.error('[handleRecord] Error inesperado iniciando grabación:', err);
         isRecordingRef.current = false;
         setIsRecording(false);
         if (!isStreamingRef.current) stopBroadcastEngine();
@@ -2352,7 +2373,7 @@ function PodcastStudioApp() {
           try {
             thumbnailDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.92);
           } catch (e) {
-            console.warn('[handleRecord] No se pudo obtener toDataURL del canvas:', e);
+            logger.warn('[handleRecord] No se pudo obtener toDataURL del canvas:', e);
           }
         }
 
@@ -2370,7 +2391,7 @@ function PodcastStudioApp() {
             isoChunkQueuesRef.current.clear();
             await window.api.stopIsoRecording();
           } catch (e) {
-            console.warn('[ISO] Error al detener grabación ISO:', e);
+            logger.warn('[ISO] Error al detener grabación ISO:', e);
           }
         } else {
           await Promise.all(stopIsoPromises);
@@ -2401,10 +2422,10 @@ function PodcastStudioApp() {
                 projectName: topic || 'Proyecto_General',
                 base64Data: thumbnailDataUrl
               }).catch(e => ({ success: false, error: e.message }));
-              if (!thumbRes?.success) console.warn('[App] Error guardando miniatura:', thumbRes?.error);
+              if (!thumbRes?.success) logger.warn('[App] Error guardando miniatura:', thumbRes?.error);
             }
           } catch (e) {
-            console.warn('Error parando grabación FFmpeg:', e);
+            logger.warn('Error parando grabación FFmpeg:', e);
             recordingChunksRef.current = [];
             alert('No se pudo finalizar la grabación: ' + (e.message || 'Error desconocido'));
             return;
@@ -2534,7 +2555,7 @@ function PodcastStudioApp() {
               throw new Error(nativeRes?.error || 'Error iniciando motor nativo');
             }
           } catch (neErr) {
-            console.warn('[handleStream] Fallback automático a pipeline v1.3.2:', neErr);
+            logger.warn('[handleStream] Fallback automático a pipeline v1.3.2:', neErr);
           }
         }
 
@@ -2789,7 +2810,7 @@ function PodcastStudioApp() {
       if (slot === 0) setLocalStream(stream);
       return stream;
     } else {
-      console.error("Error: No se pudo abrir la cámara tras intentar todas las combinaciones");
+      logger.error("Error: No se pudo abrir la cámara tras intentar todas las combinaciones");
       return null;
     }
   };
@@ -2880,7 +2901,7 @@ function PodcastStudioApp() {
 
       img.onload = () => finishConnect();
       img.onerror = (e) => {
-        console.warn('[WiFi Stream Image Error]:', e);
+        logger.warn('[WiFi Stream Image Error]:', e);
         if (!resolved) {
           resolved = true;
           isAlive = false;
@@ -2958,7 +2979,7 @@ function PodcastStudioApp() {
       saveCameraToHistory({ url, label: label || `WiFi Cam ${slot + 1}`, type: 'wifi' });
       return stream;
     } catch (err) {
-      console.error('Error conectando cámara WiFi:', err);
+      logger.error('Error conectando cámara WiFi:', err);
       throw err;
     }
   };
@@ -3011,7 +3032,7 @@ function PodcastStudioApp() {
       }
       return null;
     } catch (err) {
-      console.error('Error conectando ventana de escritorio:', err);
+      logger.error('Error conectando ventana de escritorio:', err);
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         throw new Error('Permiso denegado para captura de pantalla. Autoriza en la configuración del navegador.');
       }
@@ -3055,7 +3076,7 @@ function PodcastStudioApp() {
         const roomCode = `studio_cam_${slot + 1}`;
         cloudTransportRef.current.connectSlot(slot, roomCode);
       } catch (e) {
-        console.warn(`[handleDisconnectSlot] Error en disconnectSlot:`, e);
+        logger.warn(`[handleDisconnectSlot] Error en disconnectSlot:`, e);
       }
     }
 
@@ -3355,7 +3376,7 @@ function PodcastStudioApp() {
         remoteWsRef.current = socket;
 
         socket.onopen = () => {
-          console.log('[RemoteExtension] Conectado a Master PC en:', wsUrl);
+          logger.log('[RemoteExtension] Conectado a Master PC en:', wsUrl);
           socket.send(JSON.stringify({ type: 'identify', role: 'remote-control' }));
           socket.send(JSON.stringify({ type: 'request-state' }));
         };

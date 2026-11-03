@@ -18,6 +18,11 @@ const PUBLIC_TURN_FALLBACK = [
 let configuredServersPromise = null;
 let configuredServersCache = null;
 
+/**
+ * Obtiene servidores ICE con fallback automático.
+ * En producción: intenta obtener credenciales TURN del servidor con timeout.
+ * En desarrollo/Electron: usa STUN + TURN público directamente.
+ */
 export function getIceServers() {
   return [
     ...STUN_SERVERS.map((server) => ({ ...server })),
@@ -27,6 +32,7 @@ export function getIceServers() {
 
 /** Fetch short-lived TURN credentials from the server; never ship a shared secret to browsers. */
 export async function getConfiguredIceServers() {
+  // Cache válido por 1 hora, refrescar 30s antes de expirar
   if (configuredServersCache && configuredServersCache.expiresAt > Date.now() + 30000) {
     return configuredServersCache.iceServers;
   }
@@ -41,7 +47,11 @@ export async function getConfiguredIceServers() {
       return configuredServersCache.iceServers;
     }
 
-    configuredServersPromise = fetch('/api/turn-credentials', { cache: 'no-store' })
+    configuredServersPromise = fetch('/api/turn-credentials', { 
+      cache: 'no-store',
+      // Timeout de 5 segundos para evitar bloqueos en redes lentas
+      signal: AbortSignal.timeout(5000),
+    })
       .then(async (response) => {
         if (!response.ok) return null;
         const data = await response.json();
@@ -60,7 +70,7 @@ export async function getConfiguredIceServers() {
       .then((cache) => {
         configuredServersCache = cache || {
           iceServers: getIceServers(),
-          expiresAt: Date.now() + 60000,
+          expiresAt: Date.now() + 60000, // 1 min en caso de error para reintento rápido
         };
         return configuredServersCache.iceServers;
       })

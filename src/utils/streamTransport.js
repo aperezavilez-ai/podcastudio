@@ -271,6 +271,10 @@ export class P2PStreamTransport extends BaseStreamTransport {
               this.recoveryTimers.delete(slotIndex)
             } else if (iceState === 'failed' || iceState === 'disconnected') {
               clearIceTimeout()
+              // Intentar iceRestart antes de desconectar completamente
+              if (iceState === 'failed' && newPc.restartIce) {
+                try { newPc.restartIce() } catch {}
+              }
               this.emit('statusChanged', slotIndex, 'waiting')
               scheduleOfferRecovery(iceState === 'failed' ? 1000 : 4000)
             }

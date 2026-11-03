@@ -6,8 +6,8 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 
 ## Proceso
 - Fase: release
-- Estado: Release v1.3.2 OK (2026-10-31 15:25)
-- Actualizado: 2026-10-31 15:25
+- Estado: Release v1.3.3 OK (2026-11-03 11:30)
+- Actualizado: 2026-11-03 11:30
 - Stack: React + Vite + Electron + Supabase
 - Entry: index.html
 - Entry: src/main.jsx
@@ -65,6 +65,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - RELEASE_v1.3.0.md
 - RELEASE_v1.3.1.md
 - RELEASE_v1.3.2.md
+- RELEASE_v1.3.3.md
 
 ## Archivos clave (no reexplorar)
 - electron/media-engine/bridge.js
@@ -85,7 +86,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - src/main.jsx
 
 ## Tarea activa
-- Optimización de arranque, resolución de video negro en cámara remota y sincronización de ciclo de vida.
+- Corrección completa de cámaras remotas iOS/Android, grabación con timer inmediato, audio master con todas las fuentes, streaming multi-cámara y buscador WiFi robusto. COMPLETADA.
 
 ## Bloqueos / bugs conocidos
 - Ninguno registrado
@@ -94,21 +95,27 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - Se mantiene el motor en base Chromium/Electron: Tauri usa WebView2 (mismo motor Chromium) pero carece de Node.js nativo, lo que obligaría a reescribir todo el backend FFmpeg/WebRTC en Rust sin aportar ventajas de renderizado.
 - Corrección de `jitterBufferTarget` (50ms en milisegundos) y `playoutDelayHint` (0.05s) en WebRTC: restaura decodificación de cuadros en cámaras remotas evitando pantalla negra.
 - Limpieza de procesos en `electron/main.js`: `mainWindow.on('closed')` y `app.on('window-all-closed')` garantizan que no queden procesos zombie en segundo plano bloqueando arranques posteriores.
+- ErrorBoundary global + Logger unificado para captura de errores en producción.
+- iceRestart automático en WebRTC para recuperación de conexiones móviles tras fallo de red.
 
 ## Cambios recientes
-- src/App.jsx — eliminación de duplicación de cabecera EBML y serialización zero-copy en startRecording (elimina congelamiento al grabar) (2026-11-01 13:15)
-- src/hooks/useCintilloRotation.js — rotación automática secuencial continua e ininterrumpida de cintillos TV uno por uno con ciclo enter-hold-exit (2026-11-01 13:15)
-- electron/main.js — habilitación de GPU rasterization y MediaFoundationVideoCapture para cero retraso en webcam local (2026-11-01 13:15)
-- src/components/CameraConnectModal.jsx — predeterminado a enlace HTTPS seguro para acceso fluido de cámara en iOS y Android sin bloqueos (2026-11-01 13:15)
-- src/pages/RemoteCam.jsx — tasa de bits calibrada a 4.5 Mbps y maintain-resolution para evitar pixelación por movimiento (2026-11-01 13:15)
-- launcher.cs / PodcastStudio.exe — binario ejecutable recompilado con versión 1.3.2.0
+- src/main.jsx — eliminada carga lazy() + Suspense, importaciones estáticas directas, ErrorBoundary wrapper, signalReady con requestAnimationFrame (2026-11-03 11:00)
+- src/components/ErrorBoundary.jsx — nuevo componente captura errores globales con UI de recuperación (2026-11-03 11:00)
+- src/utils/logger.js — nuevo sistema logging unificado dev/prod-aware reemplaza 34 console.* (2026-11-03 11:00)
+- src/App.jsx — signalReady duplicado eliminado, timer grabación inmediato, estructura if/else reparada, manejo error FFmpeg (2026-11-03 11:00)
+- src/utils/masterBroadcastEngine.js — syncVideoStreams incluye camStreamsMap + remoteCams; setupAudioMixing re-ejecutable (2026-11-03 11:05)
+- src/utils/streamTransport.js — iceRestart() automático en ICE failed + reconexión automática (2026-11-03 11:10)
+- src/utils/rtcConfig.js — AbortSignal.timeout(5000) en fetch TURN + cache mejorado (2026-11-03 11:10)
+- vite.config.mjs — code-splitting manualChunks (react, lucide, supabase, ffmpeg) (2026-11-03 11:15)
+- src/pages/RemoteCam.jsx — degradationPreference 'maintain-framerate' para fluidez móvil (2026-11-03 11:20)
+- launcher.cs / PodcastStudio.exe — binario recompilado versión 1.3.3.0 (2026-11-03 11:25)
 
 ## Verificado
 - npm run test:remote-cameras (4/4 passed)
 - npm run test:recording (1/1 passed)
 - npm run test:stream-config (5/5 passed)
 - npm run build (Vite production bundle OK)
-- npm run build:exe (PodcastStudio.exe v1.3.2.0 OK)
+- npm run build:exe (PodcastStudio.exe v1.3.3.0 OK)
 
 ## Siguiente
 - Monitoreo en ejecución y retroalimentación del usuario.

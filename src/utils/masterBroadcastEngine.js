@@ -272,10 +272,29 @@ function getOrCreateVideo(camId, stream) {
 }
 
 function syncVideoStreams() {
-  if (currentState.getCamStream) {
+  // Procesar todos los slots activos
+  if (currentState.getCamStream && currentState.camSlots) {
     currentState.camSlots.forEach((id) => {
       const stream = currentState.getCamStream(id);
       getOrCreateVideo(id, stream);
+    });
+  }
+  // Asegurar que streams de camStreamsMap también se registren
+  if (currentState.camStreamsMap) {
+    Object.entries(currentState.camStreamsMap).forEach(([idStr, stream]) => {
+      const id = Number(idStr);
+      if (stream && stream.getVideoTracks && stream.getVideoTracks().length > 0) {
+        getOrCreateVideo(id, stream);
+      }
+    });
+  }
+  // Procesar remoteCams que puedan tener streams adicionales
+  if (Array.isArray(currentState.remoteCams)) {
+    currentState.remoteCams.forEach((rc) => {
+      if (rc.stream && rc.stream.getVideoTracks && rc.stream.getVideoTracks().length > 0) {
+        const slotId = rc.slot ? rc.slot + 1 : 2;
+        getOrCreateVideo(slotId, rc.stream);
+      }
     });
   }
 }
@@ -1300,7 +1319,11 @@ function pruneDeadAudioSources() {
 
 let isMixing = false;
 function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedMap = {}) {
-  if (isMixing) return audioDestination?.stream?.getAudioTracks?.()?.[0] || null;
+  // Permitir re-ejecución si pasaron más de 500ms desde la última llamada
+  if (isMixing && Date.now() - (window.__lastAudioMix || 0) < 500) {
+    return audioDestination?.stream?.getAudioTracks?.()?.[0] || null;
+  }
+  window.__lastAudioMix = Date.now();
   isMixing = true;
   try {
     initMixerBuses();
