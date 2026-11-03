@@ -109,6 +109,9 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - vite.config.mjs — code-splitting manualChunks (react, lucide, supabase, ffmpeg) (2026-11-03 11:15)
 - src/pages/RemoteCam.jsx — degradationPreference 'maintain-framerate' para fluidez móvil (2026-11-03 11:20)
 - launcher.cs / PodcastStudio.exe — binario recompilado versión 1.3.3.0 (2026-11-03 11:25)
+- src/main.jsx — sistema robusto signalReady (sendSignalReady + ensureSignalReady + retry interval + error handlers) garantiza app-ui-ready (2026-11-03 11:55)
+- electron/main.js — failsafe 8s, logging app-ui-ready, detectores render-process-gone/unresponsive/responsive (2026-11-03 11:50)
+- launcher.cs / PodcastStudio.exe — recompilado v1.3.3.0 con fixes arranque (2026-11-03 11:57)
 
 ## Verificado
 - npm run test:remote-cameras (4/4 passed)

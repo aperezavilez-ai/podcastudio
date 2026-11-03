@@ -176,10 +176,27 @@ function createWindow() {
   };
 
   // Mostrar la ventana ÚNICAMENTE cuando la app React esté completamente montada y lista
-  ipcMain.once('app-ui-ready', showWindowSafely);
+  ipcMain.once('app-ui-ready', (event) => {
+    console.log('[Main] Received app-ui-ready signal from renderer');
+    showWindowSafely();
+  });
   mainWindow.once('ready-to-show', () => {
-    // Failsafe: Si por alguna razón app-ui-ready se retrasa, mostrar a los 2.5s
-    setTimeout(showWindowSafely, 2500);
+    // Failsafe: Si por alguna razón app-ui-ready se retrasa, mostrar a los 8s (era 2.5s)
+    setTimeout(() => {
+      console.log('[Main] Failsafe timeout reached, showing window');
+      showWindowSafely();
+    }, 8000);
+  });
+
+  // Detectar crash del renderer
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error('[Main] Renderer process gone:', details);
+  });
+  mainWindow.webContents.on('unresponsive', () => {
+    console.warn('[Main] Renderer unresponsive');
+  });
+  mainWindow.webContents.on('responsive', () => {
+    console.log('[Main] Renderer responsive again');
   });
 
   if (process.env.NODE_ENV !== 'development') {
