@@ -124,6 +124,9 @@ const VideoTile = React.forwardRef(({
       }
       return;
     }
+    v.playsInline = true;
+    v.setAttribute('playsinline', 'true');
+    v.setAttribute('webkit-playsinline', 'true');
     if (v.srcObject !== stream) {
       v.srcObject = stream;
     }
@@ -135,6 +138,7 @@ const VideoTile = React.forwardRef(({
     attemptPlay();
 
     v.addEventListener('loadedmetadata', attemptPlay);
+    v.addEventListener('loadeddata', attemptPlay);
     v.addEventListener('canplay', attemptPlay);
 
     // Track unmute listeners for tracks that already exist
@@ -170,6 +174,7 @@ const VideoTile = React.forwardRef(({
     return () => {
       clearInterval(pollTimer);
       v.removeEventListener('loadedmetadata', attemptPlay);
+      v.removeEventListener('loadeddata', attemptPlay);
       v.removeEventListener('canplay', attemptPlay);
       unmuteCbs.forEach(({ track, cb }) => {
         try { track.removeEventListener('unmute', cb); } catch {}

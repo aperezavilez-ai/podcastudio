@@ -14,20 +14,15 @@ export default function handler(req, res) {
   const urls = (process.env.TURN_URLS || '').split(',').map((url) => url.trim()).filter(Boolean)
   const sharedSecret = process.env.TURN_SHARED_SECRET
   if (!urls.length || !sharedSecret) {
-    // Fallback a relay público garantizado de OpenRelay para que nunca falle la señal WebRTC
+    // Servidores STUN globales de alta velocidad y latencia ultra-baja (Google + Cloudflare)
     return res.status(200).json({
       iceServers: [
-        {
-          urls: [
-            'turn:openrelay.metered.ca:80',
-            'turn:openrelay.metered.ca:443',
-            'turn:openrelay.metered.ca:443?transport=tcp',
-            'turns:openrelay.metered.ca:443',
-            'turns:openrelay.metered.ca:443?transport=tcp',
-          ],
-          username: 'openrelayproject',
-          credential: 'openrelayproject',
-        },
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
       ],
       expiresAt: Math.floor(Date.now() / 1000) + 86400,
     })

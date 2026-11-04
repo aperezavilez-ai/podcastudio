@@ -122,13 +122,8 @@ export class P2PStreamTransport extends BaseStreamTransport {
             try { existingPc.close() } catch {}
           }
 
-          const stableStream = this.compoundStreams.get(slotIndex) || new MediaStream()
+          const stableStream = new MediaStream()
           this.compoundStreams.set(slotIndex, stableStream)
-          stableStream.getTracks().forEach((track) => {
-            track.onended = null
-            track.onunmute = null
-            try { stableStream.removeTrack(track); track.stop() } catch {}
-          })
 
           const callerLabel = payload.guestName
             ? (payload.sessionRole === 'student' ? `Alumno: ${payload.guestName}` : payload.guestName)
@@ -161,10 +156,10 @@ export class P2PStreamTransport extends BaseStreamTransport {
                   }).catch(() => {})
                 } catch {}
               }
-            }, 8000)
+            }, 15000)
             this.iceTimers.set(slotIndex, timer)
           }
-          const scheduleOfferRecovery = (delay = 4000) => {
+          const scheduleOfferRecovery = (delay = 8000) => {
             if (this.recoveryTimers.has(slotIndex)) return
             const timer = setTimeout(() => {
               this.recoveryTimers.delete(slotIndex)
@@ -276,7 +271,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
                 try { newPc.restartIce() } catch {}
               }
               this.emit('statusChanged', slotIndex, 'waiting')
-              scheduleOfferRecovery(iceState === 'failed' ? 1000 : 4000)
+              scheduleOfferRecovery(iceState === 'failed' ? 1000 : 8000)
             }
           }
 
@@ -294,7 +289,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
             } else if (state === 'disconnected' || state === 'failed') {
               clearIceTimeout()
               this.emit('statusChanged', slotIndex, 'waiting')
-              scheduleOfferRecovery(state === 'failed' ? 1000 : 4000)
+              scheduleOfferRecovery(state === 'failed' ? 1000 : 8000)
             } else if (state === 'closed') {
               clearIceTimeout()
               this.emit('statusChanged', slotIndex, 'disconnected')

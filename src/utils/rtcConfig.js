@@ -1,18 +1,10 @@
-/** Shared ICE configuration for the phone and studio WebRTC peers. */
 const STUN_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
   { urls: 'stun:stun.cloudflare.com:3478' },
-  { urls: 'stun:stun.services.mozilla.com:3478' },
-];
-
-// Fallback público garantizado de OpenRelay (evita que la conexión falle detrás de NAT/Firewall/4G)
-const PUBLIC_TURN_FALLBACK = [
-  { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-  { urls: 'turns:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
 ];
 
 let configuredServersPromise = null;
@@ -21,13 +13,10 @@ let configuredServersCache = null;
 /**
  * Obtiene servidores ICE con fallback automático.
  * En producción: intenta obtener credenciales TURN del servidor con timeout.
- * En desarrollo/Electron: usa STUN + TURN público directamente.
+ * En desarrollo/Electron: usa STUN de alta velocidad directamente.
  */
 export function getIceServers() {
-  return [
-    ...STUN_SERVERS.map((server) => ({ ...server })),
-    ...PUBLIC_TURN_FALLBACK.map((server) => ({ ...server })),
-  ];
+  return STUN_SERVERS.map((server) => ({ ...server }));
 }
 
 /** Fetch short-lived TURN credentials from the server; never ship a shared secret to browsers. */
