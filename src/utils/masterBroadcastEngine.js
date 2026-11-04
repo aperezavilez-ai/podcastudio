@@ -149,9 +149,12 @@ export async function stopNativeEngineBroadcast() {
 
 function getReadyProgramVideo(camId) {
   const target = videoElements.get(camId);
-  if (target && target.readyState >= 2 && target.videoWidth > 0) {
-    lastReadyProgramCam = camId;
-    return target;
+  if (target) {
+    if (target.paused) target.play().catch(() => {});
+    if (target.videoWidth > 0 || target.readyState >= 1) {
+      lastReadyProgramCam = camId;
+      return target;
+    }
   }
   const previous = videoElements.get(lastReadyProgramCam);
   if (previous && previous.readyState >= 2 && previous.videoWidth > 0) {
@@ -1715,7 +1718,8 @@ export function addChunkListener(listener) {
   if (typeof listener === 'function') {
     if (chunkListeners.has(listener)) return;
     chunkListeners.add(listener);
-    if (cachedInitHeader) {
+    // Solo enviar cabecera previa si el grabador YA estaba grabando activamente en segundo plano
+    if (cachedInitHeader && isBroadcastEngineActive && mediaRecorder && mediaRecorder.state === 'recording') {
       try { listener(cachedInitHeader.slice(0)); } catch (e) {}
     }
   }
@@ -1742,8 +1746,6 @@ export async function getOrWaitForInitHeader(timeoutMs = 1500) {
 }
 
 export function startBroadcastEngine(initialState, onChunk) {
-  if (onChunk) addChunkListener(onChunk);
-  
   currentState = { ...currentState, ...initialState };
   updateImages();
   ensureMasterCanvas();
@@ -1751,10 +1753,15 @@ export function startBroadcastEngine(initialState, onChunk) {
   // Si ya está activo y grabando con chunks fluyendo, devolver el masterStream
   if (isBroadcastEngineActive && mediaRecorder && mediaRecorder.state === 'recording') {
     updateBroadcastState(initialState);
-    if (cachedInitHeader && onChunk) {
-      try { onChunk(cachedInitHeader.slice(0)); } catch (e) {}
-    }
+    if (onChunk) addChunkListener(onChunk);
     return masterStream;
+  }
+
+  // Si no estaba activo, reiniciar cabecera e inicializar listener limpio
+  cachedInitHeader = null;
+  if (onChunk) {
+    chunkListeners.clear();
+    chunkListeners.add(onChunk);
   }
 
   // Si el mediaRecorder previo existe pero no está grabando activamente, detenerlo
@@ -1819,7 +1826,7 @@ export function updateBroadcastState(updates) {
   ensureMasterCanvas();
   if (voiceUpdated) reapplyVoiceEffects();
   if (updates.voiceMonitor !== undefined) setVoiceMonitor(updates.voiceMonitor);
-  if (updates.localStream || updates.remoteCams || updates.camStreamsMap || updates.camMuted || updates.camSlots || updates.getCamStream) {
+  if (updates.activeCam || updates.layoutMode || updates.localStream || updates.remoteCams || updates.camStreamsMap || updates.camMuted || updates.camSlots || updates.getCamStream) {
     syncVideoStreams();
     setupAudioMixing(
       currentState.localStream,

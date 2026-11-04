@@ -125,6 +125,11 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - streamTransport.js / RemoteCam.jsx — buffer elástico 150ms + perfiles fluidos 720p 2.4 Mbps balanced eliminan pausas y tirones en móvil (2026-11-04 08:50)
 - electron/main.js / App.jsx — toSafeBuffer robusto para cabecera e IPC chunks de grabación; audioContext resume garantizado (2026-11-04 08:52)
 - PodcastStudio.exe — recompilado v1.3.4.0 (2026-11-04 08:53)
+- src/pages/RemoteCam.jsx — cambio fluido frontal/trasera sin freeze (fallback elástico de resolución y sender.replaceTrack antes de detener pista previa) (2026-11-04 11:30)
+- src/utils/masterBroadcastEngine.js — cambio instantáneo a Master / PGM sin congelarse en frame anterior (2026-11-04 11:30)
+- src/App.jsx & electron/main.js — resolución de fallo EBML en FFmpeg (código 1 por header duplicado en stdin); timer de grabación inicia y avanza fluidamente (2026-11-04 11:30)
+- PodcastStudio.exe — recompilado v1.3.4.0 con todos los fixes integrados (2026-11-04 11:30)
+- Vercel — deploy a producción completado y activo en https://www.podcastudio.mx (2026-11-04 11:31)
 
 ## Verificado
 - npm run test:remote-cameras (4/4 passed)
@@ -132,7 +137,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - npm run test:stream-config (5/5 passed)
 - npm run build (Vite production bundle OK)
 - npm run build:exe (PodcastStudio.exe v1.3.4.0 OK)
-- E2E WebRTC handshake Phone-to-Studio simulado OK
+- Deploy Vercel Production OK (https://www.podcastudio.mx)
 
 ## Siguiente
 - Monitoreo en ejecución y retroalimentación del usuario.

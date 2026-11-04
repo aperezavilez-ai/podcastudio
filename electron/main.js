@@ -1830,8 +1830,8 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
     try {
       // Configuración de codificación Full HD broadcast instantánea (probesize optimizado + auto mapping de audio)
       ffmpegRecordProcess = spawn(ffmpegPath, [
-        '-probesize', '2M',
-        '-analyzeduration', '1000000',
+        '-probesize', '256k',
+        '-analyzeduration', '500000',
         '-f', 'webm',
         '-i', 'pipe:0',
         '-map', '0:v:0',

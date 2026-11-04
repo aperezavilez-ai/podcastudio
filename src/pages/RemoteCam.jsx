@@ -732,24 +732,54 @@ export default function RemoteCam() {
 
     try {
       const oldTrack = streamRef.current?.getVideoTracks?.()?.[0]
-      if (oldTrack) { try { oldTrack.stop() } catch {} }
+      let newStream = null
 
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { 
-          facingMode: { ideal: nextFacing }, 
-          width: { ideal: 1920, min: 1280 }, 
-          height: { ideal: 1080, min: 720 },
-          aspectRatio: { ideal: 1.7777777778 },
-          frameRate: { ideal: 30 }
-        },
-        audio: false,
-      })
+      // Intentar primero resolución Full HD flexible sin límites restrictivos de mínimo o aspectRatio que rompen la cámara frontal
+      try {
+        newStream = await navigator.mediaDevices.getUserMedia({
+          video: { 
+            facingMode: { ideal: nextFacing }, 
+            width: { ideal: 1920 }, 
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30, max: 30 }
+          },
+          audio: false,
+        })
+      } catch (e1) {
+        try {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+              facingMode: { ideal: nextFacing }, 
+              width: { ideal: 1280 }, 
+              height: { ideal: 720 },
+              frameRate: { ideal: 30 }
+            },
+            audio: false,
+          })
+        } catch (e2) {
+          newStream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: nextFacing },
+            audio: false,
+          })
+        }
+      }
 
       const newTrack = newStream.getVideoTracks()[0]
-      if (newTrack) { try { newTrack.contentHint = 'motion' } catch {} }
+      if (newTrack) {
+        newTrack.enabled = true
+        try { newTrack.contentHint = 'motion' } catch {}
+      }
 
       const sender = videoSenderRef.current || pcRef.current?.getSenders?.()?.find(s => s.track?.kind === 'video' || s.kind === 'video')
-      if (sender && newTrack) await sender.replaceTrack(newTrack)
+      if (sender && newTrack) {
+        await sender.replaceTrack(newTrack)
+        try { applyVideoSenderParams(sender, currentTierRef.current || QUALITY_TIERS[0]) } catch {}
+      }
+
+      // Detener pista anterior SOLO DESPUÉS de que la nueva pista ya esté transmitiendo en el PeerConnection
+      if (oldTrack && oldTrack !== newTrack) {
+        try { oldTrack.stop() } catch {}
+      }
 
       const existingAudio = streamRef.current?.getAudioTracks?.()?.[0]
       if (existingAudio) newStream.addTrack(existingAudio)
@@ -766,7 +796,7 @@ export default function RemoteCam() {
     } catch (err) {
       console.warn('Error al cambiar de cámara:', err)
     } finally {
-      setTimeout(() => { isFlippingRef.current = false }, 350)
+      setTimeout(() => { isFlippingRef.current = false }, 300)
     }
   }
 

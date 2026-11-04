@@ -2212,17 +2212,10 @@ function PodcastStudioApp() {
     if ((isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk) {
       window.api.sendStreamChunk(buffer);
     }
-    // Solo enviar fragmentos a FFmpeg cuando la grabación esté formalmente activa.
+    // Enviar fragmentos a FFmpeg de forma estrictamente secuencial y sin duplicar cabeceras
     if (isRecordingRef.current && !isRecordingPausedRef.current) {
       if (!window.api) recordingChunksRef.current.push(buffer);
       if (window.api?.sendRecordChunk) {
-        if (!hasSentHeaderRef.current) {
-          const header = getInitHeader();
-          if (header && header !== buffer) {
-            window.api.sendRecordChunk(header);
-          }
-          hasSentHeaderRef.current = true;
-        }
         window.api.sendRecordChunk(buffer);
       }
     }
@@ -2245,14 +2238,39 @@ function PodcastStudioApp() {
       try {
         recordingStartPendingRef.current = true;
         recordingStartPendingTimeRef.current = Date.now();
-        hasSentHeaderRef.current = false;
         recordingChunksRef.current = [];
         setRecordingTime(0);
         setIsRecordingPaused(false);
         isRecordingPausedRef.current = false;
         setCountdown(null);
 
-        // Iniciar señal master del compositor broadcast inmediatamente con chunks de 250ms
+        // 1. Iniciar primero el proceso FFmpeg en Electron
+        if (window.api) {
+          let res;
+          try {
+            res = await window.api.startRecording({
+              projectName: topic || 'Proyecto_General',
+            });
+          } catch (error) {
+            res = { success: false, error: error.message };
+          }
+
+          if (!res?.success) {
+            recordingStartPendingRef.current = false;
+            logger.error('[handleRecord] Falló el inicio de grabación:', res?.error);
+            alert('Error al iniciar grabación: ' + (res?.error || 'Desconocido'));
+            return;
+          }
+        }
+
+        // 2. Activar timer y estado de grabación inmediatamente
+        isRecordingRef.current = true;
+        setIsRecording(true);
+        recordingStartTimeRef.current = Date.now();
+        pausedDurationRef.current = 0;
+        pauseStartRef.current = null;
+
+        // 3. Iniciar compositor broadcast - el primer chunk con cabecera EBML fluirá naturalmente hacia FFmpeg
         startBroadcastEngine({
           activeCam,
           pvwCam,
@@ -2276,53 +2294,6 @@ function PodcastStudioApp() {
           camStreamsMap,
           camMuted,
         }, handleMasterChunk);
-
-        if (window.api) {
-          // Asegurar que la cabecera EBML/WebM esté capturada antes de inicializar FFmpeg
-          let recordingHeader = null;
-          try {
-            recordingHeader = await getOrWaitForInitHeader(500);
-          } catch (hErr) {
-            logger.warn('[handleRecord] Warning esperando cabecera:', hErr);
-          }
-          if (recordingHeader) {
-            hasSentHeaderRef.current = true;
-          }
-
-          // INICIAR TIMER INMEDIATAMENTE
-          recordingStartTimeRef.current = Date.now();
-          pausedDurationRef.current = 0;
-          pauseStartRef.current = null;
-
-          // Activar estado de grabación inmediatamente para que el timer arranque
-          isRecordingRef.current = true;
-          setIsRecording(true);
-
-          let res;
-          try {
-            res = await window.api.startRecording({
-              projectName: topic || 'Proyecto_General',
-              initialHeader: recordingHeader ? Array.from(new Uint8Array(recordingHeader)) : null,
-            });
-          } catch (error) {
-            res = { success: false, error: error.message };
-          }
-          if (res?.success) {
-            isRecordingRef.current = true;
-            setIsRecording(true);
-            recordingStartTimeRef.current = Date.now();
-            pausedDurationRef.current = 0;
-            pauseStartRef.current = null;
-          } else {
-            // Si falló, revertir el estado
-            isRecordingRef.current = false;
-            setIsRecording(false);
-            recordingStartTimeRef.current = null;
-            if (!isStreamingRef.current) stopBroadcastEngine();
-            logger.error('[handleRecord] Falló el inicio de grabación:', res?.error);
-            alert('Error al iniciar grabación: ' + (res?.error || 'Desconocido'));
-            return;
-          }
 
           // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
           if (isoRecordingEnabled && window.api?.startIsoRecording) {
@@ -2368,7 +2339,6 @@ function PodcastStudioApp() {
               }).catch(e => logger.warn('[ISO] Fallo al iniciar ISO:', e));
             }
           }
-        }
       } catch (err) {
         isRecordingRef.current = false;
         setIsRecording(false);
