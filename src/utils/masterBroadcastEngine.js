@@ -1762,6 +1762,10 @@ export function startBroadcastEngine(initialState, onChunk) {
     try { mediaRecorder.stop(); } catch (e) {}
   }
 
+  if (audioContext && audioContext.state === 'suspended') {
+    try { audioContext.resume(); } catch (e) {}
+  }
+
   const canvasStream = canvas.captureStream(30);
   const videoTrack = canvasStream.getVideoTracks()[0];
   const audioTrack = setupAudioMixing(
@@ -1771,7 +1775,8 @@ export function startBroadcastEngine(initialState, onChunk) {
     currentState.camMuted
   );
 
-  const tracks = [videoTrack];
+  const tracks = [];
+  if (videoTrack) tracks.push(videoTrack);
   if (audioTrack) tracks.push(audioTrack);
   masterStream = new MediaStream(tracks);
 

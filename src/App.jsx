@@ -2281,7 +2281,7 @@ function PodcastStudioApp() {
           // Asegurar que la cabecera EBML/WebM esté capturada antes de inicializar FFmpeg
           let recordingHeader = null;
           try {
-            recordingHeader = await getOrWaitForInitHeader(1200);
+            recordingHeader = await getOrWaitForInitHeader(500);
           } catch (hErr) {
             logger.warn('[handleRecord] Warning esperando cabecera:', hErr);
           }
@@ -2289,7 +2289,7 @@ function PodcastStudioApp() {
             hasSentHeaderRef.current = true;
           }
 
-          // INICIAR TIMER INMEDIATAMENTE antes de llamar a FFmpeg
+          // INICIAR TIMER INMEDIATAMENTE
           recordingStartTimeRef.current = Date.now();
           pausedDurationRef.current = 0;
           pauseStartRef.current = null;
@@ -2302,7 +2302,7 @@ function PodcastStudioApp() {
           try {
             res = await window.api.startRecording({
               projectName: topic || 'Proyecto_General',
-              initialHeader: recordingHeader ? new Uint8Array(recordingHeader) : null,
+              initialHeader: recordingHeader ? Array.from(new Uint8Array(recordingHeader)) : null,
             });
           } catch (error) {
             res = { success: false, error: error.message };

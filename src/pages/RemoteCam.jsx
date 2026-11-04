@@ -4,10 +4,10 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
-  { label: 'Full HD 1080p · 4.5 Mbps', maxBitrate: 4500000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 720p · 2.5 Mbps', maxBitrate: 2500000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 720p · 1.5 Mbps', maxBitrate: 1500000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'SD 480p · 800 Kbps', maxBitrate: 800000, scaleResolutionDownBy: 1, frameRate: 25 },
+  { label: 'HD 720p Pro · 2.4 Mbps (Fluido)', maxBitrate: 2400000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 720p · 1.8 Mbps (Estable)', maxBitrate: 1800000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'SD 540p · 1.2 Mbps (Ligero)', maxBitrate: 1200000, scaleResolutionDownBy: 1.33, frameRate: 30 },
+  { label: 'SD 480p · 750 Kbps (Bajo ancho)', maxBitrate: 750000, scaleResolutionDownBy: 1.5, frameRate: 25 },
 ]
 const RTT_DEGRADE_MS = 400
 const RTT_HEALTHY_MS = 150
@@ -17,8 +17,8 @@ function getCaptureResolutionLabel(settings = {}) {
   const width = Number(settings.width) || 0
   const height = Number(settings.height) || 0
   if (width >= 1920 && height >= 1080) return 'Full HD 1080p'
-  if (width >= 1280 && height >= 720) return `HD ${Math.min(width, height)}p (límite del dispositivo)`
-  return width && height ? `${width}×${height} (límite del dispositivo)` : 'Resolución de cámara'
+  if (width >= 1280 && height >= 720) return `HD ${Math.min(width, height)}p`
+  return width && height ? `${width}×${height}` : 'Resolución de cámara'
 }
 
 function applyVideoSenderParams(sender, tier) {
@@ -30,11 +30,15 @@ function applyVideoSenderParams(sender, tier) {
     
     e.maxBitrate = tier.maxBitrate
     e.maxFramerate = tier.frameRate || 30
-    e.scaleResolutionDownBy = 1
+    if (tier.scaleResolutionDownBy && tier.scaleResolutionDownBy > 1) {
+      e.scaleResolutionDownBy = tier.scaleResolutionDownBy
+    } else {
+      delete e.scaleResolutionDownBy
+    }
     e.networkPriority = 'high'
     e.priority = 'high'
-    // 'balanced' previene caídas bruscas de fps que causan video arrastrado
-    params.degradationPreference = 'maintain-framerate'
+    // 'balanced' previene caídas bruscas y pausas en conexiones móviles/WiFi
+    params.degradationPreference = 'balanced'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }

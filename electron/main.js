@@ -1859,14 +1859,41 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
         ffmpegRecordProcess = null;
       });
 
+function toSafeBuffer(input) {
+  if (!input) return null;
+  if (Buffer.isBuffer(input)) return input;
+  if (input instanceof Uint8Array || ArrayBuffer.isView(input)) {
+    return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  }
+  if (input instanceof ArrayBuffer) {
+    return Buffer.from(input);
+  }
+  if (typeof input === 'object') {
+    if (input.type === 'Buffer' && Array.isArray(input.data)) {
+      return Buffer.from(input.data);
+    }
+    const values = Object.values(input);
+    if (values.length > 0) {
+      return Buffer.from(values);
+    }
+  }
+  try {
+    return Buffer.from(input);
+  } catch (e) {
+    return null;
+  }
+}
+
       const initialHeader = options?.initialHeader;
       if (initialHeader && ffmpegRecordProcess.stdin && !ffmpegRecordProcess.stdin.destroyed) {
-        const headerBuffer = Buffer.isBuffer(initialHeader) ? initialHeader : Buffer.from(initialHeader);
-        const proc = ffmpegRecordProcess;
-        recordChunkQueue = writeChunkWithBackpressure(proc.stdin, headerBuffer).catch((error) => {
-          recordChunkError = error.message || String(error);
-          console.warn('[FFmpeg Grabación] No se pudo escribir la cabecera WebM:', recordChunkError);
-        });
+        const headerBuffer = toSafeBuffer(initialHeader);
+        if (headerBuffer && headerBuffer.length > 0) {
+          const proc = ffmpegRecordProcess;
+          recordChunkQueue = writeChunkWithBackpressure(proc.stdin, headerBuffer).catch((error) => {
+            recordChunkError = error.message || String(error);
+            console.warn('[FFmpeg Grabación] No se pudo escribir la cabecera WebM:', recordChunkError);
+          });
+        }
       }
 
       resolve({ success: true, path: currentRecordingPath, projectName: cleanProjectName });
@@ -1880,9 +1907,8 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
 ipcMain.on('record-chunk', (event, chunkBuffer) => {
   const proc = ffmpegRecordProcess;
   if (!proc?.stdin || proc.stdin.destroyed || !chunkBuffer) return;
-  let buf;
-  try { buf = Buffer.isBuffer(chunkBuffer) ? chunkBuffer : Buffer.from(chunkBuffer); }
-  catch (e) { recordChunkError = e.message; return; }
+  const buf = toSafeBuffer(chunkBuffer);
+  if (!buf || buf.length === 0) return;
   recordChunkQueue = recordChunkQueue.then(() => writeChunkWithBackpressure(proc.stdin, buf)).catch((error) => {
     recordChunkError = error.message || String(error);
     console.warn('Error escribiendo chunk de grabación:', recordChunkError);

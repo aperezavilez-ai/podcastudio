@@ -209,15 +209,15 @@ export class P2PStreamTransport extends BaseStreamTransport {
             const track = trackEvent.track
             if (!track) return
 
-            // Buffer de jitter estable (50 ms). En Chromium playoutDelayHint es en segundos (0.05) y jitterBufferTarget en milisegundos (50).
-            // Un valor adecuado absorbe fluctuaciones de red móvil sin añadir retardo perceptible.
+            // Buffer elástico y fluido (150ms): absorbe fluctuaciones y ráfagas de red móvil/WiFi
+            // eliminando por completo el efecto de video pausado o a tirones.
             if (trackEvent.receiver) {
               try {
                 if ('playoutDelayHint' in trackEvent.receiver) {
-                  trackEvent.receiver.playoutDelayHint = 0.05;
+                  trackEvent.receiver.playoutDelayHint = 0.12;
                 }
                 if ('jitterBufferTarget' in trackEvent.receiver) {
-                  trackEvent.receiver.jitterBufferTarget = 50;
+                  trackEvent.receiver.jitterBufferTarget = 150;
                 }
               } catch (e) {}
             }
@@ -437,7 +437,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
         }
         const madeProgress = bytes > prev.bytes || frames > prev.frames
         const stalledIntervals = madeProgress ? 0 : prev.stalledIntervals + 1
-        if (stalledIntervals === 5) onVideoStall?.()
+        if (stalledIntervals === 12) onVideoStall?.()
         this.lastInbound.set(slotIndex, { bytes, frames, ts: performance.now(), stalledIntervals })
       } catch {}
     }, 2000)

@@ -122,7 +122,9 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - useCintilloRotation.js / App.jsx — rotación continua uno por uno sin congelamiento y selector de modo Secuencial / Aleatorio (2026-11-04 08:00)
 - App.jsx — corrección del bloque try/catch de grabación: eliminación de cancelación accidental inmediata que congelaba la app (2026-11-04 08:10)
 - electron/main.js / launcher.cs — apertura instantánea en did-finish-load con fallback a 2.5s y timeout de splash optimizado a 5s (2026-11-04 08:12)
-- PodcastStudio.exe — recompilado v1.3.4.0 limpio y verificado (2026-11-04 08:13)
+- streamTransport.js / RemoteCam.jsx — buffer elástico 150ms + perfiles fluidos 720p 2.4 Mbps balanced eliminan pausas y tirones en móvil (2026-11-04 08:50)
+- electron/main.js / App.jsx — toSafeBuffer robusto para cabecera e IPC chunks de grabación; audioContext resume garantizado (2026-11-04 08:52)
+- PodcastStudio.exe — recompilado v1.3.4.0 (2026-11-04 08:53)
 
 ## Verificado
 - npm run test:remote-cameras (4/4 passed)
