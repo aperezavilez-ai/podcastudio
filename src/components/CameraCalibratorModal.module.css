@@ -1,9 +1,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(4, 6, 10, 0.82);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(4, 6, 10, 0.88);
   z-index: 9999;
   display: flex;
   align-items: center;

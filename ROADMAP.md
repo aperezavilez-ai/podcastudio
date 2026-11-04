@@ -128,9 +128,9 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - src/pages/RemoteCam.jsx — cambio fluido frontal/trasera sin freeze (fallback elástico de resolución y sender.replaceTrack antes de detener pista previa) (2026-11-04 11:30)
 - src/utils/masterBroadcastEngine.js — corrección de pantalla negra en cámaras: eliminación de llamadas play() saturantes en render loop y verificación estricta de readyState >= 2 (2026-11-04 13:00)
 - launcher.cs / PodcastStudio.exe — solución definitiva de apertura: timeout de detección ampliado a 15s con detección de señal a ~2.2s, previniendo cierres prematuros de splash y reintentos en bucle (2026-11-04 13:00)
-- src/App.jsx & electron/main.js — resolución de fallo EBML en FFmpeg (código 1 por header duplicado en stdin); timer de grabación inicia y avanza fluidamente (2026-11-04 11:30)
-- PodcastStudio.exe — recompilado v1.3.4.0 (2026-11-04 13:00)
-- Vercel — deploy a producción completado y activo en https://www.podcastudio.mx (2026-11-04 13:00)
+- CameraConnectModal / CameraCalibratorModal — corrección de translucidez y borrosidad: eliminación de backdrop-filter blur en Chromium, aislamiento de stacking context (isolation: isolate) y fondos sólidos #12131a 100% opacos (2026-11-04 13:25)
+- PodcastStudio.exe — recompilado v1.3.4.0 (2026-11-04 13:26)
+- Vercel — deploy a producción completado y activo en https://www.podcastudio.mx (2026-11-04 13:27)
 
 ## Verificado
 - npm run test:remote-cameras (4/4 passed)

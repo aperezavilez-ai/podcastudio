@@ -921,11 +921,26 @@ Instrucciones:
   return (
     <div 
       className={styles.backdrop} 
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+        backdropFilter: 'none',
+        WebkitBackdropFilter: 'none',
+        zIndex: 1000,
+      }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose?.(); }} 
       role="presentation"
     >
       <div
         className={styles.modal}
+        style={{
+          background: '#12131a',
+          backgroundColor: '#12131a',
+          opacity: 1,
+          isolation: 'isolate',
+          boxShadow: '0 25px 60px rgba(0, 0, 0, 0.95)',
+        }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
