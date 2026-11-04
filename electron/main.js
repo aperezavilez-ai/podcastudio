@@ -78,6 +78,8 @@ let recordChunkQueue = Promise.resolve();
 let recordChunkError = null;
 let ffmpegStreamProcess = null;
 let wss = null;
+let mediaServerHttps = null;
+let mediaServerHttp = null;
 
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
@@ -191,10 +193,10 @@ function createWindow() {
     showWindowSafely();
   });
 
-  // Temporizador de respaldo garantizado por si no disparan los eventos
+  // Temporizador de respaldo garantizado ultra-rápido por si no disparan los eventos
   const fallbackShowTimer = setTimeout(() => {
     showWindowSafely();
-  }, 2500);
+  }, 500);
 
   mainWindow.once('show', () => {
     clearTimeout(fallbackShowTimer);
@@ -294,6 +296,7 @@ function startMediaServer() {
   const appServer = express();
   const certs = getCertificates() || { key: '', cert: '' };
   const server = https.createServer(certs, appServer);
+  mediaServerHttps = server;
   
   // Servir estáticos de la aplicación web (dist) para dispositivos en la LAN (iPad, tablets)
   const distPath = path.join(__dirname, '../dist');
@@ -363,6 +366,7 @@ function startMediaServer() {
   // Servidor HTTP complementario para WebSocket estándar y acceso web sin SSL en LAN (puerto 3001)
   // Monta el mismo appServer para que iPads y tablets abran http://<ip>:3001/control sin errores de certificado
   const plainHttpServer = http.createServer(appServer);
+  mediaServerHttp = plainHttpServer;
   httpWsServer = new WebSocketServer({ server: plainHttpServer });
 
   const setupWebSocketConnection = (ws) => {
@@ -1365,25 +1369,41 @@ if (!gotTheLock) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       mainWindow.focus();
+      try { fs.writeFileSync(readySignalPath, '1', 'utf8'); } catch (e) {}
     } else {
       createWindow();
     }
   });
 
+  const cleanupAndExit = () => {
+    try {
+      if (mediaServerHttps) mediaServerHttps.close();
+      if (mediaServerHttp) mediaServerHttp.close();
+      if (httpWsServer) httpWsServer.close();
+      if (wss) wss.close();
+    } catch (e) {}
+    try {
+      if (ffmpegRecordProcess) ffmpegRecordProcess.kill('SIGKILL');
+      if (ffmpegStreamProcess) ffmpegStreamProcess.kill('SIGKILL');
+    } catch (e) {}
+    try { app.exit(0); } catch (e) {}
+    try { process.exit(0); } catch (e) {}
+  };
+
   app.on('window-all-closed', () => {
-    app.quit();
+    cleanupAndExit();
   });
 
   app.on('before-quit', () => {
     try {
-      if (ffmpegRecordProcess) ffmpegRecordProcess.kill('SIGKILL');
-    } catch (e) {}
-    try {
-      if (ffmpegStreamProcess) ffmpegStreamProcess.kill('SIGKILL');
-    } catch (e) {}
-    try {
+      if (mediaServerHttps) mediaServerHttps.close();
+      if (mediaServerHttp) mediaServerHttp.close();
       if (httpWsServer) httpWsServer.close();
       if (wss) wss.close();
+    } catch (e) {}
+    try {
+      if (ffmpegRecordProcess) ffmpegRecordProcess.kill('SIGKILL');
+      if (ffmpegStreamProcess) ffmpegStreamProcess.kill('SIGKILL');
     } catch (e) {}
   });
   app.whenReady().then(() => {

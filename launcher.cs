@@ -115,12 +115,12 @@ public class SplashForm : Form
         {
             try
             {
-                // Limpiar procesos huÃƒÂ©rfanos previos de electron para arranque instantÃƒÂ¡neo
+                // Limpiar procesos huérfanos previos de forma inmediata sin esperas bloqueantes
                 try
                 {
                     foreach (Process p in Process.GetProcessesByName("electron"))
                     {
-                        try { p.Kill(); p.WaitForExit(1000); } catch {}
+                        try { p.Kill(); } catch {}
                     }
                 }
                 catch {}
@@ -139,80 +139,42 @@ public class SplashForm : Form
 
                 Process electronProc = Process.Start(psi);
 
-                UpdateStatus("Conectando interfaz gr\u00E1fica...");
+                UpdateStatus("Conectando interfaz gráfica...");
 
-                // Detección precisa de la ventana de PodcastStudio sincronizada con señal de Electron
+                // Detección ultra-rápida de la ventana sincronizada con la señal de Electron
                 int waitedMs = 0;
-                while (waitedMs < 5000)
+                while (waitedMs < 2500)
                 {
-                    Thread.Sleep(50);
-                    waitedMs += 50;
+                    Thread.Sleep(25);
+                    waitedMs += 25;
 
-                    if (electronProc != null && electronProc.HasExited)
-                    {
-                        break;
-                    }
-
-                    // 1. Detección inmediata por señal directa emitida por Electron al terminar el renderizado
+                    // 1. Detección inmediata por señal directa emitida por Electron
                     if (File.Exists(signalFile))
                     {
                         try { File.Delete(signalFile); } catch {}
-                        Thread.Sleep(80);
-                        try
-                        {
-                            IntPtr winHwnd = FindWindow(null, "PodcastStudio");
-                            if (winHwnd != IntPtr.Zero) SetForegroundWindow(winHwnd);
-                        }
-                        catch {}
                         break;
                     }
 
-                    IntPtr hWnd = IntPtr.Zero;
-
-                    // 2. Buscar en procesos electron si alguno ya tiene ventana visible
+                    // 2. Buscar por titulo en el administrador de ventanas de Windows
                     try
                     {
-                        Process[] procs = Process.GetProcessesByName("electron");
-                        if (waitedMs > 3000 && procs.Length == 0)
+                        IntPtr winHwnd = FindWindow(null, "PodcastStudio");
+                        if (winHwnd != IntPtr.Zero && IsWindowVisible(winHwnd))
                         {
-                            // Ningún proceso de electron sigue activo
+                            try { SetForegroundWindow(winHwnd); } catch {}
                             break;
-                        }
-
-                        foreach (Process p in procs)
-                        {
-                            try { p.Refresh(); } catch {}
-                            if (p.MainWindowHandle != IntPtr.Zero && IsWindowVisible(p.MainWindowHandle))
-                            {
-                                hWnd = p.MainWindowHandle;
-                                try { SetForegroundWindow(hWnd); } catch {}
-                                break;
-                            }
                         }
                     }
                     catch {}
-
-                    // 3. Buscar por titulo en el administrador de ventanas de Windows
-                    if (hWnd == IntPtr.Zero)
-                    {
-                        try
-                        {
-                            IntPtr winHwnd = FindWindow(null, "PodcastStudio");
-                            if (winHwnd != IntPtr.Zero && IsWindowVisible(winHwnd))
-                            {
-                                hWnd = winHwnd;
-                                try { SetForegroundWindow(hWnd); } catch {}
-                            }
-                        }
-                        catch {}
-                    }
-
-                    if (hWnd != IntPtr.Zero)
-                    {
-                        Thread.Sleep(80);
-                        break;
-                    }
                 }
+
+                // Asegurar que la ventana principal de PodcastStudio tenga foco
+                try
+                {
+                    IntPtr finalHwnd = FindWindow(null, "PodcastStudio");
+                    if (finalHwnd != IntPtr.Zero) SetForegroundWindow(finalHwnd);
+                }
+                catch {}
 
                 // Cerrar splash de forma segura en el hilo de UI
                 this.BeginInvoke(new Action(() =>

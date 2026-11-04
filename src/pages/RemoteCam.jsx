@@ -511,13 +511,10 @@ export default function RemoteCam() {
           if (vTransceiver && 'setCodecPreferences' in vTransceiver && window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities) {
             const caps = RTCRtpReceiver.getCapabilities('video');
             if (caps && caps.codecs) {
-              const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
-              // Priorizar packetization-mode=1 (FU-A fragmentation units) para evitar que cuadros I grandes o movimientos de cámara rompan el video en fragmentos
-              const h264Mode1 = h264.filter(c => c.sdpFmtpLine && c.sdpFmtpLine.includes('packetization-mode=1'));
-              const h264Others = h264.filter(c => !h264Mode1.includes(c));
               const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
+              const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
               const others = caps.codecs.filter(c => !h264.includes(c) && !vp8.includes(c));
-              const preferred = [...h264Mode1, ...h264Others, ...vp8, ...others];
+              const preferred = [...vp8, ...h264, ...others];
               try { vTransceiver.setCodecPreferences(preferred); } catch (e) {}
             }
           }

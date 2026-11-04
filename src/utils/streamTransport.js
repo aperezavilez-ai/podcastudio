@@ -184,6 +184,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
 
             liveTracks.forEach((t) => {
               try {
+                t.enabled = true
                 if (t.kind === 'video') t.contentHint = 'motion'
                 if (t.kind === 'audio') {
                   t.contentHint = 'speech'
@@ -201,23 +202,32 @@ export class P2PStreamTransport extends BaseStreamTransport {
               }
             })
 
+            // Emitir MediaStream fresco con las pistas vivas para que React y video elements inicialicen el decodificador de GPU al instante
+            const activeStream = new MediaStream(liveTracks)
+            this.compoundStreams.set(slotIndex, activeStream)
+
             this.emit('statusChanged', slotIndex, 'connected')
-            this.emit('streamConnected', slotIndex, stableStream, callerLabel)
+            this.emit('streamConnected', slotIndex, activeStream, callerLabel)
           }
 
           newPc.ontrack = (trackEvent) => {
             const track = trackEvent.track
             if (!track) return
 
-            // Buffer elástico y fluido (150ms): absorbe fluctuaciones y ráfagas de red móvil/WiFi
-            // eliminando por completo el efecto de video pausado o a tirones.
+            try {
+              track.enabled = true
+              if (track.kind === 'video') track.contentHint = 'motion'
+              if (track.kind === 'audio') track.contentHint = 'speech'
+            } catch (e) {}
+
+            // Buffer balanceado de latencia ultra-baja (80ms)
             if (trackEvent.receiver) {
               try {
                 if ('playoutDelayHint' in trackEvent.receiver) {
-                  trackEvent.receiver.playoutDelayHint = 0.12;
+                  trackEvent.receiver.playoutDelayHint = 0.08;
                 }
                 if ('jitterBufferTarget' in trackEvent.receiver) {
-                  trackEvent.receiver.jitterBufferTarget = 150;
+                  trackEvent.receiver.jitterBufferTarget = 80;
                 }
               } catch (e) {}
             }
@@ -227,6 +237,7 @@ export class P2PStreamTransport extends BaseStreamTransport {
             track.onended = () => { trackMap.delete(track.id); dispatchStreamUpdate() }
             if (trackEvent.streams && trackEvent.streams[0]) {
               trackEvent.streams[0].getTracks().forEach(t => {
+                try { t.enabled = true } catch (e) {}
                 trackMap.set(t.id, t)
                 t.onunmute = () => dispatchStreamUpdate()
               })
@@ -311,12 +322,10 @@ export class P2PStreamTransport extends BaseStreamTransport {
             if (vTransceiver && 'setCodecPreferences' in vTransceiver && window.RTCRtpReceiver?.getCapabilities) {
               const caps = RTCRtpReceiver.getCapabilities('video');
               if (caps?.codecs) {
-                const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
-                const h264Mode1 = h264.filter(c => c.sdpFmtpLine && c.sdpFmtpLine.includes('packetization-mode=1'));
-                const h264Others = h264.filter(c => !h264Mode1.includes(c));
                 const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
+                const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
                 const others = caps.codecs.filter(c => !h264.includes(c) && !vp8.includes(c));
-                vTransceiver.setCodecPreferences([...h264Mode1, ...h264Others, ...vp8, ...others]);
+                try { vTransceiver.setCodecPreferences([...vp8, ...h264, ...others]); } catch (e) {}
               }
             }
           } catch (e) {}

@@ -46,13 +46,11 @@ function ModalVideoPreview({ stream, label }) {
     v.setAttribute('webkit-playsinline', 'true');
     v.muted = true;
     v.defaultMuted = true;
-
-    if (v.srcObject !== stream) {
-      v.srcObject = stream;
-    }
+    v.srcObject = stream;
 
     const attemptPlay = () => {
-      if (v && v.paused) {
+      if (v) {
+        if (v.srcObject !== stream) v.srcObject = stream;
         v.play().catch(() => {});
       }
     };
@@ -60,10 +58,12 @@ function ModalVideoPreview({ stream, label }) {
     attemptPlay();
     v.addEventListener('loadedmetadata', attemptPlay);
     v.addEventListener('canplay', attemptPlay);
+    v.addEventListener('playing', attemptPlay);
 
     const unmuteCbs = new Map();
     const wireTrackListeners = (track) => {
-      if (unmuteCbs.has(track.id)) return;
+      if (!track || unmuteCbs.has(track.id)) return;
+      try { track.enabled = true; } catch {}
       const cb = () => attemptPlay();
       unmuteCbs.set(track.id, { track, cb });
       track.addEventListener('unmute', cb);
@@ -81,19 +81,22 @@ function ModalVideoPreview({ stream, label }) {
       stream.addEventListener('addtrack', onAddTrack);
     }
 
-    let pollCount = 0;
+    // Monitoreo activo para reanudar renderizado y garantizar cero pantallas en negro
     const pollTimer = setInterval(() => {
-      pollCount++;
-      if (pollCount > 20) { clearInterval(pollTimer); return; }
-      if (v && v.paused && v.srcObject && v.srcObject.getVideoTracks().some(t => t.readyState === 'live')) {
+      if (!v || !stream) return;
+      const tracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
+      tracks.forEach(t => { try { t.enabled = true; } catch {} });
+      if (v.paused || v.videoWidth === 0) {
+        if (v.srcObject !== stream) v.srcObject = stream;
         v.play().catch(() => {});
       }
-    }, 500);
+    }, 300);
 
     return () => {
       clearInterval(pollTimer);
       v.removeEventListener('loadedmetadata', attemptPlay);
       v.removeEventListener('canplay', attemptPlay);
+      v.removeEventListener('playing', attemptPlay);
       unmuteCbs.forEach(({ track, cb }) => {
         try { track.removeEventListener('unmute', cb); } catch {}
       });
