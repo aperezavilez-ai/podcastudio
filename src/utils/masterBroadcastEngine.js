@@ -149,12 +149,9 @@ export async function stopNativeEngineBroadcast() {
 
 function getReadyProgramVideo(camId) {
   const target = videoElements.get(camId);
-  if (target) {
-    if (target.paused) target.play().catch(() => {});
-    if (target.videoWidth > 0 || target.readyState >= 1) {
-      lastReadyProgramCam = camId;
-      return target;
-    }
+  if (target && target.readyState >= 2 && target.videoWidth > 0) {
+    lastReadyProgramCam = camId;
+    return target;
   }
   const previous = videoElements.get(lastReadyProgramCam);
   if (previous && previous.readyState >= 2 && previous.videoWidth > 0) {
@@ -1826,7 +1823,7 @@ export function updateBroadcastState(updates) {
   ensureMasterCanvas();
   if (voiceUpdated) reapplyVoiceEffects();
   if (updates.voiceMonitor !== undefined) setVoiceMonitor(updates.voiceMonitor);
-  if (updates.activeCam || updates.layoutMode || updates.localStream || updates.remoteCams || updates.camStreamsMap || updates.camMuted || updates.camSlots || updates.getCamStream) {
+  if (updates.localStream || updates.remoteCams || updates.camStreamsMap || updates.camMuted || updates.camSlots || updates.getCamStream) {
     syncVideoStreams();
     setupAudioMixing(
       currentState.localStream,

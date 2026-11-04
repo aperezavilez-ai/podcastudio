@@ -143,7 +143,7 @@ public class SplashForm : Form
 
                 // Detección ultra-rápida de la ventana sincronizada con la señal de Electron
                 int waitedMs = 0;
-                while (waitedMs < 2500)
+                while (waitedMs < 15000)
                 {
                     Thread.Sleep(25);
                     waitedMs += 25;
