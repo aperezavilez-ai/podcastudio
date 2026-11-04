@@ -472,15 +472,19 @@ export class P2PStreamTransport extends BaseStreamTransport {
 
     const channel = this.channels.get(slotIndex)
     if (channel) {
+      this.channels.delete(slotIndex)
       try {
         channel.send({
           type: 'broadcast',
           event: 'signal',
           payload: { type: 'studio-disconnect', slotIndex },
         }).catch(() => {})
-        try { await channel.unsubscribe(); } catch (e) { console.warn('unsubscribe failed:', e); }
+        if (supabase && typeof supabase.removeChannel === 'function') {
+          try { await supabase.removeChannel(channel); } catch (e) { console.warn('removeChannel failed:', e); }
+        } else {
+          try { await channel.unsubscribe(); } catch (e) { console.warn('unsubscribe failed:', e); }
+        }
       } catch (e) { console.warn('channel cleanup failed:', e); }
-      this.channels.delete(slotIndex)
     }
 
     this.emit('statusChanged', slotIndex, 'disconnected')

@@ -188,9 +188,16 @@ function createWindow() {
 
   mainWindow.webContents.once('did-finish-load', () => {
     console.log('[Main] did-finish-load fired');
-    setTimeout(() => {
-      showWindowSafely();
-    }, 300);
+    showWindowSafely();
+  });
+
+  // Temporizador de respaldo garantizado por si no disparan los eventos
+  const fallbackShowTimer = setTimeout(() => {
+    showWindowSafely();
+  }, 2500);
+
+  mainWindow.once('show', () => {
+    clearTimeout(fallbackShowTimer);
   });
 
   // Detectar crash del renderer

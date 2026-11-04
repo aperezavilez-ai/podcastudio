@@ -682,6 +682,7 @@ function PodcastStudioApp() {
   const [cintilloStyle, setCintilloStyle] = useState('glass');
   const [cintilloPosition, setCintilloPosition] = useState('bl');
   const [autoRotateCintillos, setAutoRotateCintillos] = useState(false);
+  const [randomRotateCintillos, setRandomRotateCintillos] = useState(false);
   const [showCintilloModal, setShowCintilloModal] = useState(false);
   const [showSocialsModal, setShowSocialsModal] = useState(false);
   const [socialTarget, setSocialTarget] = useState('guest'); // 'guest' | 'program'
@@ -852,7 +853,8 @@ function PodcastStudioApp() {
     project: projectConfig,
     enabled: cintillosVisible && autoRotateCintillos,
     displaySec: 7,
-    masterPosition: cintilloPosition
+    masterPosition: cintilloPosition,
+    randomRotation: randomRotateCintillos,
   });
   showCustomRef.current = showCustom;
 
@@ -1859,6 +1861,12 @@ function PodcastStudioApp() {
           const roomCode = `studio_cam_${slotIdx + 1}`;
           cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
             logger.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
+            if (slotIdx === 0) {
+              if (localStreamRef.current && localStreamRef.current !== stream) {
+                try { localStreamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {}
+              }
+              setLocalStream(stream);
+            }
             setSlotStreams(prev => ({ ...prev, [slotIdx]: stream }));
             setRemoteCams(prev => [
               ...prev.filter(r => r.id !== `cloud_${slotIdx}`),
@@ -1873,6 +1881,9 @@ function PodcastStudioApp() {
           cloudTransport.on('streamDisconnected', slotIdx => {
             logger.log(`[Cloud WebRTC] Cámara desconectada en slot ${slotIdx + 1}`);
             delete assignedSlotsRef.current[slotIdx];
+            if (slotIdx === 0) {
+              setLocalStream(null);
+            }
             setSlotStreams(prev => {
               const next = { ...prev };
               delete next[slotIdx];
@@ -2307,62 +2318,63 @@ function PodcastStudioApp() {
             isRecordingRef.current = false;
             setIsRecording(false);
             recordingStartTimeRef.current = null;
-            logger.error('[handleRecord] Falló el inicio de grabación:', res?.error);
-          }
-
-            // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
-            if (isoRecordingEnabled && window.api?.startIsoRecording) {
-              const activeSlots = [];
-              Object.entries(camStreamsMap).forEach(([slotStr, stream]) => {
-                const sNum = Number(slotStr);
-                const vTracks = stream?.getVideoTracks?.() || [];
-                if (vTracks.length > 0 && vTracks[0].readyState === 'live') {
-                  activeSlots.push(sNum);
-                }
-              });
-
-              if (activeSlots.length > 0) {
-                window.api.startIsoRecording({
-                  slots: activeSlots,
-                  projectName: topic || 'Proyecto_General',
-                }).then(isoRes => {
-                  if (isoRes?.success) {
-                    activeSlots.forEach(sNum => {
-                      const stream = camStreamsMap[sNum];
-                      if (!stream) return;
-                      try {
-                        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-                          ? 'video/webm;codecs=vp8,opus'
-                          : 'video/webm';
-                        const rec = new MediaRecorder(stream, { mimeType });
-                        isoChunkQueuesRef.current.set(sNum, Promise.resolve());
-                        rec.ondataavailable = (e) => {
-                          if (!e.data || e.data.size === 0 || !window.api?.sendIsoChunk) return;
-                          const pending = isoChunkQueuesRef.current.get(sNum) || Promise.resolve();
-                          isoChunkQueuesRef.current.set(sNum, pending
-                            .then(() => e.data.arrayBuffer())
-                            .then(chunk => window.api.sendIsoChunk({ slot: sNum, chunk }))
-                            .catch(err => logger.warn(`[ISO] Error enviando CAM ${sNum}:`, err)));
-                        };
-                        rec.start(1000);
-                        isoRecordersRef.current.set(sNum, rec);
-                      } catch (err) {
-                        logger.warn(`[ISO] Error iniciando recorder para CAM ${sNum}:`, err);
-                      }
-                    });
-                  }
-                }).catch(e => logger.warn('[ISO] Fallo al iniciar ISO:', e));
-              }
-            }
-          } else {
-            isRecordingRef.current = false;
-            setIsRecording(false);
             if (!isStreamingRef.current) stopBroadcastEngine();
+            logger.error('[handleRecord] Falló el inicio de grabación:', res?.error);
             alert('Error al iniciar grabación: ' + (res?.error || 'Desconocido'));
+            return;
           }
+
+          // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
+          if (isoRecordingEnabled && window.api?.startIsoRecording) {
+            const activeSlots = [];
+            Object.entries(camStreamsMap).forEach(([slotStr, stream]) => {
+              const sNum = Number(slotStr);
+              const vTracks = stream?.getVideoTracks?.() || [];
+              if (vTracks.length > 0 && vTracks[0].readyState === 'live') {
+                activeSlots.push(sNum);
+              }
+            });
+
+            if (activeSlots.length > 0) {
+              window.api.startIsoRecording({
+                slots: activeSlots,
+                projectName: topic || 'Proyecto_General',
+              }).then(isoRes => {
+                if (isoRes?.success) {
+                  activeSlots.forEach(sNum => {
+                    const stream = camStreamsMap[sNum];
+                    if (!stream) return;
+                    try {
+                      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+                        ? 'video/webm;codecs=vp8,opus'
+                        : 'video/webm';
+                      const rec = new MediaRecorder(stream, { mimeType });
+                      isoChunkQueuesRef.current.set(sNum, Promise.resolve());
+                      rec.ondataavailable = (e) => {
+                        if (!e.data || e.data.size === 0 || !window.api?.sendIsoChunk) return;
+                        const pending = isoChunkQueuesRef.current.get(sNum) || Promise.resolve();
+                        isoChunkQueuesRef.current.set(sNum, pending
+                          .then(() => e.data.arrayBuffer())
+                          .then(chunk => window.api.sendIsoChunk({ slot: sNum, chunk }))
+                          .catch(err => logger.warn(`[ISO] Error enviando CAM ${sNum}:`, err)));
+                      };
+                      rec.start(1000);
+                      isoRecordersRef.current.set(sNum, rec);
+                    } catch (err) {
+                      logger.warn(`[ISO] Error iniciando recorder para CAM ${sNum}:`, err);
+                    }
+                  });
+                }
+              }).catch(e => logger.warn('[ISO] Fallo al iniciar ISO:', e));
+            }
+          }
+        }
+      } catch (err) {
         isRecordingRef.current = false;
         setIsRecording(false);
+        recordingStartTimeRef.current = null;
         if (!isStreamingRef.current) stopBroadcastEngine();
+        logger.error('[handleRecord] Error general al iniciar grabación:', err);
         alert('Error al iniciar grabación: ' + (err?.message || 'Desconocido'));
       } finally {
         recordingStartPendingRef.current = false;
@@ -3072,11 +3084,11 @@ function PodcastStudioApp() {
     }
   }, [camSlots, slotStreams, activeCam, handleWifiConnect, handleUsbConnect]);
 
-  const handleDisconnectSlot = (slot) => {
+  const handleDisconnectSlot = async (slot) => {
     // 1. Desconectar y liberar transporte WebRTC cloud si existe
     if (cloudTransportRef.current) {
       try {
-        cloudTransportRef.current.disconnectSlot(slot);
+        await cloudTransportRef.current.disconnectSlot(slot);
         // Volver a reconectar la ranura en modo escucha para aceptar una nueva conexión limpia
         const roomCode = `studio_cam_${slot + 1}`;
         cloudTransportRef.current.connectSlot(slot, roomCode);
@@ -4721,6 +4733,38 @@ function PodcastStudioApp() {
                         />
                       </div>
                     </div>
+
+                    {autoRotateCintillos && (
+                      <div className="flex items-center justify-between bg-[#18181b] px-3 py-2 rounded-lg border border-[#2e2e33] text-[11px] mb-3">
+                        <span className="text-gray-300 font-semibold">Modo de pase:</span>
+                        <div className="flex items-center gap-1.5 bg-[#101012] p-1 rounded-md border border-[#333]">
+                          <button
+                            type="button"
+                            onClick={() => setRandomRotateCintillos(false)}
+                            className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                              !randomRotateCintillos
+                                ? 'bg-orange-500 text-white shadow'
+                                : 'text-gray-400 hover:text-white'
+                            }`}
+                            title="Pasa los cintillos uno por uno en orden secuencial"
+                          >
+                            Uno por Uno
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRandomRotateCintillos(true)}
+                            className={`px-2.5 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                              randomRotateCintillos
+                                ? 'bg-orange-500 text-white shadow'
+                                : 'text-gray-400 hover:text-white'
+                            }`}
+                            title="Pasa los cintillos de forma aleatoria"
+                          >
+                            Aleatorio
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* SELECTOR DE ESTILOS (13 ESTILOS BROADCAST EN ESPAÑOL) */}
                     <div>

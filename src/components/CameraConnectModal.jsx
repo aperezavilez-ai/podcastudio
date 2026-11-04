@@ -365,12 +365,35 @@ export default function CameraConnectModal({
     return slot;
   }, [streams, cameraMeta, slotsCount, onAddSlot]);
 
-  // Si se abre la pestaña de celular y el slot actual está ocupado o es CAM 1, sugerir el siguiente libre
+  const prevOpenRef = useRef(false);
+
+  // Inicializar slot solo al momento de abrir el modal (evitando que re-renders sobreescriban la selección)
+  useEffect(() => {
+    if (open && !prevOpenRef.current) {
+      const isOccupied = Boolean(streams[initialSlot]) || Boolean(cameraMeta[initialSlot]?.deviceId || cameraMeta[initialSlot]?.url);
+      let selected = initialSlot;
+      if (initialSlot === 0 && isOccupied && activeTab === 'remote') {
+        const nextFree = getNextAvailableSlot(0);
+        if (nextFree != null) selected = nextFree;
+      }
+      setTargetSlot(selected);
+      const currentMeta = cameraMeta[selected];
+      setCustomLabel(currentMeta?.label || '');
+      setWifiUrl(currentMeta?.url || '');
+      setUsbConnectError(null);
+      setWifiConnectError(null);
+      setWifiConnectSuccess(null);
+    }
+    prevOpenRef.current = open;
+  }, [open, initialSlot, activeTab, streams, cameraMeta, getNextAvailableSlot]);
+
+  // Si se cambia a la pestaña de celular/remota y CAM 1 ya está ocupada por USB/webcam, seleccionar automáticamente la siguiente ranura libre (e.g. CAM 2)
   useEffect(() => {
     if (open && activeTab === 'remote') {
       const isOccupied = Boolean(streams[targetSlot]) || Boolean(cameraMeta[targetSlot]?.deviceId || cameraMeta[targetSlot]?.url);
-      if (targetSlot === 0 && isOccupied) {
-        const nextFree = getNextAvailableSlot(targetSlot);
+      const isUsb = isOccupied && (cameraMeta[targetSlot]?.type === 'usb' || targetSlot === 0);
+      if (targetSlot === 0 && isUsb) {
+        const nextFree = getNextAvailableSlot(0);
         if (nextFree != null && nextFree !== targetSlot) {
           setTargetSlot(nextFree);
         }
@@ -378,25 +401,11 @@ export default function CameraConnectModal({
     }
   }, [open, activeTab, targetSlot, streams, cameraMeta, getNextAvailableSlot]);
 
-  useEffect(() => {
-    if (open) {
-      setTargetSlot(initialSlot);
-      const currentMeta = cameraMeta[initialSlot];
-      setCustomLabel(currentMeta?.label || '');
-      setWifiUrl(currentMeta?.url || '');
-      setUsbConnectError(null);
-      setWifiConnectError(null);
-      setWifiConnectSuccess(null);
-    }
-  }, [open, initialSlot, cameraMeta]);
-
+  // Actualizar metadatos del slot seleccionado sin resetear targetSlot
   useEffect(() => {
     const currentMeta = cameraMeta[targetSlot];
     setCustomLabel(currentMeta?.label || '');
     setWifiUrl(currentMeta?.url || '');
-    setUsbConnectError(null);
-    setWifiConnectError(null);
-    setWifiConnectSuccess(null);
   }, [targetSlot, cameraMeta]);
 
   // ESC para cerrar
@@ -1623,52 +1632,132 @@ Instrucciones:
                   </div>
 
                   {/* INDICADOR EN VIVO DEL PROCESO DE CONEXIÓN */}
-                  <div
-                    style={{
-                      marginBottom: 16,
-                      padding: '12px 14px',
-                      borderRadius: 12,
-                      background: isConnected
-                        ? 'rgba(16, 185, 129, 0.12)'
-                        : 'rgba(56, 189, 248, 0.08)',
-                      border: isConnected
-                        ? '1px solid rgba(16, 185, 129, 0.35)'
-                        : '1px solid rgba(56, 189, 248, 0.25)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 10,
-                        background: isConnected ? '#059669' : '#0284c7',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        boxShadow: isConnected ? '0 0 12px rgba(16,185,129,0.4)' : '0 0 12px rgba(56,189,248,0.3)',
-                      }}
-                    >
-                      {isConnected ? (
-                        <Check size={18} className="text-white" />
-                      ) : (
-                        <Radio size={18} className="text-white animate-pulse" />
-                      )}
-                    </div>
-                    <div style={{ flex: 1, textAlign: 'left' }}>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: isConnected ? '#6ee7b7' : '#7dd3fc', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span>{isConnected ? `¡CAM ${targetSlot + 1} CONECTADA EN VIVO!` : `ESPERANDO CONEXIÓN EN CAM ${targetSlot + 1}...`}</span>
+                  {(() => {
+                    const isRemoteLive = Boolean(streams[targetSlot]) && (currentMeta?.type === 'remote' || currentMeta?.type === 'mobile' || currentMeta?.deviceId?.includes('cloud') || currentMeta?.deviceId?.startsWith('Mobil_'));
+                    const isSlotOccupiedByOther = Boolean(streams[targetSlot]) && !isRemoteLive;
+
+                    if (isRemoteLive) {
+                      return (
+                        <div
+                          style={{
+                            marginBottom: 16,
+                            padding: '12px 14px',
+                            borderRadius: 12,
+                            background: 'rgba(16, 185, 129, 0.14)',
+                            border: '1px solid rgba(16, 185, 129, 0.4)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 10,
+                              background: '#059669',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                              boxShadow: '0 0 12px rgba(16,185,129,0.4)',
+                            }}
+                          >
+                            <Check size={18} className="text-white" />
+                          </div>
+                          <div style={{ flex: 1, textAlign: 'left' }}>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: '#6ee7b7' }}>
+                              ¡CELULAR EN VIVO CONECTADO EN CAM {targetSlot + 1}!
+                            </div>
+                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, lineHeight: 1.35 }}>
+                              Transmisión fluida y audio sincronizados en tiempo real ({currentMeta?.label || `Cámara ${targetSlot + 1}`}).
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (isSlotOccupiedByOther) {
+                      return (
+                        <div
+                          style={{
+                            marginBottom: 16,
+                            padding: '12px 14px',
+                            borderRadius: 12,
+                            background: 'rgba(245, 158, 11, 0.12)',
+                            border: '1px solid rgba(245, 158, 11, 0.35)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 10,
+                              background: '#d97706',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}
+                          >
+                            <AlertTriangle size={18} className="text-white" />
+                          </div>
+                          <div style={{ flex: 1, textAlign: 'left' }}>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: '#fcd34d' }}>
+                              CAM {targetSlot + 1} está ocupada por {currentMeta?.label || 'otra cámara'}.
+                            </div>
+                            <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2, lineHeight: 1.35 }}>
+                              Para conectar un invitado o celular adicional, selecciona <strong className="text-white">CAM 2</strong> u otra ranura libre abajo, o activa la auto-asignación inteligente.
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        style={{
+                          marginBottom: 16,
+                          padding: '12px 14px',
+                          borderRadius: 12,
+                          background: 'rgba(56, 189, 248, 0.08)',
+                          border: '1px solid rgba(56, 189, 248, 0.25)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 12,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 10,
+                            background: '#0284c7',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            boxShadow: '0 0 12px rgba(56,189,248,0.3)',
+                          }}
+                        >
+                          <Radio size={18} className="text-white animate-pulse" />
+                        </div>
+                        <div style={{ flex: 1, textAlign: 'left' }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: '#7dd3fc' }}>
+                            {autoAssignMode ? 'AUTO-ASIGNACIÓN INTELIGENTE LISTA' : `ESPERANDO CONEXIÓN EN CAM ${targetSlot + 1}...`}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, lineHeight: 1.35 }}>
+                            {autoAssignMode
+                              ? 'Tu celular se conectará automáticamente a la siguiente cámara libre.'
+                              : 'Apunta la cámara de tu celular al código QR abajo. En cuanto el teléfono ingrese, se activará en vivo aquí.'}
+                          </div>
+                        </div>
                       </div>
-                      <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2, lineHeight: 1.35 }}>
-                        {isConnected
-                          ? 'Transmisión fluida y audio sincronizados en tiempo real.'
-                          : 'Apunta la cámara de tu celular al código QR abajo. En cuanto el teléfono ingrese, se activará en vivo aquí.'}
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   {/* SELECTOR DE MODO DE ASIGNACIÓN */}
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginBottom: 12 }}>

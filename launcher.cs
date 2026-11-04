@@ -143,10 +143,15 @@ public class SplashForm : Form
 
                 // Detección precisa de la ventana de PodcastStudio sincronizada con señal de Electron
                 int waitedMs = 0;
-                while (waitedMs < 15000)
+                while (waitedMs < 5000)
                 {
                     Thread.Sleep(50);
                     waitedMs += 50;
+
+                    if (electronProc != null && electronProc.HasExited)
+                    {
+                        break;
+                    }
 
                     // 1. Detección inmediata por señal directa emitida por Electron al terminar el renderizado
                     if (File.Exists(signalFile))

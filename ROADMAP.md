@@ -6,8 +6,8 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 
 ## Proceso
 - Fase: release
-- Estado: Release v1.3.4 OK (2026-11-03 12:35)
-- Actualizado: 2026-11-03 12:35
+- Estado: Release v1.3.4 OK (2026-11-04 08:15)
+- Actualizado: 2026-11-04 08:15
 - Stack: React + Vite + Electron + Supabase
 - Entry: index.html
 - Entry: src/main.jsx
@@ -117,6 +117,12 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - src/App.jsx — footer sincronizado a PODCASTUDIO v1.3.4 (2026-11-03 12:33)
 - package.json — versión 1.3.4 (2026-11-03 12:33)
 - launcher.cs / PodcastStudio.exe — recompilado v1.3.4.0 con ciclo de vida instantáneo y cierre inmediato de splash (2026-11-03 12:35)
+- CameraConnectModal.jsx — corrección de targetSlot locking en CAM 1 y selector inteligente de ranuras libres (2026-11-04 07:30)
+- streamTransport.js / App.jsx — reconexión asíncrona segura de WebRTC y bind inmediato de stream en slot 0 (2026-11-04 07:45)
+- useCintilloRotation.js / App.jsx — rotación continua uno por uno sin congelamiento y selector de modo Secuencial / Aleatorio (2026-11-04 08:00)
+- App.jsx — corrección del bloque try/catch de grabación: eliminación de cancelación accidental inmediata que congelaba la app (2026-11-04 08:10)
+- electron/main.js / launcher.cs — apertura instantánea en did-finish-load con fallback a 2.5s y timeout de splash optimizado a 5s (2026-11-04 08:12)
+- PodcastStudio.exe — recompilado v1.3.4.0 limpio y verificado (2026-11-04 08:13)
 
 ## Verificado
 - npm run test:remote-cameras (4/4 passed)
@@ -124,6 +130,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - npm run test:stream-config (5/5 passed)
 - npm run build (Vite production bundle OK)
 - npm run build:exe (PodcastStudio.exe v1.3.4.0 OK)
+- E2E WebRTC handshake Phone-to-Studio simulado OK
 
 ## Siguiente
 - Monitoreo en ejecución y retroalimentación del usuario.
