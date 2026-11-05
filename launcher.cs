@@ -120,7 +120,10 @@ public class SplashForm : Form
                 {
                     foreach (Process p in Process.GetProcessesByName("electron"))
                     {
-                        try { p.Kill(); } catch {}
+                        try { 
+                            p.Kill(); 
+                            p.WaitForExit(1000); 
+                        } catch {}
                     }
                 }
                 catch {}

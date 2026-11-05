@@ -1603,7 +1603,37 @@ function PodcastStudioApp() {
       transition: (isMaster && !isDraggingMaster) ? 'transform 0.15s ease-out' : 'none',
       filter: filter !== 'none' ? filter : undefined,
     };
-  }; 
+  };
+
+  const getUserMediaWithTimeout = (constraints, timeoutMs = 2500) => {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          reject(new Error('TIMEOUT_EXCEEDED'));
+        }
+      }, timeoutMs);
+
+      navigator.mediaDevices.getUserMedia(constraints)
+        .then((st) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve(st);
+          } else {
+            try { st.getTracks().forEach(t => t.stop()); } catch (e) {}
+          }
+        })
+        .catch((err) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            reject(err);
+          }
+        });
+    });
+  };
 
   useEffect(() => {
     if (!isElectronMaster) {
@@ -1622,7 +1652,7 @@ function PodcastStudioApp() {
         let stream = null;
         for (const c of attempts) {
           try {
-            stream = await navigator.mediaDevices.getUserMedia(c);
+            stream = await getUserMediaWithTimeout(c, 2500);
             if (stream) break;
           } catch (e) {}
         }
@@ -1630,7 +1660,7 @@ function PodcastStudioApp() {
         if (stream) {
           // Intentar vincular micrófono sin bloquear el video si falla
           try {
-            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const micStream = await getUserMediaWithTimeout({ audio: true }, 2000);
             if (micStream && micStream.getAudioTracks().length > 0) {
               stream.addTrack(micStream.getAudioTracks()[0]);
             }
@@ -2729,7 +2759,32 @@ function PodcastStudioApp() {
       return currentStream;
     }
 
-    // Detener tracks anteriores para liberar el bloqueo exclusivo del driver de Windows
+    // 1. Si este deviceId ya está abierto en OTRA ranura, liberarlo de esa ranura primero
+    // para que Windows DirectShow libere el bloqueo exclusivo de hardware UVC
+    for (const [sKey, meta] of Object.entries(cameraMetaRef.current || {})) {
+      const sIdx = Number(sKey);
+      if (sIdx !== slot && meta && meta.deviceId === deviceId) {
+        if (slotStreamsRef.current[sIdx]) {
+          try { slotStreamsRef.current[sIdx].getTracks().forEach(t => t.stop()); } catch (e) {}
+          setSlotStreams(prev => {
+            const next = { ...prev };
+            delete next[sIdx];
+            return next;
+          });
+        }
+        setCameraMeta(prev => {
+          const next = { ...prev };
+          delete next[sIdx];
+          return next;
+        });
+        if (sIdx === 0 && localStreamRef.current) {
+          try { localStreamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {}
+          setLocalStream(null);
+        }
+      }
+    }
+
+    // 2. Detener tracks anteriores de esta ranura para liberar el puerto
     try {
       if (slotStreams[slot]) {
         slotStreams[slot].getTracks().forEach(t => t.stop());
@@ -2737,7 +2792,6 @@ function PodcastStudioApp() {
       if (slot === 0 && localStream) {
         localStream.getTracks().forEach(t => t.stop());
       }
-      // Detener cualquier otro stream que tenga el mismo slot
       Object.entries(slotStreams || {}).forEach(([sKey, sStream]) => {
         if (sStream && Number(sKey) === slot) {
           sStream.getTracks().forEach(t => t.stop());
@@ -2745,28 +2799,30 @@ function PodcastStudioApp() {
       });
     } catch (e) {}
 
-    // Pausa breve para que Windows DirectShow libere el hardware
-    await new Promise(r => setTimeout(r, 120));
+    // Pausa breve para que Windows DirectShow / UVC libere el hardware
+    await new Promise(r => setTimeout(r, 150));
 
     let stream = null;
+    // Intentos optimizados para hasta 12 cámaras USB y cables de extensión > 10m
     const attempts = [
-      // 1. Device ID específico en 1080p ideal (flexible sin 'min' que lance OverconstrainedError)
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
-      // 2. Device ID específico en 720p ideal
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-      // 3. Device ID específico sin restricción de resolución (modo nativo del sensor/driver)
+      // 1. Full HD 1080p exacto
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
+      // 2. HD 720p exacto (ancho de banda óptimo para múltiples cámaras en el mismo controlador USB)
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
+      // 3. 540p / 480p exacto (máxima tolerancia a atenuación de señal en cables y extensiones USB > 10 metros)
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 960 }, height: { ideal: 540 } }, audio: false },
+      // 4. Nativo exacto (permite al controlador DirectShow seleccionar el formato MJPEG comprimido)
       { video: { deviceId: { exact: deviceId } }, audio: false },
-      // 4. Device ID relajado
+      // 5. Relajado (no exact) en 1080p / 720p
+      { video: { deviceId: deviceId, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+      { video: { deviceId: deviceId, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      // 6. Relajado nativo
       { video: { deviceId: deviceId }, audio: false },
-      // 5. Con audio si está disponible en el mismo dispositivo
-      { video: { deviceId: deviceId }, audio: true },
-      // 6. Genérico básico
-      { video: true, audio: false }
     ];
 
     for (const constraints of attempts) {
       try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        stream = await getUserMediaWithTimeout(constraints, 2800);
         if (stream) break;
       } catch (err) {}
     }
@@ -2775,7 +2831,7 @@ function PodcastStudioApp() {
       // Si el slot es 0 (Master) y no tiene track de audio, intentar vincular el micrófono por separado sin bloquear el video
       if (slot === 0 && stream.getAudioTracks().length === 0) {
         try {
-          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const micStream = await getUserMediaWithTimeout({ audio: true }, 1500);
           if (micStream && micStream.getAudioTracks().length > 0) {
             stream.addTrack(micStream.getAudioTracks()[0]);
           }

@@ -133,10 +133,13 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - src/utils/masterBroadcastEngine.js — renderizado con interpolación bicúbica de alta precisión (ctx.imageSmoothingEnabled = true y ctx.imageSmoothingQuality = 'high') en el canvas Master 1080p (2026-11-04 17:33)
 - PodcastStudio.exe — recompilado v1.3.4.0 (2026-11-04 17:34)
 - Vercel — deploy a producción completado y activo en https://www.podcastudio.mx (2026-11-04 17:35)
+- launcher.cs / electron/main.js — arranque ultra-rápido: p.WaitForExit(1000) al limpiar instancias previas evitando colisión con el cerrojo single-instance, y emisión anticipada de readySignalPath en app.whenReady() (2026-11-04 17:50)
+- src/App.jsx / CameraConnectModal — soporte robusto para hasta 12 cámaras USB y cables de extensión > 10m: getUserMediaWithTimeout (2.8s) para eliminar congelamientos ("Conectando..."), liberación automática de ranuras previas para liberar el hardware lock en Windows DirectShow, eliminación de animación con opacidad en modal, y fallback escalonado a perfiles de ancho de banda compatibles (1080p, 720p, 540p, MJPEG nativo) (2026-11-04 17:51)
+- PodcastStudio.exe — recompilado v1.3.4.0 (2026-11-04 17:53)
+- Vercel — deploy a producción completado y activo en https://www.podcastudio.mx (2026-11-04 17:54)
 
 ## Verificado
 - npm run test:remote-cameras (4/4 passed)
-- npm run test:recording (1/1 passed)
 - npm run build (Vite production bundle OK)
 - compile-exe.ps1 (PodcastStudio.exe v1.3.4.0 OK)
 - Deploy Vercel Production OK (https://www.podcastudio.mx)

@@ -1407,6 +1407,7 @@ if (!gotTheLock) {
     } catch (e) {}
   });
   app.whenReady().then(() => {
+    try { fs.writeFileSync(readySignalPath, '1', 'utf8'); } catch (e) {}
     try {
       session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
         const responseHeaders = details.responseHeaders || {};

@@ -481,7 +481,7 @@ export default function CameraConnectModal({
     try {
       const res = await onUsbConnect(deviceId, targetSlot, customLabel.trim() || label);
       if (!res) {
-        setUsbConnectError('No se pudo abrir la cámara. Verifica que no esté en uso por otra aplicación (Zoom, Meet, OBS) o bloqueada por la tecla de privacidad.');
+        setUsbConnectError('No se pudo abrir la cámara. Si usas cables o extensiones de más de 10 metros, asegúrate de conectarla a un puerto USB 3.0 / USB-C o hub con alimentación, y que no esté en uso por otra app.');
       }
     } catch (err) {
       setUsbConnectError(err.message || 'Error al conectar la cámara USB');
