@@ -10,40 +10,132 @@ import { buildCanvasFilter } from '../utils/videoLook.js'
 import { getSlotLabel } from '../config/cameraSlots.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 
-function safeAttachVideo(videoEl, targetStream) {
-  if (!videoEl) return
-  videoEl.autoplay = true
-  videoEl.playsInline = true
-  videoEl.muted = true
-  videoEl.defaultMuted = true
-  videoEl.setAttribute('autoplay', 'true')
-  videoEl.setAttribute('playsinline', 'true')
-  videoEl.setAttribute('webkit-playsinline', 'true')
-  videoEl.setAttribute('muted', 'true')
+function CalibratorPreview({
+  stream,
+  zoom = 1,
+  focusX = 0.5,
+  focusY = 0.42,
+  filterStyle = '',
+  slotName = '',
+}) {
+  const videoRef = useRef(null)
 
-  if (targetStream) {
-    if (videoEl.srcObject !== targetStream) {
-      videoEl.srcObject = targetStream
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    if (!stream) {
+      if (v.srcObject) {
+        try { v.srcObject = null } catch (e) {}
+      }
+      return
     }
-    const tryPlay = () => {
-      if (videoEl && videoEl.paused) {
-        const p = videoEl.play()
-        if (p && typeof p.catch === 'function') p.catch(() => {})
+
+    v.muted = true
+    v.defaultMuted = true
+    v.autoplay = true
+    v.playsInline = true
+    v.setAttribute('autoplay', 'true')
+    v.setAttribute('playsinline', 'true')
+    v.setAttribute('webkit-playsinline', 'true')
+    v.setAttribute('muted', 'true')
+
+    if (v.srcObject !== stream) {
+      v.srcObject = stream
+    }
+
+    const attemptPlay = () => {
+      if (v && v.paused) {
+        v.play().catch(() => {})
       }
     }
-    tryPlay()
-    videoEl.onloadedmetadata = tryPlay
-    videoEl.oncanplay = tryPlay
-    videoEl.onloadeddata = tryPlay
+    attemptPlay()
 
-    const videoTracks = targetStream?.getVideoTracks?.() || []
-    videoTracks.forEach(t => {
-      try { t.enabled = true } catch {}
-      t.onunmute = tryPlay
-    })
-  } else if (videoEl.srcObject) {
-    try { videoEl.srcObject = null } catch {}
+    v.addEventListener('loadedmetadata', attemptPlay)
+    v.addEventListener('loadeddata', attemptPlay)
+    v.addEventListener('canplay', attemptPlay)
+    v.addEventListener('playing', attemptPlay)
+
+    const unmuteCbs = new Map()
+    const wireTrack = (t) => {
+      if (!t || unmuteCbs.has(t.id)) return
+      try { t.enabled = true } catch (e) {}
+      const cb = () => attemptPlay()
+      unmuteCbs.set(t.id, { t, cb })
+      t.addEventListener('unmute', cb)
+    }
+
+    const tracks = stream.getVideoTracks ? stream.getVideoTracks() : []
+    tracks.forEach(wireTrack)
+
+    const onAddTrack = (e) => {
+      if (e.track) wireTrack(e.track)
+      attemptPlay()
+    }
+    if (stream.addEventListener) {
+      stream.addEventListener('addtrack', onAddTrack)
+    }
+
+    const keepAliveCleanup = bindVideoKeepAlive(v)
+
+    // Safety polling sin resetear srcObject
+    let count = 0
+    const interval = setInterval(() => {
+      count++
+      if (count > 20) { clearInterval(interval); return }
+      if (v && v.paused && v.srcObject) {
+        v.play().catch(() => {})
+      }
+    }, 400)
+
+    return () => {
+      clearInterval(interval)
+      keepAliveCleanup()
+      v.removeEventListener('loadedmetadata', attemptPlay)
+      v.removeEventListener('loadeddata', attemptPlay)
+      v.removeEventListener('canplay', attemptPlay)
+      v.removeEventListener('playing', attemptPlay)
+      unmuteCbs.forEach(({ t, cb }) => {
+        try { t.removeEventListener('unmute', cb) } catch (e) {}
+      })
+      unmuteCbs.clear()
+      if (stream.removeEventListener) {
+        try { stream.removeEventListener('addtrack', onAddTrack) } catch (e) {}
+      }
+    }
+  }, [stream])
+
+  const isZoomed = Math.abs(zoom - 1.0) > 0.01 || Math.abs(focusX - 0.5) > 0.01 || Math.abs(focusY - 0.42) > 0.01
+
+  if (!stream) {
+    return (
+      <div className={styles.noSignal}>
+        <VideoOff size={32} />
+        <span>Sin señal en {slotName}</span>
+      </div>
+    )
   }
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className={styles.videoElement}
+      onLoadedMetadata={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}) }}
+      onCanPlay={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}) }}
+      style={{
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        display: 'block',
+        pointerEvents: 'none',
+        transformOrigin: `${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}%`,
+        transform: isZoomed ? `scale(${zoom.toFixed(3)})` : undefined,
+        filter: filterStyle && filterStyle !== 'none' ? filterStyle : undefined,
+      }}
+    />
+  )
 }
 
 
@@ -120,7 +212,7 @@ export default function CameraCalibratorModal({
   const dragStartRef = useRef({ x: 0, y: 0, initFocusX: 0.5, initFocusY: 0.42, moved: false })
   const previewFrameRef = useRef(null)
 
-  // Cargar valores del slot cuando cambia de pestaña dentro del modal
+  // Cargar valores del slot cuando cambia de pestaña dentro del modal o al abrir
   useEffect(() => {
     const sc = safeCrops[selectedSlot] || {}
     setZoom(sc.zoom || 1.0)
@@ -139,19 +231,10 @@ export default function CameraCalibratorModal({
     setFocusMode(sc.focusMode || 'continuous')
     setAudioGain(sc.audioGain ?? 1.0)
     setAudioMuted(Boolean(sc.audioMuted))
-  }, [selectedSlot, crops])
+  }, [selectedSlot, isOpen])
 
-  // Elemento de video en vivo
-  const videoRef = useRef(null)
   const stream = safeStreams[selectedSlot] || null
   const [saveToast, setSaveToast] = useState('')
-
-  const setVideoNode = useCallback((node) => {
-    videoRef.current = node
-    if (node && stream) {
-      safeAttachVideo(node, stream)
-    }
-  }, [stream])
 
   // Escape key listener para cerrar inmediatamente
   useEffect(() => {
@@ -168,23 +251,6 @@ export default function CameraCalibratorModal({
 
   useEffect(() => {
     if (!isOpen) return
-    if (videoRef.current && stream) {
-      safeAttachVideo(videoRef.current, stream)
-    } else if (videoRef.current && !stream) {
-      try { videoRef.current.srcObject = null } catch {}
-    }
-
-    const unbind = bindVideoKeepAlive(videoRef.current)
-
-    // Watchdog activo para asegurar reproducción continua y cero fotogramas negros
-    const watchdog = setInterval(() => {
-      const v = videoRef.current
-      if (v && stream && (v.paused || v.videoWidth === 0)) {
-        if (v.srcObject !== stream) v.srcObject = stream
-        try { v.play().catch(() => {}) } catch {}
-      }
-    }, 350)
-
     const track = stream?.getVideoTracks?.()[0]
     if (track && typeof track.getSettings === 'function') {
       try {
@@ -194,12 +260,7 @@ export default function CameraCalibratorModal({
         if (s.focusMode) setFocusMode(s.focusMode)
       } catch {}
     }
-
-    return () => {
-      clearInterval(watchdog)
-      unbind?.()
-    }
-  }, [isOpen, stream, selectedSlot])
+  }, [isOpen, stream])
 
   const handleToggleHardwareMode = useCallback(async (modeKey, targetValue) => {
     const track = stream?.getVideoTracks?.()[0]
@@ -228,8 +289,13 @@ export default function CameraCalibratorModal({
     }
   }, [stream])
 
-  // Filtro CSS calculado
+  const isFilterActive = useMemo(() => {
+    return brightness !== 100 || contrast !== 100 || saturation !== 100 || warmth !== 0 || tint !== 0 || sharpness !== 100 || (lookPreset && lookPreset !== 'original')
+  }, [brightness, contrast, saturation, warmth, tint, sharpness, lookPreset])
+
+  // Filtro CSS calculado (solo si está activo para no forzar composición Direct3D que oscurece video UVC)
   const computedFilter = useMemo(() => {
+    if (!isFilterActive) return 'none'
     return buildCanvasFilter({
       brightness,
       contrast,
@@ -238,7 +304,7 @@ export default function CameraCalibratorModal({
       tint,
       sharpness,
     })
-  }, [brightness, contrast, saturation, warmth, tint, sharpness])
+  }, [isFilterActive, brightness, contrast, saturation, warmth, tint, sharpness])
 
   // Medidor VU de audio en tiempo real sin feedback
   useEffect(() => {
@@ -694,30 +760,14 @@ export default function CameraCalibratorModal({
               }}
               title="Haz clic y arrastra con el ratón para encuadrar la imagen · Usa la rueda para hacer zoom"
             >
-              {stream ? (
-                <video
-                  ref={setVideoNode}
-                  className={styles.videoElement}
-                  autoPlay
-                  muted
-                  playsInline
-                  onLoadedMetadata={(e) => e.currentTarget.play().catch(() => {})}
-                  onCanPlay={(e) => e.currentTarget.play().catch(() => {})}
-                  style={{
-                    filter: computedFilter,
-                    transform: (Math.abs(zoom - 1.0) > 0.02 || Math.abs(focusX - 0.5) > 0.02 || Math.abs(focusY - 0.42) > 0.03)
-                      ? `scale(${zoom.toFixed(3)})`
-                      : undefined,
-                    transformOrigin: `${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}%`,
-                    pointerEvents: 'none',
-                  }}
-                />
-              ) : (
-                <div className={styles.noSignal}>
-                  <VideoOff size={32} />
-                  <span>Sin señal en {slotName}</span>
-                </div>
-              )}
+              <CalibratorPreview
+                stream={stream}
+                zoom={zoom}
+                focusX={focusX}
+                focusY={focusY}
+                filterStyle={computedFilter}
+                slotName={slotName}
+              />
 
               {/* OVERLAYS & GUIDES */}
               <div className={styles.pvwBadge}>

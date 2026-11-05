@@ -5,7 +5,7 @@ process.on('unhandledRejection', (reason) => {
   console.warn('[Electron Main Process UnhandledRejection]', reason);
 });
 
-const { app, BrowserWindow, Menu, ipcMain, session, shell, desktopCapturer } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, session, shell, desktopCapturer, powerSaveBlocker } = require('electron');
 Menu.setApplicationMenu(null);
 const path = require('path');
 const fs = require('fs');
@@ -64,11 +64,10 @@ app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,MediaFoundationVideoCapture');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
-app.commandLine.appendSwitch('enable-features', 'MediaFoundationVideoCapture');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 let mainWindow;
@@ -153,6 +152,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true,
+      backgroundThrottling: false,
     },
     backgroundColor: '#0a0a0a',
   });
@@ -1407,6 +1407,7 @@ if (!gotTheLock) {
     } catch (e) {}
   });
   app.whenReady().then(() => {
+    try { powerSaveBlocker.start('prevent-app-suspension'); } catch (e) {}
     try { fs.writeFileSync(readySignalPath, '1', 'utf8'); } catch (e) {}
     try {
       session.defaultSession.webRequest.onHeadersReceived((details, callback) => {

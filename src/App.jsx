@@ -1677,14 +1677,7 @@ function PodcastStudioApp() {
           const devLabel = videoTrack?.label || 'Cámara 1 (Principal)';
           setCameraMeta(prev => ({ ...prev, 0: { deviceId: devId, label: devLabel, type: 'usb' } }));
 
-          // Auto-enfoque continuo por hardware al iniciar
-          if (videoTrack && videoTrack.applyConstraints) {
-            try {
-              await videoTrack.applyConstraints({
-                advanced: [{ focusMode: 'continuous' }]
-              });
-            } catch (_) {}
-          }
+
 
           if (stream.getAudioTracks().length > 0) {
             try {
@@ -2833,15 +2826,8 @@ function PodcastStudioApp() {
 
     if (stream) {
       const vTrack = stream.getVideoTracks()[0];
-      if (vTrack) {
-        if ('contentHint' in vTrack) vTrack.contentHint = 'motion';
-        if (vTrack.applyConstraints) {
-          try {
-            await vTrack.applyConstraints({
-              advanced: [{ focusMode: 'continuous' }]
-            });
-          } catch (_) {}
-        }
+      if (vTrack && 'contentHint' in vTrack) {
+        vTrack.contentHint = 'motion';
       }
 
       // Si el slot es 0 (Master) y no tiene track de audio, intentar vincular el micrófono por separado sin bloquear el video
