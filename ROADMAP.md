@@ -6,7 +6,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 
 ## Proceso
 - Fase: release
-- Estado: Hotfix v1.3.6 de señal Full HD en preparación (2026-11-05)
+- Estado: Hotfix v1.3.7 de estabilidad USB y retorno de ventana en preparación (2026-11-05)
 - Actualizado: 2026-11-04 08:15
 - Stack: React + Vite + Electron + Supabase
 - Entry: index.html
@@ -69,6 +69,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - RELEASE_v1.3.4.md
 - RELEASE_v1.3.5.md
 - RELEASE_v1.3.6.md
+- RELEASE_v1.3.7.md
 
 ## Archivos clave (no reexplorar)
 - electron/media-engine/bridge.js

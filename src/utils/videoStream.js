@@ -2,10 +2,27 @@
 export function bindVideoKeepAlive(video) {
   if (!video) return () => {}
 
+  let retryTimer = null
   const resume = () => {
-    if (video.srcObject && (video.paused || video.readyState < 2)) {
-      video.play().catch(() => {})
-    }
+    const stream = video.srcObject
+    if (!stream) return
+    const before = video.currentTime
+    video.play().catch(() => {})
+
+    // Electron may retain a live UVC track while the visual decoder is paused
+    // after another app owns the foreground. If the element did not advance,
+    // reattach the SAME stream to this element only. This never closes or
+    // toggles the physical camera track, so it cannot trigger UVC negotiation.
+    if (retryTimer) clearTimeout(retryTimer)
+    retryTimer = setTimeout(() => {
+      if (video.srcObject === stream && video.currentTime === before) {
+        try {
+          video.srcObject = null
+          video.srcObject = stream
+          video.play().catch(() => {})
+        } catch { /* noop */ }
+      }
+    }, 750)
   }
 
   // ✅ FIX CRÍTICO #7: Atributos para evitar throttling de Chromium
@@ -19,11 +36,14 @@ export function bindVideoKeepAlive(video) {
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('pageshow', resume)
   window.addEventListener('focus', resume)
+  video.addEventListener('stalled', resume)
 
   return () => {
+    if (retryTimer) clearTimeout(retryTimer)
     document.removeEventListener('visibilitychange', onVisibility)
     window.removeEventListener('pageshow', resume)
     window.removeEventListener('focus', resume)
+    video.removeEventListener('stalled', resume)
   }
 }
 

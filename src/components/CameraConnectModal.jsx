@@ -34,6 +34,7 @@ import {
 import jsQR from 'jsqr';
 import styles from './CameraConnectModal.module.css';
 import { buildRemoteCameraUrl, findAvailableRemoteCameraSlot } from '../utils/remoteCameraSlots.mjs';
+import { bindVideoKeepAlive } from '../utils/videoStream.js';
 
 function ModalVideoPreview({ stream, label }) {
   const vRef = useRef(null);
@@ -56,6 +57,7 @@ function ModalVideoPreview({ stream, label }) {
     };
 
     attemptPlay();
+    const keepAliveCleanup = bindVideoKeepAlive(v);
     v.addEventListener('loadedmetadata', attemptPlay);
     v.addEventListener('canplay', attemptPlay);
     v.addEventListener('playing', attemptPlay);
@@ -89,6 +91,7 @@ function ModalVideoPreview({ stream, label }) {
     }, 1200);
 
     return () => {
+      keepAliveCleanup();
       clearTimeout(retryTimer);
       v.removeEventListener('loadedmetadata', attemptPlay);
       v.removeEventListener('canplay', attemptPlay);
@@ -483,7 +486,12 @@ export default function CameraConnectModal({
 
   const handleConnectUsb = async (deviceId, label, slotOverride) => {
     if (!onUsbConnect) return;
-    const effSlot = typeof slotOverride === 'number' ? slotOverride : targetSlot;
+    const requestedSlot = typeof slotOverride === 'number' ? slotOverride : targetSlot;
+    const requestedMeta = cameraMeta[requestedSlot];
+    const requestedHasOtherSource = Boolean(streams[requestedSlot]) && requestedMeta?.deviceId !== deviceId;
+    // Adding a camera must never tear down the active Program source. Choose
+    // the next free CAM automatically when the currently selected slot is busy.
+    const effSlot = requestedHasOtherSource ? nextFreeSlot : requestedSlot;
     if (effSlot >= slotsCount && onAddSlot) {
       onAddSlot();
     }

@@ -24,7 +24,7 @@ import AudioMixerDesk from './components/AudioMixerDesk.jsx';
 import { BROADCAST_LAYOUTS } from './config/cameraSlots.js';
 import { useCameraAudioLevels } from './hooks/useCameraAudioLevels.js';
 import { buildCanvasFilter } from './utils/videoLook.js';
-import { getVideoTrackInfo, getVideoTrackResolution } from './utils/videoStream.js';
+import { bindVideoKeepAlive, getVideoTrackInfo, getVideoTrackResolution } from './utils/videoStream.js';
 import { CINTILLO_STYLES, getCintilloStyle } from './config/cintilloStyles.js';
 import { CINTILLO_PRESETS, resolveCintilloText, resolveCintilloSubtitle } from './config/cintilloPresets.js';
 import { CINTILLO_POSITION_OPTIONS } from './config/cintilloCameraMap.js';
@@ -137,6 +137,7 @@ const VideoTile = React.forwardRef(({
       }
     };
     attemptPlay();
+    const keepAliveCleanup = bindVideoKeepAlive(v);
 
     v.addEventListener('loadedmetadata', attemptPlay);
     v.addEventListener('loadeddata', attemptPlay);
@@ -174,6 +175,7 @@ const VideoTile = React.forwardRef(({
 
     return () => {
       clearInterval(pollTimer);
+      keepAliveCleanup();
       v.removeEventListener('loadedmetadata', attemptPlay);
       v.removeEventListener('loadeddata', attemptPlay);
       v.removeEventListener('canplay', attemptPlay);
@@ -2858,7 +2860,7 @@ function PodcastStudioApp() {
 
   const handleUsbConnect = async (deviceId, slot, label) => {
     // Si la cámara ya está activa en este slot con el mismo deviceId, mantenerla
-    const currentStream = slotStreams[slot] || (slot === 0 ? localStream : null);
+    const currentStream = slotStreamsRef.current[slot] || slotStreams[slot] || (slot === 0 ? localStreamRef.current || localStream : null);
     const activeVideoTrack = currentStream?.getVideoTracks()?.[0];
     const activeDevId = activeVideoTrack?.getSettings?.()?.deviceId;
 
@@ -2869,48 +2871,25 @@ function PodcastStudioApp() {
       return currentStream;
     }
 
-    // 1. Si este deviceId ya está abierto en OTRA ranura, liberarlo de esa ranura primero
-    // para que Windows DirectShow libere el bloqueo exclusivo de hardware UVC
+    // A source may not replace a live USB camera implicitly. Stopping UVC
+    // tracks from a click handler is exactly what caused driver deadlocks when
+    // adding CAM 2 while CAM 1 was still on the air.
+    if (activeVideoTrack && activeVideoTrack.readyState === 'live' && activeDevId !== deviceId) {
+      throw new Error(`CAM ${slot + 1} ya está en uso. Desconéctala primero o selecciona una ranura libre.`);
+    }
+
+    // A physical UVC device must have exactly one owner. Never stop and move a
+    // live device from another slot in the middle of a click: the user must
+    // explicitly disconnect it first.
     for (const [sKey, meta] of Object.entries(cameraMetaRef.current || {})) {
       const sIdx = Number(sKey);
       if (sIdx !== slot && meta && meta.deviceId === deviceId) {
-        if (slotStreamsRef.current[sIdx]) {
-          try { slotStreamsRef.current[sIdx].getTracks().forEach(t => t.stop()); } catch (e) {}
-          setSlotStreams(prev => {
-            const next = { ...prev };
-            delete next[sIdx];
-            return next;
-          });
-        }
-        setCameraMeta(prev => {
-          const next = { ...prev };
-          delete next[sIdx];
-          return next;
-        });
-        if (sIdx === 0 && localStreamRef.current) {
-          try { localStreamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {}
-          setLocalStream(null);
+        const assignedTrack = slotStreamsRef.current[sIdx]?.getVideoTracks?.()[0];
+        if (assignedTrack?.readyState === 'live') {
+          throw new Error(`Esta cámara ya está conectada en CAM ${sIdx + 1}. Desconéctala antes de moverla.`);
         }
       }
     }
-
-    // 2. Detener tracks anteriores de esta ranura para liberar el puerto
-    try {
-      if (slotStreams[slot]) {
-        slotStreams[slot].getTracks().forEach(t => t.stop());
-      }
-      if (slot === 0 && localStream) {
-        localStream.getTracks().forEach(t => t.stop());
-      }
-      Object.entries(slotStreams || {}).forEach(([sKey, sStream]) => {
-        if (sStream && Number(sKey) === slot) {
-          sStream.getTracks().forEach(t => t.stop());
-        }
-      });
-    } catch (e) {}
-
-    // Pausa breve para que Windows DirectShow / UVC libere el hardware
-    await new Promise(r => setTimeout(r, 150));
 
     let stream = null;
     // Intentos optimizados para hasta 12 cámaras USB y cables de extensión > 10m
@@ -2929,7 +2908,7 @@ function PodcastStudioApp() {
 
     for (const constraints of attempts) {
       try {
-        stream = await getUserMediaWithTimeout(constraints, 3000);
+        stream = await getUserMediaWithTimeout(constraints, 2200);
         if (stream) break;
       } catch (err) {}
     }
@@ -5853,7 +5832,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.6</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.7</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>
