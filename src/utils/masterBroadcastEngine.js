@@ -1308,6 +1308,7 @@ function connectAudioSourceWithFx(key, stream, isMasterCam = false, channelLabel
     connectedAudioSources.set(key, { src, stream, isMasterCam, strip });
 
     if (isMasterCam && localMicMonitorNode) {
+      try { strip.analyser.disconnect(localMicMonitorNode); } catch (e) {}
       try { strip.analyser.connect(localMicMonitorNode); } catch (e) {}
     }
     syncAllMixMinusBuses();
@@ -1360,9 +1361,19 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
     if (!audioContext || !audioDestination) return null;
     const activePgm = currentState.activeCam || 1;
     // Audio-follow-video is deliberately independent of the visual layout.
-    // A PiP or multiview source is still a monitor, never an additional live
-    // microphone.  Only the Program/Master camera may reach the master bus.
-    const isProgramCamera = (camId) => Number(camId) === Number(activePgm);
+    const layout = currentState.layoutMode || '1';
+    const isMultiCamLayout = layout !== '1';
+    const isProgramCamera = (camId) => {
+      const id = Number(camId);
+      if (id === Number(activePgm)) return true;
+      if (isMultiCamLayout) {
+        if (layout === '2' && (id === 1 || id === 2)) return true;
+        if (layout === '3' && (id === 1 || id === 2 || id === 3)) return true;
+        if (layout === '4' && (id === 1 || id === 2 || id === 3 || id === 4)) return true;
+        if (layout === 'pip' && (id === Number(activePgm) || id === Number(currentState.pipCam || 2))) return true;
+      }
+      return false;
+    };
 
     const masterAudioStream = (camStreamsMap && camStreamsMap[1]) || localStream;
     const isMasterMuted = Boolean(camMutedMap[1]) || !isProgramCamera(1);
@@ -1957,8 +1968,10 @@ let visibilityHandler = null;
 
 function setupVisibilityHandler() {
   if (typeof document === 'undefined') return;
+  if (visibilityHandler) return;
   visibilityHandler = () => {
-    if (document.hidden) {
+    // Si la emisión o grabación está activa, NUNCA detener el renderizado en segundo plano
+    if (document.hidden && !isBroadcastEngineActive && !mediaRecorder) {
       isCanvasRenderLoopActive = false;
       if (renderWorker) {
         try { renderWorker.postMessage('stop'); } catch (e) {}

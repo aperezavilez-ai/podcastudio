@@ -108,19 +108,27 @@ function CalibratorPreview({
   }, [stream])
 
   // Canvas mirrors the exact Master color path (filter → LUT → vignette), so
-  // the PVW is evidence of the signal that will be recorded and streamed.
+  // the PVW is evidence of the signal that will be recorded and streamed in Full HD.
   useEffect(() => {
     const video = videoRef.current
     const canvas = canvasRef.current
     if (!video || !canvas || !stream) return
     let frameId = 0
     let stopped = false
-    const width = canvas.width = 640
-    const height = canvas.height = 360
     const ctx = canvas.getContext('2d', { alpha: false })
     const render = () => {
       if (stopped) return
       if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+        // Ajustar resolución nativa real (1080p / 720p) sin degradar a 360p
+        const nativeW = video.videoWidth || 1920
+        const nativeH = video.videoHeight || 1080
+        if (canvas.width !== nativeW || canvas.height !== nativeH) {
+          canvas.width = nativeW
+          canvas.height = nativeH
+        }
+        const width = canvas.width
+        const height = canvas.height
+
         const sourceRatio = video.videoWidth / video.videoHeight
         const targetRatio = width / height
         let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight
@@ -136,7 +144,13 @@ function CalibratorPreview({
       frameId = requestAnimationFrame(render)
     }
     render()
-    return () => { stopped = true; cancelAnimationFrame(frameId) }
+    return () => { 
+      stopped = true; 
+      cancelAnimationFrame(frameId);
+      if (video) {
+        try { video.pause(); video.srcObject = null; } catch (e) {}
+      }
+    }
   }, [stream, filterStyle, lutId, lookPreset])
 
   const isZoomed = Math.abs(zoom - 1.0) > 0.01 || Math.abs(focusX - 0.5) > 0.01 || Math.abs(focusY - 0.42) > 0.01
@@ -532,6 +546,9 @@ export default function CameraCalibratorModal({
   useEffect(() => {
     if (!isDraggingPan) return
 
+    let currentFocusX = focusX
+    let currentFocusY = focusY
+
     const handleWindowMouseMove = (e) => {
       const frame = previewFrameRef.current
       if (!frame) return
@@ -550,16 +567,16 @@ export default function CameraCalibratorModal({
       const deltaNormY = (dy / rect.height) * sensitivity
 
       // Arrastrar la imagen mueve el punto focal de forma natural
-      const nextX = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusX - deltaNormX).toFixed(3))))
-      const nextY = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusY - deltaNormY).toFixed(3))))
+      currentFocusX = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusX - deltaNormX).toFixed(3))))
+      currentFocusY = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusY - deltaNormY).toFixed(3))))
 
-      setFocusX(nextX)
-      setFocusY(nextY)
-      autoSync({ focusX: nextX, focusY: nextY, presetId: 'custom' })
+      setFocusX(currentFocusX)
+      setFocusY(currentFocusY)
     }
 
     const handleWindowMouseUp = () => {
       setIsDraggingPan(false)
+      autoSync({ focusX: currentFocusX, focusY: currentFocusY, presetId: 'custom' })
     }
 
     const handleWindowTouchMove = (e) => {
@@ -576,16 +593,16 @@ export default function CameraCalibratorModal({
       const deltaNormX = (dx / rect.width) * sensitivity
       const deltaNormY = (dy / rect.height) * sensitivity
 
-      const nextX = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusX - deltaNormX).toFixed(3))))
-      const nextY = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusY - deltaNormY).toFixed(3))))
+      currentFocusX = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusX - deltaNormX).toFixed(3))))
+      currentFocusY = Math.max(0.05, Math.min(0.95, parseFloat((dragStartRef.current.initFocusY - deltaNormY).toFixed(3))))
 
-      setFocusX(nextX)
-      setFocusY(nextY)
-      autoSync({ focusX: nextX, focusY: nextY, presetId: 'custom' })
+      setFocusX(currentFocusX)
+      setFocusY(currentFocusY)
     }
 
     const handleWindowTouchEnd = () => {
       setIsDraggingPan(false)
+      autoSync({ focusX: currentFocusX, focusY: currentFocusY, presetId: 'custom' })
     }
 
     window.addEventListener('mousemove', handleWindowMouseMove)
@@ -758,6 +775,7 @@ export default function CameraCalibratorModal({
             type="button" 
             className={`${styles.closeBtn} hover:!bg-red-600 hover:!text-white active:!bg-red-700 active:scale-95 transition-all cursor-pointer`} 
             onClick={(e) => { e.stopPropagation(); onClose?.(); }} 
+            onPointerDown={(e) => { e.stopPropagation(); onClose?.(); }}
             title="Cerrar calibrador (Esc)"
             aria-label="Cerrar"
           >

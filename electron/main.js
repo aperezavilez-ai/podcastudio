@@ -64,7 +64,8 @@ app.commandLine.appendSwitch('use-fake-ui-for-media-stream');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,MediaFoundationVideoCapture,ZeroCopyVideoCapture');
+// Habilitar MediaFoundation nativo para eliminar el retraso de 2 segundos en cámaras USB UVC
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
@@ -73,6 +74,8 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 let mainWindow;
 let ffmpegRecordProcess = null;
 let isStoppingRecording = false;
+let isRecording = false;
+let isStreaming = false;
 let recordChunkQueue = Promise.resolve();
 let recordChunkError = null;
 let ffmpegStreamProcess = null;
@@ -2187,13 +2190,13 @@ ipcMain.handle('save-to-downloads', async (event, { sourcePath, filename }) => {
     const downloadsFolder = app.getPath('downloads');
     const finalFilename = filename ? (filename.endsWith('.mp4') ? filename : `${filename}.mp4`) : path.basename(sourcePath);
     const destPath = path.join(downloadsFolder, finalFilename);
-    fs.copyFileSync(sourcePath, destPath);
+    await fs.promises.copyFile(sourcePath, destPath);
 
     // Copiar también la miniatura oficial JPG de alta resolución
     const thumbSrc = sourcePath.replace(/\.mp4$/i, '_Thumbnail.jpg');
     if (fs.existsSync(thumbSrc)) {
       const thumbDest = destPath.replace(/\.mp4$/i, '_Miniatura.jpg');
-      try { fs.copyFileSync(thumbSrc, thumbDest); } catch (e) {}
+      try { await fs.promises.copyFile(thumbSrc, thumbDest); } catch (e) {}
     }
 
     return { success: true, path: destPath };
@@ -2260,36 +2263,45 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
     const convertProc = spawn(ffmpegPath, args);
     convertProc.on('close', (code) => {
       if (code === 0 && fs.existsSync(outPath)) {
-        // Copiar a la carpeta Downloads del usuario automáticamente
+        // Copiar a la carpeta Downloads del usuario automáticamente de forma asíncrona
         const downloadsFolder = app.getPath('downloads');
         const dlPath = path.join(downloadsFolder, outFilename);
-        try { fs.copyFileSync(outPath, dlPath); }
-        catch (e) { return resolve({ success: false, path: outPath, error: `El archivo quedó en el proyecto, pero no se pudo copiar a Descargas: ${e.message}` }); }
-
-        // Generar miniatura JPG para el formato exportado
-        const thumbPath = outPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
-        try {
-          const tProc = spawn(ffmpegPath, ['-y', '-ss', '00:00:00.800', '-i', outPath, '-vframes', '1', '-q:v', '2', thumbPath]);
-          let thumbFinished = false;
-          const thumbTimeout = setTimeout(() => {
-            if (thumbFinished) return;
-            thumbFinished = true;
-            try { tProc.kill(); } catch (e) {}
-            resolve({ success: false, path: outPath, downloadPath: dlPath, error: 'El video se guardó, pero la miniatura tardó demasiado en generarse.' });
-          }, 15000);
-          tProc.on('close', (thumbCode) => {
-            if (thumbFinished) return;
-            thumbFinished = true;
-            clearTimeout(thumbTimeout);
-            if (thumbCode !== 0 || !fs.existsSync(thumbPath) || fs.statSync(thumbPath).size === 0) {
-              return resolve({ success: false, path: outPath, downloadPath: dlPath, error: 'El video se guardó, pero no se pudo crear la miniatura.' });
+        fs.promises.copyFile(outPath, dlPath)
+          .then(async () => {
+            // Generar miniatura JPG para el formato exportado
+            const thumbPath = outPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
+            try {
+              const tProc = spawn(ffmpegPath, ['-y', '-ss', '00:00:00.800', '-i', outPath, '-vframes', '1', '-q:v', '2', thumbPath]);
+              let thumbFinished = false;
+              const thumbTimeout = setTimeout(() => {
+                if (thumbFinished) return;
+                thumbFinished = true;
+                try { tProc.kill(); } catch (e) {}
+                resolve({ success: false, path: outPath, downloadPath: dlPath, error: 'El video se guardó, pero la miniatura tardó demasiado en generarse.' });
+              }, 15000);
+              tProc.on('close', async (thumbCode) => {
+                if (thumbFinished) return;
+                thumbFinished = true;
+                clearTimeout(thumbTimeout);
+                if (thumbCode !== 0 || !fs.existsSync(thumbPath) || fs.statSync(thumbPath).size === 0) {
+                  return resolve({ success: false, path: outPath, downloadPath: dlPath, error: 'El video se guardó, pero no se pudo crear la miniatura.' });
+                }
+                const dlThumb = dlPath.replace(/\.mp4$/i, '_Miniatura.jpg');
+                try { await fs.promises.copyFile(thumbPath, dlThumb); }
+                catch (e) { return resolve({ success: false, path: outPath, downloadPath: dlPath, thumbnailPath: thumbPath, error: `No se pudo copiar la miniatura a Descargas: ${e.message}` }); }
+                resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailPath: thumbPath, thumbnailDownloadPath: dlThumb });
+              });
+              tProc.on('error', (err) => {
+                if (thumbFinished) return;
+                thumbFinished = true;
+                clearTimeout(thumbTimeout);
+                resolve({ success: false, path: outPath, downloadPath: dlPath, error: `Error generando miniatura: ${err.message}` });
+              });
+            } catch (err) {
+              resolve({ success: true, path: outPath, downloadPath: dlPath });
             }
-            const dlThumb = dlPath.replace(/\.mp4$/i, '_Miniatura.jpg');
-            try { fs.copyFileSync(thumbPath, dlThumb); }
-            catch (e) { return resolve({ success: false, path: outPath, downloadPath: dlPath, thumbnailPath: thumbPath, error: `No se pudo copiar la miniatura a Descargas: ${e.message}` }); }
-            resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailPath: thumbPath, thumbnailDownloadPath: dlThumb });
-          });
-          tProc.on('error', (err) => {
+          })
+          .catch((e) => resolve({ success: false, path: outPath, error: `El archivo quedó en el proyecto, pero no se pudo copiar a Descargas: ${e.message}` }));
             if (thumbFinished) return;
             thumbFinished = true;
             clearTimeout(thumbTimeout);
@@ -2368,14 +2380,14 @@ ipcMain.handle('export-highlight-clip', async (event, { sourcePath, startTime, d
       if (code === 0 && fs.existsSync(outPath)) {
         const downloadsFolder = app.getPath('downloads');
         const dlPath = path.join(downloadsFolder, outFilename);
-        try { fs.copyFileSync(outPath, dlPath); } catch (e) {}
+        fs.promises.copyFile(outPath, dlPath).catch(() => {});
 
         const thumbPath = outPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
         try {
           const tProc = spawn(ffmpegPath, ['-y', '-ss', '00:00:00.800', '-i', outPath, '-vframes', '1', '-q:v', '2', thumbPath]);
           tProc.on('close', () => {
             const dlThumb = dlPath.replace(/\.mp4$/i, '_Miniatura.jpg');
-            try { fs.copyFileSync(thumbPath, dlThumb); } catch (e) {}
+            fs.promises.copyFile(thumbPath, dlThumb).catch(() => {});
             resolve({ success: true, path: outPath, downloadPath: dlPath });
           });
           setTimeout(() => resolve({ success: true, path: outPath, downloadPath: dlPath }), 1200);

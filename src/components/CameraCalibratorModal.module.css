@@ -216,10 +216,13 @@
 
 .videoSource {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
+  top: 0;
+  left: 0;
+  width: 640px;
+  height: 360px;
+  opacity: 0.001;
   pointer-events: none;
+  z-index: -10;
 }
 
 .noSignal {

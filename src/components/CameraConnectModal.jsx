@@ -1276,7 +1276,7 @@ Instrucciones:
                           <button
                             type="button"
                             className={styles.connectBtn}
-                            disabled={connectingUsbId === cam.deviceId}
+                            disabled={Boolean(connectingUsbId)}
                             onClick={() => handleConnectUsb(cam.deviceId, cam.label, targetSlot)}
                             style={{
                               background: '#e8612a',

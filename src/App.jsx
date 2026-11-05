@@ -2613,9 +2613,9 @@ function PodcastStudioApp() {
       await window.api?.stopIsoRecording?.();
       const result = await window.api?.cancelRecording?.();
       setRecordedVideoData(null);
-      if (result && !result.success) alert(`No se pudo descartar la grabación: ${result.error || 'error desconocido'}`);
+      if (result && !result.success) showToast(`No se pudo descartar la grabación: ${result.error || 'error desconocido'}`, 'error');
     } catch (error) {
-      alert(`No se pudo descartar la grabación: ${error.message || 'error desconocido'}`);
+      showToast(`No se pudo descartar la grabación: ${error.message || 'error desconocido'}`, 'error');
     } finally {
       isCancelingRecordingRef.current = false;
       recordingStopPendingRef.current = false;
@@ -2763,7 +2763,7 @@ function PodcastStudioApp() {
           rightPrompterScrollPos.current = 0;
           if (rightPrompterScrollRef.current) rightPrompterScrollRef.current.scrollTop = 0;
           teleprompterYRef.current = window.innerHeight;
-        } catch (error) { alert("Error al leer archivo Word (.docx)."); }
+        } catch (error) { showToast("Error al leer archivo Word (.docx).", "error"); }
       };
       reader.readAsArrayBuffer(file);
     }
@@ -6397,7 +6397,7 @@ function PodcastStudioApp() {
                   type="button"
                   onClick={() => {
                     navigator.clipboard.writeText(activeQrTargetUrl);
-                    alert('¡Enlace del Control Remoto copiado al portapapeles!');
+                    showToast('¡Enlace del Control Remoto copiado al portapapeles!', 'info');
                   }}
                   className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg shrink-0 flex items-center gap-1.5 cursor-pointer shadow"
                 >
@@ -6443,7 +6443,7 @@ function PodcastStudioApp() {
               if (window.api.openRecordingsFolder) {
                 window.api.openRecordingsFolder(rec.projectName || topic || 'Proyecto_General');
               }
-              alert(`¡Video Master MP4 descargado con éxito en tu carpeta de Descargas!\n${dlRes.path}`);
+              showToast(`¡Video Master MP4 guardado en tu carpeta de Descargas! (${dlRes.path})`, 'success');
               return;
             }
           }

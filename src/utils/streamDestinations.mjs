@@ -39,8 +39,10 @@ export function buildStreamDestinations(streamConfigs) {
       // Never silently replace an invalid ingest URL: that hides a typo and
       // sends a live program to an unexpected endpoint.
       if (!/^rtmps?:\/\//i.test(server)) {
-        if (!server) {
+        if (!server && DEFAULT_SERVERS[id]) {
           server = DEFAULT_SERVERS[id];
+        } else if (!server) {
+          throw new Error(`Debes ingresar la URL del servidor RTMP para ${id}.`);
         } else {
           throw new Error(`El servidor de ${id} debe comenzar con rtmp:// o rtmps://.`);
         }
@@ -49,10 +51,10 @@ export function buildStreamDestinations(streamConfigs) {
       const normalizedServer = server.replace(/\/+$/, '');
       const streamKey = key.replace(/\s+/g, '').replace(/^\/+|\/+$/g, '');
 
+      // En RTMP broadcast estándar, no se debe hacer encodeURIComponent ciego
+      // porque corrompe tokens legítimos como '?secret=' o '&auth=' de Facebook Live / CDNs.
       const publishUrl = streamKey
-        // A stream key is data, not URL syntax. Escaping keeps reserved
-        // characters from changing the RTMP path or being treated as a query.
-        ? `${normalizedServer}/${encodeURIComponent(streamKey)}`
+        ? `${normalizedServer}/${streamKey}`
         : normalizedServer;
 
       return {
