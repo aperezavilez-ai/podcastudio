@@ -12,31 +12,40 @@ import { bindVideoKeepAlive } from '../utils/videoStream.js'
 
 function safeAttachVideo(videoEl, targetStream) {
   if (!videoEl) return
-  videoEl.setAttribute('playsinline', '')
-  videoEl.setAttribute('webkit-playsinline', '')
+  videoEl.autoplay = true
+  videoEl.playsInline = true
   videoEl.muted = true
+  videoEl.defaultMuted = true
+  videoEl.setAttribute('autoplay', 'true')
+  videoEl.setAttribute('playsinline', 'true')
+  videoEl.setAttribute('webkit-playsinline', 'true')
+  videoEl.setAttribute('muted', 'true')
 
   if (targetStream) {
     if (videoEl.srcObject !== targetStream) {
       videoEl.srcObject = targetStream
     }
     const tryPlay = () => {
-      const p = videoEl.play()
-      if (p && typeof p.catch === 'function') p.catch(() => {})
+      if (videoEl && videoEl.paused) {
+        const p = videoEl.play()
+        if (p && typeof p.catch === 'function') p.catch(() => {})
+      }
     }
     tryPlay()
-    videoEl.addEventListener('canplay', tryPlay)
-    videoEl.addEventListener('loadeddata', tryPlay)
-    videoEl.addEventListener('loadedmetadata', tryPlay)
+    videoEl.onloadedmetadata = tryPlay
+    videoEl.oncanplay = tryPlay
+    videoEl.onloadeddata = tryPlay
 
     const videoTracks = targetStream?.getVideoTracks?.() || []
     videoTracks.forEach(t => {
-      t.addEventListener('unmute', tryPlay)
+      try { t.enabled = true } catch {}
+      t.onunmute = tryPlay
     })
   } else if (videoEl.srcObject) {
-    videoEl.srcObject = null
+    try { videoEl.srcObject = null } catch {}
   }
 }
+
 
 const CALIBRATION_LOOK_PRESETS = [
   { id: 'original', name: 'Original', brightness: 100, contrast: 100, saturation: 100, warmth: 0, tint: 0, lutId: 'none' },
@@ -71,8 +80,11 @@ export default function CameraCalibratorModal({
     }
   }, [isOpen, initialSlot])
 
-  // Estado local de calibración para el slot actual
-  const currentSlotCrop = crops[selectedSlot] || {}
+  // Estado local de calibración para el slot actual con protección anti-cuelgue
+  const safeCrops = crops || {}
+  const safeStreams = Array.isArray(streams) ? streams : []
+  const safeCameraMeta = Array.isArray(cameraMeta) ? cameraMeta : []
+  const currentSlotCrop = safeCrops[selectedSlot] || {}
   const [zoom, setZoom] = useState(currentSlotCrop.zoom || 1.0)
   const [focusX, setFocusX] = useState(currentSlotCrop.focusX ?? 0.5)
   const [focusY, setFocusY] = useState(currentSlotCrop.focusY ?? 0.42)
@@ -110,7 +122,7 @@ export default function CameraCalibratorModal({
 
   // Cargar valores del slot cuando cambia de pestaña dentro del modal
   useEffect(() => {
-    const sc = crops[selectedSlot] || {}
+    const sc = safeCrops[selectedSlot] || {}
     setZoom(sc.zoom || 1.0)
     setFocusX(sc.focusX ?? 0.5)
     setFocusY(sc.focusY ?? 0.42)
@@ -131,7 +143,7 @@ export default function CameraCalibratorModal({
 
   // Elemento de video en vivo
   const videoRef = useRef(null)
-  const stream = streams[selectedSlot]
+  const stream = safeStreams[selectedSlot] || null
   const [saveToast, setSaveToast] = useState('')
 
   const setVideoNode = useCallback((node) => {
@@ -141,15 +153,37 @@ export default function CameraCalibratorModal({
     }
   }, [stream])
 
+  // Escape key listener para cerrar inmediatamente
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        onClose?.()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isOpen, onClose])
+
   useEffect(() => {
     if (!isOpen) return
     if (videoRef.current && stream) {
       safeAttachVideo(videoRef.current, stream)
     } else if (videoRef.current && !stream) {
-      videoRef.current.srcObject = null
+      try { videoRef.current.srcObject = null } catch {}
     }
 
     const unbind = bindVideoKeepAlive(videoRef.current)
+
+    // Watchdog activo para asegurar reproducción continua y cero fotogramas negros
+    const watchdog = setInterval(() => {
+      const v = videoRef.current
+      if (v && stream && (v.paused || v.videoWidth === 0)) {
+        if (v.srcObject !== stream) v.srcObject = stream
+        try { v.play().catch(() => {}) } catch {}
+      }
+    }, 350)
 
     const track = stream?.getVideoTracks?.()[0]
     if (track && typeof track.getSettings === 'function') {
@@ -161,7 +195,10 @@ export default function CameraCalibratorModal({
       } catch {}
     }
 
-    return () => unbind?.()
+    return () => {
+      clearInterval(watchdog)
+      unbind?.()
+    }
   }, [isOpen, stream, selectedSlot])
 
   const handleToggleHardwareMode = useCallback(async (modeKey, targetValue) => {
@@ -578,7 +615,7 @@ export default function CameraCalibratorModal({
   if (!isOpen) return null
 
   const isCurrentSlotMaster = selectedSlot === masterCameraSlot
-  const meta = cameraMeta[selectedSlot]
+  const meta = safeCameraMeta[selectedSlot]
   const slotName = getSlotLabel(selectedSlot, meta?.customLabel, isCurrentSlotMaster)
 
   return (
@@ -602,13 +639,12 @@ export default function CameraCalibratorModal({
           </div>
           <button 
             type="button" 
-            className={styles.closeBtn} 
-            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onClose?.(); }}
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose?.(); }} 
-            title="Cerrar ventana (Esc)"
+            className={`${styles.closeBtn} hover:!bg-red-600 hover:!text-white active:!bg-red-700 active:scale-95 transition-all cursor-pointer`} 
+            onClick={(e) => { e.stopPropagation(); onClose?.(); }} 
+            title="Cerrar calibrador (Esc)"
             aria-label="Cerrar"
           >
-            <X size={18} />
+            <X size={20} className="pointer-events-none" />
           </button>
         </div>
 

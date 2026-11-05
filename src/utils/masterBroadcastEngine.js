@@ -1776,27 +1776,74 @@ export function startBroadcastEngine(initialState, onChunk) {
 
   const canvasStream = canvas.captureStream(30);
   const videoTrack = canvasStream.getVideoTracks()[0];
-  const audioTrack = setupAudioMixing(
+  if (videoTrack && 'contentHint' in videoTrack) {
+    videoTrack.contentHint = 'motion';
+  }
+
+  let audioTrack = setupAudioMixing(
     currentState.localStream,
     currentState.remoteCams,
     currentState.camStreamsMap,
     currentState.camMuted
   );
+  if (!audioTrack) {
+    initMixerBuses();
+    audioTrack = audioDestination?.stream?.getAudioTracks?.()?.[0] || null;
+    if (!audioTrack && audioContext && masterSumGain && audioDestination) {
+      try {
+        const osc = audioContext.createOscillator();
+        const silentGain = audioContext.createGain();
+        silentGain.gain.setValueAtTime(0.00001, audioContext.currentTime);
+        osc.connect(silentGain);
+        silentGain.connect(masterSumGain);
+        osc.start();
+        audioTrack = audioDestination.stream?.getAudioTracks?.()?.[0] || null;
+      } catch (e) {}
+    }
+  }
 
   const tracks = [];
   if (videoTrack) tracks.push(videoTrack);
   if (audioTrack) tracks.push(audioTrack);
   masterStream = new MediaStream(tracks);
 
-  let chosenMime = 'video/webm;codecs=vp8,opus';
-  if (!MediaRecorder.isTypeSupported(chosenMime)) {
-    if (MediaRecorder.isTypeSupported('video/webm')) chosenMime = 'video/webm';
-    else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) chosenMime = 'video/webm;codecs=h264,opus';
-    else if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1')) chosenMime = 'video/mp4;codecs=avc1';
-  }
+  const hasAudioTrack = masterStream.getAudioTracks().length > 0;
+  const preferredMimes = hasAudioTrack
+    ? [
+        'video/webm;codecs=vp8,opus',
+        'video/webm;codecs=h264,opus',
+        'video/webm;codecs=vp9,opus',
+        'video/webm',
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4'
+      ]
+    : [
+        'video/webm;codecs=vp8',
+        'video/webm;codecs=h264',
+        'video/webm;codecs=vp9',
+        'video/webm',
+        'video/mp4'
+      ];
+
+  let chosenMime = preferredMimes.find((m) => {
+    try { return MediaRecorder.isTypeSupported(m); } catch { return false; }
+  }) || '';
 
   try {
-    mediaRecorder = new MediaRecorder(masterStream, { mimeType: chosenMime, videoBitsPerSecond: 8000000 });
+    const recOptions = { videoBitsPerSecond: 8000000 };
+    if (chosenMime) recOptions.mimeType = chosenMime;
+    mediaRecorder = new MediaRecorder(masterStream, recOptions);
+  } catch (instantiationErr) {
+    console.warn('[MasterRecorder] Falló con mimeType preferido:', chosenMime, instantiationErr);
+    try {
+      mediaRecorder = new MediaRecorder(masterStream);
+    } catch (fatalErr) {
+      console.error('[MasterRecorder] Error irrecuperable al instanciar MediaRecorder:', fatalErr);
+      mediaRecorder = null;
+    }
+  }
+
+  if (mediaRecorder) {
     mediaRecorder.ondataavailable = (e) => {
       if (!e.data || e.data.size === 0) return;
       pendingMediaChunkDelivery = pendingMediaChunkDelivery.then(async () => {
@@ -1807,12 +1854,12 @@ export function startBroadcastEngine(initialState, onChunk) {
         console.warn('[MasterRecorder] Error procesando segmento:', err?.message || err);
       });
     };
-    // Segmentos cada 250ms para latencia ultrabaja de arranque y respuesta instantánea
-    mediaRecorder.start(250);
-    // Solicitar inmediatamente el primer fragmento (cabecera EBML) para alimentar FFmpeg sin retraso
-    try { mediaRecorder.requestData(); } catch (e) {}
-  } catch (e) {
-    console.error('[MasterRecorder] Error al arrancar MediaRecorder:', e);
+    try {
+      mediaRecorder.start(250);
+      try { mediaRecorder.requestData(); } catch (e) {}
+    } catch (startErr) {
+      console.error('[MasterRecorder] Error al ejecutar mediaRecorder.start():', startErr);
+    }
   }
 
   isBroadcastEngineActive = true;

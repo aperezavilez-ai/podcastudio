@@ -1643,6 +1643,7 @@ function PodcastStudioApp() {
     const startCamera = async () => {
       try {
         const attempts = [
+          { video: { width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } }, audio: false },
           { video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
           { video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false },
           { video: { frameRate: { ideal: 30 } }, audio: false },
@@ -1658,6 +1659,9 @@ function PodcastStudioApp() {
         }
 
         if (stream) {
+          const vt = stream.getVideoTracks()[0];
+          if (vt && 'contentHint' in vt) vt.contentHint = 'motion';
+
           // Intentar vincular micrófono sin bloquear el video si falla
           try {
             const micStream = await getUserMediaWithTimeout({ audio: true }, 2000);
@@ -2805,17 +2809,17 @@ function PodcastStudioApp() {
     let stream = null;
     // Intentos optimizados para hasta 12 cámaras USB y cables de extensión > 10m
     const attempts = [
-      // 1. Full HD 1080p exacto
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-      // 2. HD 720p exacto (ancho de banda óptimo para múltiples cámaras en el mismo controlador USB)
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-      // 3. 540p / 480p exacto (máxima tolerancia a atenuación de señal en cables y extensiones USB > 10 metros)
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 960 }, height: { ideal: 540 } }, audio: false },
-      // 4. Nativo exacto (permite al controlador DirectShow seleccionar el formato MJPEG comprimido)
+      // 1. Full HD 1080p exacto con tasa fluida mínima (fuerza formato MJPEG de hardware y elimina el retardo de 2 segundos)
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } }, audio: false },
+      // 2. Full HD 1080p exacto
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
+      // 3. HD 720p exacto a 30fps (óptimo ancho de banda para concentradores con múltiples cámaras)
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, min: 24 } }, audio: false },
+      // 4. Nativo exacto
       { video: { deviceId: { exact: deviceId } }, audio: false },
-      // 5. Relajado (no exact) en 1080p / 720p
-      { video: { deviceId: deviceId, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
-      { video: { deviceId: deviceId, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      // 5. Relajado en 1080p / 720p
+      { video: { deviceId: deviceId, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
+      { video: { deviceId: deviceId, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false },
       // 6. Relajado nativo
       { video: { deviceId: deviceId }, audio: false },
     ];
@@ -2828,6 +2832,18 @@ function PodcastStudioApp() {
     }
 
     if (stream) {
+      const vTrack = stream.getVideoTracks()[0];
+      if (vTrack) {
+        if ('contentHint' in vTrack) vTrack.contentHint = 'motion';
+        if (vTrack.applyConstraints) {
+          try {
+            await vTrack.applyConstraints({
+              advanced: [{ focusMode: 'continuous' }]
+            });
+          } catch (_) {}
+        }
+      }
+
       // Si el slot es 0 (Master) y no tiene track de audio, intentar vincular el micrófono por separado sin bloquear el video
       if (slot === 0 && stream.getAudioTracks().length === 0) {
         try {
@@ -2836,15 +2852,6 @@ function PodcastStudioApp() {
             stream.addTrack(micStream.getAudioTracks()[0]);
           }
         } catch (e) {}
-      }
-
-      const vTrack = stream.getVideoTracks()[0];
-      if (vTrack && vTrack.applyConstraints) {
-        try {
-          await vTrack.applyConstraints({
-            advanced: [{ focusMode: 'continuous' }]
-          });
-        } catch (_) {}
       }
 
       setSlotStreams(prev => ({ ...prev, [slot]: stream }));
@@ -6188,12 +6195,12 @@ function PodcastStudioApp() {
       <CameraCalibratorModal
         isOpen={showCalibratorModal}
         onClose={() => setShowCalibratorModal(false)}
-        initialSlot={calibratorTargetSlot}
+        initialSlot={Math.max(0, Math.min(Math.max(camSlots.length - 1, 0), calibratorTargetSlot || 0))}
         slotsCount={camSlots.length}
         streams={camSlots.map(id => getCamStream(id))}
-        cameraMeta={cameraMeta}
-        crops={cameraCrops}
-        masterCameraSlot={activeCam - 1}
+        cameraMeta={cameraMeta || {}}
+        crops={cameraCrops || {}}
+        masterCameraSlot={Math.max(0, activeCam - 1)}
         onSaveSlotProfile={handleSaveSlotProfile}
         onPromoteToMaster={(slotIdx) => {
           setActiveCam(slotIdx + 1);
