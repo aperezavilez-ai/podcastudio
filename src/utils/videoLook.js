@@ -7,6 +7,12 @@ export function buildCanvasFilter(look) {
   const s = (look.saturation ?? 100) / 100
   const warmth = look.warmth ?? 0
   const tint = look.tint ?? 0
+  const rawSharp = look.sharpness != null ? look.sharpness : 100
+
+  // Si todos los parámetros son estándar, devolver 'none' para que Chromium renderice directo de GPU sin pasar por shaders de composición
+  if (b === 1 && c === 1 && s === 1 && warmth === 0 && tint === 0 && rawSharp === 100) {
+    return 'none'
+  }
 
   // Balance de Temperatura real (Kelvin):
   // Cálido (+): sepia fino y armónico que embellece la piel sin amarillear los ojos
@@ -19,7 +25,6 @@ export function buildCanvasFilter(look) {
   const hue = (warmth * 0.4) + (tint * 0.75)
 
   // Nitidez y Claridad (Sharpness): 100% = neutral, hasta 200% para realce de bordes y microcontraste
-  const rawSharp = look.sharpness != null ? look.sharpness : 100
   const sharpFactor = rawSharp > 100 ? (1 + ((rawSharp - 100) / 100) * 0.32) : (rawSharp < 100 ? Math.max(0.7, rawSharp / 100) : 1.0)
   const contrastFinal = c * sharpFactor
 

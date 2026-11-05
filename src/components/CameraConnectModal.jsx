@@ -492,7 +492,11 @@ export default function CameraConnectModal({
     setConnectingUsbId(deviceId);
     setUsbConnectError(null);
     try {
-      const res = await onUsbConnect(deviceId, effSlot, customLabel.trim() || label);
+      const connectPromise = onUsbConnect(deviceId, effSlot, customLabel.trim() || label);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar la cámara USB. Verifica que no esté en uso por otra aplicación.')), 7000)
+      );
+      const res = await Promise.race([connectPromise, timeoutPromise]);
       if (!res) {
         setUsbConnectError('No se pudo abrir la cámara. Si usas cables o extensiones de más de 10 metros, asegúrate de conectarla a un puerto USB 3.0 / USB-C o hub con alimentación, y que no esté en uso por otra app.');
       } else {

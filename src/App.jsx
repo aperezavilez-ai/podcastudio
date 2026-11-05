@@ -6,7 +6,7 @@ import {
   CheckCircle, Download, UploadCloud, Image as ImageIcon, FileVideo, AudioLines, Monitor,
   BookOpen, Type, Layers, Music, ChevronRight, ChevronLeft, PanelRight, ChevronDown,
   PlayCircle, PauseCircle, Upload, Facebook, Youtube, Instagram, VolumeX, Sparkle, RefreshCw,
-  Radio, Tv, Trash2, Loader2, Pencil, HelpCircle, RotateCcw, Zap, FlipHorizontal, Tablet, Tag
+  Radio, Tv, Trash2, Loader2, Pencil, HelpCircle, RotateCcw, Zap, FlipHorizontal, Tablet, Tag, Lock, Focus
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import mammoth from 'mammoth';
@@ -545,6 +545,7 @@ function PodcastStudioApp() {
   }, []);
   const [showCalibratorModal, setShowCalibratorModal] = useState(false);
   const [calibratorTargetSlot, setCalibratorTargetSlot] = useState(0);
+  const [camFocusLocked, setCamFocusLocked] = useState({});
   const [cameraCrops, setCameraCrops] = useState(() => {
     const saved = localStorage.getItem('podcastudio_camera_crops');
     if (saved) {
@@ -882,6 +883,27 @@ function PodcastStudioApp() {
     setCalibratorTargetSlot(id - 1);
     setShowCalibratorModal(true);
   };
+
+  const toggleFocusLock = useCallback(async (camId) => {
+    const isCurrentlyLocked = Boolean(camFocusLocked[camId]);
+    const nextLocked = !isCurrentlyLocked;
+    setCamFocusLocked(prev => ({ ...prev, [camId]: nextLocked }));
+    const stream = getCamStream(camId);
+    const track = stream?.getVideoTracks?.()[0];
+    if (track && typeof track.applyConstraints === 'function') {
+      try {
+        if (nextLocked) {
+          try {
+            await track.applyConstraints({ advanced: [{ focusMode: 'manual' }] });
+          } catch {
+            await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
+          }
+        } else {
+          await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+        }
+      } catch (e) {}
+    }
+  }, [camFocusLocked, slotStreams, localStream]);
   const openSettings = (id) => { setEditingCamId(id); setShowSettingsModal(true); };
   const updateSetting = (key, value) => { setCamSettings(prev => ({ ...prev, [editingCamId]: { ...prev[editingCamId], [key]: value } })); };
   const resetSettings = () => { setCamSettings(prev => ({ ...prev, [editingCamId]: { ...defaultCamSettings } })); };
@@ -2802,24 +2824,19 @@ function PodcastStudioApp() {
     let stream = null;
     // Intentos optimizados para hasta 12 cámaras USB y cables de extensión > 10m
     const attempts = [
-      // 1. Full HD 1080p exacto con tasa fluida mínima (fuerza formato MJPEG de hardware y elimina el retardo de 2 segundos)
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } }, audio: false },
-      // 2. Full HD 1080p exacto
+      // 1. Full HD 1080p exacto con tasa fluida ideal (negocia hardware MJPEG 30fps sin lanzar OverconstrainedError)
       { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
-      // 3. HD 720p exacto a 30fps (óptimo ancho de banda para concentradores con múltiples cámaras)
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, min: 24 } }, audio: false },
-      // 4. Nativo exacto
+      // 2. HD 720p a 30fps (óptimo ancho de banda para concentradores o cámaras secundarias)
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false },
+      // 3. Apertura directa nativa por deviceId exacto
       { video: { deviceId: { exact: deviceId } }, audio: false },
-      // 5. Relajado en 1080p / 720p
-      { video: { deviceId: deviceId, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
-      { video: { deviceId: deviceId, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false },
-      // 6. Relajado nativo
+      // 4. Fallback de coincidencia relajada
       { video: { deviceId: deviceId }, audio: false },
     ];
 
     for (const constraints of attempts) {
       try {
-        stream = await getUserMediaWithTimeout(constraints, 2800);
+        stream = await getUserMediaWithTimeout(constraints, 1800);
         if (stream) break;
       } catch (err) {}
     }
@@ -4448,6 +4465,21 @@ function PodcastStudioApp() {
                     >
                       <Settings size={11} />
                     </button>
+
+                    {/* BOTÓN BLOQUEO DE ENFOQUE (ANTI-DESENFOQUE PARA MANOS Y ROSTRO) */}
+                    {camStream && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleFocusLock(camId); }}
+                        className={`p-0.5 rounded transition-colors ${
+                          camFocusLocked[camId]
+                            ? 'text-amber-400 bg-amber-950/70 hover:bg-amber-900 border border-amber-500/50'
+                            : 'text-gray-300 hover:text-amber-300 hover:bg-black/60'
+                        }`}
+                        title={camFocusLocked[camId] ? 'Enfoque BLOQUEADO (Fijo en ti sin respiración de lente) · Clic para reactivar auto-enfoque' : 'Bloquear enfoque en tu posición actual (Evita que desenfoque cuando muevas las manos o el cuerpo)'}
+                      >
+                        {camFocusLocked[camId] ? <Lock size={11} className="text-amber-400" /> : <Focus size={11} />}
+                      </button>
+                    )}
 
                     {/* BOTÓN RÓTULO DE NOMBRE (ESTILO RESTREAM / INVITADOS / CLASES) */}
                     <button 

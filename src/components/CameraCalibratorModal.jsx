@@ -141,6 +141,7 @@ function CalibratorPreview({
 
 const CALIBRATION_LOOK_PRESETS = [
   { id: 'original', name: 'Original', brightness: 100, contrast: 100, saturation: 100, warmth: 0, tint: 0, lutId: 'none' },
+  { id: 'steren-hd', name: 'Steren 1080p Pro (Anti-Ruido)', brightness: 104, contrast: 106, saturation: 104, warmth: 2, tint: 0, lutId: 'none' },
   { id: 'kodak-2383', name: 'Kodak 2383 Film', brightness: 101, contrast: 114, saturation: 105, warmth: 12, tint: -2, lutId: 'kodak-2383' },
   { id: 'teal-orange-pro', name: 'Teal & Orange Pro', brightness: 100, contrast: 118, saturation: 112, warmth: 14, tint: 2, lutId: 'teal-orange-pro' },
   { id: 'scinetone', name: 'Sony S-Cinetone', brightness: 103, contrast: 108, saturation: 102, warmth: 6, tint: -1, lutId: 'scinetone' },
@@ -271,13 +272,21 @@ export default function CameraCalibratorModal({
     }
 
     try {
-      await track.applyConstraints({
-        advanced: [{ [modeKey]: targetValue }],
-      })
+      if (modeKey === 'focusMode' && targetValue === 'manual') {
+        try {
+          await track.applyConstraints({ advanced: [{ focusMode: 'manual' }] })
+        } catch {
+          await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] })
+        }
+      } else {
+        await track.applyConstraints({
+          advanced: [{ [modeKey]: targetValue }],
+        })
+      }
       if (modeKey === 'exposureMode') setExposureMode(targetValue)
       if (modeKey === 'whiteBalanceMode') setWhiteBalanceMode(targetValue)
       if (modeKey === 'focusMode') setFocusMode(targetValue)
-      setUvcMsg(`Ajuste ${modeKey === 'exposureMode' ? 'Luz' : modeKey === 'whiteBalanceMode' ? 'Color' : 'Foco'} actualizado a ${targetValue === 'manual' ? 'Fijo' : 'Auto'}`)
+      setUvcMsg(`Ajuste ${modeKey === 'exposureMode' ? 'Luz' : modeKey === 'whiteBalanceMode' ? 'Color' : 'Foco'} actualizado a ${targetValue === 'manual' ? 'Fijo / Bloqueado' : 'Automático'}`)
       setTimeout(() => setUvcMsg(''), 3000)
     } catch {
       // Si el driver UVC no soporta advanced mode, simular estado de software
