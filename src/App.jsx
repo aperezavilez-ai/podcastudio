@@ -39,7 +39,7 @@ import { useBackgroundMusic } from './hooks/useBackgroundMusic.js';
 import { useSoundEffect } from './hooks/useSoundEffect.js';
 import { 
   startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, 
-  getInitHeader, getOrWaitForInitHeader, captureMasterCanvasSnapshot, getMasterCanvas,
+  captureMasterCanvasSnapshot, getMasterCanvas,
   setVoiceMonitor, syncStudioAudio, getCameraSnapshots,
   startNativeEngineBroadcast, stopNativeEngineBroadcast,
 } from './utils/masterBroadcastEngine.js';
@@ -2346,7 +2346,7 @@ function PodcastStudioApp() {
       dispatchRemoteCommand('TOGGLE_RECORD');
       return;
     }
-    if (!isRecording) {
+    if (!isRecordingRef.current) {
       try {
         recordingStartPendingRef.current = true;
         recordingStartPendingTimeRef.current = Date.now();
@@ -2385,8 +2385,10 @@ function PodcastStudioApp() {
         pausedDurationRef.current = 0;
         pauseStartRef.current = null;
 
-        // 3. Iniciar compositor broadcast. A REC is shown only after the
-        // recorder actually produced its initial WebM segment.
+        // 3. Iniciar el compositor Master. El estado REC ya está visible y el
+        // contador en marcha; el primer fragmento WebM llega de forma asíncrona.
+        // Nunca se debe cancelar una toma válida sólo porque el navegador tardó
+        // en entregar ese primer fragmento al MediaRecorder.
         const masterStream = startBroadcastEngine({
           activeCam,
           pvwCam,
@@ -2411,8 +2413,7 @@ function PodcastStudioApp() {
           camMuted,
         }, handleMasterChunk);
 
-        const initialHeader = await getOrWaitForInitHeader(4000);
-        if (!masterStream || !initialHeader) {
+        if (!masterStream || masterStream.getVideoTracks().length === 0) {
           throw new Error('El compositor Master no generó video grabable. Verifica una cámara activa y los permisos de medios.');
         }
 
@@ -5779,7 +5780,7 @@ function PodcastStudioApp() {
                 {isRecording ? (
                   <>
                     <Square size={14} className="fill-white" />
-                    <span>DETENER GRABACIÓN</span>
+                    <span>FINALIZAR Y ELEGIR FORMATOS</span>
                     <span className="font-mono bg-black/40 px-2 py-0.5 rounded text-[11px] ml-1">
                       {formatTime(recordingTime)}
                     </span>
@@ -5832,7 +5833,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.7</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.8</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>

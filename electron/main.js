@@ -1811,16 +1811,17 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
     recordChunkError = null;
     isStoppingRecording = false;
 
-    // Carpeta raíz estructurada garantizada en D:\PROGRAMAS IA\PODCASTUDIO\proyectos\[NombreProyecto]\
+    // El usuario encuentra todos los Master directamente en la carpeta raíz
+    // proyectos. El nombre saneado del proyecto permanece en el archivo, sin
+    // ocultar el resultado dentro de una subcarpeta.
     const projectsRoot = getProjectsRootDir();
-    const projectDir = path.join(projectsRoot, cleanProjectName);
     try {
-      if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
+      if (!fs.existsSync(projectsRoot)) fs.mkdirSync(projectsRoot, { recursive: true });
     } catch (e) {}
 
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-    currentRecordingPath = path.join(projectDir, `${timestamp}_Master_1080p.mp4`);
+    currentRecordingPath = path.join(projectsRoot, `${cleanProjectName}_${timestamp}_Master_1080p.mp4`);
 
     if (ffmpegRecordProcess) {
       try {
@@ -1833,19 +1834,20 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
     }
 
     try {
-      // Configuración de codificación Full HD broadcast instantánea (probesize optimizado + auto mapping de audio)
+      // El mismo MediaStream Master contiene el video compuesto y el audio
+      // mezclado: una sola línea de tiempo evita desincronización A/V.
       ffmpegRecordProcess = spawn(ffmpegPath, [
-        '-probesize', '256k',
-        '-analyzeduration', '500000',
+        '-probesize', '2M',
+        '-analyzeduration', '1000000',
         '-f', 'webm',
         '-i', 'pipe:0',
         '-map', '0:v:0',
         '-map', '0:a?',
         '-c:v', 'libx264',
         '-preset', 'veryfast',
-        '-crf', '18',
-        '-maxrate', '8M',
-        '-bufsize', '16M',
+        '-crf', '17',
+        '-maxrate', '16M',
+        '-bufsize', '32M',
         '-pix_fmt', 'yuv420p',
         '-r', '30',
         '-g', '60',
@@ -1987,27 +1989,27 @@ ipcMain.handle('stop-recording', async () => {
               if (thumbResolved) return;
               thumbResolved = true;
               try { thumbProcess.kill(); } catch (e) {}
-              resolve({ success: true, path: recPath, thumbnailError: 'No se pudo generar la miniatura del video.' });
+              resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: 'No se pudo generar la miniatura del video.' });
             }, 15000);
             thumbProcess.on('close', (code) => {
               if (thumbResolved) return;
               thumbResolved = true;
               clearTimeout(thumbTimeout);
               if (code === 0 && fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 0) {
-                resolve({ success: true, path: recPath, thumbnailPath: thumbPath });
+                resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailPath: thumbPath });
               } else {
-                resolve({ success: true, path: recPath, thumbnailError: 'El MP4 se guardó, pero no se pudo generar su miniatura.' });
+                resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: 'El MP4 se guardó, pero no se pudo generar su miniatura.' });
               }
             });
             thumbProcess.on('error', (err) => {
               if (thumbResolved) return;
               thumbResolved = true;
               clearTimeout(thumbTimeout);
-              resolve({ success: true, path: recPath, thumbnailError: `No se pudo generar la miniatura: ${err.message}` });
+              resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: `No se pudo generar la miniatura: ${err.message}` });
             });
             return;
           } catch (e) {
-            resolve({ success: true, path: recPath, thumbnailError: `No se pudo iniciar la miniatura: ${e.message}` });
+            resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: `No se pudo iniciar la miniatura: ${e.message}` });
             return;
           }
         }
@@ -2423,11 +2425,11 @@ ipcMain.handle('save-recording-thumbnail', async (event, { base64Data, targetPat
     let dest = targetPath || (currentRecordingPath ? currentRecordingPath.replace(/\.mp4$/i, '_Thumbnail.jpg') : null);
     if (!dest) {
       const cleanProjectName = projectName ? String(projectName).replace(/[/\\?%*:|"<>]/g, '_').trim() : 'Proyecto_General';
-      const projectDir = path.join(getProjectsRootDir(), cleanProjectName);
-      if (!fs.existsSync(projectDir)) {
-        try { fs.mkdirSync(projectDir, { recursive: true }); } catch (e) {}
+      const projectsRoot = getProjectsRootDir();
+      if (!fs.existsSync(projectsRoot)) {
+        try { fs.mkdirSync(projectsRoot, { recursive: true }); } catch (e) {}
       }
-      dest = path.join(projectDir, `Thumbnail_${Date.now()}.jpg`);
+      dest = path.join(projectsRoot, `${cleanProjectName}_Thumbnail_${Date.now()}.jpg`);
     }
     if (dest) {
       fs.writeFileSync(dest, buffer);

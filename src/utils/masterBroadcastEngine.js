@@ -1831,7 +1831,10 @@ export function startBroadcastEngine(initialState, onChunk) {
   }) || '';
 
   try {
-    const recOptions = { videoBitsPerSecond: 8000000 };
+    // El canvas Master es la única fuente de video y audio del archivo final.
+    // 12 Mbps preserva detalle de una composición 1080p sin forzar a la cámara
+    // USB a renegociar su propia resolución.
+    const recOptions = { videoBitsPerSecond: 12000000, audioBitsPerSecond: 192000 };
     if (chosenMime) recOptions.mimeType = chosenMime;
     mediaRecorder = new MediaRecorder(masterStream, recOptions);
   } catch (instantiationErr) {
