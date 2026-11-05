@@ -1302,6 +1302,9 @@ Instrucciones:
                     <span style={{ fontSize: 12, fontWeight: 700, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 6 }}>
                       <Check size={14} /> Señal activa y transmitiendo en CAM {targetSlot + 1}: {cameraMeta[targetSlot]?.label || 'Cámara USB'}
                     </span>
+                    <span style={{ color: '#fbbf24', fontSize: 11, fontFamily: 'monospace', fontWeight: 700 }}>
+                      {cameraMeta[targetSlot]?.videoInfo?.label || cameraMeta[targetSlot]?.resolution || 'Midiendo señal…'}
+                    </span>
                     <button
                       type="button"
                       onClick={() => onClose?.()}

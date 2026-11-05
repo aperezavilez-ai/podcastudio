@@ -397,7 +397,7 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
     if (camId && currentState.cameraCrops) {
       const crop = currentState.cameraCrops[camId - 1];
       if (crop) {
-        const baseFilter = crop.filter || buildCanvasFilter(crop);
+      const baseFilter = crop.colorEnabled === true ? (crop.filter || buildCanvasFilter(crop)) : 'none';
         // Never blur a 1080p source to simulate noise reduction: it destroys
         // real detail and makes the image look like a lower resolution feed.
         const filterStr = baseFilter;
@@ -430,7 +430,7 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
     // to the preview alone made the calibration buttons decorative in PGM,
     // recording and RTMP output.
     const crop = camId && currentState.cameraCrops ? currentState.cameraCrops[camId - 1] : null;
-    if (crop?.lutId && crop.lutId !== 'none') {
+    if (crop?.colorEnabled === true && crop.lutId && crop.lutId !== 'none') {
       ctx.save();
       ctx.beginPath();
       ctx.rect(x, y, w, h);
@@ -439,7 +439,7 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
       applyLutOverlay(ctx, w, h, crop.lutId);
       ctx.restore();
     }
-    if (crop?.lookPreset === 'cinematic-film') {
+    if (crop?.colorEnabled === true && crop.lookPreset === 'cinematic-film') {
       ctx.save();
       ctx.beginPath();
       ctx.rect(x, y, w, h);

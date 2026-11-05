@@ -24,7 +24,7 @@ import AudioMixerDesk from './components/AudioMixerDesk.jsx';
 import { BROADCAST_LAYOUTS } from './config/cameraSlots.js';
 import { useCameraAudioLevels } from './hooks/useCameraAudioLevels.js';
 import { buildCanvasFilter } from './utils/videoLook.js';
-import { applyStreamQualityHints, getVideoTrackResolution } from './utils/videoStream.js';
+import { getVideoTrackInfo, getVideoTrackResolution } from './utils/videoStream.js';
 import { CINTILLO_STYLES, getCintilloStyle } from './config/cintilloStyles.js';
 import { CINTILLO_PRESETS, resolveCintilloText, resolveCintilloSubtitle } from './config/cintilloPresets.js';
 import { CINTILLO_POSITION_OPTIONS } from './config/cintilloCameraMap.js';
@@ -574,6 +574,10 @@ function PodcastStudioApp() {
             if (parsed[k]?.zoom != null) {
               parsed[k].zoom = Math.max(1.0, parsed[k].zoom);
             }
+            // Older versions stored colour fields as soon as the calibration
+            // window was opened.  Those fields must not alter a camera until
+            // the operator explicitly saves a colour correction again.
+            if (parsed[k]) parsed[k].colorEnabled = parsed[k].colorEnabled === true;
           });
         }
         return parsed;
@@ -1611,14 +1615,14 @@ function PodcastStudioApp() {
     const focusX = crop.focusX != null ? crop.focusX : (s.panX != null ? s.panX / 100 : 0.5);
     const focusY = crop.focusY != null ? crop.focusY : (s.panY != null ? s.panY / 100 : 0.42);
 
-    const filter = buildCanvasFilter({
+    const filter = crop.colorEnabled === true ? buildCanvasFilter({
       brightness: crop.brightness ?? s.brightness,
       contrast: crop.contrast ?? s.contrast,
       saturation: crop.saturation ?? s.saturation,
       warmth: crop.warmth ?? s.temp,
       tint: crop.tint ?? 0,
       sharpness: crop.sharpness ?? s.sharpness ?? 100,
-    });
+    }) : 'none';
 
     // Panning relativo al zoom con centro fijo al 50%: elimina al 100% cualquier brinco visual
     const panPercentX = (0.5 - focusX) * (zoom - 1) * 100;
@@ -1706,13 +1710,17 @@ function PodcastStudioApp() {
       return;
     }
     const startCamera = async () => {
+      // Never guess the first Windows camera.  On systems with EasyCamera,
+      // capture cards and webcams, the default device is frequently not the
+      // Full-HD studio camera selected by the operator.
+      const preferredDeviceId = localStorage.getItem('podcastudio_master_camera_device');
+      if (!preferredDeviceId) return;
       try {
         const attempts = [
-          { video: { width: { ideal: 1920, min: 1280 }, height: { ideal: 1080, min: 720 }, frameRate: { ideal: 30, min: 24 } }, audio: false },
-          { video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
-          { video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false },
-          { video: { frameRate: { ideal: 30 } }, audio: false },
-          { video: true, audio: false }
+          { video: { deviceId: { exact: preferredDeviceId }, width: { exact: 1920 }, height: { exact: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
+          { video: { deviceId: { exact: preferredDeviceId }, width: { exact: 1920 }, height: { exact: 1080 } }, audio: false },
+          { video: { deviceId: { exact: preferredDeviceId }, width: { exact: 1280 }, height: { exact: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
+          { video: { deviceId: { exact: preferredDeviceId } }, audio: false }
         ];
 
         let stream = null;
@@ -1729,7 +1737,6 @@ function PodcastStudioApp() {
 
           // CAM 1 is the studio/master source, so a selected/default studio
           // microphone is acceptable when the camera has no embedded input.
-          void applyStreamQualityHints(stream);
           const videoDeviceId = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId;
           const audioDeviceId = await attachCameraAudio(stream, videoDeviceId, { allowDefault: true });
 
@@ -1738,7 +1745,7 @@ function PodcastStudioApp() {
           const videoTrack = stream.getVideoTracks()[0];
           const devId = videoTrack?.getSettings?.()?.deviceId;
           const devLabel = videoTrack?.label || 'Cámara 1 (Principal)';
-          setCameraMeta(prev => ({ ...prev, 0: { deviceId: devId, audioDeviceId, resolution: getVideoTrackResolution(stream), label: devLabel, type: 'usb' } }));
+          setCameraMeta(prev => ({ ...prev, 0: { deviceId: devId, audioDeviceId, resolution: getVideoTrackResolution(stream), videoInfo: getVideoTrackInfo(stream), label: devLabel, type: 'usb' } }));
 
 
 
@@ -2908,10 +2915,12 @@ function PodcastStudioApp() {
     let stream = null;
     // Intentos optimizados para hasta 12 cámaras USB y cables de extensión > 10m
     const attempts = [
-      // 1. Full HD 1080p exacto con tasa fluida ideal (negocia hardware MJPEG 30fps sin lanzar OverconstrainedError)
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: false },
-      // 2. HD 720p a 30fps (óptimo ancho de banda para concentradores o cámaras secundarias)
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }, audio: false },
+      // Open the actual Full-HD mode first. `ideal` can silently accept the
+      // driver's low-bandwidth 640p profile; exact makes the fallback explicit.
+      { video: { deviceId: { exact: deviceId }, width: { exact: 1920 }, height: { exact: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
+      { video: { deviceId: { exact: deviceId }, width: { exact: 1920 }, height: { exact: 1080 } }, audio: false },
+      // HD fallback only when the device does not expose Full HD.
+      { video: { deviceId: { exact: deviceId }, width: { exact: 1280 }, height: { exact: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
       // 3. Apertura directa nativa por deviceId exacto
       { video: { deviceId: { exact: deviceId } }, audio: false },
       // 4. Fallback de coincidencia relajada
@@ -2930,19 +2939,21 @@ function PodcastStudioApp() {
       if (vTrack && 'contentHint' in vTrack) {
         vTrack.contentHint = 'motion';
       }
-      void applyStreamQualityHints(stream);
-
       // Secondary USB sources may contribute only their paired (same groupId)
       // microphone.  Falling back to the default input here duplicated the
       // studio mic on every screen/camera and made AFV appear broken.
       const audioDeviceId = await attachCameraAudio(stream, deviceId, { allowDefault: slot === 0 });
 
       slotStreamsRef.current = { ...slotStreamsRef.current, [slot]: stream };
-      cameraMetaRef.current = { ...cameraMetaRef.current, [slot]: { deviceId, audioDeviceId, resolution: getVideoTrackResolution(stream), label: label || 'Cámara USB', type: 'usb' } };
+      const videoInfo = getVideoTrackInfo(stream);
+      cameraMetaRef.current = { ...cameraMetaRef.current, [slot]: { deviceId, audioDeviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } };
       setSlotStreams(prev => ({ ...prev, [slot]: stream }));
-      setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, audioDeviceId, resolution: getVideoTrackResolution(stream), label: label || 'Cámara USB', type: 'usb' } }));
+      setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, audioDeviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } }));
       saveCameraToHistory({ deviceId, label: label || 'Cámara USB', type: 'usb' });
-      if (slot === 0) setLocalStream(stream);
+      if (slot === 0) {
+        try { localStorage.setItem('podcastudio_master_camera_device', deviceId); } catch {}
+        setLocalStream(stream);
+      }
       return stream;
     } else {
       logger.error("Error: No se pudo abrir la cámara tras intentar todas las combinaciones");
@@ -3948,7 +3959,7 @@ function PodcastStudioApp() {
               </div>
             )}
             <span className="hidden md:inline text-gray-500 font-bold tracking-wider shrink-0 text-[11px]">CALIDAD</span>
-            <span className="text-orange-500 font-extrabold text-xs shrink-0">1080p · 30fps</span>
+            <span className="text-orange-500 font-extrabold text-xs shrink-0">{cameraMeta[activeCam - 1]?.videoInfo?.label || 'Midiendo señal…'}</span>
 
             {/* ZOOM DINÁMICO & ENCUADRE (TEXTO PLANO LIMPIO SIN RECUADROS NI LÍNEAS) */}
             {(() => {
@@ -5842,7 +5853,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.5</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.6</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>

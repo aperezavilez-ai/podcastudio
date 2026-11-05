@@ -217,6 +217,7 @@ export default function CameraCalibratorModal({
   const [pushIn, setPushIn] = useState(Boolean(currentSlotCrop.pushIn))
   const [activePreset, setActivePreset] = useState(currentSlotCrop.presetId || (zoom <= 1.02 ? 'wide' : 'custom'))
   const [lookPreset, setLookPreset] = useState(currentSlotCrop.lookPreset || 'original')
+  const [colorEnabled, setColorEnabled] = useState(currentSlotCrop.colorEnabled === true)
   const [brightness, setBrightness] = useState(currentSlotCrop.brightness ?? 100)
   const [contrast, setContrast] = useState(currentSlotCrop.contrast ?? 100)
   const [saturation, setSaturation] = useState(currentSlotCrop.saturation ?? 100)
@@ -255,6 +256,7 @@ export default function CameraCalibratorModal({
     setPushIn(Boolean(sc.pushIn))
     setActivePreset(sc.presetId || (sc.zoom <= 1.02 ? 'wide' : 'custom'))
     setLookPreset(sc.lookPreset || 'original')
+    setColorEnabled(sc.colorEnabled === true)
     setBrightness(sc.brightness ?? 100)
     setContrast(sc.contrast ?? 100)
     setSaturation(sc.saturation ?? 100)
@@ -411,6 +413,7 @@ export default function CameraCalibratorModal({
     const pPushIn = overrides.pushIn ?? pushIn
     const pPresetId = overrides.presetId ?? activePreset
     const pLookPreset = overrides.lookPreset ?? lookPreset
+    const pColorEnabled = overrides.colorEnabled ?? colorEnabled
     const pBrightness = overrides.brightness ?? brightness
     const pContrast = overrides.contrast ?? contrast
     const pSaturation = overrides.saturation ?? saturation
@@ -438,6 +441,7 @@ export default function CameraCalibratorModal({
       pushIn: pPushIn,
       presetId: pPresetId,
       lookPreset: pLookPreset,
+      colorEnabled: pColorEnabled,
       brightness: pBrightness,
       contrast: pContrast,
       saturation: pSaturation,
@@ -459,7 +463,7 @@ export default function CameraCalibratorModal({
     if (onSaveSlotProfile) {
       onSaveSlotProfile(selectedSlot, buildProfile(patch))
     }
-  }, [selectedSlot, onSaveSlotProfile, zoom, focusX, focusY, pushIn, activePreset, lookPreset, brightness, contrast, saturation, warmth, tint, sharpness, focusMode, focusDistance, audioGain, audioMuted])
+  }, [selectedSlot, onSaveSlotProfile, zoom, focusX, focusY, pushIn, activePreset, lookPreset, colorEnabled, brightness, contrast, saturation, warmth, tint, sharpness, focusMode, focusDistance, audioGain, audioMuted])
 
   // Acciones de Zoom y Encuadre
   const handleApplyPreset = (preset) => {
@@ -613,6 +617,7 @@ export default function CameraCalibratorModal({
 
   const handleSelectLookPreset = (p) => {
     setLookPreset(p.id)
+    setColorEnabled(p.id !== 'original')
     setBrightness(p.brightness)
     setContrast(p.contrast)
     setSaturation(p.saturation)
@@ -620,6 +625,7 @@ export default function CameraCalibratorModal({
     setTint(p.tint ?? 0)
     autoSync({
       lookPreset: p.id,
+      colorEnabled: p.id !== 'original',
       brightness: p.brightness,
       contrast: p.contrast,
       saturation: p.saturation,
@@ -636,6 +642,7 @@ export default function CameraCalibratorModal({
       pushIn: false,
       presetId: 'wide',
       lookPreset: 'original',
+      colorEnabled: false,
       brightness: 100,
       contrast: 100,
       saturation: 100,
@@ -653,6 +660,7 @@ export default function CameraCalibratorModal({
     setPushIn(false)
     setActivePreset('wide')
     setLookPreset('original')
+    setColorEnabled(false)
     setBrightness(100)
     setContrast(100)
     setSaturation(100)
@@ -684,6 +692,7 @@ export default function CameraCalibratorModal({
     setSharpness(130)
     setContrast(112)
     setBrightness(102)
+    setColorEnabled(true)
     setFocusMode('continuous')
     const track = stream?.getVideoTracks?.()[0]
     if (track && typeof track.applyConstraints === 'function') {
@@ -693,7 +702,7 @@ export default function CameraCalibratorModal({
         })
       } catch (_) {}
     }
-    autoSync({ sharpness: 130, contrast: 112, brightness: 102, focusMode: 'continuous' })
+    autoSync({ sharpness: 130, contrast: 112, brightness: 102, colorEnabled: true, focusMode: 'continuous' })
     setUvcMsg('⚡ Nitidez y Auto-Enfoque continuo aplicados en vivo')
     setTimeout(() => setUvcMsg(''), 3000)
   }, [stream, autoSync])
@@ -1025,7 +1034,8 @@ export default function CameraCalibratorModal({
                   onChange={(e) => {
                     const v = parseInt(e.target.value, 10);
                     setSharpness(v);
-                    autoSync({ sharpness: v });
+                    setColorEnabled(true);
+                    autoSync({ sharpness: v, colorEnabled: true });
                   }}
                   className={styles.slider}
                 />
@@ -1043,7 +1053,8 @@ export default function CameraCalibratorModal({
                   onChange={(e) => {
                     const v = parseInt(e.target.value, 10);
                     setBrightness(v);
-                    autoSync({ brightness: v });
+                    setColorEnabled(true);
+                    autoSync({ brightness: v, colorEnabled: true });
                   }}
                   className={styles.slider}
                 />
@@ -1061,7 +1072,8 @@ export default function CameraCalibratorModal({
                   onChange={(e) => {
                     const v = parseInt(e.target.value, 10);
                     setContrast(v);
-                    autoSync({ contrast: v });
+                    setColorEnabled(true);
+                    autoSync({ contrast: v, colorEnabled: true });
                   }}
                   className={styles.slider}
                 />
@@ -1079,7 +1091,8 @@ export default function CameraCalibratorModal({
                   onChange={(e) => {
                     const v = parseInt(e.target.value, 10);
                     setSaturation(v);
-                    autoSync({ saturation: v });
+                    setColorEnabled(true);
+                    autoSync({ saturation: v, colorEnabled: true });
                   }}
                   className={styles.slider}
                 />
@@ -1097,7 +1110,8 @@ export default function CameraCalibratorModal({
                   onChange={(e) => {
                     const v = parseInt(e.target.value, 10);
                     setWarmth(v);
-                    autoSync({ warmth: v });
+                    setColorEnabled(true);
+                    autoSync({ warmth: v, colorEnabled: true });
                   }}
                   className={styles.slider}
                 />
@@ -1115,7 +1129,8 @@ export default function CameraCalibratorModal({
                   onChange={(e) => {
                     const v = parseInt(e.target.value, 10);
                     setTint(v);
-                    autoSync({ tint: v });
+                    setColorEnabled(true);
+                    autoSync({ tint: v, colorEnabled: true });
                   }}
                   className={styles.slider}
                 />
