@@ -330,7 +330,11 @@ export class P2PStreamTransport extends BaseStreamTransport {
             }
           } catch (e) {}
 
-          const answer = await newPc.createAnswer()
+          let answer = await newPc.createAnswer()
+          if (answer.sdp && answer.sdp.includes('m=video')) {
+            const sdp = answer.sdp.replace(/(m=video[^\r\n]*(\r\n|\n))/, '$1b=AS:6000\r\nb=TIAS:6000000\r\n')
+            answer = new RTCSessionDescription({ type: answer.type, sdp })
+          }
           await newPc.setLocalDescription(answer)
           if (this.peerConnections.get(slotIndex) !== newPc) { newPc.close(); return }
 

@@ -4,13 +4,13 @@ import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
 const QUALITY_TIERS = [
-  { label: 'HD 720p Pro · 2.4 Mbps (Fluido)', maxBitrate: 2400000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'Full HD 1080p Pro · 6.0 Mbps (Cristalino)', maxBitrate: 6000000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'Full HD 1080p · 4.2 Mbps (Alta Calidad)', maxBitrate: 4200000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'HD 720p Pro · 2.8 Mbps (Fluido)', maxBitrate: 2800000, scaleResolutionDownBy: 1, frameRate: 30 },
   { label: 'HD 720p · 1.8 Mbps (Estable)', maxBitrate: 1800000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'SD 540p · 1.2 Mbps (Ligero)', maxBitrate: 1200000, scaleResolutionDownBy: 1.33, frameRate: 30 },
-  { label: 'SD 480p · 750 Kbps (Bajo ancho)', maxBitrate: 750000, scaleResolutionDownBy: 1.5, frameRate: 25 },
 ]
-const RTT_DEGRADE_MS = 400
-const RTT_HEALTHY_MS = 150
+const RTT_DEGRADE_MS = 450
+const RTT_HEALTHY_MS = 180
 const HEALTHY_CHECKS_TO_RISE = 2
 
 function getCaptureResolutionLabel(settings = {}) {
@@ -37,8 +37,8 @@ function applyVideoSenderParams(sender, tier) {
     }
     e.networkPriority = 'high'
     e.priority = 'high'
-    // 'balanced' previene caídas bruscas y pausas en conexiones móviles/WiFi
-    params.degradationPreference = 'balanced'
+    // 'maintain-resolution' preserva nitidez cristalina Full HD 1080p sin pixelado
+    params.degradationPreference = 'maintain-resolution'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }
@@ -520,7 +520,11 @@ export default function RemoteCam() {
           }
         } catch (e) {}
 
-        const offer = await pc.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false, ...(isRestart ? { iceRestart: true } : {}) })
+        let offer = await pc.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false, ...(isRestart ? { iceRestart: true } : {}) })
+        if (offer.sdp && offer.sdp.includes('m=video')) {
+          const sdp = offer.sdp.replace(/(m=video[^\r\n]*(\r\n|\n))/, '$1b=AS:6000\r\nb=TIAS:6000000\r\n')
+          offer = new RTCSessionDescription({ type: offer.type, sdp })
+        }
         await pc.setLocalDescription(offer)
 
         await channel.send({

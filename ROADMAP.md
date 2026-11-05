@@ -129,16 +129,16 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - src/utils/masterBroadcastEngine.js — corrección de pantalla negra en cámaras: eliminación de llamadas play() saturantes en render loop y verificación estricta de readyState >= 2 (2026-11-04 13:00)
 - launcher.cs / PodcastStudio.exe — solución definitiva de apertura: timeout de detección ampliado a 15s con detección de señal a ~2.2s, previniendo cierres prematuros de splash y reintentos en bucle (2026-11-04 13:00)
 - CameraConnectModal / CameraCalibratorModal — corrección de translucidez y borrosidad: eliminación de backdrop-filter blur en Chromium, aislamiento de stacking context (isolation: isolate) y fondos sólidos #12131a 100% opacos (2026-11-04 13:25)
-- PodcastStudio.exe — recompilado v1.3.4.0 (2026-11-04 13:26)
-- Vercel — deploy a producción completado y activo en https://www.podcastudio.mx (2026-11-04 13:27)
+- src/pages/RemoteCam.jsx / src/utils/streamTransport.js — incremento de calidad de streaming remoto a Full HD 1080p: QUALITY_TIERS ampliados hasta 6.0 Mbps, degradación fijada en 'maintain-resolution', e inyección de descriptores SDP b=AS:6000 / b=TIAS:6000000 tanto en Offer como en Answer para desbloquear ancho de banda nativo en WebRTC (2026-11-04 17:33)
+- src/utils/masterBroadcastEngine.js — renderizado con interpolación bicúbica de alta precisión (ctx.imageSmoothingEnabled = true y ctx.imageSmoothingQuality = 'high') en el canvas Master 1080p (2026-11-04 17:33)
+- PodcastStudio.exe — recompilado v1.3.4.0 (2026-11-04 17:34)
+- Vercel — deploy a producción completado y activo en https://www.podcastudio.mx (2026-11-04 17:35)
 
 ## Verificado
 - npm run test:remote-cameras (4/4 passed)
 - npm run test:recording (1/1 passed)
-- npm run test:stream-config (5/5 passed)
 - npm run build (Vite production bundle OK)
-- npm run build:exe (PodcastStudio.exe v1.3.4.0 OK)
-- Scratch startup test (Signal detectada en 2.25s) OK
+- compile-exe.ps1 (PodcastStudio.exe v1.3.4.0 OK)
 - Deploy Vercel Production OK (https://www.podcastudio.mx)
 
 ## Siguiente

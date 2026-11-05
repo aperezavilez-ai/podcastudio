@@ -377,6 +377,8 @@ function updateImages() {
 
 function drawCameraCover(video, x, y, w, h, camId = null) {
   if (video && video.readyState >= 2) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     const vw = video.videoWidth || 1280;
     const vh = video.videoHeight || 720;
     const videoRatio = vw / vh;
@@ -787,6 +789,8 @@ function applyChromaKey(ctx, videoFrame, bgImage, width, height, options = {}) {
 
 function renderFrame() {
   if (!ctx) return;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   const width = 1920;
   const height = 1080;
 
@@ -1933,6 +1937,10 @@ export function ensureMasterCanvas() {
     canvas.width = 1920;
     canvas.height = 1080;
     ctx = canvas.getContext('2d', { alpha: false });
+    if (ctx) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+    }
   }
   setupVisibilityHandler();
   startRenderLoop();
