@@ -2836,7 +2836,7 @@ function PodcastStudioApp() {
 
     for (const constraints of attempts) {
       try {
-        stream = await getUserMediaWithTimeout(constraints, 1800);
+        stream = await getUserMediaWithTimeout(constraints, 3000);
         if (stream) break;
       } catch (err) {}
     }
@@ -2857,6 +2857,8 @@ function PodcastStudioApp() {
         } catch (e) {}
       }
 
+      slotStreamsRef.current = { ...slotStreamsRef.current, [slot]: stream };
+      cameraMetaRef.current = { ...cameraMetaRef.current, [slot]: { deviceId, label: label || 'Cámara USB', type: 'usb' } };
       setSlotStreams(prev => ({ ...prev, [slot]: stream }));
       setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, label: label || 'Cámara USB', type: 'usb' } }));
       saveCameraToHistory({ deviceId, label: label || 'Cámara USB', type: 'usb' });

@@ -203,6 +203,7 @@ export default function CameraConnectModal({
   const [guestRole, setGuestRole] = useState('guest');
   const [connectingUsbId, setConnectingUsbId] = useState(null);
   const [usbConnectError, setUsbConnectError] = useState(null);
+  const [usbConnectSuccess, setUsbConnectSuccess] = useState(null);
   const [wifiConnectError, setWifiConnectError] = useState(null);
   const [wifiConnectSuccess, setWifiConnectSuccess] = useState(null);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
@@ -384,6 +385,7 @@ export default function CameraConnectModal({
       setCustomLabel(currentMeta?.label || '');
       setWifiUrl(currentMeta?.url || '');
       setUsbConnectError(null);
+      setUsbConnectSuccess(null);
       setWifiConnectError(null);
       setWifiConnectSuccess(null);
     }
@@ -491,16 +493,18 @@ export default function CameraConnectModal({
     }
     setConnectingUsbId(deviceId);
     setUsbConnectError(null);
+    setUsbConnectSuccess(null);
     try {
       const connectPromise = onUsbConnect(deviceId, effSlot, customLabel.trim() || label);
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar la cámara USB. Verifica que no esté en uso por otra aplicación.')), 7000)
+        setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar la cámara USB. Si usas cable o extensión >10m, asegúrate de conectarla a un puerto USB 3.0 / USB-C con buena alimentación.')), 12000)
       );
       const res = await Promise.race([connectPromise, timeoutPromise]);
       if (!res) {
         setUsbConnectError('No se pudo abrir la cámara. Si usas cables o extensiones de más de 10 metros, asegúrate de conectarla a un puerto USB 3.0 / USB-C o hub con alimentación, y que no esté en uso por otra app.');
       } else {
         setTargetSlot(effSlot);
+        setUsbConnectSuccess(`¡Cámara "${label || 'USB'}" asignada y conectada exitosamente a CAM ${effSlot + 1}!`);
       }
     } catch (err) {
       setUsbConnectError(err.message || 'Error al conectar la cámara USB');
@@ -1164,6 +1168,47 @@ Instrucciones:
                 )}
               </div>
 
+              {/* BANNER DE ÉXITO AL CONECTAR CÁMARA USB */}
+              {usbConnectSuccess && (
+                <div
+                  style={{
+                    color: '#4ade80',
+                    background: 'rgba(34, 197, 94, 0.15)',
+                    border: '1px solid rgba(34, 197, 94, 0.4)',
+                    borderRadius: 8,
+                    padding: '10px 14px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    marginBottom: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Check size={16} />
+                    <span>{usbConnectSuccess}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onClose?.()}
+                    style={{
+                      background: '#16a34a',
+                      border: 'none',
+                      color: '#fff',
+                      padding: '3px 10px',
+                      borderRadius: 5,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Listo
+                  </button>
+                </div>
+              )}
+
               {devices.length === 0 ? (
                 <div className={styles.emptyMsg}>
                   <AlertTriangle size={24} style={{ display: 'block', margin: '0 auto 6px', color: '#e8612a' }} />
@@ -1171,66 +1216,170 @@ Instrucciones:
                 </div>
               ) : (
                 devices.map((cam, idx) => {
-                  const isCurrent = currentMeta?.deviceId === cam.deviceId && isConnected;
+                  const assignedEntry = Object.entries(cameraMeta || {}).find(([slotIdx, meta]) => {
+                    return meta?.deviceId === cam.deviceId && Boolean(streams[Number(slotIdx)]);
+                  });
+                  const assignedSlot = assignedEntry ? Number(assignedEntry[0]) : null;
+                  const isAssigned = assignedSlot !== null;
+                  const isCurrentInTarget = assignedSlot === targetSlot;
+
                   return (
                     <div
                       key={cam.deviceId || idx}
-                      className={`${styles.deviceItem} ${isCurrent ? styles.deviceItemActive : ''}`}
+                      className={`${styles.deviceItem} ${isCurrentInTarget ? styles.deviceItemActive : ''}`}
+                      style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}
                     >
-                      <div className={styles.deviceInfo}>
-                        <Video size={18} className={styles.deviceIcon} />
-                        <div>
-                          <div className={styles.deviceLabel}>{cam.label || `Cámara USB ${idx + 1}`}</div>
-                          <div className={styles.deviceSub}>
-                            {cam.deviceId ? `ID: ${cam.deviceId.slice(0, 14)}…` : 'Dispositivo de video local'}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                        <div className={styles.deviceInfo}>
+                          <Video size={18} className={styles.deviceIcon} />
+                          <div>
+                            <div className={styles.deviceLabel} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span>{cam.label || `Cámara USB ${idx + 1}`}</span>
+                              {isAssigned ? (
+                                <span style={{ background: 'rgba(34,197,94,0.18)', border: '1px solid #22c55e', color: '#4ade80', fontSize: 10, fontWeight: 800, padding: '1px 7px', borderRadius: 9999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 5px #4ade80' }} />
+                                  EN VIVO EN CAM {assignedSlot + 1}
+                                </span>
+                              ) : (
+                                <span style={{ background: 'rgba(148,163,184,0.15)', border: '1px solid rgba(148,163,184,0.3)', color: '#cbd5e1', fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 9999 }}>
+                                  ⚪ DISPONIBLE
+                                </span>
+                              )}
+                            </div>
+                            <div className={styles.deviceSub}>
+                              {cam.deviceId ? `ID: ${cam.deviceId.slice(0, 16)}…` : 'Dispositivo de video local'}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <button
-                          type="button"
-                          className={`${styles.connectBtn} ${isCurrent ? styles.connectBtnConnected : ''}`}
-                          disabled={connectingUsbId === cam.deviceId}
-                          onClick={() => {
-                            if (isCurrent) {
-                              if (onDisconnect) onDisconnect(targetSlot);
-                            } else {
-                              handleConnectUsb(cam.deviceId, cam.label, targetSlot);
-                            }
-                          }}
-                          title={isCurrent ? 'Desactivar esta cámara' : `Asignar a CAM ${targetSlot + 1}`}
-                        >
-                          {connectingUsbId === cam.deviceId ? (
-                            <>
-                              <Loader2 size={13} className="animate-spin" /> Conectando...
-                            </>
-                          ) : isCurrent ? (
-                            <>
-                              <Power size={13} className="text-red-400" /> Desactivar
-                            </>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          {isCurrentInTarget ? (
+                            <button
+                              type="button"
+                              className={`${styles.connectBtn} ${styles.connectBtnConnected}`}
+                              disabled={connectingUsbId === cam.deviceId}
+                              onClick={() => onDisconnect && onDisconnect(targetSlot)}
+                              style={{
+                                background: 'rgba(239, 68, 68, 0.18)',
+                                borderColor: 'rgba(239, 68, 68, 0.5)',
+                                color: '#fca5a5',
+                              }}
+                              title={`Desactivar esta cámara de CAM ${targetSlot + 1}`}
+                            >
+                              <Power size={13} /> Desactivar de CAM {targetSlot + 1}
+                            </button>
                           ) : (
-                            <>
-                              <Usb size={13} /> Asignar a CAM {targetSlot + 1} {isConnected ? '(Reemplazar)' : ''}
-                            </>
+                            <button
+                              type="button"
+                              className={styles.connectBtn}
+                              disabled={connectingUsbId === cam.deviceId}
+                              onClick={() => handleConnectUsb(cam.deviceId, cam.label, targetSlot)}
+                              style={{
+                                background: '#e8612a',
+                                borderColor: '#e8612a',
+                                color: '#fff',
+                                fontWeight: 700,
+                              }}
+                              title={`Asignar y activar en CAM ${targetSlot + 1}`}
+                            >
+                              {connectingUsbId === cam.deviceId ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin" /> Asignando...
+                                </>
+                              ) : (
+                                <>
+                                  <Usb size={13} /> Asignar a CAM {targetSlot + 1} {isConnected ? '(Reemplazar)' : ''}
+                                </>
+                              )}
+                            </button>
                           )}
-                        </button>
-                        {!isCurrent && isConnected && nextFreeSlot !== targetSlot && nextFreeSlot < 12 && (
-                          <button
-                            type="button"
-                            className={styles.connectBtn}
-                            style={{ background: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.4)', color: '#34d399' }}
-                            disabled={connectingUsbId === cam.deviceId}
-                            onClick={() => handleConnectUsb(cam.deviceId, cam.label, nextFreeSlot)}
-                            title={`Asignar a la siguiente ranura libre CAM ${nextFreeSlot + 1}`}
-                          >
-                            <Plus size={13} /> En CAM {nextFreeSlot + 1} (Libre)
-                          </button>
-                        )}
+
+                          {!isAssigned && nextFreeSlot !== targetSlot && nextFreeSlot < 12 && (
+                            <button
+                              type="button"
+                              className={styles.connectBtn}
+                              style={{ background: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.4)', color: '#34d399', fontWeight: 700 }}
+                              disabled={connectingUsbId === cam.deviceId}
+                              onClick={() => handleConnectUsb(cam.deviceId, cam.label, nextFreeSlot)}
+                              title={`Asignar automáticamente a la siguiente ranura libre CAM ${nextFreeSlot + 1}`}
+                            >
+                              <Plus size={13} /> En CAM {nextFreeSlot + 1} (Libre)
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* SELECTOR DIRECTO DE CANAL EN LA PROPIA CÁMARA */}
+                      <div style={{ marginTop: 4, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Asignar directo a:</span>
+                        {Array.from({ length: Math.min(slotsCount, 12) }).map((_, slotIdx) => {
+                          const isThisSlot = assignedSlot === slotIdx;
+                          const isSlotBusy = Boolean(streams[slotIdx]) && !isThisSlot;
+                          return (
+                            <button
+                              key={slotIdx}
+                              type="button"
+                              disabled={connectingUsbId === cam.deviceId || isThisSlot}
+                              onClick={() => handleConnectUsb(cam.deviceId, cam.label, slotIdx)}
+                              style={{
+                                padding: '2px 7px',
+                                borderRadius: 5,
+                                fontSize: 10,
+                                fontWeight: 700,
+                                cursor: isThisSlot ? 'default' : 'pointer',
+                                background: isThisSlot
+                                  ? 'rgba(34,197,94,0.25)'
+                                  : isSlotBusy
+                                  ? 'rgba(234,179,8,0.15)'
+                                  : 'rgba(255,255,255,0.06)',
+                                border: isThisSlot
+                                  ? '1px solid #22c55e'
+                                  : isSlotBusy
+                                  ? '1px solid rgba(234,179,8,0.4)'
+                                  : '1px solid rgba(255,255,255,0.15)',
+                                color: isThisSlot ? '#4ade80' : isSlotBusy ? '#fde047' : '#e2e8f0',
+                                transition: 'all 0.15s ease',
+                              }}
+                              title={isThisSlot ? `Ya activa en CAM ${slotIdx + 1}` : isSlotBusy ? `CAM ${slotIdx + 1} ocupada (clic para mover aquí)` : `Asignar a CAM ${slotIdx + 1} libre`}
+                            >
+                              CAM {slotIdx + 1} {isThisSlot ? '✓' : ''}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   );
                 })
               )}
+
+              {/* VISTA PREVIA EN VIVO DE LA CÁMARA SELECCIONADA */}
+              {streams[targetSlot] && (
+                <div style={{ marginTop: 14, background: '#090d16', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 10, padding: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Check size={14} /> Señal activa y transmitiendo en CAM {targetSlot + 1}: {cameraMeta[targetSlot]?.label || 'Cámara USB'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onClose?.()}
+                      style={{
+                        background: '#2563eb',
+                        color: '#fff',
+                        border: 'none',
+                        padding: '4px 12px',
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Aceptar y ver en estudio
+                    </button>
+                  </div>
+                  <ModalVideoPreview stream={streams[targetSlot]} label={`CAM ${targetSlot + 1} (En Vivo)`} />
+                </div>
+              )}
+
               {usbConnectError && (
                 <div
                   style={{
