@@ -72,7 +72,7 @@ export function bindVideoFrameSync(video, onFrame) {
   }
 }
 
-export function applyStreamQualityHints(stream) {
+export async function applyStreamQualityHints(stream) {
   const track = stream?.getVideoTracks?.()?.[0]
   if (!track) return
 
@@ -80,13 +80,22 @@ export function applyStreamQualityHints(stream) {
     track.contentHint = 'motion'
   } catch { /* noop */ }
 
+  // Do not force a USB device to 60 fps or impose a minimum framerate.  Many
+  // webcams share a USB controller; an impossible constraint makes Chromium
+  // renegotiate the camera and can stall the renderer while a button is being
+  // handled.  These are only *preferences*, bounded by what the device says it
+  // can provide.  1080p30 is the Master quality target.
   try {
-    track.applyConstraints({
-      width: { ideal: 1920, max: 1920 },
-      height: { ideal: 1080, max: 1080 },
-      frameRate: { ideal: 60, min: 24, max: 60 },
+    const capabilities = track.getCapabilities?.() || {}
+    const maxWidth = Number(capabilities.width?.max) || 1920
+    const maxHeight = Number(capabilities.height?.max) || 1080
+    const maxFps = Number(capabilities.frameRate?.max) || 30
+    await track.applyConstraints({
+      width: { ideal: Math.min(1920, maxWidth) },
+      height: { ideal: Math.min(1080, maxHeight) },
+      frameRate: { ideal: Math.min(30, maxFps) },
     })
-  } catch { /* noop */ }
+  } catch { /* Keep the camera's negotiated native mode. */ }
 }
 
 export function getVideoTrackResolution(stream) {

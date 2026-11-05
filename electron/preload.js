@@ -2,7 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   startRecording: (options) => ipcRenderer.invoke('start-recording', options),
-  sendRecordChunk: (chunk) => ipcRenderer.send('record-chunk', chunk),
+  // invoke acknowledges that Electron accepted the segment.  The renderer can
+  // therefore drain its queue before FFmpeg is asked to finalize the MP4.
+  sendRecordChunk: (chunk) => ipcRenderer.invoke('record-chunk', chunk),
   flushRecordingChunks: () => ipcRenderer.invoke('flush-recording-chunks'),
   stopRecording: () => ipcRenderer.invoke('stop-recording'),
   cancelRecording: () => ipcRenderer.invoke('cancel-recording'),

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import styles from './CameraCalibratorModal.module.css'
 import { ZOOM_PRESETS } from '../hooks/useDynamicZoom.js'
-import { buildCanvasFilter } from '../utils/videoLook.js'
+import { applyLutOverlay, buildCanvasFilter, drawVignette } from '../utils/videoLook.js'
 import { getSlotLabel } from '../config/cameraSlots.js'
 import { bindVideoKeepAlive } from '../utils/videoStream.js'
 
@@ -16,9 +16,12 @@ function CalibratorPreview({
   focusX = 0.5,
   focusY = 0.42,
   filterStyle = '',
+  lutId = 'none',
+  lookPreset = 'original',
   slotName = '',
 }) {
   const videoRef = useRef(null)
+  const canvasRef = useRef(null)
 
   useEffect(() => {
     const v = videoRef.current
@@ -104,6 +107,38 @@ function CalibratorPreview({
     }
   }, [stream])
 
+  // Canvas mirrors the exact Master color path (filter → LUT → vignette), so
+  // the PVW is evidence of the signal that will be recorded and streamed.
+  useEffect(() => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas || !stream) return
+    let frameId = 0
+    let stopped = false
+    const width = canvas.width = 640
+    const height = canvas.height = 360
+    const ctx = canvas.getContext('2d', { alpha: false })
+    const render = () => {
+      if (stopped) return
+      if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+        const sourceRatio = video.videoWidth / video.videoHeight
+        const targetRatio = width / height
+        let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight
+        if (sourceRatio > targetRatio) { sw = video.videoHeight * targetRatio; sx = (video.videoWidth - sw) / 2 }
+        else { sh = video.videoWidth / targetRatio; sy = (video.videoHeight - sh) / 2 }
+        ctx.clearRect(0, 0, width, height)
+        ctx.filter = filterStyle || 'none'
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height)
+        ctx.filter = 'none'
+        applyLutOverlay(ctx, width, height, lutId)
+        if (lookPreset === 'cinematic-film') drawVignette(ctx, width, height, 12, 78)
+      }
+      frameId = requestAnimationFrame(render)
+    }
+    render()
+    return () => { stopped = true; cancelAnimationFrame(frameId) }
+  }, [stream, filterStyle, lutId, lookPreset])
+
   const isZoomed = Math.abs(zoom - 1.0) > 0.01 || Math.abs(focusX - 0.5) > 0.01 || Math.abs(focusY - 0.42) > 0.01
 
   if (!stream) {
@@ -116,32 +151,28 @@ function CalibratorPreview({
   }
 
   return (
-    <video
-      ref={videoRef}
-      autoPlay
-      playsInline
-      muted
-      className={styles.videoElement}
-      onLoadedMetadata={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}) }}
-      onCanPlay={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}) }}
-      style={{
-        width: '100%',
-        height: '100%',
-        objectFit: 'cover',
-        display: 'block',
-        pointerEvents: 'none',
-        transformOrigin: `${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}%`,
-        transform: isZoomed ? `scale(${zoom.toFixed(3)})` : undefined,
-        filter: filterStyle && filterStyle !== 'none' ? filterStyle : undefined,
-      }}
-    />
+    <>
+      <video ref={videoRef} autoPlay playsInline muted className={styles.videoSource} />
+      <canvas
+        ref={canvasRef}
+        className={styles.videoElement}
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'block',
+          pointerEvents: 'none',
+          transformOrigin: `${Math.round(focusX * 100)}% ${Math.round(focusY * 100)}%`,
+          transform: isZoomed ? `scale(${zoom.toFixed(3)})` : undefined,
+        }}
+      />
+    </>
   )
 }
 
 
 const CALIBRATION_LOOK_PRESETS = [
   { id: 'original', name: 'Original', brightness: 100, contrast: 100, saturation: 100, warmth: 0, tint: 0, lutId: 'none' },
-  { id: 'steren-hd', name: 'Steren 1080p Pro (Anti-Ruido)', brightness: 104, contrast: 106, saturation: 104, warmth: 2, tint: 0, lutId: 'none' },
+  { id: 'steren-hd', name: 'Steren 1080p Pro', brightness: 104, contrast: 106, saturation: 104, warmth: 2, tint: 0, lutId: 'none' },
   { id: 'kodak-2383', name: 'Kodak 2383 Film', brightness: 101, contrast: 114, saturation: 105, warmth: 12, tint: -2, lutId: 'kodak-2383' },
   { id: 'teal-orange-pro', name: 'Teal & Orange Pro', brightness: 100, contrast: 118, saturation: 112, warmth: 14, tint: 2, lutId: 'teal-orange-pro' },
   { id: 'scinetone', name: 'Sony S-Cinetone', brightness: 103, contrast: 108, saturation: 102, warmth: 6, tint: -1, lutId: 'scinetone' },
@@ -150,6 +181,8 @@ const CALIBRATION_LOOK_PRESETS = [
   { id: 'fuji-eterna', name: 'Fuji Eterna 500T', brightness: 104, contrast: 98, saturation: 90, warmth: 4, tint: -4, lutId: 'fuji-eterna' },
   { id: 'cyber-cool', name: 'Cyber Tech Blue', brightness: 101, contrast: 114, saturation: 94, warmth: -16, tint: 4, lutId: 'cyber-cool' },
   { id: 'noir-contrast', name: 'B&W Silver Gelatin', brightness: 98, contrast: 128, saturation: 0, warmth: 0, tint: 0, lutId: 'noir-contrast' },
+  { id: 'sepia-film', name: 'Sepia Film Real', brightness: 101, contrast: 108, saturation: 74, warmth: 20, tint: -4, lutId: 'sepia-film' },
+  { id: 'cinematic-film', name: 'Cinematográfico Real', brightness: 98, contrast: 116, saturation: 96, warmth: 8, tint: -1, lutId: 'cinematic-film' },
 ]
 
 export default function CameraCalibratorModal({
@@ -313,7 +346,7 @@ export default function CameraCalibratorModal({
       tint,
       sharpness,
     })
-  }, [isFilterActive, brightness, contrast, saturation, warmth, tint, sharpness])
+  }, [isFilterActive, brightness, contrast, saturation, warmth, tint, sharpness, lookPreset])
 
   // Medidor VU de audio en tiempo real sin feedback
   useEffect(() => {
@@ -775,6 +808,8 @@ export default function CameraCalibratorModal({
                 focusX={focusX}
                 focusY={focusY}
                 filterStyle={computedFilter}
+                lutId={CALIBRATION_LOOK_PRESETS.find(p => p.id === lookPreset)?.lutId || 'none'}
+                lookPreset={lookPreset}
                 slotName={slotName}
               />
 

@@ -7,7 +7,10 @@ const DEFAULT_SERVERS = {
 
 export function buildStreamDestinations(streamConfigs) {
   return Object.entries(streamConfigs || {})
-    .filter(([, config]) => config?.enabled && String(config.key || config.server || '').trim())
+    // A destination is actionable only with an explicit key.  Starting FFmpeg
+    // against a bare ingest URL looks successful for a moment, but can never
+    // publish a program feed.
+    .filter(([, config]) => config?.enabled && String(config.key || '').trim())
     .map(([id, config]) => {
       let server = String(config.server || DEFAULT_SERVERS[id] || '').trim();
       let key = String(config.key || '').trim();
@@ -33,16 +36,10 @@ export function buildStreamDestinations(streamConfigs) {
         }
       }
 
-      // Para destinos oficiales (Facebook, YouTube, TikTok), si el servidor fue borrado o no es rtmp, usar siempre el oficial
-      if (DEFAULT_SERVERS[id]) {
-        if (!server || !/^rtmps?:\/\//i.test(server)) {
-          server = DEFAULT_SERVERS[id];
-        }
-      }
-
-      // Validación para custom
+      // Never silently replace an invalid ingest URL: that hides a typo and
+      // sends a live program to an unexpected endpoint.
       if (!/^rtmps?:\/\//i.test(server)) {
-        if (DEFAULT_SERVERS[id]) {
+        if (!server) {
           server = DEFAULT_SERVERS[id];
         } else {
           throw new Error(`El servidor de ${id} debe comenzar con rtmp:// o rtmps://.`);
@@ -52,12 +49,10 @@ export function buildStreamDestinations(streamConfigs) {
       const normalizedServer = server.replace(/\/+$/, '');
       const streamKey = key.replace(/\s+/g, '').replace(/^\/+|\/+$/g, '');
 
-      if (!streamKey && (!normalizedServer.includes('/') || normalizedServer.endsWith('.com'))) {
-        throw new Error(`Por favor ingresa la Clave de Transmisión (Stream Key) de ${id === 'facebook' ? 'Facebook Live' : id}.`);
-      }
-
       const publishUrl = streamKey
-        ? `${normalizedServer}/${streamKey}`
+        // A stream key is data, not URL syntax. Escaping keeps reserved
+        // characters from changing the RTMP path or being treated as a query.
+        ? `${normalizedServer}/${encodeURIComponent(streamKey)}`
         : normalizedServer;
 
       return {

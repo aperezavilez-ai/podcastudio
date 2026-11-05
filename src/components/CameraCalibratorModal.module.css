@@ -214,6 +214,14 @@
   transition: transform 0.2s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
+.videoSource {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .noSignal {
   display: flex;
   flex-direction: column;

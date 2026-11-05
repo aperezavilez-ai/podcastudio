@@ -2,8 +2,8 @@
  * LanProgramOutputModal.jsx
  * Modal de Salida LAN Program & Enrutamiento Virtual para OBS y vMix (P4.4)
  * 
- * Expone la señal limpia 1080p60 del Master Program (PGM) a través de la red local
- * para su ingesta directa en OBS Studio (Browser Source), vMix o monitores de retorno.
+ * Expone una vista de control ligera del Master Program (PGM) en la red local.
+ * La grabación y RTMP usan la ruta Master 1080p30 independiente.
  */
 
 import React, { useState, useEffect } from 'react';
@@ -98,7 +98,7 @@ export default function LanProgramOutputModal({
                 </span>
               </h2>
               <p className="text-[11px] text-gray-400">
-                Señal limpia 1080p para OBS Studio, vMix, pantallas inteligentes o retorno en LAN
+                Vista de control Master para OBS Studio, vMix, pantallas inteligentes o retorno en LAN
               </p>
             </div>
           </div>
@@ -160,11 +160,11 @@ export default function LanProgramOutputModal({
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between py-1 border-b border-[#1c2133] text-gray-400">
                   <span>Resolución:</span>
-                  <span className="font-mono font-bold text-white">1920 × 1080 (Full HD)</span>
+                  <span className="font-mono font-bold text-white">960 × 540 (monitor)</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-[#1c2133] text-gray-400">
                   <span>Frecuencia de Cuadro:</span>
-                  <span className="font-mono font-bold text-emerald-400">60 FPS</span>
+                  <span className="font-mono font-bold text-emerald-400">JPEG LAN · hasta 3 FPS</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-[#1c2133] text-gray-400">
                   <span>Cámara PGM Activa:</span>
@@ -215,8 +215,8 @@ export default function LanProgramOutputModal({
                 </div>
                 <p>1. Añadir fuente: <b>Navegador</b></p>
                 <p>2. Pegar la URL de arriba</p>
-                <p>3. Ancho: <b>1920</b>, Alto: <b>1080</b></p>
-                <p>4. FPS: <b>60</b></p>
+                <p>3. Ancho: <b>960</b>, Alto: <b>540</b></p>
+                <p>4. Usar como monitor; para directo, RTMPS desde PodcastStudio</p>
               </div>
 
               <div className="p-2.5 rounded-lg bg-[#161a29] border border-[#23293e]">
@@ -225,7 +225,7 @@ export default function LanProgramOutputModal({
                 </div>
                 <p>1. Añadir entrada: <b>Web Browser</b></p>
                 <p>2. Pegar la URL de la señal</p>
-                <p>3. Resolución: <b>1080p</b></p>
+                <p>3. Resolución: <b>960 × 540</b></p>
                 <p>4. Asignar como Overlay o Input</p>
               </div>
 

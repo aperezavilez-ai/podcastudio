@@ -58,7 +58,7 @@ export default function StreamDestinationEditor({ destinationId, config, active,
 
       <div className="mt-4 p-3 bg-[#0a0c10] border border-[#222] rounded text-[10px] text-gray-400 leading-relaxed">
         {destinationId === 'facebook'
-          ? 'En Meta Business Suite > Live Producer, copia la URL RTMPS y la clave de transmisión activa.'
+          ? 'Para emitir la cámara Master compuesta: en Meta Live Producer elige “Software de streaming”, no “Cámara web”. Copia aquí la URL RTMPS y la clave. Facebook no verá PodcastStudio como webcam sin un driver de cámara virtual externo.'
           : destinationId === 'youtube'
             ? 'En YouTube Studio > Emitir en directo, copia la clave de emisión activa.'
             : destinationId === 'tiktok'

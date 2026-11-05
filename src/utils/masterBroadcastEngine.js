@@ -9,7 +9,7 @@
  */
 
 import { applyVoiceEffectChain } from './voiceEffectsProcessor.js';
-import { buildCanvasFilter } from './videoLook.js';
+import { applyLutOverlay, buildCanvasFilter, drawVignette } from './videoLook.js';
 
 let canvas = null;
 let ctx = null;
@@ -397,7 +397,10 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
     if (camId && currentState.cameraCrops) {
       const crop = currentState.cameraCrops[camId - 1];
       if (crop) {
-        const filterStr = crop.filter || buildCanvasFilter(crop);
+        const baseFilter = crop.filter || buildCanvasFilter(crop);
+        // Never blur a 1080p source to simulate noise reduction: it destroys
+        // real detail and makes the image look like a lower resolution feed.
+        const filterStr = baseFilter;
         if (filterStr && filterStr !== 'none') {
           ctx.save();
           ctx.filter = filterStr;
@@ -423,6 +426,28 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
 
     ctx.drawImage(video, sx, sy, sw, sh, x, y, w, h);
     if (hasFilter) ctx.restore();
+    // LUTs and vignette must run after the source is composited. Applying them
+    // to the preview alone made the calibration buttons decorative in PGM,
+    // recording and RTMP output.
+    const crop = camId && currentState.cameraCrops ? currentState.cameraCrops[camId - 1] : null;
+    if (crop?.lutId && crop.lutId !== 'none') {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y, w, h);
+      ctx.clip();
+      ctx.translate(x, y);
+      applyLutOverlay(ctx, w, h, crop.lutId);
+      ctx.restore();
+    }
+    if (crop?.lookPreset === 'cinematic-film') {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x, y, w, h);
+      ctx.clip();
+      ctx.translate(x, y);
+      drawVignette(ctx, w, h, 12, 78);
+      ctx.restore();
+    }
     drawCameraNameBadge(x, y, w, h, camId);
   } else {
     ctx.fillStyle = '#0c0e14';
@@ -1333,36 +1358,14 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
     initMixerBuses();
     pruneDeadAudioSources();
     if (!audioContext || !audioDestination) return null;
-    const layout = currentState.layoutMode || '1';
     const activePgm = currentState.activeCam || 1;
-    const slots = Array.isArray(currentState.camSlots) && currentState.camSlots.length > 0 ? currentState.camSlots : [1, 2, 3, 4];
-    
-    const allowedCams = new Set();
-    if (layout === '1') {
-      allowedCams.add(activePgm);
-    } else if (layout === 'pip') {
-      allowedCams.add(activePgm);
-      const pipId = currentState.pipCam || (slots.find(id => id !== activePgm) || 2);
-      allowedCams.add(pipId);
-    } else if (layout === '2' || layout === 'two-shot') {
-      allowedCams.add(slots[0] || 1);
-      allowedCams.add(slots[1] || 2);
-    } else if (layout === '3') {
-      allowedCams.add(slots[0] || 1);
-      allowedCams.add(slots[1] || 2);
-      allowedCams.add(slots[2] || 3);
-    } else if (layout === '4') {
-      allowedCams.add(slots[0] || 1);
-      allowedCams.add(slots[1] || 2);
-      allowedCams.add(slots[2] || 3);
-      allowedCams.add(slots[3] || 4);
-    } else {
-      slots.forEach(id => allowedCams.add(id));
-    }
+    // Audio-follow-video is deliberately independent of the visual layout.
+    // A PiP or multiview source is still a monitor, never an additional live
+    // microphone.  Only the Program/Master camera may reach the master bus.
+    const isProgramCamera = (camId) => Number(camId) === Number(activePgm);
 
     const masterAudioStream = (camStreamsMap && camStreamsMap[1]) || localStream;
-    const isCam1Allowed = allowedCams.has(1);
-    const isMasterMuted = Boolean(camMutedMap[1]) || !isCam1Allowed;
+    const isMasterMuted = Boolean(camMutedMap[1]) || !isProgramCamera(1);
     const isCam1Master = (activePgm === 1);
     if (masterAudioStream && masterAudioStream.getAudioTracks().length > 0) {
       const masterKey = 'cam_1';
@@ -1387,8 +1390,7 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
         const camId = Number(camIdStr);
         if (camId === 1) return;
         if (stream) processedStreams.add(stream);
-        const isCamAllowed = allowedCams.has(camId);
-        const isCamMuted = Boolean(camMutedMap[camId]) || !isCamAllowed;
+        const isCamMuted = Boolean(camMutedMap[camId]) || !isProgramCamera(camId);
         const isCamMaster = (camId === activePgm);
         if (stream && stream.getAudioTracks().length > 0) {
           const key = `cam_${camId}`;
@@ -1411,8 +1413,7 @@ function setupAudioMixing(localStream, remoteCams, camStreamsMap = {}, camMutedM
       remoteCams.forEach((rc) => {
         if (!rc.stream || processedStreams.has(rc.stream)) return;
         const rcCamId = rc.slot ? rc.slot + 1 : 2;
-        const isRcAllowed = allowedCams.has(rcCamId);
-        const isMuted = Boolean(camMutedMap[rcCamId]) || !isRcAllowed;
+        const isMuted = Boolean(camMutedMap[rcCamId]) || !isProgramCamera(rcCamId);
         const isRcMaster = (rcCamId === activePgm);
         if (rc.stream && rc.stream.getAudioTracks().length > 0) {
           const key = `remote_${rc.id || rcCamId}`;
@@ -1874,7 +1875,7 @@ export function updateBroadcastState(updates) {
   ensureMasterCanvas();
   if (voiceUpdated) reapplyVoiceEffects();
   if (updates.voiceMonitor !== undefined) setVoiceMonitor(updates.voiceMonitor);
-  if (updates.localStream || updates.remoteCams || updates.camStreamsMap || updates.camMuted || updates.camSlots || updates.getCamStream) {
+  if (updates.localStream || updates.remoteCams || updates.camStreamsMap || updates.camMuted || updates.camSlots || updates.getCamStream || updates.activeCam !== undefined) {
     syncVideoStreams();
     setupAudioMixing(
       currentState.localStream,

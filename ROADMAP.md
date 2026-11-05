@@ -6,7 +6,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 
 ## Proceso
 - Fase: release
-- Estado: Release v1.3.4 OK (2026-11-04 08:15)
+- Estado: Release v1.3.5 en publicación (2026-11-05)
 - Actualizado: 2026-11-04 08:15
 - Stack: React + Vite + Electron + Supabase
 - Entry: index.html
@@ -67,6 +67,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - RELEASE_v1.3.2.md
 - RELEASE_v1.3.3.md
 - RELEASE_v1.3.4.md
+- RELEASE_v1.3.5.md
 
 ## Archivos clave (no reexplorar)
 - electron/media-engine/bridge.js

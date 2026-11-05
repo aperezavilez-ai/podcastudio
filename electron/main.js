@@ -1126,7 +1126,8 @@ function startMediaServer() {
 
   // ============================================================================
   // SALIDA LAN PROGRAM & VIRTUAL WEB FEED (P4.4)
-  // Señal limpia 1080p a 60 FPS para OBS Studio (Browser Source), vMix y Smart TVs
+  // Vista de control JPEG para OBS Studio, vMix y Smart TVs. No es una cámara
+  // virtual ni el encoder Master RTMP/recording (que permanece a 1080p30).
   // ============================================================================
   appServer.get('/program/status', (req, res) => {
     res.json({
@@ -1134,8 +1135,8 @@ function startMediaServer() {
       activeCam: latestStudioState?.activeCam || 1,
       pvwCam: latestStudioState?.pvwCam || 2,
       layout: latestStudioState?.layoutMode || '1',
-      resolution: '1920x1080',
-      fps: 60,
+      resolution: '960x540',
+      fps: 3,
       isStreaming: !!isStreaming,
       isRecording: !!isRecording,
       isReplaying: !!latestStudioState?.isReplaying,
@@ -1189,7 +1190,7 @@ function startMediaServer() {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-        <title>PodcastStudio Program Master Feed (1080p60)</title>
+        <title>PodcastStudio Program Master Monitor (LAN)</title>
         <style>
           * { box-sizing: border-box; margin: 0; padding: 0; }
           html, body {
@@ -1248,10 +1249,10 @@ function startMediaServer() {
         </style>
       </head>
       <body>
-        <canvas id="feedCanvas" width="1920" height="1080"></canvas>
+        <canvas id="feedCanvas" width="960" height="540"></canvas>
         <div id="hud" class="hud">
           <div class="dot"></div>
-          <span>PGM LIVE · 1080p60 · BROADCAST FEED</span>
+          <span>PGM LIVE · VISTA DE CONTROL · LAN</span>
         </div>
         <script>
           const canvas = document.getElementById('feedCanvas');
@@ -1633,8 +1634,8 @@ ipcMain.handle('get-program-status', () => ({
   activeCam: latestStudioState?.activeCam || 1,
   pvwCam: latestStudioState?.pvwCam || 2,
   layout: latestStudioState?.layoutMode || '1',
-  resolution: '1920x1080',
-  fps: 60,
+  resolution: '960x540',
+  fps: 3,
   isStreaming: !!isStreaming,
   isRecording: !!isRecording,
   isReplaying: !!latestStudioState?.isReplaying,
@@ -1929,15 +1930,20 @@ function toSafeBuffer(input) {
   });
 });
 
-ipcMain.on('record-chunk', (event, chunkBuffer) => {
+ipcMain.handle('record-chunk', async (event, chunkBuffer) => {
   const proc = ffmpegRecordProcess;
-  if (!proc?.stdin || proc.stdin.destroyed || !chunkBuffer) return;
+  if (!proc?.stdin || proc.stdin.destroyed || !chunkBuffer) {
+    throw new Error('El codificador de grabación no está disponible.');
+  }
   const buf = toSafeBuffer(chunkBuffer);
-  if (!buf || buf.length === 0) return;
+  if (!buf || buf.length === 0) throw new Error('El segmento de grabación está vacío.');
   recordChunkQueue = recordChunkQueue.then(() => writeChunkWithBackpressure(proc.stdin, buf)).catch((error) => {
     recordChunkError = error.message || String(error);
     console.warn('Error escribiendo chunk de grabación:', recordChunkError);
+    throw error;
   });
+  await recordChunkQueue;
+  return { success: true, bytes: buf.length };
 });
 
 ipcMain.handle('flush-recording-chunks', async () => {

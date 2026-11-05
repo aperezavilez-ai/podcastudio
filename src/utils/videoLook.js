@@ -154,6 +154,31 @@ export function applyLutOverlay(ctx, w, h, lutId) {
       ctx.fillRect(0, 0, w, h)
       break
 
+    case 'sepia-film':
+      // Sepia de película real: tonos cálidos contenidos y negros ligeramente
+      // levantados, aplicado al fotograma del Master y no sólo al preview.
+      ctx.globalCompositeOperation = 'color'
+      ctx.fillStyle = 'rgba(112, 69, 31, 0.42)'
+      ctx.fillRect(0, 0, w, h)
+      ctx.globalCompositeOperation = 'soft-light'
+      ctx.fillStyle = 'rgba(255, 208, 138, 0.18)'
+      ctx.fillRect(0, 0, w, h)
+      break
+
+    case 'cinematic-film':
+      // Curva cinematográfica: sombras teal, altas luces ámbar, contraste
+      // moderado y viñeta sutil. Es una operación Canvas persistente en PGM.
+      ctx.globalCompositeOperation = 'soft-light'
+      ctx.fillStyle = 'rgba(8, 52, 66, 0.34)'
+      ctx.fillRect(0, 0, w, h)
+      ctx.globalCompositeOperation = 'overlay'
+      ctx.fillStyle = 'rgba(244, 142, 56, 0.18)'
+      ctx.fillRect(0, 0, w, h)
+      ctx.globalCompositeOperation = 'multiply'
+      ctx.fillStyle = 'rgba(18, 22, 30, 0.10)'
+      ctx.fillRect(0, 0, w, h)
+      break
+
     default:
       break
   }

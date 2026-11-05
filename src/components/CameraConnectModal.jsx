@@ -63,7 +63,6 @@ function ModalVideoPreview({ stream, label }) {
     const unmuteCbs = new Map();
     const wireTrackListeners = (track) => {
       if (!track || unmuteCbs.has(track.id)) return;
-      try { track.enabled = true; } catch {}
       const cb = () => attemptPlay();
       unmuteCbs.set(track.id, { track, cb });
       track.addEventListener('unmute', cb);
@@ -81,19 +80,16 @@ function ModalVideoPreview({ stream, label }) {
       stream.addEventListener('addtrack', onAddTrack);
     }
 
-    // Monitoreo activo para reanudar renderizado y garantizar cero pantallas en negro
-    const pollTimer = setInterval(() => {
-      if (!v || !stream) return;
-      const tracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
-      tracks.forEach(t => { try { t.enabled = true; } catch {} });
-      if (v.paused || v.videoWidth === 0) {
-        if (v.srcObject !== stream) v.srcObject = stream;
-        v.play().catch(() => {});
-      }
-    }, 300);
+    // A modal preview must never keep toggling the physical camera tracks.
+    // Doing so every 300 ms caused USB sources to renegotiate and made the
+    // entire Electron UI feel frozen.  One delayed retry is enough after a
+    // device wakes up; normal media events above cover the rest.
+    const retryTimer = setTimeout(() => {
+      if (v.paused || v.videoWidth === 0) attemptPlay();
+    }, 1200);
 
     return () => {
-      clearInterval(pollTimer);
+      clearTimeout(retryTimer);
       v.removeEventListener('loadedmetadata', attemptPlay);
       v.removeEventListener('canplay', attemptPlay);
       v.removeEventListener('playing', attemptPlay);
