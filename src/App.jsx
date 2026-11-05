@@ -377,6 +377,17 @@ function PodcastStudioApp() {
   const slotStreamsRef = useRef(slotStreams);
   useEffect(() => { slotStreamsRef.current = slotStreams; }, [slotStreams]);
 
+  // NOTIFICACIONES TOAST FLOTANTES NO BLOQUEANTES (Cero congelamientos de UI por alert)
+  const [toastNotification, setToastNotification] = useState(null);
+  const toastTimeoutRef = useRef(null);
+  const showToast = useCallback((message, type = 'info', duration = 5000) => {
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToastNotification({ message, type });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastNotification(null);
+    }, duration);
+  }, []);
+
   // RÓTULOS DE NOMBRE INDIVIDUALES POR CÁMARA (RESTRAM / LOWER THIRDS PARA INVITADOS O CLASES)
   const [cameraBadges, setCameraBadges] = useState(() => {
     try {
@@ -2242,7 +2253,7 @@ function PodcastStudioApp() {
           setIsRecordingPaused(false);
           isRecordingPausedRef.current = false;
           if (!isStreamingRef.current) stopBroadcastEngine();
-          alert('Error en grabación FFmpeg: ' + (data?.error || 'El proceso se detuvo inesperadamente'));
+          showToast('Grabación finalizada: ' + (data?.error || 'El proceso se detuvo'), 'error', 6000);
         }
       });
     }
@@ -2307,7 +2318,7 @@ function PodcastStudioApp() {
           if (!res?.success) {
             recordingStartPendingRef.current = false;
             logger.error('[handleRecord] Falló el inicio de grabación:', res?.error);
-            alert('Error al iniciar grabación: ' + (res?.error || 'Desconocido'));
+            showToast('Error al iniciar grabación: ' + (res?.error || 'Desconocido'), 'error', 6000);
             return;
           }
         }
@@ -2394,7 +2405,7 @@ function PodcastStudioApp() {
         recordingStartTimeRef.current = null;
         if (!isStreamingRef.current) stopBroadcastEngine();
         logger.error('[handleRecord] Error general al iniciar grabación:', err);
-        alert('Error al iniciar grabación: ' + (err?.message || 'Desconocido'));
+        showToast('Error al iniciar grabación: ' + (err?.message || 'Desconocido'), 'error', 6000);
       } finally {
         recordingStartPendingRef.current = false;
       }
@@ -2450,7 +2461,7 @@ function PodcastStudioApp() {
             stopRes = await window.api.stopRecording();
             if (!stopRes?.success || !stopRes.path) {
               recordingChunksRef.current = [];
-              alert('No se pudo finalizar el MP4: ' + (stopRes?.error || 'No se generó un archivo válido.'));
+              showToast('No se pudo finalizar el MP4: ' + (stopRes?.error || 'No se generó un archivo válido.'), 'error', 6000);
               return;
             }
             if (thumbnailDataUrl && window.api.saveRecordingThumbnail) {
@@ -2463,7 +2474,7 @@ function PodcastStudioApp() {
           } catch (e) {
             logger.warn('Error parando grabación FFmpeg:', e);
             recordingChunksRef.current = [];
-            alert('No se pudo finalizar la grabación: ' + (e.message || 'Error desconocido'));
+            showToast('No se pudo finalizar la grabación: ' + (e.message || 'Error desconocido'), 'error', 6000);
             return;
           }
         }
@@ -2543,12 +2554,13 @@ function PodcastStudioApp() {
       try {
         activeTargets = buildStreamDestinations(streamConfigs);
       } catch (error) {
-        alert(error.message);
+        showToast(error.message, 'error', 6000);
         return;
       }
 
       if (activeTargets.length === 0) {
-        return alert('Para emitir en vivo, debes habilitar al menos un destino (Facebook, YouTube, TikTok o RTMP) y escribir su Clave de Transmisión (Stream Key).');
+        showToast('Para emitir en vivo, debes habilitar al menos un destino (Facebook, YouTube, TikTok o RTMP) y escribir su Clave de Transmisión (Stream Key).', 'info', 6000);
+        return;
       }
 
       // 1. Asegurar que el compositor broadcast esté activo y generando el Master con 0 retraso
@@ -2608,7 +2620,7 @@ function PodcastStudioApp() {
             setActiveLiveDestinations(res.connectedDestinations || activeTargets);
             setShowStreamModal(false);
             if (res.failures?.length) {
-              alert(`Transmisión parcial. Conectados: ${(res.connectedDestinations || []).map(target => target.name).join(', ')}.\n\n${res.failures.map(failure => `${failure.name}: ${failure.error}`).join('\n')}`);
+              showToast(`Transmisión parcial. Conectados: ${(res.connectedDestinations || []).map(target => target.name).join(', ')}`, 'warning', 7000);
             }
           } else {
             isStreamStartingRef.current = false;
@@ -2616,7 +2628,7 @@ function PodcastStudioApp() {
             setIsStreamStarting(false);
             setIsStreaming(false);
             if (!isRecordingRef.current) await stopBroadcastEngine();
-            alert('No se pudo conectar con el servidor de transmisión.\n' + (res.error || 'Verifica que la transmisión esté activa en la plataforma y revisa la clave y la URL.'));
+            showToast('No se pudo conectar con el servidor de transmisión.\n' + (res.error || 'Verifica que la transmisión esté activa en la plataforma y revisa la clave y la URL.'), 'error', 7000);
           }
         } catch (error) {
           isStreamStartingRef.current = false;
@@ -2624,7 +2636,7 @@ function PodcastStudioApp() {
           setIsStreamStarting(false);
           setIsStreaming(false);
           if (!isRecordingRef.current) await stopBroadcastEngine();
-          alert('No se pudo iniciar la conexión RTMP/RTMPS.\n' + (error.message || 'Error de red desconocido.'));
+          showToast('No se pudo iniciar la conexión RTMP/RTMPS: ' + (error.message || 'Error de red desconocido.'), 'error', 7000);
         }
       } else {
         isStreamingRef.current = true;
@@ -6482,6 +6494,41 @@ function PodcastStudioApp() {
         badge={badgeModalSlot ? cameraBadges[badgeModalSlot] : null}
         onSave={handleSaveCameraBadge}
       />
+
+      {/* NOTIFICACIÓN FLOTANTE TOAST GLOBAL NO BLOQUEANTE */}
+      {toastNotification && (
+        <div style={{
+          position: 'fixed',
+          top: 18,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 99999,
+          background: toastNotification.type === 'error' ? 'rgba(220, 38, 38, 0.95)' : toastNotification.type === 'success' ? 'rgba(22, 101, 52, 0.95)' : toastNotification.type === 'warning' ? 'rgba(217, 119, 6, 0.95)' : 'rgba(30, 41, 59, 0.95)',
+          color: '#fff',
+          border: `1px solid ${toastNotification.type === 'error' ? '#f87171' : toastNotification.type === 'success' ? '#4ade80' : toastNotification.type === 'warning' ? '#fbbf24' : 'rgba(255,255,255,0.25)'}`,
+          padding: '10px 20px',
+          borderRadius: 8,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          fontSize: 13,
+          fontWeight: 600,
+          maxWidth: '90vw',
+          backdropFilter: 'blur(10px)',
+          animation: 'fadeIn 0.2s ease-out',
+        }}>
+          <span>{toastNotification.message}</span>
+          <button
+            type="button"
+            onClick={() => setToastNotification(null)}
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center' }}
+            title="Cerrar notificación"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

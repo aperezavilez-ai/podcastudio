@@ -1227,125 +1227,72 @@ Instrucciones:
                     <div
                       key={cam.deviceId || idx}
                       className={`${styles.deviceItem} ${isCurrentInTarget ? styles.deviceItemActive : ''}`}
-                      style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                        <div className={styles.deviceInfo}>
-                          <Video size={18} className={styles.deviceIcon} />
-                          <div>
-                            <div className={styles.deviceLabel} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span>{cam.label || `Cámara USB ${idx + 1}`}</span>
-                              {isAssigned ? (
-                                <span style={{ background: 'rgba(34,197,94,0.18)', border: '1px solid #22c55e', color: '#4ade80', fontSize: 10, fontWeight: 800, padding: '1px 7px', borderRadius: 9999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 5px #4ade80' }} />
-                                  EN VIVO EN CAM {assignedSlot + 1}
-                                </span>
-                              ) : (
-                                <span style={{ background: 'rgba(148,163,184,0.15)', border: '1px solid rgba(148,163,184,0.3)', color: '#cbd5e1', fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 9999 }}>
-                                  ⚪ DISPONIBLE
-                                </span>
-                              )}
-                            </div>
-                            <div className={styles.deviceSub}>
-                              {cam.deviceId ? `ID: ${cam.deviceId.slice(0, 16)}…` : 'Dispositivo de video local'}
-                            </div>
+                      <div className={styles.deviceInfo}>
+                        <Video size={18} className={styles.deviceIcon} />
+                        <div>
+                          <div className={styles.deviceLabel} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>{cam.label || `Cámara USB ${idx + 1}`}</span>
+                            {isAssigned ? (
+                              <span style={{ background: 'rgba(34,197,94,0.18)', border: '1px solid #22c55e', color: '#4ade80', fontSize: 10, fontWeight: 800, padding: '1px 7px', borderRadius: 9999, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#4ade80', boxShadow: '0 0 5px #4ade80' }} />
+                                EN VIVO EN CAM {assignedSlot + 1}
+                              </span>
+                            ) : (
+                              <span style={{ background: 'rgba(148,163,184,0.15)', border: '1px solid rgba(148,163,184,0.3)', color: '#cbd5e1', fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 9999 }}>
+                                ⚪ DISPONIBLE
+                              </span>
+                            )}
                           </div>
-                        </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          {isCurrentInTarget ? (
-                            <button
-                              type="button"
-                              className={`${styles.connectBtn} ${styles.connectBtnConnected}`}
-                              disabled={connectingUsbId === cam.deviceId}
-                              onClick={() => onDisconnect && onDisconnect(targetSlot)}
-                              style={{
-                                background: 'rgba(239, 68, 68, 0.18)',
-                                borderColor: 'rgba(239, 68, 68, 0.5)',
-                                color: '#fca5a5',
-                              }}
-                              title={`Desactivar esta cámara de CAM ${targetSlot + 1}`}
-                            >
-                              <Power size={13} /> Desactivar de CAM {targetSlot + 1}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className={styles.connectBtn}
-                              disabled={connectingUsbId === cam.deviceId}
-                              onClick={() => handleConnectUsb(cam.deviceId, cam.label, targetSlot)}
-                              style={{
-                                background: '#e8612a',
-                                borderColor: '#e8612a',
-                                color: '#fff',
-                                fontWeight: 700,
-                              }}
-                              title={`Asignar y activar en CAM ${targetSlot + 1}`}
-                            >
-                              {connectingUsbId === cam.deviceId ? (
-                                <>
-                                  <Loader2 size={13} className="animate-spin" /> Asignando...
-                                </>
-                              ) : (
-                                <>
-                                  <Usb size={13} /> Asignar a CAM {targetSlot + 1} {isConnected ? '(Reemplazar)' : ''}
-                                </>
-                              )}
-                            </button>
-                          )}
-
-                          {!isAssigned && nextFreeSlot !== targetSlot && nextFreeSlot < 12 && (
-                            <button
-                              type="button"
-                              className={styles.connectBtn}
-                              style={{ background: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.4)', color: '#34d399', fontWeight: 700 }}
-                              disabled={connectingUsbId === cam.deviceId}
-                              onClick={() => handleConnectUsb(cam.deviceId, cam.label, nextFreeSlot)}
-                              title={`Asignar automáticamente a la siguiente ranura libre CAM ${nextFreeSlot + 1}`}
-                            >
-                              <Plus size={13} /> En CAM {nextFreeSlot + 1} (Libre)
-                            </button>
-                          )}
+                          <div className={styles.deviceSub}>
+                            {cam.deviceId ? `ID: ${cam.deviceId.slice(0, 16)}…` : 'Dispositivo de video local'}
+                          </div>
                         </div>
                       </div>
 
-                      {/* SELECTOR DIRECTO DE CANAL EN LA PROPIA CÁMARA */}
-                      <div style={{ marginTop: 4, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Asignar directo a:</span>
-                        {Array.from({ length: Math.min(slotsCount, 12) }).map((_, slotIdx) => {
-                          const isThisSlot = assignedSlot === slotIdx;
-                          const isSlotBusy = Boolean(streams[slotIdx]) && !isThisSlot;
-                          return (
-                            <button
-                              key={slotIdx}
-                              type="button"
-                              disabled={connectingUsbId === cam.deviceId || isThisSlot}
-                              onClick={() => handleConnectUsb(cam.deviceId, cam.label, slotIdx)}
-                              style={{
-                                padding: '2px 7px',
-                                borderRadius: 5,
-                                fontSize: 10,
-                                fontWeight: 700,
-                                cursor: isThisSlot ? 'default' : 'pointer',
-                                background: isThisSlot
-                                  ? 'rgba(34,197,94,0.25)'
-                                  : isSlotBusy
-                                  ? 'rgba(234,179,8,0.15)'
-                                  : 'rgba(255,255,255,0.06)',
-                                border: isThisSlot
-                                  ? '1px solid #22c55e'
-                                  : isSlotBusy
-                                  ? '1px solid rgba(234,179,8,0.4)'
-                                  : '1px solid rgba(255,255,255,0.15)',
-                                color: isThisSlot ? '#4ade80' : isSlotBusy ? '#fde047' : '#e2e8f0',
-                                transition: 'all 0.15s ease',
-                              }}
-                              title={isThisSlot ? `Ya activa en CAM ${slotIdx + 1}` : isSlotBusy ? `CAM ${slotIdx + 1} ocupada (clic para mover aquí)` : `Asignar a CAM ${slotIdx + 1} libre`}
-                            >
-                              CAM {slotIdx + 1} {isThisSlot ? '✓' : ''}
-                            </button>
-                          );
-                        })}
+                      {/* UN SOLO BOTÓN: CONECTAR O DESCONECTAR */}
+                      <div>
+                        {isAssigned ? (
+                          <button
+                            type="button"
+                            className={`${styles.connectBtn} ${styles.connectBtnConnected}`}
+                            disabled={connectingUsbId === cam.deviceId}
+                            onClick={() => onDisconnect && onDisconnect(assignedSlot)}
+                            style={{
+                              background: 'rgba(239, 68, 68, 0.2)',
+                              borderColor: '#ef4444',
+                              color: '#fca5a5',
+                              fontWeight: 700,
+                            }}
+                            title={`Desconectar ${cam.label} de CAM ${assignedSlot + 1}`}
+                          >
+                            <Power size={13} /> Desconectar
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className={styles.connectBtn}
+                            disabled={connectingUsbId === cam.deviceId}
+                            onClick={() => handleConnectUsb(cam.deviceId, cam.label, targetSlot)}
+                            style={{
+                              background: '#e8612a',
+                              borderColor: '#e8612a',
+                              color: '#fff',
+                              fontWeight: 700,
+                            }}
+                            title={`Conectar ${cam.label} a CAM ${targetSlot + 1}`}
+                          >
+                            {connectingUsbId === cam.deviceId ? (
+                              <>
+                                <Loader2 size={13} className="animate-spin" /> Conectando...
+                              </>
+                            ) : (
+                              <>
+                                <Usb size={13} /> Conectar a CAM {targetSlot + 1}
+                              </>
+                            )}
+                          </button>
+                        )}
                       </div>
                     </div>
                   );

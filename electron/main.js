@@ -1823,10 +1823,12 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
 
     if (ffmpegRecordProcess) {
       try {
-        if (ffmpegRecordProcess.stdin && !ffmpegRecordProcess.stdin.destroyed) ffmpegRecordProcess.stdin.end();
-        ffmpegRecordProcess.kill('SIGINT');
+        const oldProc = ffmpegRecordProcess;
+        ffmpegRecordProcess = null;
+        oldProc.removeAllListeners();
+        if (oldProc.stdin && !oldProc.stdin.destroyed) oldProc.stdin.end();
+        oldProc.kill('SIGINT');
       } catch (e) {}
-      ffmpegRecordProcess = null;
     }
 
     try {
@@ -1868,17 +1870,18 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
 
       ffmpegRecordProcess.on('error', (err) => {
         console.error('Error FFmpeg Grabación:', err.message);
-        if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow && !mainWindow.isDestroyed() && !isStoppingRecording) {
           mainWindow.webContents.send('recording-process-error', { error: err.message });
         }
       });
 
-      ffmpegRecordProcess.on('close', (code) => {
-        console.log('[FFmpeg Grabación] Proceso finalizó con código:', code);
-        if (code !== 0 && !isStoppingRecording && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('recording-process-error', { code, error: `FFmpeg finalizó con código ${code}` });
+      const currentSpawnedProc = ffmpegRecordProcess;
+      currentSpawnedProc.on('close', (code, signal) => {
+        console.log('[FFmpeg Grabación] Proceso finalizó con código:', code, 'señal:', signal);
+        if (code !== 0 && code !== null && !isStoppingRecording && ffmpegRecordProcess === currentSpawnedProc && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('recording-process-error', { code, error: `FFmpeg finalizó inesperadamente (código ${code})` });
         }
-        ffmpegRecordProcess = null;
+        if (ffmpegRecordProcess === currentSpawnedProc) ffmpegRecordProcess = null;
       });
 
 function toSafeBuffer(input) {
@@ -1948,6 +1951,8 @@ ipcMain.handle('stop-recording', async () => {
   return new Promise((resolve) => {
     if (ffmpegRecordProcess) {
       const proc = ffmpegRecordProcess;
+      ffmpegRecordProcess = null;
+      try { proc.removeAllListeners('close'); proc.removeAllListeners('error'); } catch (e) {}
       const recPath = currentRecordingPath;
       let finished = false;
       let stopTimeout = null;

@@ -25,7 +25,11 @@ export default function StreamDestinationEditor({ destinationId, config, active,
             type="url"
             autoComplete="url"
             value={server}
-            onChange={(event) => setServer(event.target.value)}
+            onChange={(event) => {
+              const val = event.target.value;
+              setServer(val);
+              onCommit('server', val);
+            }}
             onBlur={() => onCommit('server', server)}
             className="w-full bg-[#0a0c10] border border-[#333] rounded p-2 text-xs text-white outline-none focus:border-blue-500"
           />
@@ -39,9 +43,13 @@ export default function StreamDestinationEditor({ destinationId, config, active,
             type={showKey ? 'text' : 'password'}
             autoComplete="new-password"
             spellCheck="false"
-            placeholder="Pega aquí tu Stream Key secreta..."
+            placeholder="Pega aquí tu Stream Key (ej: FB-1104...)..."
             value={key}
-            onChange={(event) => setKey(event.target.value)}
+            onChange={(event) => {
+              const val = event.target.value;
+              setKey(val);
+              onCommit('key', val);
+            }}
             onBlur={() => onCommit('key', key)}
             className="w-full bg-[#0a0c10] border border-[#333] rounded p-2 text-xs text-white outline-none focus:border-blue-500"
           />
