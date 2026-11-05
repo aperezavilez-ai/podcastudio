@@ -1426,12 +1426,27 @@ function PodcastStudioApp() {
   };
 
   // Silenciar / Activar micrófono de cámara individual (para evitar eco con micrófonos externos)
-  const toggleMuteCam = (camId) => {
+  const toggleMuteCam = async (camId) => {
     const nextMuted = !Boolean(camMuted[camId]);
     setCamMuted(prev => ({ ...prev, [camId]: nextMuted }));
     const stream = getCamStream(camId);
     if (stream) {
-      stream.getAudioTracks().forEach(track => {
+      let audioTracks = stream.getAudioTracks();
+      // Si el usuario activa el micrófono pero el stream de la cámara aún no tiene pista de audio,
+      // solicitar dinámicamente el micrófono del sistema y vincularlo
+      if (!nextMuted && audioTracks.length === 0) {
+        try {
+          const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          if (micStream && micStream.getAudioTracks().length > 0) {
+            const newTrack = micStream.getAudioTracks()[0];
+            stream.addTrack(newTrack);
+            audioTracks = [newTrack];
+          }
+        } catch (err) {
+          logger.warn(`[toggleMuteCam] No se pudo obtener micrófono para CAM ${camId}:`, err);
+        }
+      }
+      audioTracks.forEach(track => {
         track.enabled = !nextMuted;
       });
     }
@@ -1697,11 +1712,18 @@ function PodcastStudioApp() {
 
           // Intentar vincular micrófono sin bloquear el video si falla
           try {
-            const micStream = await getUserMediaWithTimeout({ audio: true }, 2000);
+            const micStream = await getUserMediaWithTimeout({ audio: true }, 3000);
             if (micStream && micStream.getAudioTracks().length > 0) {
               stream.addTrack(micStream.getAudioTracks()[0]);
             }
-          } catch (e) {}
+          } catch (e) {
+            try {
+              const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              if (micStream && micStream.getAudioTracks().length > 0) {
+                stream.addTrack(micStream.getAudioTracks()[0]);
+              }
+            } catch (err2) {}
+          }
 
           setLocalStream(stream);
           setSlotStreams(prev => ({ ...prev, 0: stream }));
@@ -2859,14 +2881,21 @@ function PodcastStudioApp() {
         vTrack.contentHint = 'motion';
       }
 
-      // Si el slot es 0 (Master) y no tiene track de audio, intentar vincular el micrófono por separado sin bloquear el video
-      if (slot === 0 && stream.getAudioTracks().length === 0) {
+      // Si el stream no tiene pista de audio, vincular pista de audio/micrófono sin bloquear video
+      if (stream.getAudioTracks().length === 0) {
         try {
-          const micStream = await getUserMediaWithTimeout({ audio: true }, 1500);
+          const micStream = await getUserMediaWithTimeout({ audio: true }, 3000);
           if (micStream && micStream.getAudioTracks().length > 0) {
             stream.addTrack(micStream.getAudioTracks()[0]);
           }
-        } catch (e) {}
+        } catch (e) {
+          try {
+            const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            if (micStream && micStream.getAudioTracks().length > 0) {
+              stream.addTrack(micStream.getAudioTracks()[0]);
+            }
+          } catch (err2) {}
+        }
       }
 
       slotStreamsRef.current = { ...slotStreamsRef.current, [slot]: stream };
@@ -4315,7 +4344,7 @@ function PodcastStudioApp() {
             return (
               <div 
                 key={camId} 
-                className={`w-[210px] h-[130px] rounded-xl border-2 flex flex-col shrink-0 relative group overflow-hidden transition-all shadow-md ${
+                className={`w-[230px] h-[135px] rounded-xl border-2 flex flex-col shrink-0 relative group overflow-hidden transition-all shadow-md ${
                   isActive 
                     ? 'border-red-500 shadow-red-950/40 ring-1 ring-red-500/50' 
                     : (dualMonitorMode && isPvw ? 'border-emerald-500 shadow-emerald-950/40 ring-1 ring-emerald-500/50' : 'border-[#282828] hover:border-[#444] bg-[#080808]')
@@ -4363,9 +4392,9 @@ function PodcastStudioApp() {
                 </div>
 
                 {/* BARRA SUPERIOR FLOTANTE TRASLÚCIDA (CASI IMPERCEPTIBLE, 100% VISIBILIDAD) */}
-                <div className="absolute top-0 inset-x-0 z-20 flex justify-between items-center px-2 py-1 bg-gradient-to-b from-black/80 via-black/35 to-transparent pointer-events-auto select-none">
-                  {/* CAM IDENTIFIER CON TALLY BROADCAST */}
-                  <div className="flex items-center gap-1.5 drop-shadow">
+                <div className="absolute top-0 inset-x-0 z-20 flex justify-between items-center px-1.5 py-1 bg-gradient-to-b from-black/85 via-black/40 to-transparent pointer-events-auto select-none gap-1">
+                  {/* CAM IDENTIFIER CON TALLY BROADCAST + BOTÓN DE MICRÓFONO Y BOCINA (SIEMPRE VISIBLES Y CLICABLES) */}
+                  <div className="flex items-center gap-1 shrink-0 drop-shadow">
                     <span className={`text-[10px] font-black ${isActive ? 'text-red-400' : (dualMonitorMode && isPvw ? 'text-emerald-400' : 'text-gray-200')}`}>
                       CAM {camId}
                     </span>
@@ -4378,64 +4407,49 @@ function PodcastStudioApp() {
                         PVW
                       </span>
                     ) : null)}
-                  </div>
 
-                  {/* INDICADOR DE AUDIO, VUMETRO EN TIEMPO REAL Y BOTONES DE CONTROL */}
-                  <div className="flex items-center gap-1 drop-shadow">
-                    {(() => {
-                      const audioInfo = camAudioLevels[camId] || { hasMic: false, level: 0, isMuted: false };
-                      if (!audioInfo.hasMic) {
-                        return (
-                          <div 
-                            className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-black/40 text-gray-400 cursor-not-allowed select-none" 
-                            title="Esta cámara no cuenta con micrófono detectado"
-                          >
-                            <MicOff size={9} className="opacity-40" />
-                            <span className="text-[7.5px] font-semibold opacity-40">Sin mic</span>
-                          </div>
-                        );
+                    {/* BOTÓN MICRÓFONO CON VU-METER - SIEMPRE VISIBLE Y CLICABLE */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleMuteCam(camId);
+                      }}
+                      className={`px-1.5 py-0.5 rounded flex items-center gap-1 transition-all shrink-0 cursor-pointer ${
+                        camMuted[camId]
+                          ? 'bg-red-950/90 text-red-400 border border-red-600/80 shadow-sm'
+                          : 'bg-black/60 hover:bg-[#222] text-emerald-400 border border-emerald-500/70 shadow-sm'
+                      }`}
+                      title={
+                        camMuted[camId]
+                          ? `Micrófono CAM ${camId} SILENCIADO · Clic para activar micrófono`
+                          : `Micrófono CAM ${camId} ACTIVO · Clic para silenciar`
                       }
-
-                      return (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleMuteCam(camId);
-                          }}
-                          className={`px-1 py-0.5 rounded flex items-center gap-1 transition-all ${
-                            audioInfo.isMuted 
-                              ? 'bg-red-950/80 text-red-400 border border-red-600/70 shadow-sm animate-pulse' 
-                              : 'bg-black/50 hover:bg-[#222] text-emerald-400 border border-emerald-900/40'
-                          }`}
-                          title={
-                            audioInfo.isMuted 
-                              ? 'Micrófono SILENCIADO · Clic para activar' 
-                              : 'Micrófono ACTIVO · Clic para silenciar (ideal si usas micrófono externo para no duplicar sonido)'
-                          }
-                        >
-                          {audioInfo.isMuted ? (
-                            <>
-                              <MicOff size={9} className="text-red-400" />
-                              <span className="text-[7.5px] font-bold text-red-400">MUTE</span>
-                            </>
-                          ) : (
-                            <>
-                              <Mic size={9} className="text-emerald-400 shrink-0" />
-                              {/* VUMETRO DE PERCEPCIÓN DE AUDIO */}
-                              <div className="w-5 h-1 bg-[#141414] rounded-full overflow-hidden flex items-center border border-[#2a2a2a]">
-                                <div 
-                                  className={`h-full rounded-full transition-all duration-75 ${
-                                    audioInfo.level > 70 ? 'bg-red-500' : audioInfo.level > 35 ? 'bg-amber-400' : 'bg-emerald-400'
-                                  }`} 
-                                  style={{ width: `${Math.max(8, audioInfo.level)}%` }} 
-                                />
-                              </div>
-                            </>
-                          )}
-                        </button>
-                      );
-                    })()}
+                    >
+                      {camMuted[camId] ? (
+                        <>
+                          <MicOff size={10} className="text-red-400 shrink-0" />
+                          <span className="text-[7.5px] font-bold text-red-400">MUTE</span>
+                        </>
+                      ) : (
+                        <>
+                          <Mic size={10} className="text-emerald-400 shrink-0" />
+                          {/* VUMETRO DE PERCEPCIÓN DE AUDIO */}
+                          <div className="w-5 h-1 bg-[#141414] rounded-full overflow-hidden flex items-center border border-[#2a2a2a] shrink-0">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-75 ${
+                                (camAudioLevels[camId]?.level || 0) > 70
+                                  ? 'bg-red-500'
+                                  : (camAudioLevels[camId]?.level || 0) > 35
+                                  ? 'bg-amber-400'
+                                  : 'bg-emerald-400'
+                              }`} 
+                              style={{ width: `${Math.max(10, camAudioLevels[camId]?.level || 0)}%` }} 
+                            />
+                          </div>
+                        </>
+                      )}
+                    </button>
 
                     {/* BOTÓN DE BOCINA DE RETORNO / MONITOREO LOCAL */}
                     <button
@@ -4444,28 +4458,31 @@ function PodcastStudioApp() {
                         e.stopPropagation();
                         toggleSpeakerCam(camId);
                       }}
-                      className={`p-1 rounded flex items-center justify-center transition-all ${
+                      className={`p-1 rounded flex items-center justify-center transition-all shrink-0 cursor-pointer ${
                         camSpeakerMuted[camId]
-                          ? 'bg-red-950/70 text-red-400 hover:bg-red-900/80 border border-red-700/50'
-                          : 'bg-black/50 text-emerald-400 hover:bg-[#222] border border-emerald-800/40'
+                          ? 'bg-red-950/80 text-red-400 hover:bg-red-900 border border-red-600/60 shadow-sm'
+                          : 'bg-black/60 text-emerald-400 hover:bg-[#222] border border-emerald-500/70 shadow-sm'
                       }`}
                       title={
                         camSpeakerMuted[camId]
-                          ? `Bocina local de CAM ${camId} SILENCIADA · Clic para escuchar`
+                          ? `Bocina local de CAM ${camId} SILENCIADA · Clic para escuchar en altavoces`
                           : `Bocina local de CAM ${camId} ACTIVA · Clic para silenciar en tus altavoces`
                       }
                     >
                       {camSpeakerMuted[camId] ? (
-                        <VolumeX size={10} className="text-red-400" />
+                        <VolumeX size={11} className="text-red-400 shrink-0" />
                       ) : (
-                        <Volume2 size={10} className="text-emerald-400" />
+                        <Volume2 size={11} className="text-emerald-400 shrink-0" />
                       )}
                     </button>
+                  </div>
 
+                  {/* HERRAMIENTAS Y ACCIONES DE CÁMARA */}
+                  <div className="flex items-center gap-0.5 shrink-0 drop-shadow">
                     {/* BOTÓN CONEXIONES (USB / WIFI / QR) */}
                     <button 
                       onClick={(e) => { e.stopPropagation(); setConnectModalSlot(camId - 1); setShowConnectModal(true); }} 
-                      className="text-gray-300 hover:text-orange-400 hover:bg-black/60 rounded p-0.5 transition-colors" 
+                      className="text-gray-300 hover:text-orange-400 hover:bg-black/60 rounded p-1 transition-colors" 
                       title="Configurar Entrada de Video (USB / WiFi IP / QR Celular)"
                     >
                       <Video size={11} />
@@ -4474,7 +4491,7 @@ function PodcastStudioApp() {
                     {/* BOTÓN ENGRANE DE CONFIGURACIÓN Y CALIBRACIÓN COMPLETA */}
                     <button 
                       onClick={(e) => { e.stopPropagation(); openCalibrator(camId); }} 
-                      className="text-gray-300 hover:text-white hover:bg-black/60 rounded p-0.5 transition-colors" 
+                      className="text-gray-300 hover:text-white hover:bg-black/60 rounded p-1 transition-colors" 
                       title="Configuración y Ajustes de Cámara (Zoom, Enfoque, LUTs, Color, Guías)"
                     >
                       <Settings size={11} />
@@ -4484,7 +4501,7 @@ function PodcastStudioApp() {
                     {camStream && (
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleFocusLock(camId); }}
-                        className={`p-0.5 rounded transition-colors ${
+                        className={`p-1 rounded transition-colors ${
                           camFocusLocked[camId]
                             ? 'text-amber-400 bg-amber-950/70 hover:bg-amber-900 border border-amber-500/50'
                             : 'text-gray-300 hover:text-amber-300 hover:bg-black/60'
@@ -4502,7 +4519,7 @@ function PodcastStudioApp() {
                         setBadgeModalSlot(camId); 
                         setShowBadgeModal(true); 
                       }} 
-                      className={`p-0.5 rounded transition-colors ${
+                      className={`p-1 rounded transition-colors ${
                         cameraBadges[camId]?.enabled && cameraBadges[camId]?.name
                           ? 'text-orange-400 bg-orange-950/60 hover:bg-orange-900/80 border border-orange-500/40' 
                           : 'text-gray-300 hover:text-orange-400 hover:bg-black/60'
@@ -4522,7 +4539,7 @@ function PodcastStudioApp() {
                         e.stopPropagation(); 
                         handleDeleteOrDisconnectCam(camId); 
                       }} 
-                      className="text-gray-300 hover:text-red-400 hover:bg-red-500/20 rounded p-0.5 transition-colors" 
+                      className="text-gray-300 hover:text-red-400 hover:bg-red-500/20 rounded p-1 transition-colors" 
                       title={camStream ? `Apagar y desconectar señal de CAM ${camId}` : (camId !== 1 ? `Eliminar ranura de CAM ${camId}` : `Restablecer señal de CAM ${camId}`)}
                     >
                       <Trash2 size={11} className={camStream ? "text-red-400 hover:text-red-300" : "text-gray-400 hover:text-red-400"} />
