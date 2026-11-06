@@ -2908,11 +2908,12 @@ function PodcastStudioApp() {
     }
 
     let stream = null;
+    let lastError = null;
     // Intentos de alta velocidad: negocia Full HD (1080p) o la máxima resolución nativa (720p/480p) sin trabar el driver de Windows UVC
     const attempts = [
-      // 1. Intento principal con ideal 1080p y 30fps: solicita 1080p si la cámara lo soporta, o su máxima resolución nativa instantáneamente
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-      // 2. Apertura directa nativa por deviceId exacto
+      // 1. Intento principal con ideal 1080p: solicita 1080p si la cámara lo soporta, o su máxima resolución nativa instantáneamente
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
+      // 2. Apertura directa nativa por deviceId exacto (formato nativo puro)
       { video: { deviceId: { exact: deviceId } }, audio: false },
       // 3. Fallback de coincidencia relajada
       { video: { deviceId: deviceId }, audio: false },
@@ -2920,9 +2921,11 @@ function PodcastStudioApp() {
 
     for (const constraints of attempts) {
       try {
-        stream = await getUserMediaWithTimeout(constraints, 1200);
+        stream = await getUserMediaWithTimeout(constraints, 3000);
         if (stream) break;
-      } catch (err) {}
+      } catch (err) {
+        lastError = err;
+      }
     }
 
     if (stream) {
@@ -2947,8 +2950,19 @@ function PodcastStudioApp() {
       }
       return stream;
     } else {
-      logger.error("Error: No se pudo abrir la cámara tras intentar todas las combinaciones");
-      return null;
+      const errName = lastError?.name || '';
+      const errMsg = lastError?.message || '';
+      logger.error("Error al abrir cámara USB:", errName, errMsg);
+      if (errName === 'NotReadableError' || errMsg.includes('Device in use') || errMsg.includes('could not start')) {
+        throw new Error(`La cámara "${label || 'USB'}" está bloqueada o en uso por otra ventana en tu PC (ej. Chrome con Facebook Live, Zoom o la app Cámara de Windows). Ciérrala en esa ventana para que PodcastStudio pueda tomarla.`);
+      }
+      if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        throw new Error(`Permiso denegado para la cámara "${label || 'USB'}". Revisa la privacidad de cámaras en Windows.`);
+      }
+      if (errName === 'OverconstrainedError') {
+        throw new Error(`La cámara "${label || 'USB'}" no soporta los formatos de video solicitados.`);
+      }
+      throw new Error(`No se pudo abrir la cámara "${label || 'USB'}". Verifica que no esté abierta en otra aplicación o vuelve a conectar el cable.`);
     }
   };
 
