@@ -2302,18 +2302,6 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
             }
           })
           .catch((e) => resolve({ success: false, path: outPath, error: `El archivo quedó en el proyecto, pero no se pudo copiar a Descargas: ${e.message}` }));
-            if (thumbFinished) return;
-            thumbFinished = true;
-            clearTimeout(thumbTimeout);
-            resolve({ success: false, path: outPath, downloadPath: dlPath, error: `Falló la miniatura: ${err.message}` });
-          });
-          return;
-        } catch (e) {
-          resolve({ success: false, path: outPath, downloadPath: dlPath, error: `El video se guardó, pero no se pudo iniciar la miniatura: ${e.message}` });
-          return;
-        }
-
-        resolve({ success: true, path: outPath, downloadPath: dlPath });
       } else {
         resolve({ success: false, error: 'Error en proceso de conversión FFmpeg' });
       }
