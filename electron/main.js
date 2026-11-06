@@ -276,7 +276,7 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
-    app.quit();
+    cleanupAndExit();
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -1406,6 +1406,14 @@ if (!gotTheLock) {
 
   const cleanupAndExit = () => {
     try {
+      if (typeof mobileClients !== 'undefined') {
+        mobileClients.forEach(c => { try { c.terminate(); } catch (e) {} });
+        mobileClients.clear();
+      }
+      if (typeof programFeedClients !== 'undefined') programFeedClients.clear();
+      if (typeof remoteControlClients !== 'undefined') remoteControlClients.clear();
+    } catch (e) {}
+    try {
       if (mediaServerHttps) mediaServerHttps.close();
       if (mediaServerHttp) mediaServerHttp.close();
       if (httpWsServer) httpWsServer.close();
@@ -1414,6 +1422,12 @@ if (!gotTheLock) {
     try {
       if (ffmpegRecordProcess) ffmpegRecordProcess.kill('SIGKILL');
       if (ffmpegStreamProcess) ffmpegStreamProcess.kill('SIGKILL');
+      if (typeof activeStreamWorkers !== 'undefined' && Array.isArray(activeStreamWorkers)) {
+        activeStreamWorkers.forEach(w => { try { w.process?.kill('SIGKILL'); } catch (e) {} });
+      }
+      if (typeof ffmpegIsoProcesses !== 'undefined' && ffmpegIsoProcesses.size > 0) {
+        ffmpegIsoProcesses.forEach(entry => { try { entry.proc?.kill('SIGKILL'); } catch (e) {} });
+      }
     } catch (e) {}
     try { app.exit(0); } catch (e) {}
     try { process.exit(0); } catch (e) {}
@@ -1424,16 +1438,7 @@ if (!gotTheLock) {
   });
 
   app.on('before-quit', () => {
-    try {
-      if (mediaServerHttps) mediaServerHttps.close();
-      if (mediaServerHttp) mediaServerHttp.close();
-      if (httpWsServer) httpWsServer.close();
-      if (wss) wss.close();
-    } catch (e) {}
-    try {
-      if (ffmpegRecordProcess) ffmpegRecordProcess.kill('SIGKILL');
-      if (ffmpegStreamProcess) ffmpegStreamProcess.kill('SIGKILL');
-    } catch (e) {}
+    cleanupAndExit();
   });
   app.whenReady().then(() => {
     try { powerSaveBlocker.start('prevent-app-suspension'); } catch (e) {}
