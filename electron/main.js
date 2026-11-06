@@ -55,6 +55,31 @@ function writeChunkWithBackpressure(writable, chunk) {
   });
 }
 
+function toSafeBuffer(input) {
+  if (!input) return null;
+  if (Buffer.isBuffer(input)) return input;
+  if (input instanceof Uint8Array || ArrayBuffer.isView(input)) {
+    return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  }
+  if (input instanceof ArrayBuffer) {
+    return Buffer.from(input);
+  }
+  if (typeof input === 'object') {
+    if (input.type === 'Buffer' && Array.isArray(input.data)) {
+      return Buffer.from(input.data);
+    }
+    const values = Object.values(input);
+    if (values.length > 0) {
+      return Buffer.from(values);
+    }
+  }
+  try {
+    return Buffer.from(input);
+  } catch (e) {
+    return null;
+  }
+}
+
 // Configurar App ID oficial para Windows para asociar el icono de PodcastStudio en la barra de tareas
 if (process.platform === 'win32') {
   app.setAppUserModelId("com.podcaststudio.app");
@@ -1890,30 +1915,7 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
         if (ffmpegRecordProcess === currentSpawnedProc) ffmpegRecordProcess = null;
       });
 
-function toSafeBuffer(input) {
-  if (!input) return null;
-  if (Buffer.isBuffer(input)) return input;
-  if (input instanceof Uint8Array || ArrayBuffer.isView(input)) {
-    return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
-  }
-  if (input instanceof ArrayBuffer) {
-    return Buffer.from(input);
-  }
-  if (typeof input === 'object') {
-    if (input.type === 'Buffer' && Array.isArray(input.data)) {
-      return Buffer.from(input.data);
-    }
-    const values = Object.values(input);
-    if (values.length > 0) {
-      return Buffer.from(values);
-    }
-  }
-  try {
-    return Buffer.from(input);
-  } catch (e) {
-    return null;
-  }
-}
+
 
       const initialHeader = options?.initialHeader;
       if (initialHeader && ffmpegRecordProcess.stdin && !ffmpegRecordProcess.stdin.destroyed) {
