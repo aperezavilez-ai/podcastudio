@@ -20,15 +20,15 @@ export default function SoundboardQuickPad({
   const [activeSfxId, setActiveSfxId] = useState(null)
 
   const sfxList = [
-    { id: 'applause', name: 'Aplausos', emoji: '👏', color: '#16a34a', hotkey: '1' },
-    { id: 'horn', name: 'Bocina / Claxon', emoji: '📣', color: '#eab308', hotkey: '2' },
-    { id: 'laugh', name: 'Carcajadas', emoji: '😂', color: '#ea580c', hotkey: '3' },
-    { id: 'cheering', name: 'Ovación', emoji: '🙌', color: '#06b6d4', hotkey: '4' },
-    { id: 'glass', name: 'Cristales', emoji: '🥂', color: '#38bdf8', hotkey: '5' },
-    { id: 'door', name: 'Puerta', emoji: '🚪', color: '#8b5cf6', hotkey: '6' },
-    { id: 'ringtone', name: 'Teléfono', emoji: '📞', color: '#ec4899', hotkey: '7' },
-    { id: 'crickets', name: 'Grillos / Silencio', emoji: '🦗', color: '#10b981', hotkey: '8' },
-    { id: 'palms', name: 'Palmas Rítmicas', emoji: '👏', color: '#f97316', hotkey: '9' }
+    { id: 'sfx-appl-01', name: 'Aplausos', emoji: '👏', color: '#16a34a', hotkey: '1' },
+    { id: 'sfx-com-01', name: 'Bocina / Claxon', emoji: '📣', color: '#eab308', hotkey: '2' },
+    { id: 'sfx-laugh-02', name: 'Carcajadas', emoji: '😂', color: '#ea580c', hotkey: '3' },
+    { id: 'sfx-ovat-01', name: 'Ovación', emoji: '🙌', color: '#06b6d4', hotkey: '4' },
+    { id: 'sfx-notif-01', name: 'Campana', emoji: '🔔', color: '#38bdf8', hotkey: '5' },
+    { id: 'sfx-trans-02', name: 'Puerta', emoji: '🚪', color: '#8b5cf6', hotkey: '6' },
+    { id: 'sfx-phone-01', name: 'Teléfono', emoji: '📞', color: '#ec4899', hotkey: '7' },
+    { id: 'sfx-com-02', name: 'Grillos / Silencio', emoji: '🦗', color: '#10b981', hotkey: '8' },
+    { id: 'sfx-appl-02', name: 'Palmas Rítmicas', emoji: '👏', color: '#f97316', hotkey: '9' }
   ]
 
   const handleTrigger = (id) => {

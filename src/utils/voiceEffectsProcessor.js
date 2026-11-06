@@ -254,6 +254,15 @@ export function applyVoiceEffectChain(ctx, sourceNode, destNode, effectId = 'nor
 
       try { osc.start(); } catch (e) {}
 
+      // Limpiar oscilador cuando el contexto se suspenda/cierre para evitar fugas
+      try {
+        ctx.addEventListener('statechange', () => {
+          if (ctx.state === 'closed' || ctx.state === 'suspended') {
+            try { osc.stop(); } catch (e) {}
+          }
+        }, { once: true });
+      } catch (e) {}
+
       activeNodes.push(hp, formant, treble, osc, modGain, mixGain);
     }
   } catch (err) {

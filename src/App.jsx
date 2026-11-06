@@ -271,6 +271,8 @@ const defaultCamSettings = { zoom: 1.0, panX: 50, panY: 50, brightness: 100, con
 
 function PodcastStudioApp() {
   const [isRecording, setIsRecording] = useState(false);
+  const [isStartingRecording, setIsStartingRecording] = useState(false);
+  const [isStoppingRecordingUI, setIsStoppingRecordingUI] = useState(false);
   const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [countdown, setCountdown] = useState(null);
@@ -1696,7 +1698,7 @@ function PodcastStudioApp() {
       ? { deviceId: { exact: pairedAudioDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
     try {
-      const audioStream = await getUserMediaWithTimeout({ audio, video: false }, 3000);
+      const audioStream = await getUserMediaWithTimeout({ audio, video: false }, 1200);
       const audioTrack = audioStream.getAudioTracks()[0];
       if (audioTrack) stream.addTrack(audioTrack);
       return audioTrack ? (pairedAudioDeviceId || audioTrack.getSettings?.()?.deviceId || null) : null;
@@ -1719,16 +1721,16 @@ function PodcastStudioApp() {
       if (!preferredDeviceId) return;
       try {
         const attempts = [
-          { video: { deviceId: { exact: preferredDeviceId }, width: { exact: 1920 }, height: { exact: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-          { video: { deviceId: { exact: preferredDeviceId }, width: { exact: 1920 }, height: { exact: 1080 } }, audio: false },
-          { video: { deviceId: { exact: preferredDeviceId }, width: { exact: 1280 }, height: { exact: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-          { video: { deviceId: { exact: preferredDeviceId } }, audio: false }
+          // 1. Intento ideal 1080p: negocia Full HD o la máxima resolución nativa sin fallar ni trabar el driver de Windows
+          { video: { deviceId: { exact: preferredDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
+          { video: { deviceId: { exact: preferredDeviceId } }, audio: false },
+          { video: { deviceId: preferredDeviceId }, audio: false }
         ];
 
         let stream = null;
         for (const c of attempts) {
           try {
-            stream = await getUserMediaWithTimeout(c, 2500);
+            stream = await getUserMediaWithTimeout(c, 1200);
             if (stream) break;
           } catch (e) {}
         }
@@ -2341,6 +2343,7 @@ function PodcastStudioApp() {
       }
       logger.warn('[handleRecord] Timeout de inicio previo detectado, desbloqueando botón...');
       recordingStartPendingRef.current = false;
+      setIsStartingRecording(false);
     }
     if (!isElectronMaster) {
       dispatchRemoteCommand('TOGGLE_RECORD');
@@ -2348,6 +2351,7 @@ function PodcastStudioApp() {
     }
     if (!isRecordingRef.current) {
       try {
+        setIsStartingRecording(true);
         recordingStartPendingRef.current = true;
         recordingStartPendingTimeRef.current = Date.now();
         recordingChunksRef.current = [];
@@ -2372,6 +2376,7 @@ function PodcastStudioApp() {
 
           if (!res?.success) {
             recordingStartPendingRef.current = false;
+            setIsStartingRecording(false);
             logger.error('[handleRecord] Falló el inicio de grabación:', res?.error);
             showToast('Error al iniciar grabación: ' + (res?.error || 'Desconocido'), 'error', 6000);
             return;
@@ -2381,6 +2386,7 @@ function PodcastStudioApp() {
         // 2. Activar timer y estado de grabación inmediatamente
         isRecordingRef.current = true;
         setIsRecording(true);
+        setIsStartingRecording(false);
         recordingStartTimeRef.current = Date.now();
         pausedDurationRef.current = 0;
         pauseStartRef.current = null;
@@ -2464,6 +2470,7 @@ function PodcastStudioApp() {
       } catch (err) {
         isRecordingRef.current = false;
         setIsRecording(false);
+        setIsStartingRecording(false);
         recordingStartTimeRef.current = null;
         if (!isStreamingRef.current) stopBroadcastEngine();
         try { await window.api?.cancelRecording?.(); } catch (cancelError) {}
@@ -2471,10 +2478,12 @@ function PodcastStudioApp() {
         showToast('Error al iniciar grabación: ' + (err?.message || 'Desconocido'), 'error', 6000);
       } finally {
         recordingStartPendingRef.current = false;
+        setIsStartingRecording(false);
       }
     } else {
       if (recordingStopPendingRef.current) return;
       recordingStopPendingRef.current = true;
+      setIsStoppingRecordingUI(true);
       try {
         // Capturar miniatura en alta resolución directamente del canvas maestro en vivo
         const snapshotCanvas = captureMasterCanvasSnapshot();
@@ -2580,6 +2589,8 @@ function PodcastStudioApp() {
       } finally {
         recordingStopPendingRef.current = false;
         recordingStartPendingRef.current = false;
+        setIsStoppingRecordingUI(false);
+        setIsStartingRecording(false);
       }
     }
   };
@@ -2594,9 +2605,11 @@ function PodcastStudioApp() {
     if (!isRecordingRef.current || isCancelingRecordingRef.current || recordingStopPendingRef.current) return;
     isCancelingRecordingRef.current = true;
     recordingStopPendingRef.current = true;
+    setIsStoppingRecordingUI(true);
     isRecordingRef.current = false;
     isRecordingPausedRef.current = false;
     setIsRecording(false);
+    setIsStartingRecording(false);
     setIsRecordingPaused(false);
     recordingChunksRef.current = [];
     try {
@@ -2619,6 +2632,8 @@ function PodcastStudioApp() {
     } finally {
       isCancelingRecordingRef.current = false;
       recordingStopPendingRef.current = false;
+      setIsStoppingRecordingUI(false);
+      setIsStartingRecording(false);
     }
   };
 
@@ -2893,23 +2908,19 @@ function PodcastStudioApp() {
     }
 
     let stream = null;
-    // Intentos optimizados para hasta 12 cámaras USB y cables de extensión > 10m
+    // Intentos de alta velocidad: negocia Full HD (1080p) o la máxima resolución nativa (720p/480p) sin trabar el driver de Windows UVC
     const attempts = [
-      // Open the actual Full-HD mode first. `ideal` can silently accept the
-      // driver's low-bandwidth 640p profile; exact makes the fallback explicit.
-      { video: { deviceId: { exact: deviceId }, width: { exact: 1920 }, height: { exact: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-      { video: { deviceId: { exact: deviceId }, width: { exact: 1920 }, height: { exact: 1080 } }, audio: false },
-      // HD fallback only when the device does not expose Full HD.
-      { video: { deviceId: { exact: deviceId }, width: { exact: 1280 }, height: { exact: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-      // 3. Apertura directa nativa por deviceId exacto
+      // 1. Intento principal con ideal 1080p y 30fps: solicita 1080p si la cámara lo soporta, o su máxima resolución nativa instantáneamente
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
+      // 2. Apertura directa nativa por deviceId exacto
       { video: { deviceId: { exact: deviceId } }, audio: false },
-      // 4. Fallback de coincidencia relajada
+      // 3. Fallback de coincidencia relajada
       { video: { deviceId: deviceId }, audio: false },
     ];
 
     for (const constraints of attempts) {
       try {
-        stream = await getUserMediaWithTimeout(constraints, 2200);
+        stream = await getUserMediaWithTimeout(constraints, 1200);
         if (stream) break;
       } catch (err) {}
     }
@@ -5768,32 +5779,52 @@ function PodcastStudioApp() {
               </div>
 
               <button 
-                onClick={handleRecord} 
-                className={`w-full py-3 rounded-lg font-bold flex items-center justify-center gap-2 text-xs transition-all cursor-pointer ${
-                  isRecording 
-                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-900/50 animate-pulse' 
-                    : countdown !== null 
-                      ? 'bg-orange-600 text-white animate-pulse' 
-                      : 'bg-red-700 hover:bg-red-600 text-white shadow-md'
+                onClick={handleRecord}
+                disabled={isStartingRecording || isStoppingRecordingUI}
+                className={`w-full py-3.5 px-4 rounded-xl font-black flex items-center justify-center gap-2.5 text-xs tracking-wide uppercase transition-all duration-150 transform select-none cursor-pointer active:scale-95 active:brightness-90 ${
+                  isStoppingRecordingUI
+                    ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/50 cursor-wait'
+                    : isStartingRecording
+                      ? 'bg-amber-600 text-white shadow-lg shadow-amber-900/50 cursor-wait animate-pulse'
+                      : isRecording 
+                        ? 'bg-red-600 hover:bg-red-500 text-white shadow-xl shadow-red-900/60 ring-2 ring-red-400/50' 
+                        : countdown !== null 
+                          ? 'bg-orange-600 hover:bg-orange-500 text-white animate-pulse shadow-lg' 
+                          : 'bg-gradient-to-r from-red-600 via-red-700 to-red-600 hover:from-red-500 hover:to-red-600 text-white shadow-lg shadow-red-950/60 hover:shadow-red-900/50 border border-red-500/30'
                 }`}
+                title={isRecording ? 'Finalizar grabación y abrir selector de formatos' : 'Iniciar grabación broadcast master'}
               >
-                {isRecording ? (
+                {isStoppingRecordingUI ? (
                   <>
+                    <Loader2 size={15} className="animate-spin text-white" />
+                    <span>FINALIZANDO Y PROCESANDO FORMATOS...</span>
+                  </>
+                ) : isStartingRecording ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin text-white" />
+                    <span>INICIANDO GRABACIÓN MASTER...</span>
+                  </>
+                ) : isRecording ? (
+                  <>
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+                    </span>
                     <Square size={14} className="fill-white" />
                     <span>FINALIZAR Y ELEGIR FORMATOS</span>
-                    <span className="font-mono bg-black/40 px-2 py-0.5 rounded text-[11px] ml-1">
+                    <span className="font-mono bg-black/60 px-2 py-0.5 rounded text-[11px] font-black border border-white/20 tracking-wider ml-1">
                       {formatTime(recordingTime)}
                     </span>
                   </>
                 ) : countdown !== null ? (
                   <>
-                    <Loader2 size={14} className="animate-spin" />
+                    <Loader2 size={15} className="animate-spin text-white" />
                     <span>INICIANDO EN {countdown} · CLIC PARA CANCELAR</span>
                   </>
                 ) : (
                   <>
-                    <Play size={14} className="fill-white" />
-                    <span>INICIAR GRABACIÓN</span>
+                    <Play size={15} className="fill-white translate-x-0.5" />
+                    <span>INICIAR GRABACIÓN MASTER</span>
                   </>
                 )}
               </button>

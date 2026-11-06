@@ -495,19 +495,19 @@ export default function CameraConnectModal({
     if (effSlot >= slotsCount && onAddSlot) {
       onAddSlot();
     }
+    setTargetSlot(effSlot);
     setConnectingUsbId(deviceId);
     setUsbConnectError(null);
     setUsbConnectSuccess(null);
     try {
       const connectPromise = onUsbConnect(deviceId, effSlot, customLabel.trim() || label);
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar la cámara USB. Si usas cable o extensión >10m, asegúrate de conectarla a un puerto USB 3.0 / USB-C con buena alimentación.')), 12000)
+        setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar la cámara USB. Si usas cable o extensión >10m, asegúrate de conectarla a un puerto USB 3.0 / USB-C con buena alimentación.')), 6000)
       );
       const res = await Promise.race([connectPromise, timeoutPromise]);
       if (!res) {
         setUsbConnectError('No se pudo abrir la cámara. Si usas cables o extensiones de más de 10 metros, asegúrate de conectarla a un puerto USB 3.0 / USB-C o hub con alimentación, y que no esté en uso por otra app.');
       } else {
-        setTargetSlot(effSlot);
         setUsbConnectSuccess(`¡Cámara "${label || 'USB'}" asignada y conectada exitosamente a CAM ${effSlot + 1}!`);
       }
     } catch (err) {
