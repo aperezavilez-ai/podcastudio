@@ -181,7 +181,7 @@ export default function MultiFormatExportModal({
         if (res.success) {
           setClipNotice({ 
             type: 'success', 
-            text: `¡Formato ${preset.label} guardado en tu proyecto${res.downloadPath ? ' y en Descargas' : ''} con éxito!` 
+            text: `¡Formato ${preset.label} guardado en tu carpeta de proyecto con éxito!` 
           })
           setConvertingKey(null)
           return
@@ -322,7 +322,7 @@ export default function MultiFormatExportModal({
           projectName: recording.projectName || 'Proyecto_General'
         })
         if (res.success) {
-          setClipNotice({ type: 'success', text: `¡Clip guardado en disco y en tu carpeta Descargas!` })
+          setClipNotice({ type: 'success', text: `¡Clip guardado en tu carpeta de proyecto!` })
         } else {
           setClipNotice({ type: 'error', text: `Error exportando clip: ${res.error}` })
         }

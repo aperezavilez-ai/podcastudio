@@ -1809,10 +1809,14 @@ ipcMain.on('open-external', (event, url) => shell.openExternal(url));
 
 ipcMain.on('open-recordings-folder', (event, projectName) => {
   const cleanProjectName = projectName ? String(projectName).replace(/[/\\?%*:|"<>]/g, '_').trim() : '';
-  let recDir = getProjectsRootDir();
+  const projectsRoot = getProjectsRootDir();
+  let recDir = projectsRoot;
   if (cleanProjectName) {
-    const subDir = path.join(recDir, cleanProjectName);
-    if (fs.existsSync(subDir)) recDir = subDir;
+    const subDir = path.join(projectsRoot, cleanProjectName);
+    if (!fs.existsSync(subDir)) {
+      try { fs.mkdirSync(subDir, { recursive: true }); } catch (e) {}
+    }
+    recDir = subDir;
   }
   if (!fs.existsSync(recDir)) {
     try { fs.mkdirSync(recDir, { recursive: true }); } catch (e) {}
@@ -1844,17 +1848,15 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
     recordChunkError = null;
     isStoppingRecording = false;
 
-    // El usuario encuentra todos los Master directamente en la carpeta raíz
-    // proyectos. El nombre saneado del proyecto permanece en el archivo, sin
-    // ocultar el resultado dentro de una subcarpeta.
     const projectsRoot = getProjectsRootDir();
+    const projectDir = path.join(projectsRoot, cleanProjectName);
     try {
-      if (!fs.existsSync(projectsRoot)) fs.mkdirSync(projectsRoot, { recursive: true });
+      if (!fs.existsSync(projectDir)) fs.mkdirSync(projectDir, { recursive: true });
     } catch (e) {}
 
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-    currentRecordingPath = path.join(projectsRoot, `${cleanProjectName}_${timestamp}_Master_1080p.mp4`);
+    currentRecordingPath = path.join(projectDir, `${cleanProjectName}_${timestamp}_Master_1080p.mp4`);
 
     if (ffmpegRecordProcess) {
       try {
@@ -2294,44 +2296,32 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('export-progress', { formatKey, percent: 100 });
         }
-        // Copiar a la carpeta Downloads del usuario automáticamente de forma asíncrona
-        const downloadsFolder = app.getPath('downloads');
-        const dlPath = path.join(downloadsFolder, outFilename);
-        fs.promises.copyFile(outPath, dlPath)
-          .then(async () => {
-            // Generar miniatura JPG para el formato exportado
-            const thumbPath = outPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
-            try {
-              const tProc = spawn(ffmpegPath, ['-y', '-ss', '00:00:00.800', '-i', outPath, '-vframes', '1', '-q:v', '2', thumbPath]);
-              let thumbFinished = false;
-              const thumbTimeout = setTimeout(() => {
-                if (thumbFinished) return;
-                thumbFinished = true;
-                try { tProc.kill(); } catch (e) {}
-                resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailError: 'La miniatura tardó en generarse.' });
-              }, 15000);
-              tProc.on('close', async (thumbCode) => {
-                if (thumbFinished) return;
-                thumbFinished = true;
-                clearTimeout(thumbTimeout);
-                if (thumbCode !== 0 || !fs.existsSync(thumbPath) || fs.statSync(thumbPath).size === 0) {
-                  return resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailError: 'No se pudo crear la miniatura JPG.' });
-                }
-                const dlThumb = dlPath.replace(/\.mp4$/i, '_Miniatura.jpg');
-                try { await fs.promises.copyFile(thumbPath, dlThumb); } catch (e) {}
-                resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailPath: thumbPath });
-              });
-              tProc.on('error', (err) => {
-                if (thumbFinished) return;
-                thumbFinished = true;
-                clearTimeout(thumbTimeout);
-                resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailError: err.message });
-              });
-            } catch (err) {
-              resolve({ success: true, path: outPath, downloadPath: dlPath });
-            }
-          })
-          .catch((e) => resolve({ success: true, path: outPath, warning: `El video se guardó en tu proyecto, pero no se pudo copiar a Descargas: ${e.message}` }));
+        // Generar miniatura JPG para el formato exportado directamente en la carpeta del proyecto
+        const thumbPath = outPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
+        try {
+          const tProc = spawn(ffmpegPath, ['-y', '-ss', '00:00:00.800', '-i', outPath, '-vframes', '1', '-q:v', '2', thumbPath]);
+          let thumbFinished = false;
+          const thumbTimeout = setTimeout(() => {
+            if (thumbFinished) return;
+            thumbFinished = true;
+            try { tProc.kill(); } catch (e) {}
+            resolve({ success: true, path: outPath, thumbnailError: 'La miniatura tardó en generarse.' });
+          }, 15000);
+          tProc.on('close', (thumbCode) => {
+            if (thumbFinished) return;
+            thumbFinished = true;
+            clearTimeout(thumbTimeout);
+            resolve({ success: true, path: outPath, thumbnailPath: fs.existsSync(thumbPath) ? thumbPath : null });
+          });
+          tProc.on('error', (err) => {
+            if (thumbFinished) return;
+            thumbFinished = true;
+            clearTimeout(thumbTimeout);
+            resolve({ success: true, path: outPath, thumbnailError: err.message });
+          });
+        } catch (err) {
+          resolve({ success: true, path: outPath });
+        }
       } else {
         resolve({ success: false, error: 'Error en proceso de conversión FFmpeg' });
       }
@@ -2396,23 +2386,17 @@ ipcMain.handle('export-highlight-clip', async (event, { sourcePath, startTime, d
     const convertProc = spawn(ffmpegPath, args);
     convertProc.on('close', (code) => {
       if (code === 0 && fs.existsSync(outPath)) {
-        const downloadsFolder = app.getPath('downloads');
-        const dlPath = path.join(downloadsFolder, outFilename);
-        fs.promises.copyFile(outPath, dlPath).catch(() => {});
-
         const thumbPath = outPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
         try {
           const tProc = spawn(ffmpegPath, ['-y', '-ss', '00:00:00.800', '-i', outPath, '-vframes', '1', '-q:v', '2', thumbPath]);
           tProc.on('close', () => {
-            const dlThumb = dlPath.replace(/\.mp4$/i, '_Miniatura.jpg');
-            fs.promises.copyFile(thumbPath, dlThumb).catch(() => {});
-            resolve({ success: true, path: outPath, downloadPath: dlPath });
+            resolve({ success: true, path: outPath, thumbnailPath: thumbPath });
           });
-          setTimeout(() => resolve({ success: true, path: outPath, downloadPath: dlPath }), 1200);
+          setTimeout(() => resolve({ success: true, path: outPath }), 1200);
           return;
         } catch (e) {}
 
-        resolve({ success: true, path: outPath, downloadPath: dlPath });
+        resolve({ success: true, path: outPath });
       } else {
         resolve({ success: false, error: 'Error procesando clip con FFmpeg' });
       }

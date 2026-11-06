@@ -6490,21 +6490,9 @@ function PodcastStudioApp() {
         recording={recordedVideoData}
         highlights={highlights}
         onDownloadMp4={async (rec) => {
-          if (window.api?.saveToDownloads && rec?.filePath) {
-            const dlRes = await window.api.saveToDownloads({
-              sourcePath: rec.filePath,
-              filename: `${rec.name || 'PodcaStudio_Master'}.mp4`,
-            });
-            if (dlRes?.success) {
-              if (window.api.openRecordingsFolder) {
-                window.api.openRecordingsFolder(rec.projectName || topic || 'Proyecto_General');
-              }
-              showToast(`¡Video Master MP4 guardado en tu carpeta de Descargas! (${dlRes.path})`, 'success');
-              return;
-            }
-          }
           if (window.api?.openRecordingsFolder) {
             window.api.openRecordingsFolder(rec?.projectName || topic || 'Proyecto_General');
+            showToast(`El video Master MP4 está guardado en tu carpeta de proyecto (${rec?.projectName || 'proyectos'})`, 'success');
             return;
           }
 
