@@ -2005,6 +2005,7 @@ ipcMain.handle('stop-recording', async () => {
               if (thumbResolved) return;
               thumbResolved = true;
               clearTimeout(thumbTimeout);
+              currentRecordingPath = null;
               if (code === 0 && fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 0) {
                 resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailPath: thumbPath });
               } else {
@@ -2015,14 +2016,17 @@ ipcMain.handle('stop-recording', async () => {
               if (thumbResolved) return;
               thumbResolved = true;
               clearTimeout(thumbTimeout);
+              currentRecordingPath = null;
               resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: `No se pudo generar la miniatura: ${err.message}` });
             });
             return;
           } catch (e) {
+            currentRecordingPath = null;
             resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: `No se pudo iniciar la miniatura: ${e.message}` });
             return;
           }
         }
+        currentRecordingPath = null;
         resolve({ success: false, path: recPath, error: 'FFmpeg no creó un archivo MP4 válido.' });
       };
 
@@ -2268,8 +2272,28 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
     ];
 
     const convertProc = spawn(ffmpegPath, args);
+
+    convertProc.stderr.on('data', (data) => {
+      const msg = data.toString();
+      const timeMatch = msg.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+      if (timeMatch && mainWindow && !mainWindow.isDestroyed()) {
+        const hours = parseInt(timeMatch[1], 10);
+        const mins = parseInt(timeMatch[2], 10);
+        const secs = parseFloat(timeMatch[3]);
+        const currentSecs = hours * 3600 + mins * 60 + secs;
+        mainWindow.webContents.send('export-progress', {
+          formatKey,
+          currentSecs,
+          percent: Math.min(95, Math.max(20, Math.round(currentSecs * 15))),
+        });
+      }
+    });
+
     convertProc.on('close', (code) => {
-      if (code === 0 && fs.existsSync(outPath)) {
+      if (code === 0 && fs.existsSync(outPath) && fs.statSync(outPath).size > 0) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('export-progress', { formatKey, percent: 100 });
+        }
         // Copiar a la carpeta Downloads del usuario automáticamente de forma asíncrona
         const downloadsFolder = app.getPath('downloads');
         const dlPath = path.join(downloadsFolder, outFilename);
@@ -2284,31 +2308,30 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
                 if (thumbFinished) return;
                 thumbFinished = true;
                 try { tProc.kill(); } catch (e) {}
-                resolve({ success: false, path: outPath, downloadPath: dlPath, error: 'El video se guardó, pero la miniatura tardó demasiado en generarse.' });
+                resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailError: 'La miniatura tardó en generarse.' });
               }, 15000);
               tProc.on('close', async (thumbCode) => {
                 if (thumbFinished) return;
                 thumbFinished = true;
                 clearTimeout(thumbTimeout);
                 if (thumbCode !== 0 || !fs.existsSync(thumbPath) || fs.statSync(thumbPath).size === 0) {
-                  return resolve({ success: false, path: outPath, downloadPath: dlPath, error: 'El video se guardó, pero no se pudo crear la miniatura.' });
+                  return resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailError: 'No se pudo crear la miniatura JPG.' });
                 }
                 const dlThumb = dlPath.replace(/\.mp4$/i, '_Miniatura.jpg');
-                try { await fs.promises.copyFile(thumbPath, dlThumb); }
-                catch (e) { return resolve({ success: false, path: outPath, downloadPath: dlPath, thumbnailPath: thumbPath, error: `No se pudo copiar la miniatura a Descargas: ${e.message}` }); }
-                resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailPath: thumbPath, thumbnailDownloadPath: dlThumb });
+                try { await fs.promises.copyFile(thumbPath, dlThumb); } catch (e) {}
+                resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailPath: thumbPath });
               });
               tProc.on('error', (err) => {
                 if (thumbFinished) return;
                 thumbFinished = true;
                 clearTimeout(thumbTimeout);
-                resolve({ success: false, path: outPath, downloadPath: dlPath, error: `Error generando miniatura: ${err.message}` });
+                resolve({ success: true, path: outPath, downloadPath: dlPath, thumbnailError: err.message });
               });
             } catch (err) {
               resolve({ success: true, path: outPath, downloadPath: dlPath });
             }
           })
-          .catch((e) => resolve({ success: false, path: outPath, error: `El archivo quedó en el proyecto, pero no se pudo copiar a Descargas: ${e.message}` }));
+          .catch((e) => resolve({ success: true, path: outPath, warning: `El video se guardó en tu proyecto, pero no se pudo copiar a Descargas: ${e.message}` }));
       } else {
         resolve({ success: false, error: 'Error en proceso de conversión FFmpeg' });
       }
@@ -2405,6 +2428,10 @@ ipcMain.handle('cancel-recording', async () => {
   const proc = ffmpegRecordProcess;
   const recPath = currentRecordingPath;
   ffmpegRecordProcess = null;
+  currentRecordingPath = null;
+  if (!proc && !isStoppingRecording) {
+    return { success: true };
+  }
   if (proc && proc.exitCode == null && !proc.killed) {
     await new Promise((resolve) => {
       const timeout = setTimeout(resolve, 2500);
@@ -2415,12 +2442,11 @@ ipcMain.handle('cancel-recording', async () => {
   try { await recordChunkQueue; } catch {}
   recordChunkQueue = Promise.resolve();
   recordChunkError = null;
-  if (recPath) {
+  if (proc && recPath) {
     try { await fs.promises.unlink(recPath); } catch (error) {
       if (error.code !== 'ENOENT') return { success: false, error: error.message };
     }
   }
-  currentRecordingPath = null;
   return { success: true };
 });
 
@@ -2714,8 +2740,13 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
   activeStreamWorkers = [];
   streamDestinations = targets;
   streamStartupInProgress = true;
-  // La cabecera WebM llegará junto con el primer segmento del MediaRecorder.
-  streamInitHeader = null;
+
+  if (payload.initialHeader) {
+    const passedHeader = toSafeBuffer(payload.initialHeader);
+    if (passedHeader && passedHeader.length > 0) {
+      streamInitHeader = passedHeader;
+    }
+  }
 
   const availableCores = Math.max(1, os.cpus().length - 1);
   const threadsPerDestination = Math.max(1, Math.min(4, Math.floor(availableCores / targets.length)));
@@ -2763,9 +2794,10 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
         ];
 
     const workerArgs = [
-      '-probesize', '32M',
-      '-analyzeduration', '3000000',
-      '-fflags', '+discardcorrupt',
+      '-probesize', '2M',
+      '-analyzeduration', '1000000',
+      '-fpsprobesize', '0',
+      '-fflags', '+discardcorrupt+nobuffer',
       '-f', 'webm',
       '-i', 'pipe:0',
       ...videoEncoderArgs,
@@ -2806,6 +2838,15 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
       writeError: null,
     };
     activeStreamWorkers.push(workerEntry);
+
+    // Escribir cabecera EBML de inmediato para iniciar la decodificación en byte 0
+    if (streamInitHeader && proc.stdin && !proc.stdin.destroyed) {
+      workerEntry.writeQueue = workerEntry.writeQueue
+        .then(() => writeChunkWithBackpressure(proc.stdin, streamInitHeader))
+        .catch((err) => {
+          console.warn(`[start-streaming] Error escribiendo cabecera inicial a ${target.name}:`, err.message);
+        });
+    }
 
     proc.stderr.on('data', (data) => {
       const message = data.toString();
@@ -2888,6 +2929,8 @@ ipcMain.on('stream-chunk', (event, chunkBuffer) => {
   try {
     const buf = Buffer.isBuffer(chunkBuffer) ? chunkBuffer : Buffer.from(chunkBuffer);
     if (!streamInitHeader) {
+      streamInitHeader = buf;
+    } else if (buf.length >= 4 && buf[0] === 0x1A && buf[1] === 0x45 && buf[2] === 0xDF && buf[3] === 0xA3) {
       streamInitHeader = buf;
     }
     if (activeStreamWorkers.length === 0) return;

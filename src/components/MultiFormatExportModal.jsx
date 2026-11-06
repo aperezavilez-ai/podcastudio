@@ -111,6 +111,14 @@ export default function MultiFormatExportModal({
     }
   }, [open, recording])
 
+  useEffect(() => {
+    if (!window.api?.onExportProgress) return;
+    const unsub = window.api.onExportProgress(({ formatKey, percent }) => {
+      setProgress(percent);
+    });
+    return unsub;
+  }, []);
+
   const handleDownloadAllThumbnails = () => {
     if (!thumbnails || thumbnails.length === 0) return
     thumbnails.forEach((thumb, idx) => {
@@ -161,20 +169,24 @@ export default function MultiFormatExportModal({
     setProgress(0)
     try {
       // 1. SI ESTAMOS EN LA APP DE ESCRITORIO (ELECTRON) Y EXISTE EL MASTER ORIGINAL
-      if (window.api?.exportSocialFormat && recording?.filePath) {
-        setProgress(40)
+      const masterPath = recording?.filePath || recording?.diskPath || recording?.masterPath || (recording?.path && !recording.path.startsWith('blob:') ? recording.path : null);
+      if (window.api?.exportSocialFormat && masterPath) {
+        setProgress(15)
         const res = await window.api.exportSocialFormat({
-          sourcePath: recording.filePath,
+          sourcePath: masterPath,
           formatKey: preset.key,
           projectName: recording.projectName || 'Proyecto_General',
         })
         setProgress(100)
         if (res.success) {
-          setClipNotice({ type: 'success', text: `¡Formato ${preset.label} guardado en tu proyecto con éxito!` })
+          setClipNotice({ 
+            type: 'success', 
+            text: `¡Formato ${preset.label} guardado en tu proyecto${res.downloadPath ? ' y en Descargas' : ''} con éxito!` 
+          })
           setConvertingKey(null)
           return
         }
-        throw new Error(res?.error || 'No se pudo guardar el formato o su miniatura.');
+        throw new Error(res?.error || 'No se pudo guardar el formato.');
       }
 
       // 2. EN NAVEGADOR WEB O FALLBACK
@@ -235,10 +247,11 @@ export default function MultiFormatExportModal({
       setProgress(0)
 
       try {
-        if (window.api?.exportSocialFormat && recording?.filePath) {
-          setProgress(50)
+        const masterPath = recording?.filePath || recording?.diskPath || recording?.masterPath || (recording?.path && !recording.path.startsWith('blob:') ? recording.path : null);
+        if (window.api?.exportSocialFormat && masterPath) {
+          setProgress(15)
           const exportResult = await window.api.exportSocialFormat({
-            sourcePath: recording.filePath,
+            sourcePath: masterPath,
             formatKey: preset.key,
             projectName: recording.projectName || 'Proyecto_General',
           })

@@ -42,6 +42,7 @@ import {
   captureMasterCanvasSnapshot, getMasterCanvas,
   setVoiceMonitor, syncStudioAudio, getCameraSnapshots,
   startNativeEngineBroadcast, stopNativeEngineBroadcast,
+  getOrWaitForInitHeader, getInitHeader,
 } from './utils/masterBroadcastEngine.js';
 import { logger } from './utils/logger.js';
 import { isNativeEngineEnabled, getNativeEngineConfig, FEATURE_FLAGS } from './config/featureFlags.js';
@@ -2584,7 +2585,9 @@ function PodcastStudioApp() {
         setIsRecordingPaused(false);
         isRecordingPausedRef.current = false;
         recordingChunksRef.current = [];
-        try { await window.api?.cancelRecording?.(); } catch (cancelError) {}
+        if (!stopRes?.success) {
+          try { await window.api?.cancelRecording?.(); } catch (cancelError) {}
+        }
         showToast('No se pudo finalizar la grabación: ' + (error?.message || 'Error desconocido'), 'error', 6000);
       } finally {
         recordingStopPendingRef.current = false;
@@ -2707,7 +2710,15 @@ function PodcastStudioApp() {
         try {
           let res = { success: true };
           if (!nativeStarted) {
-            res = await window.api.startStreaming({ destinations: activeTargets });
+            let initHeader = null;
+            try {
+              initHeader = await getOrWaitForInitHeader(1500);
+            } catch (e) {}
+
+            res = await window.api.startStreaming({
+              destinations: activeTargets,
+              initialHeader: initHeader ? Array.from(new Uint8Array(initHeader)) : null,
+            });
           }
           if (res.success || nativeStarted) {
             isStreamStartingRef.current = false;

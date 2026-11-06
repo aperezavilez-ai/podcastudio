@@ -16,6 +16,11 @@ contextBridge.exposeInMainWorld('api', {
   saveRecordingThumbnail: (payload) => ipcRenderer.invoke('save-recording-thumbnail', payload),
   saveToDownloads: (payload) => ipcRenderer.invoke('save-to-downloads', payload),
   exportSocialFormat: (payload) => ipcRenderer.invoke('export-social-format', payload),
+  onExportProgress: (cb) => {
+    const handler = (e, data) => cb(data);
+    ipcRenderer.on('export-progress', handler);
+    return () => ipcRenderer.removeListener('export-progress', handler);
+  },
 
   startStreaming: (payload) => ipcRenderer.invoke('start-streaming', payload),
   sendStreamChunk: (chunk) => ipcRenderer.send('stream-chunk', chunk),
