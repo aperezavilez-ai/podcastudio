@@ -68,7 +68,7 @@
   },
   "autoTest": {
     "mp4File": "D:\\PROGRAMAS IA\\PODCASTUDIO\\test_output\\auto_transition_verified.mp4",
-    "mp4Size": 347771,
+    "mp4Size": 328588,
     "hasAlphaBlendedFrames": true,
     "samples": [
       {
@@ -79,15 +79,15 @@
       },
       {
         "frame": 4,
-        "progress": 0.25,
-        "r": 191,
-        "b": 64
+        "progress": 0.32,
+        "r": 174,
+        "b": 81
       },
       {
         "frame": 8,
-        "progress": 0.82,
-        "r": 47,
-        "b": 208
+        "progress": 0.89,
+        "r": 29,
+        "b": 226
       },
       {
         "frame": 12,
@@ -131,7 +131,7 @@
     "httpTest": {
       "statusCode": 200,
       "hasHtml": true,
-      "contentLength": 2642
+      "contentLength": 3058
     },
     "wsTest": {
       "statesReceivedCount": 3,
@@ -155,7 +155,7 @@
   },
   "rtmpTest": {
     "success": true,
-    "sizeBytes": 4591,
+    "sizeBytes": 7712,
     "filePath": "D:\\PROGRAMAS IA\\PODCASTUDIO\\test_output\\rtmp_validated.flv",
     "hasAudioStream": true,
     "audioDetails": "aac (LC), 44100 Hz, stereo, fltp, 128 kb/s",

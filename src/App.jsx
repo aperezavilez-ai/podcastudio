@@ -42,7 +42,7 @@ import {
   captureMasterCanvasSnapshot, getMasterCanvas,
   setVoiceMonitor, syncStudioAudio, getCameraSnapshots,
   startNativeEngineBroadcast, stopNativeEngineBroadcast,
-  getOrWaitForInitHeader, getInitHeader,
+  getOrWaitForInitHeader, getInitHeader, getActiveInitHeader,
 } from './utils/masterBroadcastEngine.js';
 import { logger } from './utils/logger.js';
 import { isNativeEngineEnabled, getNativeEngineConfig, FEATURE_FLAGS } from './config/featureFlags.js';
@@ -2309,6 +2309,7 @@ function PodcastStudioApp() {
   }, []);
 
   const hasSentHeaderRef = useRef(false);
+  const usbConnectInFlightRef = useRef(new Set());
 
   const handleMasterChunk = (buffer) => {
     if ((isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk) {
@@ -2359,6 +2360,9 @@ function PodcastStudioApp() {
         recordingChunkDeliveryRef.current = Promise.resolve();
         recordingChunkCountRef.current = 0;
         recordingChunkErrorRef.current = null;
+        // Mismo caso sin Electron: si el motor ya estaba activo, la cabecera
+        // ya pasó y debe ser el primer fragmento del arreglo de grabación.
+        try { const activeHeader = getActiveInitHeader(); if (activeHeader && !window.api) recordingChunksRef.current.push(activeHeader); } catch {}
         setRecordingTime(0);
         setIsRecordingPaused(false);
         isRecordingPausedRef.current = false;
@@ -2370,6 +2374,12 @@ function PodcastStudioApp() {
           try {
             res = await window.api.startRecording({
               projectName: topic || 'Proyecto_General',
+              // Si el motor ya estaba activo (p. ej. transmitiendo), la cabecera
+              // WebM ya pasó por el listener y el FFmpeg de grabación nunca la
+              // recibiría: sin ella el MP4 sale vacío o con error. El handler
+              // de Electron ya sabía escribirla (options.initialHeader), pero
+              // nadie se la pasaba.
+              initialHeader: getActiveInitHeader(),
             });
           } catch (error) {
             res = { success: false, error: error.message };
@@ -2918,14 +2928,27 @@ function PodcastStudioApp() {
       }
     }
 
+    // Guardia anti-encolamiento: un getUserMedia NO se puede cancelar, y un
+    // timeout solo abandona la promesa mientras la petición sigue viva sobre
+    // el driver. Si ya hay un intento en curso para esta cámara, otro clic no
+    // debe encolar una segunda apertura: es la cadena que congelaba la app
+    // por minutos al conectar la segunda cámara.
+    const flightKey = deviceId || `slot-${slot}`;
+    if (usbConnectInFlightRef.current.has(flightKey)) {
+      throw new Error('Esa cámara ya se está conectando. Espera a que termine el intento anterior antes de volver a hacer clic.');
+    }
+    usbConnectInFlightRef.current.add(flightKey);
+
     let stream = null;
     let lastError = null;
     // Intentos de alta velocidad: negocia Full HD (1080p) o la máxima resolución nativa (720p/480p) sin trabar el driver de Windows UVC
     const attempts = [
-      // 1. Intento principal con ideal 1080p: solicita 1080p si la cámara lo soporta, o su máxima resolución nativa instantáneamente
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
-      // 2. Apertura directa nativa por deviceId exacto (formato nativo puro)
-      { video: { deviceId: { exact: deviceId } }, audio: false },
+      // 1. Intento principal: 1080p a 30 fps (antes no se pedían fps y el
+      // driver podía entregar 15 fps sin que nadie lo notara)
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
+      // 2. Escalón real de bajada: 720p a 30 fps (antes este intento no pedía
+      // nada y el driver elegía lo que fuera, incluso 480p)
+      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
       // 3. Fallback de coincidencia relajada
       { video: { deviceId: deviceId }, audio: false },
     ];
@@ -2949,18 +2972,26 @@ function PodcastStudioApp() {
       // studio mic on every screen/camera and made AFV appear broken.
       const audioDeviceId = await attachCameraAudio(stream, deviceId, { allowDefault: slot === 0 });
 
+      usbConnectInFlightRef.current.delete(flightKey);
       slotStreamsRef.current = { ...slotStreamsRef.current, [slot]: stream };
       const videoInfo = getVideoTrackInfo(stream);
       cameraMetaRef.current = { ...cameraMetaRef.current, [slot]: { deviceId, audioDeviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } };
       setSlotStreams(prev => ({ ...prev, [slot]: stream }));
       setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, audioDeviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } }));
       saveCameraToHistory({ deviceId, label: label || 'Cámara USB', type: 'usb' });
+      // Verificación de lo negociado de verdad: si el driver entregó menos de
+      // lo pedido, antes entraba en silencio y se veía granulado/borroso sin
+      // explicación. Ahora la app lo dice en el momento.
+      if (videoInfo && ((videoInfo.height > 0 && videoInfo.height < 1080) || (videoInfo.frameRate > 0 && videoInfo.frameRate < 24))) {
+        showToast(`CAM ${slot + 1} (${label || 'Cámara USB'}) entregó ${videoInfo.label} en vez de 1920×1080 · 30 fps. Con varias cámaras 1080p el bus USB se satura: prueba un puerto directo sin hub o baja la carga.`, 'error', 9000);
+      }
       if (slot === 0) {
         try { localStorage.setItem('podcastudio_master_camera_device', deviceId); } catch {}
         setLocalStream(stream);
       }
       return stream;
     } else {
+      usbConnectInFlightRef.current.delete(flightKey);
       const errName = lastError?.name || '';
       const errMsg = lastError?.message || '';
       logger.error("Error al abrir cámara USB:", errName, errMsg);
@@ -5889,7 +5920,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.8</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.9</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>

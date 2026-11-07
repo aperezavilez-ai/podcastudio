@@ -176,6 +176,7 @@ export default function MultiFormatExportModal({
           sourcePath: masterPath,
           formatKey: preset.key,
           projectName: recording.projectName || 'Proyecto_General',
+          cropMode,
         })
         setProgress(100)
         if (res.success) {
@@ -239,6 +240,7 @@ export default function MultiFormatExportModal({
     if (presetsToExport.length === 0) return
 
     cancelRef.current = false
+    const packResults = []
     const total = presetsToExport.length
     for (let i = 0; i < total; i++) {
       if (cancelRef.current) break
@@ -254,6 +256,7 @@ export default function MultiFormatExportModal({
             sourcePath: masterPath,
             formatKey: preset.key,
             projectName: recording.projectName || 'Proyecto_General',
+            cropMode,
           })
           if (!exportResult?.success) throw new Error(exportResult?.error || `No se pudo exportar ${preset.label}.`);
           setProgress(100)
@@ -288,17 +291,27 @@ export default function MultiFormatExportModal({
             URL.revokeObjectURL(u)
           }
         }
+        packResults.push({ label: preset.label, ok: true })
         await new Promise(r => setTimeout(r, 400))
       } catch (err) {
         console.error(`Error procesando ${preset.label}:`, err)
+        packResults.push({ label: preset.label, ok: false, error: err?.message || String(err) })
       }
     }
 
     // Solo descargar miniaturas en el navegador; en Electron ya se guardan en disco
     if (!window.api) {
       handleDownloadAllThumbnails()
-    } else {
+    }
+    // El aviso final dice la verdad: antes se anunciaba éxito total aunque
+    // hubieran fallado formatos en silencio. Ahora se nombran los que faltan.
+    const failedFormats = packResults.filter(r => !r.ok)
+    if (failedFormats.length === 0) {
       setClipNotice({ type: 'success', text: `¡Pack de formatos para redes exportado con éxito en tu proyecto!` })
+    } else if (failedFormats.length === packResults.length) {
+      setClipNotice({ type: 'error', text: `No se pudo exportar ningún formato. Revisa el Master e inténtalo de nuevo.` })
+    } else {
+      setClipNotice({ type: 'error', text: `Pack incompleto: se exportaron ${packResults.length - failedFormats.length} de ${packResults.length}. Fallaron: ${failedFormats.map(f => f.label).join(', ')}. Verifica la carpeta del proyecto.` })
     }
 
     setPackProgress(null)

@@ -1746,6 +1746,17 @@ export function getInitHeader() {
   return cachedInitHeader ? cachedInitHeader.slice(0) : null;
 }
 
+// Cabecera SOLO si pertenece a la sesión de MediaRecorder que sigue activa.
+// Una cabecera de una sesión anterior ya detenida no sirve: el EBML describe
+// otra grabación y corrompería la nueva. Usar al empezar a grabar con el
+// motor ya encendido (p. ej. después de transmitir).
+export function getActiveInitHeader() {
+  if (isBroadcastEngineActive && mediaRecorder && mediaRecorder.state === 'recording') {
+    return cachedInitHeader ? cachedInitHeader.slice(0) : null;
+  }
+  return null;
+}
+
 export async function getOrWaitForInitHeader(timeoutMs = 1500) {
   if (cachedInitHeader) return cachedInitHeader.slice(0);
   if (mediaRecorder && mediaRecorder.state === 'recording') {

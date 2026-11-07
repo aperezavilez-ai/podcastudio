@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'crypto'
-import { getUpload, getAsset } from '../../lib/mux/client.js'
+import rawBody from 'raw-body'
 import { getRecordingByMuxUpload, updateRecording } from '../../lib/integrations/recordings.js'
 import { getSupabaseAdmin } from '../../lib/supabase/admin.js'
 import {
@@ -9,14 +9,23 @@ import {
 } from '../../lib/youtube/client.js'
 import { getMp4Url } from '../../lib/mux/client.js'
 
-function verifyMuxSignature(rawBody, signature) {
-  const secret = process.env.MUX_WEBHOOK_SECRET
-  if (!secret || !signature) return !secret
+export const config = {
+  api: { bodyParser: false },
+}
 
-  const expected = createHmac('sha256', secret).update(rawBody).digest('hex')
+function verifyMuxSignature(rawBodyBuffer, signature) {
+  const secret = process.env.MUX_WEBHOOK_SECRET
+  if (!secret) {
+    // Sin secreto configurado: permitir solo en desarrollo/local explícito.
+    // En producción, configurar MUX_WEBHOOK_SECRET para validar webhooks.
+    return process.env.NODE_ENV !== 'production'
+  }
+  if (!signature) return false
+
+  const expected = createHmac('sha256', secret).update(rawBodyBuffer).digest('hex')
   const sig = signature.replace(/^v1=/, '').trim()
   try {
-    return timingSafeEqual(Buffer.from(expected), Buffer.from(sig))
+    return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(sig, 'hex'))
   } catch {
     return false
   }
@@ -59,19 +68,19 @@ export default async function handler(req, res) {
     return
   }
 
-  const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {})
-  const signature = req.headers['mux-signature'] || req.headers['Mux-Signature']
-
-  if (process.env.MUX_WEBHOOK_SECRET && !verifyMuxSignature(rawBody, signature)) {
-    res.status(401).json({ error: 'Firma inválida' })
-    return
-  }
-
-  const event = typeof req.body === 'object' ? req.body : JSON.parse(rawBody || '{}')
-  const type = event.type
-  const data = event.data
-
   try {
+    const rawBodyBuffer = await rawBody(req)
+    const signature = req.headers['mux-signature'] || req.headers['Mux-Signature']
+
+    if (!verifyMuxSignature(rawBodyBuffer, signature)) {
+      res.status(401).json({ error: 'Firma inválida o webhook no autorizado' })
+      return
+    }
+
+    const event = JSON.parse(rawBodyBuffer.toString('utf8') || '{}')
+    const type = event.type
+    const data = event.data
+
     if (type === 'video.upload.asset_created') {
       const uploadId = data.id
       const assetId = data.asset_id
@@ -114,8 +123,4 @@ export default async function handler(req, res) {
   } catch (e) {
     res.status(500).json({ error: e.message })
   }
-}
-
-export const config = {
-  api: { bodyParser: true },
 }

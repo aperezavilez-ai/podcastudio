@@ -6,8 +6,8 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 
 ## Proceso
 - Fase: release
-- Estado: v1.3.8 de grabación Master, contador y exportación social en preparación (2026-11-05)
-- Actualizado: 2026-11-04 08:15
+- Estado: v1.3.9 liberada — RTMP ultra-rápido, ruta única proyectos/[Proyecto], protección de MP4 Master y telemetría de exportación (2026-11-07)
+- Actualizado: 2026-11-07 11:50
 - Stack: React + Vite + Electron + Supabase
 - Entry: index.html
 - Entry: src/main.jsx
@@ -71,6 +71,7 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - RELEASE_v1.3.6.md
 - RELEASE_v1.3.7.md
 - RELEASE_v1.3.8.md
+- RELEASE_v1.3.9.md
 
 ## Archivos clave (no reexplorar)
 - electron/media-engine/bridge.js
@@ -141,11 +142,20 @@ EditCore actualiza este archivo tras cambios. No pedirlo al usuario. No pegar co
 - src/App.jsx / CameraConnectModal — soporte robusto para hasta 12 cámaras USB y cables de extensión > 10m: getUserMediaWithTimeout (2.8s) para eliminar congelamientos ("Conectando..."), liberación automática de ranuras previas para liberar el hardware lock en Windows DirectShow, eliminación de animación con opacidad en modal, y fallback escalonado a perfiles de ancho de banda compatibles (1080p, 720p, 540p, MJPEG nativo) (2026-11-04 17:51)
 - PodcastStudio.exe — recompilado v1.3.4.0 (2026-11-04 17:53)
 - Vercel — deploy a producción completado y activo en https://www.podcastudio.mx (2026-11-04 17:54)
+- electron/main.js — probesize 2M, analyzeduration 1M y envío anticipado de cabecera EBML WebM para conexión RTMP instantánea (<1.5s) en Facebook Live y YouTube (2026-11-06)
+- electron/main.js / src/App.jsx — protección contra eliminación accidental en cancel-recording y limpieza garantizada de currentRecordingPath en todos los caminos de salida (2026-11-06)
+- electron/main.js / src/components/MultiFormatExportModal.jsx — unificación de almacenamiento en proyectos/[Proyecto]/ sin duplicados en Descargas ni carpeta grabaciones (2026-11-06)
+- electron/main.js / electron/preload.js / MultiFormatExportModal — telemetría en tiempo real de progreso de exportación social mediante eventos IPC export-progress (2026-11-06)
+- api/ / lib/security/ — hardening de endpoints (rate limiting, sesiones Supabase en credenciales TURN, verificación estricta de webhooks) (2026-11-06)
+- PodcastStudio.exe — recompilado v1.3.9.0 (2026-11-07)
+- Vercel — deploy a producción completado y activo en https://www.podcastudio.mx (2026-11-07)
 
 ## Verificado
+- npm run test:recording (1/1 passed)
 - npm run test:remote-cameras (4/4 passed)
+- npm run test:stream-config (5/5 passed)
 - npm run build (Vite production bundle OK)
-- compile-exe.ps1 (PodcastStudio.exe v1.3.4.0 OK)
+- compile-exe.ps1 (PodcastStudio.exe v1.3.9.0 OK)
 - Deploy Vercel Production OK (https://www.podcastudio.mx)
 
 ## Siguiente

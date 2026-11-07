@@ -30,7 +30,7 @@ try {
 
 function writeChunkWithBackpressure(writable, chunk) {
   return new Promise((resolve, reject) => {
-    if (!writable || writable.destroyed || writable.writableEnded) return resolve();
+    if (!writable || writable.destroyed || writable.writableEnded) return reject(new Error('El destino de escritura ya no está disponible (el proceso FFmpeg se cerró).'));
     let settled = false;
     const cleanup = () => {
       writable.removeListener('drain', onDrain);
@@ -1404,7 +1404,10 @@ if (!gotTheLock) {
     }
   });
 
+  let exitCleanupStarted = false;
   const cleanupAndExit = () => {
+    if (exitCleanupStarted) return;
+    exitCleanupStarted = true;
     try {
       if (typeof mobileClients !== 'undefined') {
         mobileClients.forEach(c => { try { c.terminate(); } catch (e) {} });
@@ -1419,18 +1422,37 @@ if (!gotTheLock) {
       if (httpWsServer) httpWsServer.close();
       if (wss) wss.close();
     } catch (e) {}
+    const finishExit = () => {
+      try {
+        if (ffmpegStreamProcess) ffmpegStreamProcess.kill('SIGKILL');
+        if (typeof activeStreamWorkers !== 'undefined' && Array.isArray(activeStreamWorkers)) {
+          activeStreamWorkers.forEach(w => { try { w.process?.kill('SIGKILL'); } catch (e) {} });
+        }
+        if (typeof ffmpegIsoProcesses !== 'undefined' && ffmpegIsoProcesses.size > 0) {
+          ffmpegIsoProcesses.forEach(entry => { try { entry.proc?.kill('SIGKILL'); } catch (e) {} });
+        }
+      } catch (e) {}
+      try { app.exit(0); } catch (e) {}
+      try { process.exit(0); } catch (e) {}
+    };
+    // La grabación NO se mata con SIGKILL: un MP4 con +faststart solo queda
+    // válido si FFmpeg cierra el contenedor y mueve el moov al frente. Se le
+    // cierra la entrada y se le dan hasta 8 s para terminar antes de salir;
+    // matar el proceso a mitad dejaba el archivo inabrible en el proyecto.
     try {
-      if (ffmpegRecordProcess) ffmpegRecordProcess.kill('SIGKILL');
-      if (ffmpegStreamProcess) ffmpegStreamProcess.kill('SIGKILL');
-      if (typeof activeStreamWorkers !== 'undefined' && Array.isArray(activeStreamWorkers)) {
-        activeStreamWorkers.forEach(w => { try { w.process?.kill('SIGKILL'); } catch (e) {} });
+      const recProc = ffmpegRecordProcess;
+      if (recProc && recProc.stdin && !recProc.stdin.destroyed) {
+        ffmpegRecordProcess = null;
+        let exitDone = false;
+        const goExit = () => { if (exitDone) return; exitDone = true; try { recProc.kill('SIGKILL'); } catch (e) {} finishExit(); };
+        recProc.once('close', () => { if (exitDone) return; exitDone = true; finishExit(); });
+        try { recProc.stdin.end(); } catch (e) { goExit(); }
+        setTimeout(goExit, 8000);
+        return;
       }
-      if (typeof ffmpegIsoProcesses !== 'undefined' && ffmpegIsoProcesses.size > 0) {
-        ffmpegIsoProcesses.forEach(entry => { try { entry.proc?.kill('SIGKILL'); } catch (e) {} });
-      }
+      if (recProc) { try { recProc.kill('SIGKILL'); } catch (e) {} ffmpegRecordProcess = null; }
     } catch (e) {}
-    try { app.exit(0); } catch (e) {}
-    try { process.exit(0); } catch (e) {}
+    finishExit();
   };
 
   app.on('window-all-closed', () => {
@@ -2039,6 +2061,9 @@ ipcMain.handle('stop-recording', async () => {
         if (code !== 0 || recordChunkError) {
           finished = true;
           if (ffmpegRecordProcess === proc) ffmpegRecordProcess = null;
+          // Un MP4 que FFmpeg no cerró no tiene moov válido: es inabrible.
+          // Se elimina para que no quede en el proyecto como si fuera la grabación.
+          try { if (recPath && fs.existsSync(recPath)) fs.unlinkSync(recPath); } catch (e) {}
           resolve({ success: false, path: recPath, error: recordChunkError || `FFmpeg terminó con código ${code}.` });
           return;
         }
@@ -2060,8 +2085,9 @@ ipcMain.handle('stop-recording', async () => {
           forcedCloseTimeout = setTimeout(() => {
             if (finished) return;
             finished = true;
+            try { if (recPath && fs.existsSync(recPath)) fs.unlinkSync(recPath); } catch (e) {}
             if (ffmpegRecordProcess === proc) ffmpegRecordProcess = null;
-            resolve({ success: false, path: recPath, error: 'FFmpeg no cerró el archivo de grabación dentro del tiempo permitido.' });
+            resolve({ success: false, path: recPath, error: 'FFmpeg no cerró el archivo de grabación dentro del tiempo permitido. El archivo parcial se eliminó para no dejar un MP4 dañado en el proyecto.' });
           }, 5000);
         }
       }, 60000);
@@ -2219,8 +2245,8 @@ ipcMain.handle('save-to-downloads', async (event, { sourcePath, filename }) => {
 });
 
 // EXPORTACIÓN MULTI-FORMATO NATIVA CON FFMPEG (TIKTOK 9:16, INSTAGRAM 1:1, FACEBOOK 16:9) A 1080P REAL
-ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, projectName }) => {
-  return new Promise((resolve) => {
+ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, projectName, cropMode }) => {
+  return new Promise(async (resolve) => {
     if (!sourcePath || !fs.existsSync(sourcePath)) {
       return resolve({ success: false, error: 'Archivo de video original no encontrado' });
     }
@@ -2236,18 +2262,34 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
       try { fs.mkdirSync(projectDir, { recursive: true }); } catch (e) {}
     }
 
+    // El modo de reencuadre que el usuario elige en el modal ('smart-crop',
+    // 'blur-fill', 'split-stack') antes NUNCA llegaba hasta aquí: este handler
+    // siempre hacía recorte central fijo dijera lo que dijera la pantalla.
+    // 'smart-crop' sigue siendo recorte central (no hay detección de sujeto);
+    // 'blur-fill' conserva el cuadro completo sobre fondo difuminado y
+    // 'split-stack' apila las dos mitades del cuadro (dos personas lado a lado).
+    const mode = cropMode || 'smart-crop';
     let filter = '';
+    let useComplex = false;
     let suffix = '16x9';
+    const blurFill = (W, H) => `split[a][b];[a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=20:5[bg];[b]scale=${W}:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[vout]`;
+    const stackVertical = '[0:v]crop=iw:ih/2:0:0,scale=1080:960[top];[0:v]crop=iw:ih/2:0:ih/2,scale=1080:960[bottom];[top][bottom]vstack=inputs=2,setsar=1[vout]';
+    const stackSquare = '[0:v]crop=iw/2:ih:0:0,scale=540:1080[left];[0:v]crop=iw/2:ih:iw/2:0,scale=540:1080[right];[left][right]hstack=inputs=2,setsar=1[vout]';
 
     if (formatKey === '9:16') {
       suffix = 'TikTok_Reels_9x16';
-      filter = 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920';
+      if (mode === 'blur-fill') { filter = blurFill(1080, 1920); useComplex = true; }
+      else if (mode === 'split-stack') { filter = stackVertical; useComplex = true; }
+      else filter = 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920';
     } else if (formatKey === '1:1') {
       suffix = 'Instagram_Feed_1x1';
-      filter = 'crop=ih:ih:(iw-ih)/2:0,scale=1080:1080';
+      if (mode === 'blur-fill') { filter = blurFill(1080, 1080); useComplex = true; }
+      else if (mode === 'split-stack') { filter = stackSquare; useComplex = true; }
+      else filter = 'crop=ih:ih:(iw-ih)/2:0,scale=1080:1080';
     } else if (formatKey === '4:5') {
       suffix = 'Facebook_Feed_4x5';
-      filter = 'crop=ih*4/5:ih:(iw-ih*4/5)/2:0,scale=1080:1350';
+      if (mode === 'blur-fill') { filter = blurFill(1080, 1350); useComplex = true; }
+      else filter = 'crop=ih*4/5:ih:(iw-ih*4/5)/2:0,scale=1080:1350';
     } else if (formatKey === '16:9_yt') {
       suffix = 'YouTube_16x9';
       filter = 'scale=1920:1080';
@@ -2260,23 +2302,45 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
     const outFilename = `${baseName}_${suffix}.mp4`;
     const outPath = path.join(projectDir, outFilename);
 
-    const args = [
-      '-y',
-      '-i', sourcePath,
-      '-vf', filter,
+    const args = ['-y', '-i', sourcePath];
+    if (useComplex) args.push('-filter_complex', filter, '-map', '[vout]', '-map', '0:a?');
+    else args.push('-vf', filter);
+    args.push(
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
       '-crf', '18',
+      // Tope de bitrate: sin él, un export 16:9 de un Master granulado podía
+      // salir MÁS pesado que el propio Master.
+      '-maxrate', '8M',
+      '-bufsize', '16M',
       '-pix_fmt', 'yuv420p',
       '-c:a', 'copy',
       '-movflags', '+faststart',
       outPath
-    ];
+    );
+
+    // Duración real de la fuente para un progreso honesto (antes era
+    // segundos transcodificados x 15, un número inventado).
+    let totalSecs = 0;
+    try {
+      const probeOut = await new Promise((res2) => {
+        let errBuf = '';
+        const probe = spawn(ffmpegPath, ['-i', sourcePath]);
+        probe.stderr.on('data', (d) => { errBuf += d.toString(); });
+        probe.on('close', () => res2(errBuf));
+        probe.on('error', () => res2(errBuf));
+        setTimeout(() => { try { probe.kill(); } catch (e) {} res2(errBuf); }, 5000);
+      });
+      const durMatch = probeOut.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+      if (durMatch) totalSecs = parseInt(durMatch[1], 10) * 3600 + parseInt(durMatch[2], 10) * 60 + parseFloat(durMatch[3]);
+    } catch (e) {}
 
     const convertProc = spawn(ffmpegPath, args);
+    let stderrTail = '';
 
     convertProc.stderr.on('data', (data) => {
       const msg = data.toString();
+      stderrTail = (stderrTail + msg).slice(-800);
       const timeMatch = msg.match(/time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/);
       if (timeMatch && mainWindow && !mainWindow.isDestroyed()) {
         const hours = parseInt(timeMatch[1], 10);
@@ -2286,7 +2350,9 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
         mainWindow.webContents.send('export-progress', {
           formatKey,
           currentSecs,
-          percent: Math.min(95, Math.max(20, Math.round(currentSecs * 15))),
+          percent: totalSecs > 0
+            ? Math.min(95, Math.round((currentSecs / totalSecs) * 100))
+            : Math.min(95, Math.max(20, Math.round(currentSecs * 15))),
         });
       }
     });
@@ -2323,11 +2389,15 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
           resolve({ success: true, path: outPath });
         }
       } else {
-        resolve({ success: false, error: 'Error en proceso de conversión FFmpeg' });
+        // Nada de archivos a medias presentados como exportados, y nada de
+        // error genérico: se devuelve el final real de la salida de FFmpeg.
+        try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (e) {}
+        resolve({ success: false, error: `Error en proceso de conversión FFmpeg${stderrTail ? `: ${stderrTail.trim().split('\n').slice(-2).join(' ')}` : ''}` });
       }
     });
 
     convertProc.on('error', (err) => {
+      try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch (e) {}
       resolve({ success: false, error: err.message });
     });
   });

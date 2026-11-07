@@ -35,9 +35,20 @@ export async function getConfiguredIceServers() {
       }
 
       try {
+        // El servidor solo emite credenciales TURN con sesión de Supabase;
+        // sin sesión devuelve solo STUN. Las cámaras invitadas no tienen
+        // cuenta, por eso el token es opcional y cualquier fallo se ignora.
+        let authHeaders = {};
+        try {
+          const { supabase } = await import('../lib/supabase.js');
+          const { data } = await supabase.auth.getSession();
+          const token = data?.session?.access_token;
+          if (token) authHeaders = { Authorization: `Bearer ${token}` };
+        } catch {}
         const response = await fetch('/api/turn-credentials', {
           cache: 'no-store',
           signal: AbortSignal.timeout(5000),
+          headers: authHeaders,
         });
         if (!response.ok) return null;
         const data = await response.json();

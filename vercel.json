@@ -6,25 +6,45 @@
   "redirects": [
     {
       "source": "/:path*",
-      "has": [{ "type": "host", "value": "podcaststudio.mx" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "podcaststudio.mx"
+        }
+      ],
       "destination": "https://www.podcastudio.mx/:path*",
       "permanent": true
     },
     {
       "source": "/:path*",
-      "has": [{ "type": "host", "value": "www.podcaststudio.mx" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "www.podcaststudio.mx"
+        }
+      ],
       "destination": "https://www.podcastudio.mx/:path*",
       "permanent": true
     },
     {
       "source": "/:path*",
-      "has": [{ "type": "host", "value": "podcastudio.mx" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "podcastudio.mx"
+        }
+      ],
       "destination": "https://www.podcastudio.mx/:path*",
       "permanent": true
     },
     {
       "source": "/:path*",
-      "has": [{ "type": "host", "value": "podcastudio-three.vercel.app" }],
+      "has": [
+        {
+          "type": "host",
+          "value": "podcastudio-three.vercel.app"
+        }
+      ],
       "destination": "https://www.podcastudio.mx/:path*",
       "permanent": true
     },
@@ -40,12 +60,30 @@
     }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/assets/(.*)", "destination": "/assets/$1" },
-    { "source": "/:path*/assets/(.*)", "destination": "/assets/$1" },
-    { "source": "/sw.js", "destination": "/sw.js" },
-    { "source": "/registerSW.js", "destination": "/registerSW.js" },
-    { "source": "/((?!assets/|api/|sw\\.js|registerSW\\.js).*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/assets/(.*)",
+      "destination": "/assets/$1"
+    },
+    {
+      "source": "/:path*/assets/(.*)",
+      "destination": "/assets/$1"
+    },
+    {
+      "source": "/sw.js",
+      "destination": "/sw.js"
+    },
+    {
+      "source": "/registerSW.js",
+      "destination": "/registerSW.js"
+    },
+    {
+      "source": "/((?!assets/|api/|sw\\.js|registerSW\\.js).*)",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
     {
@@ -101,24 +139,44 @@
     {
       "source": "/assets/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
       ]
     },
     {
       "source": "/sw.js",
       "headers": [
-        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
-        { "key": "Pragma", "value": "no-cache" },
-        { "key": "Expires", "value": "0" },
-        { "key": "Clear-Site-Data", "value": "\"cache\", \"storage\"" }
+        {
+          "key": "Content-Type",
+          "value": "application/javascript; charset=utf-8"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
       ]
     },
     {
       "source": "/registerSW.js",
       "headers": [
-        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
-        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        {
+          "key": "Content-Type",
+          "value": "application/javascript; charset=utf-8"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        }
       ]
     }
   ]
