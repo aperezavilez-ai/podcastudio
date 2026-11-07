@@ -1,4 +1,18 @@
 // Pistas musicales libres de derechos de emisión (Broadcast Studio Standard)
+export function resolveAssetUrl(relPath) {
+  if (!relPath) return '';
+  if (relPath.startsWith('http://') || relPath.startsWith('https://') || relPath.startsWith('data:') || relPath.startsWith('blob:')) {
+    return relPath;
+  }
+  const clean = relPath.replace(/^\/+/, '');
+  try {
+    if (typeof window !== 'undefined' && window.location) {
+      return new URL(clean, window.location.href).href;
+    }
+  } catch (e) {}
+  return './' + clean;
+}
+
 export const MUSIC_GENRES = {
   rock: 'Rock Alternativo Enérgico',
   popelectro: 'Pop Electrónico Moderno',
@@ -16,7 +30,7 @@ export const MUSIC_TRACKS = [
     sub: 'Rock Alternativo Enérgico · Riffs de guitarra eléctrica, batería contundente y bajo profundo',
     genre: 'rock',
     mood: 'energetic',
-    url: '/music/rock-energetic.mp3',
+    url: resolveAssetUrl('music/rock-energetic.mp3'),
     fallbackUrl: 'https://assets.mixkit.co/music/1188/1188.mp3',
   },
   {
@@ -25,7 +39,7 @@ export const MUSIC_TRACKS = [
     sub: 'Rock Alternativo · Alta energía para transiciones dinámicas de cámara',
     genre: 'rock',
     mood: 'dynamic',
-    url: '/music/rock-alt-motivation.mp3',
+    url: resolveAssetUrl('music/rock-alt-motivation.mp3'),
     fallbackUrl: 'https://assets.mixkit.co/music/519/519.mp3',
   },
 
@@ -36,7 +50,7 @@ export const MUSIC_TRACKS = [
     sub: 'Pop Electrónico Moderno · Sintetizadores brillantes, percusión digital y melodías pegadizas',
     genre: 'popelectro',
     mood: 'upbeat',
-    url: '/music/pop-electronic.mp3',
+    url: resolveAssetUrl('music/pop-electronic.mp3'),
     fallbackUrl: 'https://assets.mixkit.co/music/729/729.mp3',
   },
 
@@ -47,7 +61,7 @@ export const MUSIC_TRACKS = [
     sub: 'Reggae Relajado · Ritmo tradicional, guitarra en contratiempo (skank) y bajo cálido',
     genre: 'reggae',
     mood: 'relaxed',
-    url: '/music/reggae-relaxed.mp3',
+    url: resolveAssetUrl('music/reggae-relaxed.mp3'),
     fallbackUrl: 'https://assets.mixkit.co/music/814/814.mp3',
   },
   {
@@ -56,7 +70,7 @@ export const MUSIC_TRACKS = [
     sub: 'Reggae Caribeño · Batería suave, percusión caribeña y ambiente fluido',
     genre: 'reggae',
     mood: 'positive',
-    url: '/music/reggae-jamaican.mp3',
+    url: resolveAssetUrl('music/reggae-jamaican.mp3'),
     fallbackUrl: 'https://assets.mixkit.co/music/241/241.mp3',
   },
 
@@ -67,7 +81,7 @@ export const MUSIC_TRACKS = [
     sub: 'Lo-Fi Chillhop · Textura de vinilo, piano suave y bajos profundos para concentración',
     genre: 'lofi',
     mood: 'focus',
-    url: '/music/lofi-chillhop.mp3',
+    url: resolveAssetUrl('music/lofi-chillhop.mp3'),
     fallbackUrl: 'https://assets.mixkit.co/music/135/135.mp3',
   },
   {
@@ -76,7 +90,7 @@ export const MUSIC_TRACKS = [
     sub: 'Lo-Fi Chillhop · Beats relajados para escenas de diseño o codificación',
     genre: 'lofi',
     mood: 'calm',
-    url: '/music/lofi-sweet-september.mp3',
+    url: resolveAssetUrl('music/lofi-sweet-september.mp3'),
     fallbackUrl: 'https://assets.mixkit.co/music/282/282.mp3',
   },
 
@@ -87,7 +101,7 @@ export const MUSIC_TRACKS = [
     sub: 'Corporate Inspiring · Piano acústico limpio, cuerdas de fondo y percusión ascendente',
     genre: 'corporate',
     mood: 'inspiring',
-    url: '/music/corporate-inspiring.mp3',
+    url: resolveAssetUrl('music/corporate-inspiring.mp3'),
     fallbackUrl: 'https://assets.mixkit.co/music/32/32.mp3',
   },
   {
@@ -96,7 +110,7 @@ export const MUSIC_TRACKS = [
     sub: 'Tech Corporate · Tono motivacional para métricas de éxito y lanzamientos',
     genre: 'corporate',
     mood: 'motivational',
-    url: '/music/corporate-close-up.mp3',
+    url: resolveAssetUrl('music/corporate-close-up.mp3'),
     fallbackUrl: 'https://assets.mixkit.co/music/1167/1167.mp3',
   },
 
@@ -107,7 +121,7 @@ export const MUSIC_TRACKS = [
     sub: 'Synthwave / Cyberpunk · Electrónica retro-futurista, bajos arpegiados y cajas 80s',
     genre: 'synthwave',
     mood: 'cyberpunk',
-    url: '/music/synthwave-cyberpunk.mp3',
+    url: resolveAssetUrl('music/synthwave-cyberpunk.mp3'),
     fallbackUrl: 'https://assets.mixkit.co/music/131/131.mp3',
   },
   {
@@ -116,7 +130,7 @@ export const MUSIC_TRACKS = [
     sub: 'Synthwave Futurista · Resalta características de inteligencia artificial y código avanzado',
     genre: 'synthwave',
     mood: 'futuristic',
-    url: '/music/synthwave-better-times.mp3',
+    url: resolveAssetUrl('music/synthwave-better-times.mp3'),
     fallbackUrl: 'https://assets.mixkit.co/music/173/173.mp3',
   },
 ]
@@ -192,7 +206,8 @@ const SFX_RAW = [
 
 export const MUSIC_SFX = SFX_RAW.map((sfx) => ({
   ...sfx,
-  url: mixkitSfxUrl(sfx.mixkitId),
+  url: resolveAssetUrl(`sfx/${sfx.id}.mp3`),
+  fallbackUrl: mixkitSfxUrl(sfx.mixkitId),
 }))
 
 export function getTrackById(id) {

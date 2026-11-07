@@ -274,6 +274,13 @@ function createWindow() {
   });
   session.defaultSession.setDevicePermissionHandler(() => true);
 
+  // Permitir CORS para peticiones multimedia externas (Mixkit / CDN / audio)
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const responseHeaders = { ...details.responseHeaders };
+    responseHeaders['access-control-allow-origin'] = ['*'];
+    callback({ responseHeaders });
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
     cleanupAndExit();

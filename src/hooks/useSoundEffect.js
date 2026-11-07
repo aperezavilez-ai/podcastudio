@@ -42,12 +42,17 @@ export function useSoundEffect() {
     try {
       const broadcastSource = await playBroadcastSfx(sfx.url, 0.9)
       if (broadcastSource) {
-        broadcastSource.addEventListener('ended', () => {
+        const onFinish = () => {
           if (!disposed) {
             setPlayingId(null)
             if (stopRef.current === dispose) stopRef.current = null
           }
-        }, { once: true })
+        }
+        if (typeof broadcastSource.addEventListener === 'function') {
+          broadcastSource.addEventListener('ended', onFinish, { once: true })
+        } else {
+          broadcastSource.onended = onFinish
+        }
         return
       }
     } catch (e) {
@@ -76,6 +81,12 @@ export function useSoundEffect() {
     }
 
     audio.onerror = () => {
+      if (sfx.fallbackUrl && audio.src !== sfx.fallbackUrl) {
+        console.warn(`[useSoundEffect] Reintentando "${sfx.name}" con fallback:`, sfx.fallbackUrl)
+        audio.src = sfx.fallbackUrl
+        audio.play().catch(() => {})
+        return
+      }
       audioDispose()
       setPlayingId(null)
       setError(`"${sfx.name}" no está disponible. Prueba otro efecto.`)

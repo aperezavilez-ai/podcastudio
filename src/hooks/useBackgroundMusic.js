@@ -43,7 +43,10 @@ export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } 
 
   useEffect(() => {
     const audio = new Audio()
-    audio.crossOrigin = 'anonymous'
+    // Solo aplicar crossOrigin en http/https para no romper protocolos locales (como file:// en Electron)
+    if (typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http')) {
+      audio.crossOrigin = 'anonymous'
+    }
     audio.loop = true
     audio.preload = 'auto'
     audioRef.current = audio
@@ -79,8 +82,8 @@ export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } 
     if (speaking) {
       clearTimeout(duckReleaseTimerRef.current)
       isDuckingRef.current = true
-      // Atenuación suave a un 25% del volumen normal (sensación broadcast)
-      audio.volume = baseVol * 0.25
+      // Ducking a través de WebAudio (bgmDuckingGainNode a 0.25)
+      // Mantener audio.volume en baseVol para evitar doble atenuación exponencial
       setBgmDucking(true, 0.25)
       setHostPriorityDucking(true, { duckGuests: true, duckLevel: 0.38, duckMusic: true })
     } else if (isDuckingRef.current) {

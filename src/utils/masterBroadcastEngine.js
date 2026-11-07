@@ -1456,7 +1456,9 @@ export function connectBgmAudioElement(audioEl) {
   if (!audioEl || !audioContext || !bgmGainNode) return;
   if (connectedBgmElements.has(audioEl)) return;
   try {
-    audioEl.crossOrigin = 'anonymous';
+    if (typeof window !== 'undefined' && window.location && window.location.protocol.startsWith('http')) {
+      audioEl.crossOrigin = 'anonymous';
+    }
     const sourceNode = audioContext.createMediaElementSource(audioEl);
     sourceNode.connect(bgmGainNode);
     connectedBgmElements.add(audioEl);
@@ -1507,26 +1509,14 @@ export async function playBroadcastSfx(sfxUrl, volume = 0.9) {
     if (!buffer) {
       try {
         const resp = await fetch(sfxUrl);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const arrayBuf = await resp.arrayBuffer();
         buffer = await audioContext.decodeAudioData(arrayBuf);
         sfxBufferCache.set(sfxUrl, buffer);
       } catch (fetchErr) {
-        const audio = new Audio();
-        audio.crossOrigin = 'anonymous';
-        audio.src = sfxUrl;
-        audio.volume = 1.0;
-        const mediaElemSource = audioContext.createMediaElementSource(audio);
-        const gain = audioContext.createGain();
-        gain.gain.setValueAtTime(Math.max(0, Math.min(1.5, volume)), audioContext.currentTime);
-        mediaElemSource.connect(gain);
-        gain.connect(sfxGainNode);
-        activeSfxSources.add(mediaElemSource);
-        audio.onended = () => {
-          activeSfxSources.delete(mediaElemSource);
-          try { mediaElemSource.disconnect(); gain.disconnect(); } catch (e) {}
-        };
-        await audio.play();
-        return audio;
+        // Si fetch o decodeAudioData fallan (CORS o red), retornar null para que useSoundEffect
+        // use el fallback HTMLAudioElement nativo sin mutear
+        return null;
       }
     }
     const source = audioContext.createBufferSource();
