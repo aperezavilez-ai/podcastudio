@@ -12,11 +12,7 @@ const fs = require('fs');
 const { spawn, exec } = require('child_process');
 const net = require('net');
 const ffmpeg = require('fluent-ffmpeg');
-// En la app empaquetada, ffmpeg.exe no puede ejecutarse desde dentro del
-// archivo app.asar: electron-builder lo deja fuera (asarUnpack) y esta
-// sustitución apunta a esa copia. En desarrollo la ruta no contiene
-// 'app.asar' y queda intacta.
-const ffmpegPath = require('ffmpeg-static').replace('app.asar', 'app.asar.unpacked');
+const ffmpegPath = require('ffmpeg-static');
 const express = require('express');
 const https = require('https');
 const selfsigned = require('selfsigned');
@@ -1861,19 +1857,6 @@ let currentRecordingPath = null;
 let streamDestinations = [];
 let activeStreamWorkers = [];
 let streamStartupInProgress = false;
-// Sesión de streaming "viva": desde que start-streaming conecta al menos un
-// destino hasta que el usuario detiene. Mientras la sesión viva, un destino
-// que se cae se avisa a la pantalla y se reconecta solo con espera
-// progresiva; antes simplemente desaparecía de la lista y la interfaz lo
-// seguía mostrando "en vivo" para siempre.
-let streamSessionActive = false;
-let streamStopping = false;
-const streamReconnectTimers = new Map();
-const streamReconnectAttempts = new Map();
-const STREAM_RECONNECT_DELAYS_MS = [5000, 10000, 20000, 40000, 60000];
-// Cola máxima por destino: ~32 MB equivalen a más de 50 s de video a
-// 5 Mbps. Un destino más atrasado que eso ya no se recupera: se reinicia.
-const STREAM_QUEUE_CAP_BYTES = 32 * 1024 * 1024;
 let currentRecordingProjectName = 'Proyecto_General';
 
 // ============================================================================
@@ -2032,12 +2015,6 @@ ipcMain.handle('stop-recording', async () => {
         if (recPath && fs.existsSync(recPath) && fs.statSync(recPath).size > 0) {
           const stats = fs.statSync(recPath);
           console.log(`[FFmpeg Grabación] Master MP4 finalizado: ${recPath} (${stats.size} bytes)`);
-          currentRecordingPath = null;
-          // La grabación YA terminó: se responde de inmediato. La miniatura
-          // se genera en segundo plano; antes vivía DENTRO de esta respuesta
-          // y el recuadro de formatos esperaba por ella (con un techo de
-          // 15 s) aunque el MP4 ya estuviera listo en disco.
-          resolve({ success: true, path: recPath, projectName: currentRecordingProjectName });
           const thumbPath = recPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
           try {
             const thumbProcess = spawn(ffmpegPath, [
@@ -2048,11 +2025,37 @@ ipcMain.handle('stop-recording', async () => {
               '-q:v', '2',
               thumbPath
             ]);
-            const thumbTimeout = setTimeout(() => { try { thumbProcess.kill(); } catch (e) {} }, 15000);
-            thumbProcess.on('close', () => clearTimeout(thumbTimeout));
-            thumbProcess.on('error', () => clearTimeout(thumbTimeout));
-          } catch (e) {}
-          return;
+            let thumbResolved = false;
+            const thumbTimeout = setTimeout(() => {
+              if (thumbResolved) return;
+              thumbResolved = true;
+              try { thumbProcess.kill(); } catch (e) {}
+              resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: 'No se pudo generar la miniatura del video.' });
+            }, 15000);
+            thumbProcess.on('close', (code) => {
+              if (thumbResolved) return;
+              thumbResolved = true;
+              clearTimeout(thumbTimeout);
+              currentRecordingPath = null;
+              if (code === 0 && fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 0) {
+                resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailPath: thumbPath });
+              } else {
+                resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: 'El MP4 se guardó, pero no se pudo generar su miniatura.' });
+              }
+            });
+            thumbProcess.on('error', (err) => {
+              if (thumbResolved) return;
+              thumbResolved = true;
+              clearTimeout(thumbTimeout);
+              currentRecordingPath = null;
+              resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: `No se pudo generar la miniatura: ${err.message}` });
+            });
+            return;
+          } catch (e) {
+            currentRecordingPath = null;
+            resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: `No se pudo iniciar la miniatura: ${e.message}` });
+            return;
+          }
         }
         currentRecordingPath = null;
         resolve({ success: false, path: recPath, error: 'FFmpeg no creó un archivo MP4 válido.' });
@@ -2783,218 +2786,6 @@ ipcMain.handle('scan-network-cameras', async () => {
 // TRANSMISIÓN EN VIVO REAL / MULTI-STREAMING SIMULTÁNEO (FACEBOOK LIVE RTMPS + YOUTUBE + TIKTOK)
 // Cada destino corre en su propio worker FFmpeg dedicado para evitar caídas y asegurar handshake TLS
 // ============================================================================
-// --- Utilidades de streaming con reconexión por destino ---------------------
-
-function safeStreamError(destUrl, message) {
-  let safeMessage = String(message || 'Error de conexión RTMP/RTMPS.');
-  try {
-    const parsed = new URL(destUrl);
-    const segments = parsed.pathname.split('/').filter(Boolean);
-    if (segments.length) segments[segments.length - 1] = '[clave oculta]';
-    parsed.pathname = `/${segments.join('/')}`;
-    parsed.search = '';
-    safeMessage = safeMessage.replaceAll(destUrl, parsed.toString());
-  } catch (error) {
-    safeMessage = safeMessage.replaceAll(destUrl, '[URL RTMP oculta]');
-  }
-  return safeMessage.slice(-700);
-}
-
-function sendStreamStatus() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  const connected = activeStreamWorkers.filter(w => w.connected && !w.closed);
-  mainWindow.webContents.send('stream-status', {
-    active: connected.length > 0,
-    destinations: connected.map(w => ({ id: w.id, name: w.name, url: w.url })),
-  });
-}
-
-function notifyDestinationStatus(target, status, detail) {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  mainWindow.webContents.send('stream-destination-status', {
-    id: target.id,
-    name: target.name,
-    status, // 'down' | 'reconnecting' | 'live' | 'failed'
-    detail: detail || null,
-  });
-}
-
-function buildStreamWorkerArgs(destUrl, threadsPerDestination) {
-  const isWindows = process.platform === 'win32';
-  const videoEncoderArgs = isWindows
-    ? ['-c:v', 'h264_mf', '-b:v', '4500k']
-    : [
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-tune', 'zerolatency',
-        '-threads', String(threadsPerDestination),
-        '-profile:v', 'main',
-        '-level', '4.1',
-        '-b:v', '4500k',
-      ];
-  return [
-    '-probesize', '2M',
-    '-analyzeduration', '1000000',
-    '-fpsprobesize', '0',
-    '-fflags', '+discardcorrupt+nobuffer',
-    '-f', 'webm',
-    '-i', 'pipe:0',
-    ...videoEncoderArgs,
-    '-maxrate', '5000k',
-    '-bufsize', '5000k',
-    '-pix_fmt', 'yuv420p',
-    '-g', '60',
-    '-keyint_min', '30',
-    '-r', '30',
-    '-c:a', 'aac',
-    '-b:a', '160k',
-    '-ar', '48000',
-    '-ac', '2',
-    '-max_interleave_delta', '0',
-    '-flvflags', 'no_duration_filesize',
-    // Antes: buffer RTMP de 200 ms y socket que moría si la red se atascaba
-    // 12 s, de forma invisible y definitiva. Ahora: 1 s de buffer y 30 s de
-    // tolerancia a estancamiento antes de declarar la caída (que además se
-    // avisa y se reconecta).
-    '-rtmp_buffer', '1000',
-    '-rtmp_live', 'live',
-    '-rw_timeout', '30000000',
-    '-f', 'flv',
-    destUrl,
-  ];
-}
-
-function scheduleStreamReconnect(target, threadsPerDestination) {
-  if (!streamSessionActive || streamStopping) return;
-  const attempts = (streamReconnectAttempts.get(target.id) || 0) + 1;
-  streamReconnectAttempts.set(target.id, attempts);
-  if (attempts > STREAM_RECONNECT_DELAYS_MS.length) {
-    notifyDestinationStatus(target, 'failed', `No se pudo reconectar tras ${STREAM_RECONNECT_DELAYS_MS.length} intentos. Detén la transmisión y vuelve a iniciar este destino.`);
-    // Si ya no queda ningún destino vivo ni reintentando, la sesión terminó.
-    const anyAlive = activeStreamWorkers.some(w => w.connected && !w.closed);
-    const anyPending = [...streamReconnectTimers.keys()].some(id => id !== target.id);
-    if (!anyAlive && !anyPending) {
-      streamSessionActive = false;
-      sendStreamStatus();
-    }
-    return;
-  }
-  const delay = STREAM_RECONNECT_DELAYS_MS[attempts - 1];
-  notifyDestinationStatus(target, 'reconnecting', `Reintento ${attempts} de ${STREAM_RECONNECT_DELAYS_MS.length} en ${Math.round(delay / 1000)} s.`);
-  const timer = setTimeout(() => {
-    streamReconnectTimers.delete(target.id);
-    if (!streamSessionActive || streamStopping) return;
-    const worker = spawnStreamWorker(target, threadsPerDestination, {});
-    worker.isReconnect = true;
-    activeStreamWorkers.push(worker);
-  }, delay);
-  streamReconnectTimers.set(target.id, timer);
-}
-
-// Crea un worker FFmpeg para un destino y cablea telemetría, detección de
-// conexión, errores y — clave — qué pasa cuando el proceso se cierra con la
-// sesión viva: avisar y reconectar, no desaparecer en silencio.
-// hooks.onConnected / hooks.onStartupFailure solo se usan en el arranque
-// inicial, para resolver la promesa de start-streaming.
-function spawnStreamWorker(target, threadsPerDestination, hooks = {}) {
-  const destUrl = target.url.trim();
-  const proc = spawn(ffmpegPath, buildStreamWorkerArgs(destUrl, threadsPerDestination), { stdio: ['pipe', 'ignore', 'pipe'] });
-  const workerEntry = {
-    id: target.id,
-    name: target.name,
-    url: destUrl,
-    target,
-    process: proc,
-    connected: false,
-    closed: false,
-    isReconnect: false,
-    writeQueue: Promise.resolve(),
-    writeError: null,
-    queuedBytes: 0,
-    backpressureKill: false,
-  };
-
-  if (streamInitHeader && proc.stdin && !proc.stdin.destroyed) {
-    workerEntry.writeQueue = workerEntry.writeQueue
-      .then(() => writeChunkWithBackpressure(proc.stdin, streamInitHeader))
-      .catch((err) => {
-        console.warn(`[streaming] Error escribiendo cabecera inicial a ${target.name}:`, err.message);
-      });
-  }
-
-  proc.stderr.on('data', (data) => {
-    const message = data.toString();
-    const connectionError = message.match(/connection refused|connection timed out|connection reset|network is unreachable|could not write header|error opening output|failed to open|server error|authorization failed|access denied|invalid stream key|handshake failed|tls[^\r\n]*(?:error|fail)|failed to resolve|no route to host|input\/output error|broken pipe|end of file|permission denied/i);
-    if (connectionError && !workerEntry.connected && hooks.onStartupFailure) {
-      hooks.onStartupFailure(safeStreamError(destUrl, connectionError[0]));
-    }
-
-    if (!workerEntry.connected && /frame=\s*\d+/.test(message)) {
-      workerEntry.connected = true;
-      streamReconnectAttempts.delete(target.id);
-      if (workerEntry.isReconnect) {
-        notifyDestinationStatus(target, 'live', 'La conexión se restableció.');
-      }
-      if (hooks.onConnected) hooks.onConnected(workerEntry);
-      sendStreamStatus();
-    }
-
-    if (/frame=|bitrate=/.test(message) && mainWindow && !mainWindow.isDestroyed()) {
-      const fpsMatch = message.match(/fps=\s*([\d.]+)/);
-      const bitrateMatch = message.match(/bitrate=\s*([\d.]+\s*\w+\/s)/);
-      const dropMatch = message.match(/drop=\s*(\d+)/);
-      const speedMatch = message.match(/speed=\s*([\d.]+x)/);
-      const dropped = dropMatch ? parseInt(dropMatch[1], 10) : 0;
-      mainWindow.webContents.send('stream-telemetry', {
-        targetId: target.id,
-        targetName: target.name,
-        fps: fpsMatch ? parseFloat(fpsMatch[1]) : 30,
-        bitrate: bitrateMatch ? bitrateMatch[1] : '4500 kbits/s',
-        droppedFrames: dropped,
-        speed: speedMatch ? speedMatch[1] : '1.0x',
-        health: dropped > 15 ? 'warning' : 'excellent',
-      });
-    }
-  });
-
-  proc.once('error', (error) => {
-    if (!workerEntry.connected && hooks.onStartupFailure) {
-      hooks.onStartupFailure(safeStreamError(destUrl, error.message));
-    }
-  });
-
-  proc.once('close', (code, signal) => {
-    workerEntry.closed = true;
-    const wasConnected = workerEntry.connected;
-    if (!wasConnected && hooks.onStartupFailure) {
-      hooks.onStartupFailure(`FFmpeg cerró antes de conectar (código ${code ?? signal ?? 'desconocido'}).`);
-    }
-    activeStreamWorkers = activeStreamWorkers.filter(worker => worker !== workerEntry);
-    // Durante el arranque manda la promesa de start-streaming y durante la
-    // parada manda stop-streaming: los cierres de esa ventana no deben
-    // tocar el estado visible ni disparar reconexiones.
-    if (streamStartupInProgress || streamStopping) return;
-    if (!streamSessionActive) return;
-    // Sesión viva y el proceso murió: esto ANTES era silencioso si el destino
-    // ya había conectado. Ahora se avisa y se reconecta con espera progresiva.
-    if (wasConnected) {
-      notifyDestinationStatus(target, 'down', 'Se cayó la conexión con este destino.');
-    }
-    if (wasConnected || workerEntry.isReconnect) {
-      scheduleStreamReconnect(target, threadsPerDestination);
-    }
-    sendStreamStatus();
-  });
-
-  return workerEntry;
-}
-
-function clearStreamReconnectState() {
-  for (const timer of streamReconnectTimers.values()) clearTimeout(timer);
-  streamReconnectTimers.clear();
-  streamReconnectAttempts.clear();
-}
-
 ipcMain.handle('start-streaming', async (_event, payload = {}) => {
   const targets = typeof payload === 'string'
     ? [{ id: 'custom', name: 'Stream', url: payload.trim() }]
@@ -3004,18 +2795,12 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
 
   if (!targets.length) return { success: false, error: 'No se proporcionaron destinos con una clave de transmisión.' };
 
-  // Nueva sesión: cualquier reconexión pendiente de la anterior se cancela y
-  // los cierres de los workers viejos no deben disparar reconexiones.
-  streamStopping = true;
-  streamSessionActive = false;
-  clearStreamReconnectState();
   for (const worker of activeStreamWorkers) {
     try { worker.process?.stdin?.destroy(); worker.process?.kill('SIGINT'); } catch (error) {}
   }
   activeStreamWorkers = [];
   streamDestinations = targets;
   streamStartupInProgress = true;
-  streamStopping = false;
 
   if (payload.initialHeader) {
     const passedHeader = toSafeBuffer(payload.initialHeader);
@@ -3027,6 +2812,7 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
   const availableCores = Math.max(1, os.cpus().length - 1);
   const threadsPerDestination = Math.max(1, Math.min(4, Math.floor(availableCores / targets.length)));
   const startupResults = await Promise.all(targets.map((target) => new Promise((resolve) => {
+    const destUrl = target.url.trim();
     let settled = false;
     let startupTimer;
     let workerEntry = null;
@@ -3040,22 +2826,140 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
       }
       resolve(result);
     };
+    const safeError = (message) => {
+      let safeMessage = String(message || 'Error de conexión RTMP/RTMPS.');
+      try {
+        const parsed = new URL(destUrl);
+        const segments = parsed.pathname.split('/').filter(Boolean);
+        if (segments.length) segments[segments.length - 1] = '[clave oculta]';
+        parsed.pathname = `/${segments.join('/')}`;
+        parsed.search = '';
+        safeMessage = safeMessage.replaceAll(destUrl, parsed.toString());
+      } catch (error) {
+        safeMessage = safeMessage.replaceAll(destUrl, '[URL RTMP oculta]');
+      }
+      return safeMessage.slice(-700);
+    };
+    const isWindows = process.platform === 'win32';
+    const videoEncoder = isWindows ? 'h264_mf' : 'libx264';
+    const videoEncoderArgs = videoEncoder === 'h264_mf'
+      ? ['-c:v', 'h264_mf', '-b:v', '4500k']
+      : [
+          '-c:v', 'libx264',
+          '-preset', 'veryfast',
+          '-tune', 'zerolatency',
+          '-threads', String(threadsPerDestination),
+          '-profile:v', 'main',
+          '-level', '4.1',
+          '-b:v', '4500k',
+        ];
+
+    const workerArgs = [
+      '-probesize', '2M',
+      '-analyzeduration', '1000000',
+      '-fpsprobesize', '0',
+      '-fflags', '+discardcorrupt+nobuffer',
+      '-f', 'webm',
+      '-i', 'pipe:0',
+      ...videoEncoderArgs,
+      '-maxrate', '5000k',
+      '-bufsize', '5000k',
+      '-pix_fmt', 'yuv420p',
+      '-g', '60',
+      '-keyint_min', '30',
+      '-r', '30',
+      '-c:a', 'aac',
+      '-b:a', '160k',
+      '-ar', '48000',
+      '-ac', '2',
+      '-max_interleave_delta', '0',
+      '-flvflags', 'no_duration_filesize',
+      '-rtmp_buffer', '200',
+      '-rtmp_live', 'live',
+      '-rw_timeout', '12000000',
+      '-f', 'flv',
+      destUrl,
+    ];
+
+    let proc;
     try {
-      workerEntry = spawnStreamWorker(target, threadsPerDestination, {
-        onConnected: (worker) => settle({ target, success: true, worker }),
-        onStartupFailure: (error) => settle({ target, success: false, error }),
-      });
+      proc = spawn(ffmpegPath, workerArgs, { stdio: ['pipe', 'ignore', 'pipe'] });
     } catch (error) {
-      settle({ target, success: false, error: safeStreamError(target.url, error.message) });
+      settle({ target, success: false, error: safeError(error.message) });
       return;
     }
+
+    workerEntry = {
+      id: target.id,
+      name: target.name,
+      url: destUrl,
+      process: proc,
+      connected: false,
+      writeQueue: Promise.resolve(),
+      writeError: null,
+    };
     activeStreamWorkers.push(workerEntry);
-    // 20 s (antes 15): un handshake lento pero avanzando ya no se mata como
-    // si fuera un destino muerto; y si expira, el error lo dice como tal.
+
+    // Escribir cabecera EBML de inmediato para iniciar la decodificación en byte 0
+    if (streamInitHeader && proc.stdin && !proc.stdin.destroyed) {
+      workerEntry.writeQueue = workerEntry.writeQueue
+        .then(() => writeChunkWithBackpressure(proc.stdin, streamInitHeader))
+        .catch((err) => {
+          console.warn(`[start-streaming] Error escribiendo cabecera inicial a ${target.name}:`, err.message);
+        });
+    }
+
+    proc.stderr.on('data', (data) => {
+      const message = data.toString();
+      const connectionError = message.match(/connection refused|connection timed out|network is unreachable|could not write header|error opening output|server error|authorization failed|access denied|invalid stream key|handshake failed|tls[^\r\n]*(?:error|fail)|failed to resolve|no route to host|input\/output error|broken pipe|permission denied/i);
+      if (connectionError && !workerEntry.connected) {
+        settle({ target, success: false, error: safeError(connectionError[0]) });
+      }
+
+      if (!workerEntry.connected && /frame=\s*\d+/.test(message)) {
+        workerEntry.connected = true;
+        settle({ target, success: true, worker: workerEntry });
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('stream-status', { active: true, destinations: activeStreamWorkers.filter(worker => worker.connected) });
+        }
+      }
+
+      if (/frame=|bitrate=/.test(message) && mainWindow && !mainWindow.isDestroyed()) {
+        const fpsMatch = message.match(/fps=\s*([\d.]+)/);
+        const bitrateMatch = message.match(/bitrate=\s*([\d.]+\s*\w+\/s)/);
+        const dropMatch = message.match(/drop=\s*(\d+)/);
+        const speedMatch = message.match(/speed=\s*([\d.]+x)/);
+        const dropped = dropMatch ? parseInt(dropMatch[1], 10) : 0;
+        mainWindow.webContents.send('stream-telemetry', {
+          targetId: target.id,
+          targetName: target.name,
+          fps: fpsMatch ? parseFloat(fpsMatch[1]) : 30,
+          bitrate: bitrateMatch ? bitrateMatch[1] : '4500 kbits/s',
+          droppedFrames: dropped,
+          speed: speedMatch ? speedMatch[1] : '1.0x',
+          health: dropped > 15 ? 'warning' : 'excellent',
+        });
+      }
+    });
+
+    proc.once('error', (error) => {
+      settle({ target, success: false, error: safeError(error.message) });
+    });
+    proc.once('close', (code, signal) => {
+      workerEntry.closed = true;
+      if (!workerEntry.connected) {
+        settle({ target, success: false, error: `FFmpeg cerró antes de conectar (código ${code ?? signal ?? 'desconocido'}).` });
+      }
+      activeStreamWorkers = activeStreamWorkers.filter(worker => worker !== workerEntry);
+      if (workerEntry.connected && !streamStartupInProgress && activeStreamWorkers.every(worker => !worker.connected) && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('stream-status', { active: false, destinations: [] });
+      }
+    });
+
     startupTimer = setTimeout(() => {
-      settle({ target, success: false, error: 'Tiempo agotado (20 s) esperando que el servidor acepte el video. Verifica que el evento en vivo esté creado y activo en la plataforma.' });
-      try { workerEntry.process?.kill('SIGINT'); } catch (error) {}
-    }, 20000);
+      settle({ target, success: false, error: 'Tiempo agotado esperando que el servidor acepte el video. Verifica que el evento esté activo.' });
+      try { proc.kill('SIGINT'); } catch (error) {}
+    }, 15000);
   })));
 
   streamStartupInProgress = false;
@@ -3072,10 +2976,9 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
     return { success: false, error: failures.map(failure => `${failure.name}: ${failure.error}`).join('\n') || 'No se pudo conectar con el servidor de transmisión.', failures };
   }
 
-  // Al menos un destino conectó: la sesión queda viva y desde aquí cualquier
-  // caída se avisa y se reconecta sola.
-  streamSessionActive = true;
-  sendStreamStatus();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('stream-status', { active: true, destinations: connectedDestinations });
+  }
   return { success: true, connectedDestinations, failures };
 });
 
@@ -3093,28 +2996,10 @@ ipcMain.on('stream-chunk', (event, chunkBuffer) => {
     }
     if (activeStreamWorkers.length === 0) return;
     for (const worker of activeStreamWorkers) {
-      if (!worker.process?.stdin || worker.process.stdin.destroyed || worker.stdinDead) continue;
-      // Cola con límite: antes crecía sin tope en memoria si la red del
-      // destino iba lenta, y el "en vivo" se alejaba minutos del tiempo real.
-      // Pasado el límite se reinicia ESE destino (el cierre dispara la
-      // reconexión) en vez de seguir acumulando.
-      if (worker.queuedBytes > STREAM_QUEUE_CAP_BYTES && !worker.backpressureKill) {
-        worker.backpressureKill = true;
-        console.warn(`[stream-chunk] ${worker.name} acumuló más de ${Math.round(STREAM_QUEUE_CAP_BYTES / 1048576)} MB sin enviar; se reinicia el destino.`);
-        try { worker.process.kill('SIGINT'); } catch (e) {}
-        continue;
-      }
-      worker.queuedBytes += buf.length;
+      if (!worker.process?.stdin || worker.process.stdin.destroyed) continue;
       worker.writeQueue = worker.writeQueue
-        .then(async () => {
-          try { await writeChunkWithBackpressure(worker.process.stdin, buf); }
-          finally { worker.queuedBytes = Math.max(0, worker.queuedBytes - buf.length); }
-        })
+        .then(() => writeChunkWithBackpressure(worker.process.stdin, buf))
         .catch((error) => {
-          // La entrada murió: se marca una vez y no se sigue escribiendo (ni
-          // llenando la consola) sobre un proceso condenado; su cierre
-          // dispara el aviso y la reconexión.
-          worker.stdinDead = true;
           worker.writeError = error.message || String(error);
           console.warn(`[stream-chunk] ${worker.name} write error:`, worker.writeError);
         });
@@ -3123,11 +3008,6 @@ ipcMain.on('stream-chunk', (event, chunkBuffer) => {
 });
 
 ipcMain.handle('stop-streaming', async () => {
-  // Parada intencional: los cierres que vienen NO son caídas, no se avisan
-  // como tal ni disparan reconexión.
-  streamStopping = true;
-  streamSessionActive = false;
-  clearStreamReconnectState();
   streamStartupInProgress = false;
   streamInitHeader = null;
   const workers = activeStreamWorkers.slice();

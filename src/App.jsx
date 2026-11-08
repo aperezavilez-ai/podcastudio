@@ -389,6 +389,27 @@ function PodcastStudioApp() {
   const slotStreamsRef = useRef(slotStreams);
   useEffect(() => { slotStreamsRef.current = slotStreams; }, [slotStreams]);
 
+  // Abrir modal de conexión dirigiendo automáticamente a la primera ranura libre
+  const handleOpenConnectModal = useCallback((slotNumber) => {
+    let target = typeof slotNumber === 'number' ? slotNumber : (activeCam - 1);
+    const isOccupied = (s) => Boolean(slotStreamsRef.current[s]) || Boolean(cameraMetaRef.current[s]?.deviceId || cameraMetaRef.current[s]?.url);
+    if (isOccupied(target)) {
+      for (let s = 0; s < 12; s++) {
+        if (!isOccupied(s)) {
+          target = s;
+          break;
+        }
+      }
+    }
+    if (target >= (camSlotsRef.current?.length || 4) && target < 12) {
+      const newSlots = Array.from({ length: target + 1 }, (_, i) => i + 1);
+      setCamSlots(newSlots);
+      camSlotsRef.current = newSlots;
+    }
+    setConnectModalSlot(target);
+    setShowConnectModal(true);
+  }, [activeCam]);
+
   // NOTIFICACIONES TOAST FLOTANTES NO BLOQUEANTES (Cero congelamientos de UI por alert)
   const [toastNotification, setToastNotification] = useState(null);
   const toastTimeoutRef = useRef(null);
@@ -1099,17 +1120,10 @@ function PodcastStudioApp() {
     const fromPgm = activeCam;
     const toPgm = pvwCam;
 
-    let lastUiProgress = -1;
     const step = (now) => {
       const elapsed = now - start;
       const progress = Math.min(1.0, elapsed / duration);
-      // La palanca visual no necesita 60 estados por segundo: con pasos de
-      // 0.02 el movimiento se ve igual y no se re-renderiza la cabina entera
-      // en cada frame de la transición. El motor sí recibe el progreso exacto.
-      if (Math.abs(progress - lastUiProgress) >= 0.02 || progress >= 1) {
-        lastUiProgress = progress;
-        setTBarPosition(progress);
-      }
+      setTBarPosition(progress);
 
       // Suministrar el progreso exacto al compositor broadcast para mezcla alfa continua
       updateBroadcastState({
@@ -1652,7 +1666,7 @@ function PodcastStudioApp() {
     };
   };
 
-  const getUserMediaWithTimeout = (constraints, timeoutMs = 2500) => {
+  const getUserMediaWithTimeout = (constraints, timeoutMs = 6000) => {
     return new Promise((resolve, reject) => {
       let settled = false;
       const timer = setTimeout(() => {
@@ -1706,7 +1720,7 @@ function PodcastStudioApp() {
       ? { deviceId: { exact: pairedAudioDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
     try {
-      const audioStream = await getUserMediaWithTimeout({ audio, video: false }, 1200);
+      const audioStream = await getUserMediaWithTimeout({ audio, video: false }, 3500);
       const audioTrack = audioStream.getAudioTracks()[0];
       if (audioTrack) stream.addTrack(audioTrack);
       return audioTrack ? (pairedAudioDeviceId || audioTrack.getSettings?.()?.deviceId || null) : null;
@@ -1722,42 +1736,55 @@ function PodcastStudioApp() {
       return;
     }
     const startCamera = async () => {
-      // Never guess the first Windows camera.  On systems with EasyCamera,
-      // capture cards and webcams, the default device is frequently not the
-      // Full-HD studio camera selected by the operator.
       const preferredDeviceId = localStorage.getItem('podcastudio_master_camera_device');
-      if (!preferredDeviceId) return;
+      const preferredLabel = localStorage.getItem('podcastudio_master_camera_label');
+      if (!preferredDeviceId && !preferredLabel) return;
       try {
-        const attempts = [
-          // 1. Intento ideal 1080p: negocia Full HD o la máxima resolución nativa sin fallar ni trabar el driver de Windows
-          { video: { deviceId: { exact: preferredDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-          { video: { deviceId: { exact: preferredDeviceId } }, audio: false },
-          { video: { deviceId: preferredDeviceId }, audio: false }
-        ];
+        const devices = await navigator.mediaDevices?.enumerateDevices?.().catch(() => []) || [];
+        const videoDevs = devices.filter(d => d.kind === 'videoinput');
+        if (videoDevs.length === 0) return;
+
+        const targetDev = videoDevs.find(d => d.deviceId === preferredDeviceId) 
+          || (preferredLabel ? videoDevs.find(d => d.label && d.label.toLowerCase().includes(preferredLabel.toLowerCase())) : null);
+        
+        if (!targetDev) return;
+        const effectiveDeviceId = targetDev.deviceId;
 
         let stream = null;
-        for (const c of attempts) {
+        try {
+          stream = await getUserMediaWithTimeout({
+            video: {
+              deviceId: { exact: effectiveDeviceId },
+              width: { ideal: 1920, min: 320 },
+              height: { ideal: 1080, min: 240 },
+              frameRate: { ideal: 30, min: 15 },
+            },
+            audio: false,
+          }, 4500);
+        } catch (e1) {
           try {
-            stream = await getUserMediaWithTimeout(c, 1200);
-            if (stream) break;
-          } catch (e) {}
+            stream = await getUserMediaWithTimeout({ video: { deviceId: effectiveDeviceId }, audio: false }, 3500);
+          } catch (e2) {}
         }
 
         if (stream) {
           const vt = stream.getVideoTracks()[0];
           if (vt && 'contentHint' in vt) vt.contentHint = 'motion';
 
-          // CAM 1 is the studio/master source, so a selected/default studio
-          // microphone is acceptable when the camera has no embedded input.
-          const videoDeviceId = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId;
-          const audioDeviceId = await attachCameraAudio(stream, videoDeviceId, { allowDefault: true });
-
           setLocalStream(stream);
           setSlotStreams(prev => ({ ...prev, 0: stream }));
           const videoTrack = stream.getVideoTracks()[0];
-          const devId = videoTrack?.getSettings?.()?.deviceId;
-          const devLabel = videoTrack?.label || 'Cámara 1 (Principal)';
-          setCameraMeta(prev => ({ ...prev, 0: { deviceId: devId, audioDeviceId, resolution: getVideoTrackResolution(stream), videoInfo: getVideoTrackInfo(stream), label: devLabel, type: 'usb' } }));
+          const devId = videoTrack?.getSettings?.()?.deviceId || effectiveDeviceId;
+          const devLabel = videoTrack?.label || targetDev.label || 'Cámara 1 (Principal)';
+          setCameraMeta(prev => ({ ...prev, 0: { deviceId: devId, resolution: getVideoTrackResolution(stream), videoInfo: getVideoTrackInfo(stream), label: devLabel, type: 'usb' } }));
+
+          // Adjuntar audio asociado en segundo plano sin congelar el video en pantalla
+          const videoDeviceId = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId || effectiveDeviceId;
+          attachCameraAudio(stream, videoDeviceId, { allowDefault: true }).then(audioDeviceId => {
+            if (audioDeviceId) {
+              setCameraMeta(prev => ({ ...prev, 0: { ...prev[0], audioDeviceId } }));
+            }
+          }).catch(() => {});
 
 
 
@@ -1791,11 +1818,10 @@ function PodcastStudioApp() {
         }
       } catch (err) { logger.error("Error cámara inicial:", err); }
     };
-    // Diferida ~900 ms: abrir la cámara compitiendo con el primer pintado
-    // hacía que la app "ya abrió pero no responde". Primero la interfaz,
-    // luego la negociación con el driver.
-    const kickoffTimer = setTimeout(() => { startCamera(); }, 900);
-    return () => clearTimeout(kickoffTimer);
+    const mountTimer = setTimeout(() => {
+      startCamera();
+    }, 300);
+    return () => clearTimeout(mountTimer);
   }, []);
 
   // LÓGICA DE SCROLL FLUIDO 60FPS CON TRANSFORM 3D (TELEPROMPTER SIN BRINCO NI VIBRACIÓN)
@@ -1909,25 +1935,6 @@ function PodcastStudioApp() {
           isStreamingRef.current = false;
           setIsStreaming(false);
           setActiveLiveDestinations([]);
-        }
-      });
-      return unsubscribe;
-    }
-  }, []);
-
-  // Avisos por destino: antes, si un destino se caía a mitad del vivo, la
-  // pantalla lo seguía mostrando "en vivo" y nadie se enteraba. Ahora cada
-  // caída, reconexión y restablecimiento se anuncia en el momento.
-  useEffect(() => {
-    if (window.api?.onStreamDestinationStatus) {
-      const unsubscribe = window.api.onStreamDestinationStatus((evt) => {
-        if (!evt) return;
-        if (evt.status === 'down') {
-          showToast(`${evt.name}: se cayó la conexión. Reintentando automáticamente…`, 'error', 8000);
-        } else if (evt.status === 'live') {
-          showToast(`${evt.name}: conexión restablecida. Ya estás en vivo de nuevo en ese destino.`, 'success', 6000);
-        } else if (evt.status === 'failed') {
-          showToast(`${evt.name}: ${evt.detail || 'No se pudo reconectar.'}`, 'error', 10000);
         }
       });
       return unsubscribe;
@@ -2340,7 +2347,6 @@ function PodcastStudioApp() {
 
   const hasSentHeaderRef = useRef(false);
   const usbConnectInFlightRef = useRef(new Set());
-  const recordingReadyRef = useRef(false);
 
   const handleMasterChunk = (buffer) => {
     if ((isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk) {
@@ -2353,7 +2359,7 @@ function PodcastStudioApp() {
         recordingChunkCountRef.current += 1;
         return;
       }
-      if (window.api?.sendRecordChunk && recordingReadyRef.current) {
+      if (window.api?.sendRecordChunk) {
         recordingChunkDeliveryRef.current = recordingChunkDeliveryRef.current
           .then(async () => {
             const result = await window.api.sendRecordChunk(buffer);
@@ -2364,12 +2370,6 @@ function PodcastStudioApp() {
             recordingChunkErrorRef.current = error?.message || String(error);
             logger.error('[recording] Error entregando segmento a FFmpeg:', error);
           });
-      } else if (window.api?.sendRecordChunk) {
-        // El proceso FFmpeg aún está naciendo (arranque solapado): el
-        // fragmento se guarda en memoria y se entrega en orden al quedar
-        // listo. Sin esta compuerta, esos primeros fragmentos — incluida la
-        // cabecera WebM — se perderían contra un proceso que aún no existe.
-        recordingChunksRef.current.push(buffer);
       }
     }
   };
@@ -2405,19 +2405,30 @@ function PodcastStudioApp() {
         isRecordingPausedRef.current = false;
         setCountdown(null);
 
-        // 1. Lanzar el proceso FFmpeg en Electron SIN esperarlo: su arranque
-        // se solapa con la construcción del motor (paso 2), que es la parte
-        // lenta y síncrona. Antes iban en serie y el REC tardaba la suma de
-        // los dos. Si el motor ya estaba activo (p. ej. transmitiendo), se
-        // pasa la cabecera de la sesión viva (options.initialHeader), porque
-        // esa cabecera ya pasó por el listener y no volvería a llegar.
-        recordingReadyRef.current = false;
-        let startRecordingPromise = null;
+        // 1. Iniciar primero el proceso FFmpeg en Electron
         if (window.api) {
-          startRecordingPromise = window.api.startRecording({
-            projectName: topic || 'Proyecto_General',
-            initialHeader: getActiveInitHeader(),
-          }).catch((error) => ({ success: false, error: error.message }));
+          let res;
+          try {
+            res = await window.api.startRecording({
+              projectName: topic || 'Proyecto_General',
+              // Si el motor ya estaba activo (p. ej. transmitiendo), la cabecera
+              // WebM ya pasó por el listener y el FFmpeg de grabación nunca la
+              // recibiría: sin ella el MP4 sale vacío o con error. El handler
+              // de Electron ya sabía escribirla (options.initialHeader), pero
+              // nadie se la pasaba.
+              initialHeader: getActiveInitHeader(),
+            });
+          } catch (error) {
+            res = { success: false, error: error.message };
+          }
+
+          if (!res?.success) {
+            recordingStartPendingRef.current = false;
+            setIsStartingRecording(false);
+            logger.error('[handleRecord] Falló el inicio de grabación:', res?.error);
+            showToast('Error al iniciar grabación: ' + (res?.error || 'Desconocido'), 'error', 6000);
+            return;
+          }
         }
 
         // 2. Activar timer y estado de grabación inmediatamente
@@ -2459,40 +2470,6 @@ function PodcastStudioApp() {
         if (!masterStream || masterStream.getVideoTracks().length === 0) {
           throw new Error('El compositor Master no generó video grabable. Verifica una cámara activa y los permisos de medios.');
         }
-
-        // 4. Esperar a que el proceso de grabación exista y entregarle, en
-        // orden, los fragmentos que el motor produjo mientras nacía.
-        if (startRecordingPromise) {
-          const res = await startRecordingPromise;
-          if (!res?.success) {
-            throw new Error(res?.error || 'No se pudo iniciar el proceso de grabación.');
-          }
-          recordingReadyRef.current = true;
-          const bufferedChunks = recordingChunksRef.current;
-          recordingChunksRef.current = [];
-          for (const buffered of bufferedChunks) {
-            recordingChunkDeliveryRef.current = recordingChunkDeliveryRef.current
-              .then(async () => {
-                const result = await window.api.sendRecordChunk(buffered);
-                if (!result?.success) throw new Error(result?.error || 'Electron rechazó el segmento de grabación.');
-                recordingChunkCountRef.current += 1;
-              })
-              .catch((error) => {
-                recordingChunkErrorRef.current = error?.message || String(error);
-                logger.error('[recording] Error entregando segmento a FFmpeg:', error);
-              });
-          }
-        }
-
-        // Aviso temprano de video negro: si la cámara de programa tiene el
-        // track muteado (bus USB saturado), la grabación saldría negra con
-        // audio. Mejor saberlo al pulsar Grabar que al reproducir el MP4.
-        try {
-          const pgmTrack = getCamStream(activeCam)?.getVideoTracks?.()[0];
-          if (pgmTrack && pgmTrack.muted) {
-            showToast('La cámara de programa no está entregando imagen (señal interrumpida). La grabación puede salir negra: revisa el cable/hub USB de esa cámara.', 'error', 9000);
-          }
-        } catch {}
 
           // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
           if (isoRecordingEnabled && window.api?.startIsoRecording) {
@@ -2606,15 +2583,31 @@ function PodcastStudioApp() {
         setIsRecording(false);
         setIsRecordingPaused(false);
         isRecordingPausedRef.current = false;
-        recordingReadyRef.current = false;
 
-        // El recuadro de formatos sale YA. Antes era el último paso tras
-        // esperar a que FFmpeg cerrara el MP4 — la segunda pasada de
-        // +faststart sobre archivos de GB más la miniatura — y en
-        // grabaciones largas eso eran decenas de segundos mirando el botón
-        // de detener. Ahora el archivo se finaliza en segundo plano y el
-        // modal recibe su ruta al quedar listo (finalizing); si la
-        // finalización falla, el modal se cierra y se avisa, sin fingir.
+        if (window.api) {
+          try {
+            const flushRes = await window.api.flushRecordingChunks?.();
+            if (flushRes && !flushRes.success) throw new Error(flushRes.error || 'FFmpeg no pudo escribir todos los segmentos.');
+            stopRes = await window.api.stopRecording();
+            if (!stopRes?.success || !stopRes.path) {
+              recordingChunksRef.current = [];
+              showToast('No se pudo finalizar el MP4: ' + (stopRes?.error || 'No se generó un archivo válido.'), 'error', 6000);
+              return;
+            }
+            if (thumbnailDataUrl && window.api.saveRecordingThumbnail) {
+              const thumbRes = await window.api.saveRecordingThumbnail({
+                projectName: topic || 'Proyecto_General',
+                base64Data: thumbnailDataUrl
+              }).catch(e => ({ success: false, error: e.message }));
+              if (!thumbRes?.success) logger.warn('[App] Error guardando miniatura:', thumbRes?.error);
+            }
+          } catch (e) {
+            logger.warn('Error parando grabación FFmpeg:', e);
+            recordingChunksRef.current = [];
+            showToast('No se pudo finalizar la grabación: ' + (e.message || 'Error desconocido'), 'error', 6000);
+            return;
+          }
+        }
         const chunks = recordingChunksRef.current;
         const recBlob = chunks.length > 0 ? new Blob(chunks, { type: 'video/webm' }) : null;
         recordingChunksRef.current = [];
@@ -2626,46 +2619,12 @@ function PodcastStudioApp() {
           url: recUrl,
           snapshotCanvas,
           thumbnailDataUrl,
-          filePath: null,
-          finalizing: Boolean(window.api),
-          projectName: topic || 'Proyecto_General',
+          filePath: stopRes?.path || null,
+          projectName: stopRes?.projectName || topic || 'Proyecto_General',
           name: `PodcaStudio_${cleanTopicName}_${Date.now()}`,
           duration: recordingTime || 1,
         });
         setShowExportModal(true);
-
-        if (window.api) {
-          try {
-            const flushRes = await window.api.flushRecordingChunks?.();
-            if (flushRes && !flushRes.success) throw new Error(flushRes.error || 'FFmpeg no pudo escribir todos los segmentos.');
-            stopRes = await window.api.stopRecording();
-            if (!stopRes?.success || !stopRes.path) {
-              setShowExportModal(false);
-              setRecordedVideoData(null);
-              showToast('No se pudo finalizar el MP4: ' + (stopRes?.error || 'No se generó un archivo válido.'), 'error', 6000);
-              return;
-            }
-            setRecordedVideoData(prev => prev ? {
-              ...prev,
-              filePath: stopRes.path,
-              projectName: stopRes.projectName || prev.projectName,
-              finalizing: false,
-            } : prev);
-            if (thumbnailDataUrl && window.api.saveRecordingThumbnail) {
-              const thumbRes = await window.api.saveRecordingThumbnail({
-                projectName: topic || 'Proyecto_General',
-                base64Data: thumbnailDataUrl
-              }).catch(e => ({ success: false, error: e.message }));
-              if (!thumbRes?.success) logger.warn('[App] Error guardando miniatura:', thumbRes?.error);
-            }
-          } catch (e) {
-            logger.warn('Error parando grabación FFmpeg:', e);
-            setShowExportModal(false);
-            setRecordedVideoData(null);
-            showToast('No se pudo finalizar la grabación: ' + (e.message || 'Error desconocido'), 'error', 6000);
-            return;
-          }
-        }
       } catch (error) {
         logger.error('[handleRecord] Error finalizando grabación:', error);
         isRecordingRef.current = false;
@@ -2975,19 +2934,32 @@ function PodcastStudioApp() {
     });
   };
 
-  // Dispositivos de video USB
+  // Dispositivos de video USB: consultar solo cuando se abre el modal o cambia el hardware
   useEffect(() => {
+    let timer = null;
     const fetchDevices = async () => {
       try {
-        const devs = await navigator.mediaDevices.enumerateDevices();
+        const devs = await navigator.mediaDevices?.enumerateDevices?.() || [];
         const cams = devs.filter(d => d.kind === 'videoinput');
         setCameraDevices(cams);
       } catch (e) {}
     };
-    fetchDevices();
-    navigator.mediaDevices?.addEventListener?.('devicechange', fetchDevices);
-    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', fetchDevices);
-  }, []);
+
+    if (showConnectModal) {
+      fetchDevices();
+    }
+
+    const onDeviceChange = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(fetchDevices, 400);
+    };
+
+    navigator.mediaDevices?.addEventListener?.('devicechange', onDeviceChange);
+    return () => {
+      if (timer) clearTimeout(timer);
+      navigator.mediaDevices?.removeEventListener?.('devicechange', onDeviceChange);
+    };
+  }, [showConnectModal]);
 
   const handleUsbConnect = async (deviceId, slot, label) => {
     // Si la cámara ya está activa en este slot con el mismo deviceId, mantenerla
@@ -3035,24 +3007,27 @@ function PodcastStudioApp() {
 
     let stream = null;
     let lastError = null;
-    // Intentos de alta velocidad: negocia Full HD (1080p) o la máxima resolución nativa (720p/480p) sin trabar el driver de Windows UVC
-    const attempts = [
-      // 1. Intento principal: 1080p a 30 fps (antes no se pedían fps y el
-      // driver podía entregar 15 fps sin que nadie lo notara)
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-      // 2. Escalón real de bajada: 720p a 30 fps (antes este intento no pedía
-      // nada y el driver elegía lo que fuera, incluso 480p)
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-      // 3. Fallback de coincidencia relajada
-      { video: { deviceId: deviceId }, audio: false },
-    ];
 
-    for (const constraints of attempts) {
+    // Negociación adaptativa nativa: solicita 1080p con rango flexible (mínimo 320x240)
+    // para que el subsistema de Windows entregue de inmediato la resolución más alta posible
+    // sin trabar el bus USB ni cancelar streams en vuelo.
+    try {
+      stream = await getUserMediaWithTimeout({
+        video: {
+          deviceId: { exact: deviceId },
+          width: { ideal: 1920, min: 320 },
+          height: { ideal: 1080, min: 240 },
+          frameRate: { ideal: 30, min: 15 },
+        },
+        audio: false,
+      }, 6000);
+    } catch (err) {
+      lastError = err;
+      // Intento secundario relajado solo si el primero falló y no hay otro intento
       try {
-        stream = await getUserMediaWithTimeout(constraints, 3000);
-        if (stream) break;
-      } catch (err) {
-        lastError = err;
+        stream = await getUserMediaWithTimeout({ video: { deviceId }, audio: false }, 5000);
+      } catch (err2) {
+        lastError = err2;
       }
     }
 
@@ -3061,28 +3036,37 @@ function PodcastStudioApp() {
       if (vTrack && 'contentHint' in vTrack) {
         vTrack.contentHint = 'motion';
       }
-      // Secondary USB sources may contribute only their paired (same groupId)
-      // microphone.  Falling back to the default input here duplicated the
-      // studio mic on every screen/camera and made AFV appear broken.
-      const audioDeviceId = await attachCameraAudio(stream, deviceId, { allowDefault: slot === 0 });
-
       usbConnectInFlightRef.current.delete(flightKey);
       slotStreamsRef.current = { ...slotStreamsRef.current, [slot]: stream };
       const videoInfo = getVideoTrackInfo(stream);
-      cameraMetaRef.current = { ...cameraMetaRef.current, [slot]: { deviceId, audioDeviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } };
+      cameraMetaRef.current = { ...cameraMetaRef.current, [slot]: { deviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } };
       setSlotStreams(prev => ({ ...prev, [slot]: stream }));
-      setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, audioDeviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } }));
+      setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } }));
+      if (slot >= camSlots.length && slot < 12) {
+        const expandedSlots = Array.from({ length: slot + 1 }, (_, i) => i + 1);
+        setCamSlots(expandedSlots);
+        camSlotsRef.current = expandedSlots;
+      }
       saveCameraToHistory({ deviceId, label: label || 'Cámara USB', type: 'usb' });
-      // Verificación de lo negociado de verdad: si el driver entregó menos de
-      // lo pedido, antes entraba en silencio y se veía granulado/borroso sin
-      // explicación. Ahora la app lo dice en el momento.
       if (videoInfo && ((videoInfo.height > 0 && videoInfo.height < 1080) || (videoInfo.frameRate > 0 && videoInfo.frameRate < 24))) {
         showToast(`CAM ${slot + 1} (${label || 'Cámara USB'}) entregó ${videoInfo.label} en vez de 1920×1080 · 30 fps. Con varias cámaras 1080p el bus USB se satura: prueba un puerto directo sin hub o baja la carga.`, 'error', 9000);
       }
       if (slot === 0) {
-        try { localStorage.setItem('podcastudio_master_camera_device', deviceId); } catch {}
+        try {
+          localStorage.setItem('podcastudio_master_camera_device', deviceId);
+          if (label) localStorage.setItem('podcastudio_master_camera_label', label);
+        } catch {}
         setLocalStream(stream);
       }
+
+      // Adjuntar micrófono emparejado en segundo plano sin frenar el flujo de video en pantalla
+      attachCameraAudio(stream, deviceId, { allowDefault: slot === 0 }).then(audioDeviceId => {
+        if (audioDeviceId) {
+          cameraMetaRef.current[slot] = { ...cameraMetaRef.current[slot], audioDeviceId };
+          setCameraMeta(prev => ({ ...prev, [slot]: { ...prev[slot], audioDeviceId } }));
+        }
+      }).catch(() => {});
+
       return stream;
     } else {
       usbConnectInFlightRef.current.delete(flightKey);
@@ -5871,10 +5855,7 @@ function PodcastStudioApp() {
 
               {/* BOTÓN DIRECTO: CONFIGURAR ENTRADA DE VIDEO */}
               <button 
-                onClick={() => { 
-                  setConnectModalSlot(activeCam - 1); 
-                  setShowConnectModal(true); 
-                }} 
+                onClick={() => handleOpenConnectModal()} 
                 className="w-full p-2.5 bg-[#161616] hover:bg-[#202025] border border-[#2a2a32] hover:border-blue-500/50 rounded flex items-center justify-between text-xs font-bold text-white transition-all cursor-pointer shadow-sm group"
                 title="Configurar cámaras USB, Wi-Fi y celulares remotos"
               >
@@ -6602,10 +6583,7 @@ function PodcastStudioApp() {
         onDisconnectSlot={handleDisconnectSlot}
         onReconnectCamera={handleReconnectSavedCamera}
         onForgetCamera={handleForgetCamera}
-        onOpenConnectModal={() => {
-          setConnectModalSlot(activeCam - 1);
-          setShowConnectModal(true);
-        }}
+        onOpenConnectModal={() => handleOpenConnectModal()}
       />
 
       {/* MODAL DE EXPORTACIÓN Y DESCARGA MULTI-FORMATO (FACEBOOK, YOUTUBE, TIKTOK, INSTAGRAM) */}

@@ -1,8 +1,4 @@
-/* Inter autoalojada (fuente variable, pesos 300-700): antes se importaba de
-   Google Fonts con un @import de red que bloqueaba el primer pintado hasta
-   que respondía el DNS/servidor. Ahora viaja con la app y el arranque no
-   depende de la red. */
-@font-face { font-family: 'Inter'; font-style: normal; font-weight: 300 700; font-display: swap; src: url('/fonts/inter-var.woff2') format('woff2'); }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
 
 :root {

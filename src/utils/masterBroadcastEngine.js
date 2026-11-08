@@ -264,13 +264,7 @@ function getOrCreateVideo(camId, stream) {
       v.srcObject = stream;
       if (!v.hasTrackListeners) {
         v.hasTrackListeners = true;
-        const triggerPlay = () => {
-          if (v && v.paused) {
-            v.play().catch((e) => {
-              if (!v.playWarned) { v.playWarned = true; console.warn('[Master] El video offscreen no pudo reproducir:', e?.message || e); }
-            });
-          }
-        };
+        const triggerPlay = () => { if (v && v.paused) v.play().catch(() => {}); };
         v.addEventListener('loadedmetadata', triggerPlay);
         v.addEventListener('canplay', triggerPlay);
         if (stream.addEventListener) {
@@ -283,9 +277,7 @@ function getOrCreateVideo(camId, stream) {
       }
     }
     if (v.paused) {
-      v.play().catch((e) => {
-        if (!v.playWarned) { v.playWarned = true; console.warn('[Master] El video offscreen no pudo reproducir:', e?.message || e); }
-      });
+      v.play().catch(() => {});
     }
   } else if (v.srcObject) {
     v.srcObject = null;
@@ -397,57 +389,15 @@ function updateImages() {
   }
 }
 
-// Guardia contra cuadros NEGROS en programa/grabación/streaming:
-// un track USB saturado se marca 'muted' y su <video> pinta negro puro con
-// readyState y videoWidth normales; tampoco sirve un elemento cuyo
-// currentTime dejó de avanzar. En ambos casos se conserva el último cuadro
-// bueno de esa cámara en vez de copiar el negro al canvas Master.
-const camFrameHealth = new Map(); // camId -> { lastTime, lastAdvanceAt, stuck }
-const camLastGoodFrame = new Map(); // camId -> { canvas, at }
-
-function getVideoTrackOf(video) {
-  try { return video?.srcObject?.getVideoTracks?.()[0] || null; } catch (e) { return null; }
-}
-
-function isFrameUsable(video, camId) {
-  if (!video) return false;
-  const track = getVideoTrackOf(video);
-  if (track && (track.readyState !== 'live' || track.muted)) return false;
-  if (camId != null) {
-    const now = performance.now();
-    const t = video.currentTime || 0;
-    let health = camFrameHealth.get(camId);
-    if (!health) { health = { lastTime: t, lastAdvanceAt: now, stuck: false }; camFrameHealth.set(camId, health); }
-    if (t > health.lastTime + 0.001) { health.lastTime = t; health.lastAdvanceAt = now; health.stuck = false; }
-    else if (now - health.lastAdvanceAt > 1500) { health.stuck = true; }
-    if (health.stuck && video.readyState >= 2) return false;
-  }
-  return true;
-}
-
-function cacheGoodFrame(video, camId) {
-  if (camId == null || !video || !video.videoWidth) return;
-  const now = performance.now();
-  const prev = camLastGoodFrame.get(camId);
-  if (prev && now - prev.at < 500) return; // respaldo 2 veces por segundo basta
-  let entry = prev;
-  if (!entry) { entry = { canvas: document.createElement('canvas'), at: 0 }; camLastGoodFrame.set(camId, entry); }
-  const scale = Math.min(1, 1280 / video.videoWidth);
-  entry.canvas.width = Math.max(2, Math.round(video.videoWidth * scale));
-  entry.canvas.height = Math.max(2, Math.round(video.videoHeight * scale));
-  try { entry.canvas.getContext('2d').drawImage(video, 0, 0, entry.canvas.width, entry.canvas.height); entry.at = now; } catch (e) {}
-}
-
 function drawCameraCover(video, x, y, w, h, camId = null) {
   const isVideoReady = Boolean(
-    video && isFrameUsable(video, camId) && (
+    video && (
       video.readyState >= 2 ||
       (video.readyState >= 1 && video.videoWidth > 0 && !video.paused) ||
       (video.videoWidth > 0 && video.currentTime > 0)
     )
   );
   if (isVideoReady) {
-    cacheGoodFrame(video, camId);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     const vw = video.videoWidth || 1280;
@@ -521,21 +471,13 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
     }
     drawCameraNameBadge(x, y, w, h, camId);
   } else {
-    const lastGood = camId != null ? camLastGoodFrame.get(camId) : null;
-    if (lastGood && lastGood.canvas.width > 0) {
-      // Señal interrumpida (track muteado o cuadro congelado): se mantiene el
-      // último cuadro bueno en vez de irse a negro, que era lo que terminaba
-      // en las grabaciones cuando el bus USB se saturaba.
-      ctx.drawImage(lastGood.canvas, x, y, w, h);
-    } else {
-      ctx.fillStyle = '#0c0e14';
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = '#3a3f50';
-      ctx.font = 'bold 26px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('SIN SEÑAL', x + w / 2, y + h / 2);
-    }
+    ctx.fillStyle = '#0c0e14';
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = '#3a3f50';
+    ctx.font = 'bold 26px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SIN SEÑAL', x + w / 2, y + h / 2);
     drawCameraNameBadge(x, y, w, h, camId);
   }
 }

@@ -115,34 +115,21 @@ public class SplashForm : Form
         {
             try
             {
-                // Limpiar solo los procesos de ESTA instalación (antes se mataba
-                // cualquier proceso llamado "electron" del sistema, de cualquier
-                // app) y sin esperar hasta 1 s por cada uno: se matan todos y se
-                // hace una sola espera corta compartida.
+                // Limpiar procesos huérfanos previos de forma inmediata sin esperas bloqueantes (<10ms)
                 try
                 {
-                    var propios = new System.Collections.Generic.List<Process>();
+                    Process currentProc = Process.GetCurrentProcess();
+                    foreach (Process p in Process.GetProcessesByName("PodcastStudio"))
+                    {
+                        if (p.Id != currentProc.Id) { try { p.Kill(); } catch {} }
+                    }
                     foreach (Process p in Process.GetProcessesByName("electron"))
                     {
-                        try
-                        {
-                            string ruta = null;
-                            try { ruta = p.MainModule.FileName; } catch {}
-                            if (ruta != null && string.Equals(ruta, _electronExe, StringComparison.OrdinalIgnoreCase))
-                            {
-                                p.Kill();
-                                propios.Add(p);
-                            }
-                        } catch {}
+                        try { p.Kill(); } catch {}
                     }
-                    int esperaTotal = 0;
-                    while (esperaTotal < 600)
+                    foreach (Process p in Process.GetProcessesByName("ffmpeg"))
                     {
-                        bool quedaAlguno = false;
-                        foreach (Process p in propios) { try { if (!p.HasExited) { quedaAlguno = true; break; } } catch {} }
-                        if (!quedaAlguno) break;
-                        Thread.Sleep(50);
-                        esperaTotal += 50;
+                        try { p.Kill(); } catch {}
                     }
                 }
                 catch {}

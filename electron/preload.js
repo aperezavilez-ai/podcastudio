@@ -30,11 +30,6 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('stream-status', handler);
     return () => ipcRenderer.removeListener('stream-status', handler);
   },
-  onStreamDestinationStatus: (cb) => {
-    const handler = (e, data) => cb(data);
-    ipcRenderer.on('stream-destination-status', handler);
-    return () => ipcRenderer.removeListener('stream-destination-status', handler);
-  },
   onStreamTelemetry: (cb) => {
     const handler = (e, data) => cb(data);
     ipcRenderer.on('stream-telemetry', handler);

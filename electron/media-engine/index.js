@@ -15,7 +15,7 @@ const fs = require('fs');
 
 let ffmpegPath = null;
 try {
-  ffmpegPath = require('ffmpeg-static').replace('app.asar', 'app.asar.unpacked');
+  ffmpegPath = require('ffmpeg-static');
 } catch (e) {
   ffmpegPath = 'ffmpeg';
 }
