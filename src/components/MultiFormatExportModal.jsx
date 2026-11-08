@@ -344,11 +344,12 @@ export default function MultiFormatExportModal({
     }
   }
 
-  const isBusy = convertingKey !== null || packProgress !== null || exportingClipId !== null
+  const isFinalizing = Boolean(recording?.finalizing)
+  const isBusy = isFinalizing || convertingKey !== null || packProgress !== null || exportingClipId !== null
   const selectedCount = selectedKeys.length
 
   const handleModalClose = () => {
-    if (isBusy) handleCancelExport()
+    if (convertingKey !== null || packProgress !== null || exportingClipId !== null) handleCancelExport()
     onClose()
   }
 
@@ -450,6 +451,20 @@ export default function MultiFormatExportModal({
         </div>
 
         {/* Notificación de recorte de clips */}
+        {isFinalizing && (
+          <div style={{
+            margin: '0 0 12px 0',
+            padding: '10px 14px',
+            borderRadius: '10px',
+            fontSize: '13px',
+            lineHeight: 1.45,
+            background: 'rgba(249, 115, 22, 0.15)',
+            border: '1px solid #f97316',
+            color: '#fed7aa',
+          }}>
+            <span>Finalizando el archivo MP4 en segundo plano… Los formatos se habilitan en cuanto el archivo quede listo en tu carpeta de proyecto.</span>
+          </div>
+        )}
         {clipNotice && (
           <div
             style={{

@@ -9,9 +9,9 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyTitle("PodcaStudio")]
 [assembly: System.Reflection.AssemblyProduct("PodcaStudio")]
 [assembly: System.Reflection.AssemblyCompany("PodcaStudio")]
-[assembly: System.Reflection.AssemblyVersion("1.3.9.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.3.9.0")]
-[assembly: System.Reflection.AssemblyInformationalVersion("1.3.9.0")]
+[assembly: System.Reflection.AssemblyVersion("1.4.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.4.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersion("1.4.0.0")]
 [assembly: System.Reflection.AssemblyDescription("PodcaStudio - Estudio Profesional de Transmisi\u00F3n & Producci\u00F3n")]
 [assembly: System.Reflection.AssemblyCopyright("Copyright (C) 2026 PodcaStudio")]
 
@@ -115,21 +115,34 @@ public class SplashForm : Form
         {
             try
             {
-                // Limpiar procesos huérfanos previos de forma inmediata sin esperas bloqueantes (<10ms)
+                // Limpiar solo los procesos de ESTA instalación (antes se mataba
+                // cualquier proceso llamado "electron" del sistema, de cualquier
+                // app) y sin esperar hasta 1 s por cada uno: se matan todos y se
+                // hace una sola espera corta compartida.
                 try
                 {
-                    Process currentProc = Process.GetCurrentProcess();
-                    foreach (Process p in Process.GetProcessesByName("PodcastStudio"))
-                    {
-                        if (p.Id != currentProc.Id) { try { p.Kill(); } catch {} }
-                    }
+                    var propios = new System.Collections.Generic.List<Process>();
                     foreach (Process p in Process.GetProcessesByName("electron"))
                     {
-                        try { p.Kill(); } catch {}
+                        try
+                        {
+                            string ruta = null;
+                            try { ruta = p.MainModule.FileName; } catch {}
+                            if (ruta != null && string.Equals(ruta, _electronExe, StringComparison.OrdinalIgnoreCase))
+                            {
+                                p.Kill();
+                                propios.Add(p);
+                            }
+                        } catch {}
                     }
-                    foreach (Process p in Process.GetProcessesByName("ffmpeg"))
+                    int esperaTotal = 0;
+                    while (esperaTotal < 600)
                     {
-                        try { p.Kill(); } catch {}
+                        bool quedaAlguno = false;
+                        foreach (Process p in propios) { try { if (!p.HasExited) { quedaAlguno = true; break; } } catch {} }
+                        if (!quedaAlguno) break;
+                        Thread.Sleep(50);
+                        esperaTotal += 50;
                     }
                 }
                 catch {}

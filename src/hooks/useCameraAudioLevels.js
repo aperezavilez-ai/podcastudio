@@ -97,7 +97,10 @@ export function useCameraAudioLevels(camStreamsMap = {}, camMutedMap = {}) {
             }
             const avg = sum / entry.dataArray.length;
             // Normalizar a porcentaje 0..100 con curva perceptual
-            const normalized = Math.min(100, Math.round((avg / 110) * 20) * 5);
+            // Cuantización en pasos de 10 (antes 5): un VU no necesita más
+            // precisión y cada cambio de estado re-renderiza la cabina entera;
+            // con pasos más gruesos, hablar normal genera la mitad de renders.
+            const normalized = Math.min(100, Math.round((avg / 110) * 10) * 10);
             nextLevels[id] = { hasMic: true, level: normalized, isMuted: false };
           } else {
             nextLevels[id] = { hasMic: true, level: 0, isMuted: false };
@@ -119,7 +122,7 @@ export function useCameraAudioLevels(camStreamsMap = {}, camMutedMap = {}) {
     };
 
     measure();
-    const timer = setInterval(measure, 200);
+    const timer = setInterval(measure, 250);
 
     return () => {
       clearInterval(timer);

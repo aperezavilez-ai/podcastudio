@@ -1,6 +1,6 @@
 {
   "name": "podcaststudio",
-  "version": "1.3.9",
+  "version": "1.4.0",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
@@ -9,7 +9,8 @@
     "build:electron": "vite build && electron-builder",
     "test:remote-cameras": "node --test scripts/remote-camera-slots.test.mjs",
     "test:recording": "node --test scripts/recording-pipeline.integration.test.mjs",
-    "test:stream-config": "node --test scripts/stream-destinations.test.mjs"
+    "test:stream-config": "node --test scripts/stream-destinations.test.mjs",
+    "build:app": "vite build && electron-builder --win"
   },
   "dependencies": {
     "@mux/mux-node": "^15.5.0",
@@ -49,19 +50,33 @@
     "directories": {
       "output": "dist_electron"
     },
-    "win": {
-      "target": [
-        "dir",
-        "portable"
-      ],
-      "icon": "icon.ico"
-    },
     "files": [
       "dist/**/*",
       "electron/**/*",
       "icon.ico",
       "icon.png",
       "package.json"
-    ]
+    ],
+    "asarUnpack": [
+      "**/ffmpeg-static/**"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PodcastStudio"
+    },
+    "portable": {
+      "artifactName": "PodcastStudio-Portable-${version}.exe"
+    }
   }
 }
