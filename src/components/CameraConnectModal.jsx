@@ -375,9 +375,11 @@ export default function CameraConnectModal({
     if (open && !prevOpenRef.current) {
       const isOccupied = Boolean(streams[initialSlot]) || Boolean(cameraMeta[initialSlot]?.deviceId || cameraMeta[initialSlot]?.url);
       let selected = initialSlot;
-      if (initialSlot === 0 && isOccupied && activeTab === 'remote') {
-        const nextFree = getNextAvailableSlot(0);
-        if (nextFree != null) selected = nextFree;
+      // Si el slot inicial ya está ocupado (ej. CAM 1 tiene cámara principal activa),
+      // asignar automáticamente la siguiente ranura libre (CAM 2, CAM 3, etc.)
+      if (isOccupied) {
+        const nextFree = getNextAvailableSlot(initialSlot);
+        if (nextFree != null && nextFree < 12) selected = nextFree;
       }
       setTargetSlot(selected);
       const currentMeta = cameraMeta[selected];
@@ -389,7 +391,7 @@ export default function CameraConnectModal({
       setWifiConnectSuccess(null);
     }
     prevOpenRef.current = open;
-  }, [open, initialSlot, activeTab, streams, cameraMeta, getNextAvailableSlot]);
+  }, [open, initialSlot, streams, cameraMeta, getNextAvailableSlot]);
 
   // Si se cambia a la pestaña de celular/remota y CAM 1 ya está ocupada por USB/webcam, seleccionar automáticamente la siguiente ranura libre (e.g. CAM 2)
   useEffect(() => {
@@ -502,13 +504,21 @@ export default function CameraConnectModal({
     try {
       const connectPromise = onUsbConnect(deviceId, effSlot, customLabel.trim() || label);
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar la cámara USB. Verifica que la cámara no esté en uso por otra ventana.')), 10000)
+        setTimeout(() => reject(new Error('Tiempo de espera agotado al conectar la cámara USB. Verifica que la cámara no esté en uso por otra ventana.')), 15000)
       );
       const res = await Promise.race([connectPromise, timeoutPromise]);
       if (!res) {
         setUsbConnectError('No se pudo abrir la cámara. Asegúrate de que no esté en uso por otra app.');
       } else {
         setUsbConnectSuccess(`¡Cámara "${label || 'USB'}" asignada y conectada exitosamente a CAM ${effSlot + 1}!`);
+        // AUTO-AVANZAR A LA SIGUIENTE RANURA LIBRE (CAM 2 -> CAM 3 -> CAM 4...)
+        for (let s = 0; s < 12; s++) {
+          if (s !== effSlot && !streams[s] && !cameraMeta[s]?.deviceId && !cameraMeta[s]?.url) {
+            if (s >= slotsCount && onAddSlot) onAddSlot();
+            setTargetSlot(s);
+            break;
+          }
+        }
       }
     } catch (err) {
       setUsbConnectError(err.message || 'Error al conectar la cámara USB');

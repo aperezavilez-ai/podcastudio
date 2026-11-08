@@ -389,6 +389,27 @@ function PodcastStudioApp() {
   const slotStreamsRef = useRef(slotStreams);
   useEffect(() => { slotStreamsRef.current = slotStreams; }, [slotStreams]);
 
+  // Abrir modal de conexión dirigiendo automáticamente a la primera ranura libre
+  const handleOpenConnectModal = useCallback((slotNumber) => {
+    let target = typeof slotNumber === 'number' ? slotNumber : (activeCam - 1);
+    const isOccupied = (s) => Boolean(slotStreamsRef.current[s]) || Boolean(cameraMetaRef.current[s]?.deviceId || cameraMetaRef.current[s]?.url);
+    if (isOccupied(target)) {
+      for (let s = 0; s < 12; s++) {
+        if (!isOccupied(s)) {
+          target = s;
+          break;
+        }
+      }
+    }
+    if (target >= (camSlotsRef.current?.length || 4) && target < 12) {
+      const newSlots = Array.from({ length: target + 1 }, (_, i) => i + 1);
+      setCamSlots(newSlots);
+      camSlotsRef.current = newSlots;
+    }
+    setConnectModalSlot(target);
+    setShowConnectModal(true);
+  }, [activeCam]);
+
   // NOTIFICACIONES TOAST FLOTANTES NO BLOQUEANTES (Cero congelamientos de UI por alert)
   const [toastNotification, setToastNotification] = useState(null);
   const toastTimeoutRef = useRef(null);
@@ -1645,7 +1666,7 @@ function PodcastStudioApp() {
     };
   };
 
-  const getUserMediaWithTimeout = (constraints, timeoutMs = 2500) => {
+  const getUserMediaWithTimeout = (constraints, timeoutMs = 6000) => {
     return new Promise((resolve, reject) => {
       let settled = false;
       const timer = setTimeout(() => {
@@ -1721,19 +1742,21 @@ function PodcastStudioApp() {
       const preferredDeviceId = localStorage.getItem('podcastudio_master_camera_device');
       if (!preferredDeviceId) return;
       try {
-        const attempts = [
-          // 1. Intento ideal 1080p: negocia Full HD o la máxima resolución nativa sin fallar ni trabar el driver de Windows
-          { video: { deviceId: { exact: preferredDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-          { video: { deviceId: { exact: preferredDeviceId } }, audio: false },
-          { video: { deviceId: preferredDeviceId }, audio: false }
-        ];
-
         let stream = null;
-        for (const c of attempts) {
+        try {
+          stream = await getUserMediaWithTimeout({
+            video: {
+              deviceId: { exact: preferredDeviceId },
+              width: { ideal: 1920, min: 320 },
+              height: { ideal: 1080, min: 240 },
+              frameRate: { ideal: 30, min: 15 },
+            },
+            audio: false,
+          }, 5000);
+        } catch (e1) {
           try {
-            stream = await getUserMediaWithTimeout(c, 1200);
-            if (stream) break;
-          } catch (e) {}
+            stream = await getUserMediaWithTimeout({ video: { deviceId: preferredDeviceId }, audio: false }, 4000);
+          } catch (e2) {}
         }
 
         if (stream) {
@@ -2957,24 +2980,27 @@ function PodcastStudioApp() {
 
     let stream = null;
     let lastError = null;
-    // Intentos de alta velocidad: negocia Full HD (1080p) o la máxima resolución nativa (720p/480p) sin trabar el driver de Windows UVC
-    const attempts = [
-      // 1. Intento principal: 1080p a 30 fps (antes no se pedían fps y el
-      // driver podía entregar 15 fps sin que nadie lo notara)
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-      // 2. Escalón real de bajada: 720p a 30 fps (antes este intento no pedía
-      // nada y el driver elegía lo que fuera, incluso 480p)
-      { video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } }, audio: false },
-      // 3. Fallback de coincidencia relajada
-      { video: { deviceId: deviceId }, audio: false },
-    ];
 
-    for (const constraints of attempts) {
+    // Negociación adaptativa nativa: solicita 1080p con rango flexible (mínimo 320x240)
+    // para que el subsistema de Windows entregue de inmediato la resolución más alta posible
+    // sin trabar el bus USB ni cancelar streams en vuelo.
+    try {
+      stream = await getUserMediaWithTimeout({
+        video: {
+          deviceId: { exact: deviceId },
+          width: { ideal: 1920, min: 320 },
+          height: { ideal: 1080, min: 240 },
+          frameRate: { ideal: 30, min: 15 },
+        },
+        audio: false,
+      }, 6000);
+    } catch (err) {
+      lastError = err;
+      // Intento secundario relajado solo si el primero falló y no hay otro intento
       try {
-        stream = await getUserMediaWithTimeout(constraints, 3000);
-        if (stream) break;
-      } catch (err) {
-        lastError = err;
+        stream = await getUserMediaWithTimeout({ video: { deviceId }, audio: false }, 5000);
+      } catch (err2) {
+        lastError = err2;
       }
     }
 
@@ -2994,6 +3020,11 @@ function PodcastStudioApp() {
       cameraMetaRef.current = { ...cameraMetaRef.current, [slot]: { deviceId, audioDeviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } };
       setSlotStreams(prev => ({ ...prev, [slot]: stream }));
       setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, audioDeviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } }));
+      if (slot >= camSlots.length && slot < 12) {
+        const expandedSlots = Array.from({ length: slot + 1 }, (_, i) => i + 1);
+        setCamSlots(expandedSlots);
+        camSlotsRef.current = expandedSlots;
+      }
       saveCameraToHistory({ deviceId, label: label || 'Cámara USB', type: 'usb' });
       // Verificación de lo negociado de verdad: si el driver entregó menos de
       // lo pedido, antes entraba en silencio y se veía granulado/borroso sin
@@ -5793,10 +5824,7 @@ function PodcastStudioApp() {
 
               {/* BOTÓN DIRECTO: CONFIGURAR ENTRADA DE VIDEO */}
               <button 
-                onClick={() => { 
-                  setConnectModalSlot(activeCam - 1); 
-                  setShowConnectModal(true); 
-                }} 
+                onClick={() => handleOpenConnectModal()} 
                 className="w-full p-2.5 bg-[#161616] hover:bg-[#202025] border border-[#2a2a32] hover:border-blue-500/50 rounded flex items-center justify-between text-xs font-bold text-white transition-all cursor-pointer shadow-sm group"
                 title="Configurar cámaras USB, Wi-Fi y celulares remotos"
               >
@@ -6524,10 +6552,7 @@ function PodcastStudioApp() {
         onDisconnectSlot={handleDisconnectSlot}
         onReconnectCamera={handleReconnectSavedCamera}
         onForgetCamera={handleForgetCamera}
-        onOpenConnectModal={() => {
-          setConnectModalSlot(activeCam - 1);
-          setShowConnectModal(true);
-        }}
+        onOpenConnectModal={() => handleOpenConnectModal()}
       />
 
       {/* MODAL DE EXPORTACIÓN Y DESCARGA MULTI-FORMATO (FACEBOOK, YOUTUBE, TIKTOK, INSTAGRAM) */}

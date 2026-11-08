@@ -115,15 +115,21 @@ public class SplashForm : Form
         {
             try
             {
-                // Limpiar procesos huérfanos previos de forma inmediata sin esperas bloqueantes
+                // Limpiar procesos huérfanos previos de forma inmediata sin esperas bloqueantes (<10ms)
                 try
                 {
+                    Process currentProc = Process.GetCurrentProcess();
+                    foreach (Process p in Process.GetProcessesByName("PodcastStudio"))
+                    {
+                        if (p.Id != currentProc.Id) { try { p.Kill(); } catch {} }
+                    }
                     foreach (Process p in Process.GetProcessesByName("electron"))
                     {
-                        try { 
-                            p.Kill(); 
-                            p.WaitForExit(1000); 
-                        } catch {}
+                        try { p.Kill(); } catch {}
+                    }
+                    foreach (Process p in Process.GetProcessesByName("ffmpeg"))
+                    {
+                        try { p.Kill(); } catch {}
                     }
                 }
                 catch {}
