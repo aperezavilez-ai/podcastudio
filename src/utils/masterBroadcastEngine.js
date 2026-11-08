@@ -893,6 +893,7 @@ function applyChromaKey(ctx, videoFrame, bgImage, width, height, options = {}) {
 
 function renderFrame() {
   if (!ctx) return;
+  if (!sceneNeedsRedraw()) return;
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   const width = 1920;
@@ -1961,7 +1962,35 @@ export function startBroadcastEngine(initialState, onChunk) {
   return masterStream;
 }
 
+// Composición por demanda: el canvas Master se redibujaba completo (1080p,
+// filtros por cámara) 30 veces por segundo aunque ninguna cámara hubiera
+// entregado un cuadro nuevo, y ese trabajo en el hilo principal es lo que
+// congela clics y cambios de cámara. Ahora solo se compone cuando algo
+// cambió de verdad. Mientras el MediaRecorder graba/transmite NO se salta
+// ningún cuadro: la captura recibe su ritmo completo, sin riesgo.
+let sceneDirty = true;
+const lastPresentedFrames = new Map();
+
+function sceneNeedsRedraw() {
+  if (sceneDirty) { sceneDirty = false; return true; }
+  if (mediaRecorder && mediaRecorder.state === 'recording') return true;
+  if (currentState.transitionFromCam != null) return true;
+  if (currentState.showAudioVisualizer) return true;
+  const crops = currentState.cameraCrops || {};
+  const slots = currentState.camSlots || [];
+  for (const id of slots) { if (crops[id - 1]?.pushIn) return true; }
+  let advanced = false;
+  videoElements.forEach((el, id) => {
+    try {
+      const q = el.getVideoPlaybackQuality ? el.getVideoPlaybackQuality().totalVideoFrames : Math.round((el.currentTime || 0) * 30);
+      if (lastPresentedFrames.get(id) !== q) { lastPresentedFrames.set(id, q); advanced = true; }
+    } catch (e) {}
+  });
+  return advanced;
+}
+
 export function updateBroadcastState(updates) {
+  sceneDirty = true;
   const voiceUpdated = (updates.voiceEffect !== undefined && updates.voiceEffect !== currentState.voiceEffect) ||
                        (updates.voiceTarget !== undefined && updates.voiceTarget !== currentState.voiceTarget);
   currentState = { ...currentState, ...updates };

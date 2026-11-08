@@ -117,11 +117,22 @@ function CalibratorPreview({
     let stopped = false
     const ctx = canvas.getContext('2d', { alpha: false })
     const render = () => {
+      render._sig = `${filterStyle}|${lutId}|${lookPreset}`
       if (stopped) return
       if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
-        // Ajustar resolución nativa real (1080p / 720p) sin degradar a 360p
-        const nativeW = video.videoWidth || 1920
-        const nativeH = video.videoHeight || 1080
+        // Preview con tope de 1280px de ancho (antes se componía a resolución
+        // nativa completa a 60 fps, encima del render del Master: con el
+        // calibrador abierto la app entera se alentaba). Y si el cuadro no
+        // cambió, no se redibuja.
+        if (video.currentTime === render._lastT && render._lastSig === render._sig) {
+          frameId = requestAnimationFrame(render)
+          return
+        }
+        render._lastT = video.currentTime
+        render._lastSig = render._sig
+        const scaleP = Math.min(1, 1280 / (video.videoWidth || 1280))
+        const nativeW = Math.round((video.videoWidth || 1920) * scaleP)
+        const nativeH = Math.round((video.videoHeight || 1080) * scaleP)
         if (canvas.width !== nativeW || canvas.height !== nativeH) {
           canvas.width = nativeW
           canvas.height = nativeH
@@ -144,12 +155,14 @@ function CalibratorPreview({
       frameId = requestAnimationFrame(render)
     }
     render()
-    return () => { 
-      stopped = true; 
+    return () => {
+      stopped = true;
       cancelAnimationFrame(frameId);
-      if (video) {
-        try { video.pause(); video.srcObject = null; } catch (e) {}
-      }
+      // NO tocar el <video> aquí: este efecto se re-ejecuta al cambiar el
+      // color/look, y su limpieza anterior pausaba el video y borraba el
+      // srcObject; como el efecto que lo conecta solo corre al cambiar de
+      // cámara, el preview quedaba en NEGRO para siempre. El ciclo de vida
+      // del stream lo maneja únicamente el efecto de conexión.
     }
   }, [stream, filterStyle, lutId, lookPreset])
 
@@ -320,6 +333,18 @@ export default function CameraCalibratorModal({
       return
     }
 
+    // Chequeo de capacidades primero: si el driver no expone el control, se
+    // dice tal cual. Antes, cuando el ajuste fallaba, la app FINGÍA haberlo
+    // aplicado ("asistido por software") y el autoenfoque seguía activo
+    // aunque la pantalla dijera lo contrario.
+    try {
+      const caps = typeof track.getCapabilities === 'function' ? track.getCapabilities() : null
+      if (caps && !(modeKey in caps)) {
+        setUvcMsg('⚠ Esta cámara (o su driver) no expone este control a la app: no se aplicó ningún cambio.')
+        setTimeout(() => setUvcMsg(''), 5000)
+        return
+      }
+    } catch {}
     try {
       if (modeKey === 'focusMode' && targetValue === 'manual') {
         try {
@@ -327,6 +352,14 @@ export default function CameraCalibratorModal({
         } catch {
           await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] })
         }
+        // Aplicar también la distancia guardada, mapeada al rango real
+        try {
+          const caps2 = typeof track.getCapabilities === 'function' ? track.getCapabilities() : null
+          if (caps2?.focusDistance && typeof caps2.focusDistance.max === 'number') {
+            const val = caps2.focusDistance.min + (caps2.focusDistance.max - caps2.focusDistance.min) * ((focusDistance ?? 50) / 100)
+            await track.applyConstraints({ advanced: [{ focusMode: 'manual', focusDistance: val }] })
+          }
+        } catch {}
       } else {
         await track.applyConstraints({
           advanced: [{ [modeKey]: targetValue }],
@@ -338,12 +371,8 @@ export default function CameraCalibratorModal({
       setUvcMsg(`Ajuste ${modeKey === 'exposureMode' ? 'Luz' : modeKey === 'whiteBalanceMode' ? 'Color' : 'Foco'} actualizado a ${targetValue === 'manual' ? 'Fijo / Bloqueado' : 'Automático'}`)
       setTimeout(() => setUvcMsg(''), 3000)
     } catch {
-      // Si el driver UVC no soporta advanced mode, simular estado de software
-      if (modeKey === 'exposureMode') setExposureMode(targetValue)
-      if (modeKey === 'whiteBalanceMode') setWhiteBalanceMode(targetValue)
-      if (modeKey === 'focusMode') setFocusMode(targetValue)
-      setUvcMsg('Ajuste asistido por software activado.')
-      setTimeout(() => setUvcMsg(''), 3000)
+      setUvcMsg('⚠ La cámara rechazó el ajuste: no se aplicó ningún cambio.')
+      setTimeout(() => setUvcMsg(''), 5000)
     }
   }, [stream])
 
@@ -698,10 +727,24 @@ export default function CameraCalibratorModal({
     const track = stream?.getVideoTracks?.()[0]
     if (track && typeof track.applyConstraints === 'function') {
       try {
+        // El rango real de focusDistance varía por cámara (0-1, 0-100,
+        // 10-1000...): se mapea el % del control al rango que el driver
+        // declara. Antes se enviaba siempre %/100 y en la mayoría de las
+        // cámaras eso caía fuera de rango o en el mínimo.
+        let value = distVal / 100
+        try {
+          const caps = typeof track.getCapabilities === 'function' ? track.getCapabilities() : null
+          if (caps?.focusDistance && typeof caps.focusDistance.max === 'number') {
+            value = caps.focusDistance.min + (caps.focusDistance.max - caps.focusDistance.min) * (distVal / 100)
+          }
+        } catch {}
         await track.applyConstraints({
-          advanced: [{ focusMode: 'manual', focusDistance: distVal / 100 }]
+          advanced: [{ focusMode: 'manual', focusDistance: value }]
         })
-      } catch (_) {}
+      } catch (_) {
+        setUvcMsg('⚠ La cámara rechazó la distancia de enfoque.')
+        setTimeout(() => setUvcMsg(''), 4000)
+      }
     }
   }, [stream, autoSync])
 
@@ -1017,7 +1060,95 @@ export default function CameraCalibratorModal({
               </div>
             </div>
 
-            {/* SECCIÓN 3: COLOR Y LOOK POR CÁMARA */}
+            {/* SECCIÓN 3: SENSOR Y HARDWARE DE CÁMARA (UVC PRO) — visible sin bajar hasta el fondo: aquí vive el autoenfoque */}
+            <div className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <div className={styles.sectionTitle}>
+                  <Camera size={15} style={{ marginRight: 6 }} />
+                  Sensor, Auto-Enfoque y Hardware (UVC)
+                </div>
+                <span style={{ fontSize: 10, color: 'var(--accent, #e8612a)', fontWeight: 600 }}>
+                  Bloqueo Broadcast
+                </span>
+              </div>
+              <p style={{ fontSize: 10, color: '#8c97ab', margin: '0 0 8px 0', lineHeight: 1.4 }}>
+                Ajusta el foco automático o manual, y bloquea parámetros para evitar parpadeos o respirado de lente.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                <button
+                  type="button"
+                  className={`${styles.presetBtn} ${exposureMode === 'manual' ? styles.presetBtnActive : ''}`}
+                  onClick={() => handleToggleHardwareMode('exposureMode', exposureMode === 'manual' ? 'continuous' : 'manual')}
+                  title="Bloquea la exposición fija para que el brillo no cambie al moverte"
+                >
+                  {exposureMode === 'manual' ? <Lock size={14} style={{ marginRight: 4 }} /> : <Sun size={14} style={{ marginRight: 4 }} />}
+                  <span style={{ fontSize: 10 }}>{exposureMode === 'manual' ? 'Luz Bloqueada' : 'Luz Auto'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`${styles.presetBtn} ${whiteBalanceMode === 'manual' ? styles.presetBtnActive : ''}`}
+                  onClick={() => handleToggleHardwareMode('whiteBalanceMode', whiteBalanceMode === 'manual' ? 'continuous' : 'manual')}
+                  title="Bloquea el balance de blancos para evitar cambios de color entre azul y naranja"
+                >
+                  {whiteBalanceMode === 'manual' ? <Lock size={14} style={{ marginRight: 4 }} /> : <Palette size={14} style={{ marginRight: 4 }} />}
+                  <span style={{ fontSize: 10 }}>{whiteBalanceMode === 'manual' ? 'Color Fijo' : 'Color Auto'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`${styles.presetBtn} ${focusMode === 'manual' ? styles.presetBtnActive : ''}`}
+                  onClick={() => {
+                    const target = focusMode === 'manual' ? 'continuous' : 'manual';
+                    handleToggleHardwareMode('focusMode', target);
+                    autoSync({ focusMode: target });
+                  }}
+                  title="Alterna entre Enfoque Automático y Manual para fijar la distancia"
+                >
+                  {focusMode === 'manual' ? <Lock size={14} style={{ marginRight: 4 }} /> : <Focus size={14} style={{ marginRight: 4 }} />}
+                  <span style={{ fontSize: 10 }}>{focusMode === 'manual' ? 'Foco Manual' : 'Foco Auto'}</span>
+                </button>
+              </div>
+
+              {/* DISTANCIA DE ENFOQUE MANUAL */}
+              {focusMode === 'manual' && (
+                <div className={styles.sliderRow} style={{ marginTop: 8 }}>
+                  <span className={styles.sliderLabel}>Distancia Foco</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={focusDistance}
+                    onChange={(e) => handleFocusDistance(parseInt(e.target.value, 10))}
+                    className={styles.slider}
+                  />
+                  <span className={styles.sliderValue}>{focusDistance}%</span>
+                </div>
+              )}
+
+              {/* BOTÓN RÁPIDO DE AUTO-MEJORA */}
+              <button
+                type="button"
+                className={styles.guideBtn}
+                style={{ marginTop: 8, width: '100%', justifyContent: 'center', background: 'rgba(232, 97, 42, 0.15)', borderColor: 'rgba(232, 97, 42, 0.4)', color: '#ff8a50', fontWeight: 600, padding: '7px 10px' }}
+                onClick={handleAutoEnhanceFocus}
+                title="Optimiza contraste, nitidez al 130% y activa auto-enfoque continuo en tiempo real"
+              >
+                <Zap size={14} style={{ marginRight: 6 }} />
+                ⚡ Auto-Mejora y Enfoque Rápido
+              </button>
+
+              {uvcMsg && (
+                <div style={{ marginTop: 6, fontSize: 10, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Info size={14} />
+                  <span>{uvcMsg}</span>
+                </div>
+              )}
+            </div>
+
+            {/* SECCIÓN 4: COLOR Y LOOK POR CÁMARA */}
             <div className={styles.section}>
               <div className={styles.sectionHeader}>
                 <div className={styles.sectionTitle}>
@@ -1156,7 +1287,7 @@ export default function CameraCalibratorModal({
               </div>
             </div>
 
-            {/* SECCIÓN 4: AUDIO DE ESTA CÁMARA */}
+            {/* SECCIÓN 5: AUDIO DE ESTA CÁMARA */}
             <div className={styles.section}>
               <div className={styles.sectionHeader}>
                 <div className={styles.sectionTitle}>
@@ -1199,93 +1330,7 @@ export default function CameraCalibratorModal({
               </div>
             </div>
 
-            {/* SECCIÓN 5: SENSOR Y HARDWARE DE CÁMARA (UVC PRO) */}
-            <div className={styles.section}>
-              <div className={styles.sectionHeader}>
-                <div className={styles.sectionTitle}>
-                  <Camera size={15} style={{ marginRight: 6 }} />
-                  Sensor, Auto-Enfoque y Hardware (UVC)
-                </div>
-                <span style={{ fontSize: 10, color: 'var(--accent, #e8612a)', fontWeight: 600 }}>
-                  Bloqueo Broadcast
-                </span>
-              </div>
-              <p style={{ fontSize: 10, color: '#8c97ab', margin: '0 0 8px 0', lineHeight: 1.4 }}>
-                Ajusta el foco automático o manual, y bloquea parámetros para evitar parpadeos o respirado de lente.
-              </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-                <button
-                  type="button"
-                  className={`${styles.presetBtn} ${exposureMode === 'manual' ? styles.presetBtnActive : ''}`}
-                  onClick={() => handleToggleHardwareMode('exposureMode', exposureMode === 'manual' ? 'continuous' : 'manual')}
-                  title="Bloquea la exposición fija para que el brillo no cambie al moverte"
-                >
-                  {exposureMode === 'manual' ? <Lock size={14} style={{ marginRight: 4 }} /> : <Sun size={14} style={{ marginRight: 4 }} />}
-                  <span style={{ fontSize: 10 }}>{exposureMode === 'manual' ? 'Luz Bloqueada' : 'Luz Auto'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  className={`${styles.presetBtn} ${whiteBalanceMode === 'manual' ? styles.presetBtnActive : ''}`}
-                  onClick={() => handleToggleHardwareMode('whiteBalanceMode', whiteBalanceMode === 'manual' ? 'continuous' : 'manual')}
-                  title="Bloquea el balance de blancos para evitar cambios de color entre azul y naranja"
-                >
-                  {whiteBalanceMode === 'manual' ? <Lock size={14} style={{ marginRight: 4 }} /> : <Palette size={14} style={{ marginRight: 4 }} />}
-                  <span style={{ fontSize: 10 }}>{whiteBalanceMode === 'manual' ? 'Color Fijo' : 'Color Auto'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  className={`${styles.presetBtn} ${focusMode === 'manual' ? styles.presetBtnActive : ''}`}
-                  onClick={() => {
-                    const target = focusMode === 'manual' ? 'continuous' : 'manual';
-                    handleToggleHardwareMode('focusMode', target);
-                    autoSync({ focusMode: target });
-                  }}
-                  title="Alterna entre Enfoque Automático y Manual para fijar la distancia"
-                >
-                  {focusMode === 'manual' ? <Lock size={14} style={{ marginRight: 4 }} /> : <Focus size={14} style={{ marginRight: 4 }} />}
-                  <span style={{ fontSize: 10 }}>{focusMode === 'manual' ? 'Foco Manual' : 'Foco Auto'}</span>
-                </button>
-              </div>
-
-              {/* DISTANCIA DE ENFOQUE MANUAL */}
-              {focusMode === 'manual' && (
-                <div className={styles.sliderRow} style={{ marginTop: 8 }}>
-                  <span className={styles.sliderLabel}>Distancia Foco</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={focusDistance}
-                    onChange={(e) => handleFocusDistance(parseInt(e.target.value, 10))}
-                    className={styles.slider}
-                  />
-                  <span className={styles.sliderValue}>{focusDistance}%</span>
-                </div>
-              )}
-
-              {/* BOTÓN RÁPIDO DE AUTO-MEJORA */}
-              <button
-                type="button"
-                className={styles.guideBtn}
-                style={{ marginTop: 8, width: '100%', justifyContent: 'center', background: 'rgba(232, 97, 42, 0.15)', borderColor: 'rgba(232, 97, 42, 0.4)', color: '#ff8a50', fontWeight: 600, padding: '7px 10px' }}
-                onClick={handleAutoEnhanceFocus}
-                title="Optimiza contraste, nitidez al 130% y activa auto-enfoque continuo en tiempo real"
-              >
-                <Zap size={14} style={{ marginRight: 6 }} />
-                ⚡ Auto-Mejora y Enfoque Rápido
-              </button>
-
-              {uvcMsg && (
-                <div style={{ marginTop: 6, fontSize: 10, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <Info size={14} />
-                  <span>{uvcMsg}</span>
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
