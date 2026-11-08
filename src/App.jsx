@@ -18,8 +18,6 @@ import CintilloStylePicker from './components/CintilloStylePicker.jsx';
 import CintilloEditorModal from './components/CintilloEditorModal.jsx';
 import CameraConnectModal from './components/CameraConnectModal.jsx';
 import CameraCalibratorModal from './components/CameraCalibratorModal.jsx';
-import pkg from '../package.json';
-const APP_VERSION = pkg.version;
 import MultiFormatExportModal from './components/MultiFormatExportModal.jsx';
 import StreamDestinationEditor from './components/StreamDestinationEditor.jsx';
 import AudioMixerDesk from './components/AudioMixerDesk.jsx';
@@ -1211,38 +1209,6 @@ function PodcastStudioApp() {
   // AFV is enforced inside masterBroadcastEngine with gain nodes.  Toggling
   // MediaStreamTrack.enabled here used to disable the physical input itself,
   // causing some USB devices to fail when they returned to Program.
-
-  // Reaplicar el enfoque manual guardado: el perfil persiste focusMode y
-  // focusDistance, pero al reconectar una cámara el driver arranca en
-  // automático y nadie volvía a aplicar lo guardado — el bloqueo de enfoque
-  // "no aguantaba" ni un reconectado de cable.
-  const appliedFocusSigRef = useRef(new Map());
-  useEffect(() => {
-    Object.entries(camStreamsMap || {}).forEach(([idStr, stream]) => {
-      const camId = Number(idStr);
-      const crop = (cameraCrops || {})[camId - 1];
-      if (!stream || !crop || crop.focusMode !== 'manual') return;
-      const track = stream.getVideoTracks?.()[0];
-      if (!track || typeof track.applyConstraints !== 'function') return;
-      const sig = `${crop.focusDistance ?? 50}`;
-      if (appliedFocusSigRef.current.get(stream.id) === sig) return;
-      appliedFocusSigRef.current.set(stream.id, sig);
-      (async () => {
-        try {
-          const adv = { focusMode: 'manual' };
-          try {
-            const caps = typeof track.getCapabilities === 'function' ? track.getCapabilities() : null;
-            if (caps?.focusDistance && typeof caps.focusDistance.max === 'number') {
-              adv.focusDistance = caps.focusDistance.min + (caps.focusDistance.max - caps.focusDistance.min) * ((crop.focusDistance ?? 50) / 100);
-            }
-          } catch {}
-          await track.applyConstraints({ advanced: [adv] });
-        } catch (e) {
-          appliedFocusSigRef.current.delete(stream.id);
-        }
-      })();
-    });
-  }, [camStreamsMap, cameraCrops]);
 
   // Hook de niveles de percepción de micrófono y estado de silencio por cámara
   const camAudioLevels = useCameraAudioLevels(camStreamsMap, camMuted);
@@ -6048,7 +6014,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v{APP_VERSION}</span>
+          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.9</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>
