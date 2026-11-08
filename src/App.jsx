@@ -2650,6 +2650,22 @@ function PodcastStudioApp() {
     }
   };
 
+  const handleCleanNewProject = useCallback(() => {
+    setShowExportModal(false);
+    setRecordedVideoData(null);
+    recordingChunksRef.current = [];
+    recordingChunkCountRef.current = 0;
+    recordingChunkErrorRef.current = null;
+    setRecordingTime(0);
+    setIsRecording(false);
+    setIsRecordingPaused(false);
+    isRecordingRef.current = false;
+    isRecordingPausedRef.current = false;
+    clearHighlights?.();
+    setTopic('');
+    showToast('¡Estudio limpio y listo para un nuevo proyecto!', 'success', 5000);
+  }, [clearHighlights]);
+
   const updateStreamConfig = (field, value, destination = activeStreamTab) => { setStreamConfigs(prev => ({ ...prev, [destination]: { ...prev[destination], [field]: value } })); };
   const toggleDestination = (destination = activeStreamTab) => { setStreamConfigs(prev => ({ ...prev, [destination]: { ...prev[destination], enabled: !prev[destination].enabled } })); };
 
@@ -6520,6 +6536,7 @@ function PodcastStudioApp() {
         onClose={() => setShowExportModal(false)}
         recording={recordedVideoData}
         highlights={highlights}
+        onCleanNewProject={handleCleanNewProject}
         onDownloadMp4={async (rec) => {
           if (window.api?.openRecordingsFolder) {
             window.api.openRecordingsFolder(rec?.projectName || topic || 'Proyecto_General');

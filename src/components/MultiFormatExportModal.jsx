@@ -29,7 +29,8 @@ import {
   FileVideo,
   Users,
   Zap,
-  Scissors
+  Scissors,
+  Sparkles
 } from 'lucide-react'
 import styles from './MultiFormatExportModal.module.css'
 
@@ -51,6 +52,7 @@ export default function MultiFormatExportModal({
   onDownloadMp4,
   onDownloadCleanVoice,
   onOpenPublish,
+  onCleanNewProject,
 }) {
   const [cropMode, setCropMode] = useState('smart-crop') // 'smart-crop' | 'blur-fill'
   const [convertingKey, setConvertingKey] = useState(null)
@@ -139,7 +141,6 @@ export default function MultiFormatExportModal({
   const toggleKey = (key) => {
     setSelectedKeys(prev => {
       if (prev.includes(key)) {
-        if (prev.length === 1) return prev
         return prev.filter(k => k !== key)
       } else {
         return [...prev, key]
@@ -150,7 +151,7 @@ export default function MultiFormatExportModal({
   const toggleAllKeys = () => {
     setSelectedKeys(prev => {
       if (prev.length === SOCIAL_PRESETS_EXPORT.length) {
-        return [SOCIAL_PRESETS_EXPORT[0].key]
+        return []
       }
       return SOCIAL_PRESETS_EXPORT.map(p => p.key)
     })
@@ -219,11 +220,6 @@ export default function MultiFormatExportModal({
       a.download = filename
       a.click()
       URL.revokeObjectURL(url)
-
-      // En navegador web, descargar miniatura correspondiente
-      if (!window.api) {
-        downloadThumbnailForPreset(preset)
-      }
     } catch (err) {
       if (!cancelRef.current) {
         console.error('Error al exportar formato:', err)
@@ -299,10 +295,6 @@ export default function MultiFormatExportModal({
       }
     }
 
-    // Solo descargar miniaturas en el navegador; en Electron ya se guardan en disco
-    if (!window.api) {
-      handleDownloadAllThumbnails()
-    }
     // El aviso final dice la verdad: antes se anunciaba éxito total aunque
     // hubieran fallado formatos en silencio. Ahora se nombran los que faltan.
     const failedFormats = packResults.filter(r => !r.ok)
@@ -471,16 +463,43 @@ export default function MultiFormatExportModal({
               color: clipNotice.type === 'error' ? '#fca5a5' : (clipNotice.type === 'success' ? '#86efac' : '#fed7aa'),
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between'
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap'
             }}
           >
             <span>{clipNotice.text}</span>
-            <button
-              onClick={() => setClipNotice(null)}
-              style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 2 }}
-            >
-              <X size={14} />
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {clipNotice.type === 'success' && onCleanNewProject && (
+                <button
+                  type="button"
+                  onClick={onCleanNewProject}
+                  style={{
+                    background: '#16a34a',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 6,
+                    padding: '4px 10px',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                  title="Limpiar estudio e iniciar nuevo proyecto"
+                >
+                  <Sparkles size={12} />
+                  <span>Nuevo Proyecto</span>
+                </button>
+              )}
+              <button
+                onClick={() => setClipNotice(null)}
+                style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 2 }}
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
         )}
 
@@ -868,6 +887,32 @@ export default function MultiFormatExportModal({
           </div>
 
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            {onCleanNewProject && (
+              <button
+                type="button"
+                onClick={onCleanNewProject}
+                disabled={isBusy}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.45)',
+                  color: '#34d399',
+                  padding: '7px 13px',
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: isBusy ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.18s ease',
+                }}
+                title="Limpiar sesión actual y dejar el estudio listo para un nuevo proyecto"
+              >
+                <Sparkles size={14} />
+                <span>Nuevo Proyecto (Limpiar)</span>
+              </button>
+            )}
+
             {window.api?.openRecordingsFolder && (
               <button
                 type="button"

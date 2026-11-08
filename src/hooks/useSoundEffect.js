@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { playBroadcastSfx, stopBroadcastSfx } from '../utils/masterBroadcastEngine.js'
+import { playBroadcastSfx, stopBroadcastSfx, getBroadcastAudioContext } from '../utils/masterBroadcastEngine.js'
 
 export function useSoundEffect() {
   const stopRef = useRef(null)
@@ -21,6 +21,14 @@ export function useSoundEffect() {
 
   const playSfx = useCallback(async (sfx) => {
     if (!sfx?.url) return
+
+    // Desbloquear AudioContext sincrónicamente dentro del clic del usuario
+    try {
+      const ctx = getBroadcastAudioContext()
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {})
+      }
+    } catch {}
 
     stopRef.current?.()
     stopRef.current = null

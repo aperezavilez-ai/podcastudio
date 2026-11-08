@@ -149,12 +149,24 @@ export async function stopNativeEngineBroadcast() {
 
 function getReadyProgramVideo(camId) {
   const target = videoElements.get(camId);
-  if (target && target.readyState >= 2 && target.videoWidth > 0) {
+  if (target && target.videoWidth > 0 && (target.readyState >= 1 || !target.paused)) {
     lastReadyProgramCam = camId;
     return target;
   }
+  // Si el video de fondo aún no reporta readyState, buscar elemento DOM activo con el mismo stream
+  if (typeof document !== 'undefined') {
+    const domVideos = document.querySelectorAll('video');
+    for (const dv of domVideos) {
+      if (dv !== target && dv.videoWidth > 0 && (dv.readyState >= 1 || !dv.paused)) {
+        if (dv.srcObject && target && target.srcObject && dv.srcObject === target.srcObject) {
+          lastReadyProgramCam = camId;
+          return dv;
+        }
+      }
+    }
+  }
   const previous = videoElements.get(lastReadyProgramCam);
-  if (previous && previous.readyState >= 2 && previous.videoWidth > 0) {
+  if (previous && previous.videoWidth > 0 && (previous.readyState >= 1 || !previous.paused)) {
     return previous;
   }
   return target || previous;
@@ -168,8 +180,8 @@ function getOffscreenContainer() {
     if (!offscreenVideoContainer && document.body) {
       offscreenVideoContainer = document.createElement('div');
       offscreenVideoContainer.id = 'broadcast-offscreen-videos';
-      // Mantener dentro del viewport activo (bottom/right con opacidad mínima) para que Chromium NUNCA suspenda ni desacelere la decodificación de cuadros
-      offscreenVideoContainer.style.cssText = 'position:fixed;bottom:0;right:0;width:8px;height:8px;opacity:0.001;pointer-events:none;z-index:-9999;overflow:hidden;';
+      // Mantener dentro del viewport activo con dimensiones reales (320x180) para que Chromium NUNCA suspenda ni desacelere la decodificación de cuadros
+      offscreenVideoContainer.style.cssText = 'position:fixed;bottom:0;right:0;width:320px;height:180px;opacity:0.01;pointer-events:none;z-index:-9999;overflow:hidden;';
       document.body.appendChild(offscreenVideoContainer);
     }
   }
@@ -234,6 +246,9 @@ function getOrCreateVideo(camId, stream) {
     v.playsInline = true;
     v.muted = true;
     v.defaultMuted = true;
+    v.width = 320;
+    v.height = 180;
+    v.style.cssText = 'width:320px;height:180px;position:absolute;bottom:0;right:0;object-fit:cover;';
     v.preservesPitch = false;
     v.defaultPlaybackRate = 1.0;
     v.hasTrackListeners = false; // Bandera para evitar fuga de listeners
@@ -249,16 +264,15 @@ function getOrCreateVideo(camId, stream) {
       v.srcObject = stream;
       if (!v.hasTrackListeners) {
         v.hasTrackListeners = true;
+        const triggerPlay = () => { if (v && v.paused) v.play().catch(() => {}); };
+        v.addEventListener('loadedmetadata', triggerPlay);
+        v.addEventListener('canplay', triggerPlay);
         if (stream.addEventListener) {
-          stream.addEventListener('addtrack', () => {
-            if (v && v.paused) v.play().catch(() => {});
-          });
+          stream.addEventListener('addtrack', triggerPlay);
         }
         const vTracks = stream.getVideoTracks ? stream.getVideoTracks() : [];
         vTracks.forEach(t => {
-          t.addEventListener('unmute', () => {
-            if (v && v.paused) v.play().catch(() => {});
-          });
+          t.addEventListener('unmute', triggerPlay);
         });
       }
     }
@@ -376,7 +390,14 @@ function updateImages() {
 }
 
 function drawCameraCover(video, x, y, w, h, camId = null) {
-  if (video && video.readyState >= 2) {
+  const isVideoReady = Boolean(
+    video && (
+      video.readyState >= 2 ||
+      (video.readyState >= 1 && video.videoWidth > 0 && !video.paused) ||
+      (video.videoWidth > 0 && video.currentTime > 0)
+    )
+  );
+  if (isVideoReady) {
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     const vw = video.videoWidth || 1280;

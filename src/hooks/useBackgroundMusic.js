@@ -175,25 +175,52 @@ export function useBackgroundMusic(tracks, initialVolume = 30, { micLevel = 0 } 
     }
   }, [playing])
 
-  const toggle = useCallback(() => setPlaying(p => !p), [])
+  const ensureAudioUnlocked = useCallback(() => {
+    try {
+      const ctx = getBroadcastAudioContext()
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {})
+      }
+    } catch {}
+  }, [])
+
+  const toggle = useCallback(() => {
+    ensureAudioUnlocked()
+    const audio = audioRef.current
+    if (audio) {
+      if (!playingRef.current) {
+        audio.play().catch(() => {})
+      } else {
+        audio.pause()
+      }
+    }
+    setPlaying(p => !p)
+  }, [ensureAudioUnlocked])
 
   const nextTrack = useCallback(() => {
+    ensureAudioUnlocked()
     setTrackIndex(i => (i + 1) % tracks.length)
     setPlaying(true)
-  }, [tracks.length])
+  }, [tracks.length, ensureAudioUnlocked])
 
   const selectTrack = useCallback((index) => {
     if (index < 0 || index >= tracks.length) return
+    ensureAudioUnlocked()
     setTrackIndex(index)
-  }, [tracks.length])
+  }, [ensureAudioUnlocked])
 
   const selectTrackById = useCallback((id, autoPlay = false) => {
     const idx = tracks.findIndex(t => t.id === id)
     if (idx >= 0) {
+      ensureAudioUnlocked()
       setTrackIndex(idx)
-      if (autoPlay) setPlaying(true)
+      if (autoPlay) {
+        const audio = audioRef.current
+        if (audio) audio.play().catch(() => {})
+        setPlaying(true)
+      }
     }
-  }, [tracks])
+  }, [tracks, ensureAudioUnlocked])
 
   return {
     trackIndex,
