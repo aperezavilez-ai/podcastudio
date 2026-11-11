@@ -107,8 +107,6 @@ const engineOwnedVideoElements = new Set();
 const videoLastFrameAt = new Map();
 const videoStreamAssignedAt = new Map();
 let videoFrameCallbackSupported = false;
-let lastRenderedPresentedTotal = -1;
-let lastCompositionSignature = null;
 // Fotogramas que el canvas maestro ya compuso de verdad (monitor PGM, punto 3).
 let programRenderedFrames = 0;
 let programMonitorStream = null;
@@ -323,60 +321,17 @@ function registerVideoFrameCallback(camId, v) {
   try { v.requestVideoFrameCallback(onFrame); } catch (e) {}
 }
 
-function getPresentedFramesTotal() {
-  let total = 0;
-  videoPresentedFrames.forEach((n) => { total += Number(n) || 0; });
-  return total;
-}
-
-// Red de seguridad del contador anterior: si requestVideoFrameCallback se
-// estrangulara en algún driver/GPU (el <video> del motor vive casi oculto),
-// el avance de currentTime sigue delatando que hay fotograma nuevo.
-const videoCurrentTimeAtLastRender = new Map();
-
-function anyVideoCurrentTimeAdvanced() {
-  let advanced = false;
-  videoElements.forEach((v, camId) => {
-    if (!v || v.readyState < 2 || typeof v.currentTime !== 'number') return;
-    const previous = videoCurrentTimeAtLastRender.get(camId);
-    if (previous === undefined || v.currentTime !== previous) advanced = true;
-  });
-  return advanced;
-}
-
-function snapshotVideoCurrentTimes() {
-  videoElements.forEach((v, camId) => {
-    if (v && typeof v.currentTime === 'number') {
-      videoCurrentTimeAtLastRender.set(camId, v.currentTime);
-    }
-  });
-}
-
-// Huella barata del estado que afecta a la composición (sin payloads grandes:
-// logo/fondos se representan por longitud + prefijo, nunca por el data-URL).
-function compositionFingerprint(value) {
-  if (value == null) return '';
-  const s = String(value);
-  return `${s.length}:${s.slice(0, 16)}`;
-}
-
-function buildCompositionSignature() {
-  try {
-    return JSON.stringify([
-      currentState.activeCam, currentState.layoutMode,
-      Array.isArray(currentState.camSlots) ? currentState.camSlots.join(',') : '',
-      currentState.pvwCam, currentState.pipCam,
-      currentState.transitionProgress, currentState.transitionFromCam, currentState.transitionToCam,
-      currentState.chromaKeyActive ? 1 : 0, compositionFingerprint(currentState.virtualBg),
-      compositionFingerprint(currentState.logoBase64), JSON.stringify(currentState.logoConfig || {}),
-      currentState.cintillosVisible ? 1 : 0, JSON.stringify(currentState.cintillo || {}), currentState.topic || '',
-      currentState.subtitlesVisible ? 1 : 0, currentState.liveSubtitleText || '',
-      currentState.isReplaying ? 1 : 0, JSON.stringify(currentState.replayOverlay || {}),
-      JSON.stringify(currentState.cameraBadges || {}),
-    ]);
-  } catch (e) {
-    return '';
-  }
+// v1.6.1: ¿hay al menos una fuente de programa lista para dibujar? Sustituye
+// a la antigua compuerta de salto (totales de requestVideoFrameCallback +
+// firma de composición): si esos contadores no avanzaban — ventana oculta o
+// miniaturas sin presentar — renderFrame dejaba de componer y el feed se
+// ahogaba. Los contadores rVFC se conservan SOLO para la salud de fotogramas
+// (badge CONGELADA vía getCameraFrameHealth).
+function anyProgramSourceReady() {
+  let ready = false;
+  videoElements.forEach((v) => { if (v && v.readyState >= 2) ready = true; });
+  if (!ready && currentState.replayVideoElement && currentState.replayVideoElement.readyState >= 2) ready = true;
+  return ready;
 }
 
 // Capas cuyo dibujo cambia con el tiempo aunque no llegue fotograma nuevo:
@@ -646,9 +601,11 @@ function drawCameraCover(video, x, y, w, h, camId = null) {
   );
   if (isVideoReady) {
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
     const vw = video.videoWidth || 1280;
     const vh = video.videoHeight || 720;
+    // CAMBIO 5 v1.6.1: suavizado 'high' solo si la fuente es 720p o más;
+    // escalar una fuente de 480p con 'high' no crea detalle y cuesta igual.
+    ctx.imageSmoothingQuality = vh >= 720 ? 'high' : 'medium';
     const videoRatio = vw / vh;
     const targetRatio = w / h;
     let sx = 0, sy = 0, sw = vw, sh = vh;
@@ -1082,24 +1039,20 @@ function applyChromaKey(ctx, videoFrame, bgImage, width, height, options = {}) {
 
 function renderFrame() {
   if (!ctx) return;
-  // Composición sincronizada: si ningún <video> presentó fotograma nuevo
-  // desde el último render y la composición no cambió, saltar el dibujo.
-  // Sin requestVideoFrameCallback disponible no se salta nunca: el tick de
-  // 30 fps del Worker queda como respaldo, como hasta ahora.
-  const presentedTotal = getPresentedFramesTotal();
-  const compositionSignature = buildCompositionSignature();
-  if (
-    videoFrameCallbackSupported &&
-    !hasTimeVaryingComposition() &&
-    !anyVideoCurrentTimeAdvanced() &&
-    lastRenderedPresentedTotal >= 0 &&
-    presentedTotal === lastRenderedPresentedTotal &&
-    compositionSignature === lastCompositionSignature
-  ) {
-    return;
-  }
+  // v1.6.1: composición en CADA tick del Worker (30 fps) siempre que haya
+  // algo que componer. La compuerta anterior saltaba el dibujo cuando los
+  // requestVideoFrameCallback no avanzaban ni cambiaba la firma — pero con
+  // la ventana oculta o las miniaturas sin presentar esos callbacks se
+  // detienen, y el canvas dejaba de componer justo mientras alimentaba a
+  // streaming/grabación (el feed de Facebook se congelaba/ahogaba). Ahora
+  // drawImage toma el último fotograma decodificado de cada <video>; solo
+  // se salta si no hay NINGUNA fuente lista ni composición variable.
+  if (!anyProgramSourceReady() && !hasTimeVaryingComposition()) return;
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
+  // Suavizado del canvas completo a 'medium' (CAMBIO 5 v1.6.1): el 'high'
+  // fijo encarecía cada fotograma 1080p; drawCameraCover sube a 'high'
+  // solo para fuentes de 720p o más.
+  ctx.imageSmoothingQuality = 'medium';
   const width = 1920;
   const height = 1080;
 
@@ -1379,9 +1332,6 @@ function renderFrame() {
   }
 
   // Solo tras un dibujo completo se marca el fotograma como presentado.
-  lastRenderedPresentedTotal = presentedTotal;
-  lastCompositionSignature = compositionSignature;
-  snapshotVideoCurrentTimes();
   programRenderedFrames++;
 }
 
@@ -2362,7 +2312,8 @@ export function ensureMasterCanvas() {
     ctx = canvas.getContext('2d', { alpha: false });
     if (ctx) {
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
+      // Valor inicial del canvas completo: 'medium' (CAMBIO 5 v1.6.1).
+      ctx.imageSmoothingQuality = 'medium';
     }
   }
   setupVisibilityHandler();

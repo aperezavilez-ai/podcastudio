@@ -1480,7 +1480,8 @@ if (!gotTheLock) {
     cleanupAndExit();
   });
   app.whenReady().then(() => {
-    try { powerSaveBlocker.start('prevent-app-suspension'); } catch (e) {}
+    // v1.6.1: el powerSaveBlocker ya no se activa al arrancar la app; se
+    // adquiere al iniciar streaming o grabación (acquirePowerSaveBlocker).
     try { fs.writeFileSync(readySignalPath, '1', 'utf8'); } catch (e) {}
     try {
       session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -1993,6 +1994,7 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
         }
       }
 
+      acquirePowerSaveBlocker('recording');
       resolve({ success: true, path: currentRecordingPath, projectName: cleanProjectName });
     } catch (err) {
       console.error('Fallo al iniciar grabación FFmpeg:', err);
@@ -2095,6 +2097,7 @@ function sendFinalizeProgress(percent) {
 
 ipcMain.handle('stop-recording', async () => {
   isStoppingRecording = true;
+  releasePowerSaveBlocker('recording');
   await recordChunkQueue;
   return new Promise((resolve) => {
     if (ffmpegRecordProcess) {
@@ -2976,6 +2979,28 @@ ipcMain.handle('scan-network-cameras', async () => {
 // ============================================================================
 let streamInitHeader = null;
 let streamingSessionActive = false;
+
+// v1.6.1: powerSaveBlocker acotado a streaming/grabación en curso (antes se
+// activaba al arrancar la app y nunca se liberaba). El id se guarda en una
+// variable de módulo, el arranque es idempotente y el conteo por motivo
+// evita que detener el streaming libere el bloqueo si la grabación sigue
+// activa (y viceversa).
+let powerSaveBlockerId = null;
+const powerSaveBlockerReasons = new Set();
+function acquirePowerSaveBlocker(reason) {
+  powerSaveBlockerReasons.add(reason);
+  if (powerSaveBlockerId == null) {
+    try { powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension'); }
+    catch (e) { powerSaveBlockerId = null; }
+  }
+}
+function releasePowerSaveBlocker(reason) {
+  powerSaveBlockerReasons.delete(reason);
+  if (powerSaveBlockerReasons.size === 0 && powerSaveBlockerId != null) {
+    try { powerSaveBlocker.stop(powerSaveBlockerId); } catch (e) {}
+    powerSaveBlockerId = null;
+  }
+}
 const STREAM_RECONNECT_DELAYS_MS = [5000, 10000, 20000, 40000, 60000];
 const STREAM_QUEUE_CAP_BYTES = 32 * 1024 * 1024;
 const STREAM_STARTUP_TIMEOUT_MS = 20000;
@@ -3377,6 +3402,7 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('stream-status', { active: true, destinations: connectedDestinations });
   }
+  acquirePowerSaveBlocker('streaming');
   return { success: true, connectedDestinations, failures };
 });
 
@@ -3435,6 +3461,7 @@ ipcMain.handle('stop-streaming', async () => {
   activeStreamWorkers = [];
   streamDestinations = [];
   streamInitHeader = null;
+  releasePowerSaveBlocker('streaming');
   appendStreamLog('Sesión de streaming detenida por el usuario.');
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('stream-status', {
