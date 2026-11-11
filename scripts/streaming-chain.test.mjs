@@ -25,10 +25,16 @@ test('encoder por defecto libx264 zerolatency y reintento único con h264_mf', (
   assert.match(streamBlock, /result\.kind === 'encoder'/);
 });
 
+// JUSTIFICACIÓN DE CAMBIO (v1.5.1, Frente D1): classifyStreamError se
+// extrajo de main.js a electron/stream-error.js (módulo puro) para sumar el
+// kind 'url' y probarla de verdad en scripts/stream-error.test.mjs. Este
+// test ya no busca la función dentro de main.js: verifica que main.js carga
+// el módulo y que el módulo sigue clasificando encoder/tls como antes.
 test('la clasificación de errores reconoce encoder y TLS', () => {
-  assert.match(streamBlock, /function classifyStreamError/);
-  assert.match(streamBlock, /return 'encoder'/);
-  assert.match(streamBlock, /return 'tls'/);
+  assert.match(mainSrc, /require\('\.\/stream-error'\)/);
+  const { classifyStreamError } = require('../electron/stream-error.js');
+  assert.equal(classifyStreamError('Error initializing output stream (h264_mf)'), 'encoder');
+  assert.equal(classifyStreamError('TLS handshake failed'), 'tls');
 });
 
 test('reconexión con backoff 5/10/20/40/60 y eventos por destino', () => {

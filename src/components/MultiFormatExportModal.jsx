@@ -121,6 +121,22 @@ export default function MultiFormatExportModal({
     return unsub;
   }, []);
 
+  // Etapa/% real de la finalización del master (v1.5.1, Frente B): el
+  // proceso principal emite 'finalize-progress' vía onFinalizeProgress
+  // mientras cierra la grabación; percent puede ser null (indeterminado).
+  const [finalizeProgress, setFinalizeProgress] = useState(null)
+  useEffect(() => {
+    if (!window.api?.onFinalizeProgress) return;
+    const unsub = window.api.onFinalizeProgress(({ stage, percent }) => {
+      setFinalizeProgress({ stage: stage || 'procesando', percent: typeof percent === 'number' ? percent : null });
+      if (percent === 100) {
+        // La finalización terminó: la etapa se muestra un momento y se limpia.
+        setTimeout(() => setFinalizeProgress(null), 4000);
+      }
+    });
+    return unsub;
+  }, []);
+
   const handleDownloadAllThumbnails = () => {
     if (!thumbnails || thumbnails.length === 0) return
     thumbnails.forEach((thumb, idx) => {
@@ -375,6 +391,18 @@ export default function MultiFormatExportModal({
         </div>
 
         <div className={styles.scrollBody}>
+
+        {finalizeProgress && (
+          <div style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(56,189,248,0.45)', background: 'rgba(56,189,248,0.10)', color: '#bae6fd', fontSize: 12, fontWeight: 700 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span>Finalizando grabación: {finalizeProgress.stage}…</span>
+              <span>{finalizeProgress.percent != null ? `${finalizeProgress.percent}%` : '…'}</span>
+            </div>
+            <div style={{ width: '100%', height: 7, background: 'rgba(255,255,255,0.10)', borderRadius: 3.5, overflow: 'hidden' }}>
+              <div style={{ width: `${finalizeProgress.percent != null ? Math.max(5, finalizeProgress.percent) : 35}%`, height: '100%', background: 'linear-gradient(90deg, #0284c7, #38bdf8)', transition: 'width 0.2s ease' }} />
+            </div>
+          </div>
+        )}
 
         {recording?.blackWarning && (
           <div style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 10, border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.12)', color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>

@@ -36,3 +36,11 @@ test('rejects non-RTMP server URLs without exposing the supplied key', () => {
     facebook: { enabled: true, server: 'https://example.com/live', key: 'FAKE_TEST_STREAM_KEY_123' },
   }), /rtmp:\/\/ o rtmps:\/\//);
 });
+
+test('does not duplicate the key when the saved server already ends with it', () => {
+  const targets = buildStreamDestinations({
+    facebook: { enabled: true, server: 'rtmps://live-api-s.facebook.com:443/rtmp/FAKE_TEST_STREAM_KEY_123', key: 'FAKE_TEST_STREAM_KEY_123' },
+  });
+  assert.equal(targets.length, 1);
+  assert.equal(targets[0].url, 'rtmps://live-api-s.facebook.com:443/rtmp/FAKE_TEST_STREAM_KEY_123');
+});

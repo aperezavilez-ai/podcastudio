@@ -51,11 +51,20 @@ export function buildStreamDestinations(streamConfigs) {
       const normalizedServer = server.replace(/\/+$/, '');
       const streamKey = key.replace(/\s+/g, '').replace(/^\/+|\/+$/g, '');
 
+      // v1.5.1: si el servidor guardado YA termina en la misma clave (el
+      // usuario pegó la URL completa de publicación en el campo de servidor
+      // y también llenó el campo de clave), no duplicarla: Facebook rechaza
+      // «.../rtmp/FB-x/FB-x» con «Publish Rejected: Invalid URL».
+      let publishBase = normalizedServer;
+      if (streamKey && publishBase.endsWith(`/${streamKey}`)) {
+        publishBase = publishBase.slice(0, publishBase.length - streamKey.length).replace(/\/+$/, '');
+      }
+
       // En RTMP broadcast estándar, no se debe hacer encodeURIComponent ciego
       // porque corrompe tokens legítimos como '?secret=' o '&auth=' de Facebook Live / CDNs.
       const publishUrl = streamKey
-        ? `${normalizedServer}/${streamKey}`
-        : normalizedServer;
+        ? `${publishBase}/${streamKey}`
+        : publishBase;
 
       return {
         id,

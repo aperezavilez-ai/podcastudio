@@ -44,8 +44,14 @@ import {
   startNativeEngineBroadcast, stopNativeEngineBroadcast,
   getOrWaitForInitHeader, getInitHeader, getActiveInitHeader,
   startRecordingRecorder, stopRecordingRecorder, setRecordingRecorderPaused,
+  registerCameraVideoElement, getCameraFrameHealth,
 } from './utils/masterBroadcastEngine.js';
 import { logger } from './utils/logger.js';
+import { version as APP_VERSION } from '../package.json';
+import {
+  CAPTURE_PROFILES, MAX_CAMERAS_1080, profileById, profileIndex,
+  chooseInitialProfile, evaluateMeasurement, nextProfileDown, buildVideoConstraints,
+} from './utils/cameraCapture.mjs';
 import { isNativeEngineEnabled, getNativeEngineConfig, FEATURE_FLAGS } from './config/featureFlags.js';
 import { VOICE_EFFECTS } from './utils/voiceEffectsProcessor.js';
 import { createStreamTransport } from './utils/streamTransport.js';
@@ -99,21 +105,24 @@ class ErrorBoundary extends Component {
   }
 }
 
-const VideoTile = React.forwardRef(({ 
-  stream, 
-  isLocal, 
-  muted, 
-  label, 
-  speakerMuted, 
-  onToggleSpeaker, 
-  micMuted, 
-  onToggleMic, 
-  className, 
-  onClick, 
-  style, 
-  chromaKey, 
+const VideoTile = React.forwardRef(({
+  stream,
+  isLocal,
+  muted,
+  label,
+  speakerMuted,
+  onToggleSpeaker,
+  micMuted,
+  onToggleMic,
+  className,
+  onClick,
+  style,
+  chromaKey,
   bgImage,
-  isActive = true 
+  isActive = true,
+  camId = null,
+  registerWithEngine = false,
+  frozen = false
 }, ref) => {
   const internalRef = useRef(null);
   const videoRef = ref || internalRef;
@@ -191,6 +200,17 @@ const VideoTile = React.forwardRef(({
     };
   }, [stream, videoRef]);
 
+  // A3: la miniatura visible registrada es LA fuente del compositor para esa
+  // cámara: el motor dibuja desde este mismo elemento y no crea un <video>
+  // oculto duplicado que vuelva a decodificar el stream 1080p.
+  useEffect(() => {
+    if (!registerWithEngine || camId == null || !stream) return undefined;
+    const el = videoRef.current;
+    if (!el) return undefined;
+    try { registerCameraVideoElement(camId, el); } catch (e) {}
+    return () => { try { registerCameraVideoElement(camId, null); } catch (e) {} };
+  }, [stream, camId, registerWithEngine, videoRef]);
+
   const isMuted = muted !== undefined ? muted : isLocal;
 
   useEffect(() => {
@@ -223,6 +243,7 @@ const VideoTile = React.forwardRef(({
         </div>
       )}
       {label && <div className="absolute top-2 left-2 bg-black/70 px-2 py-0.5 rounded text-[10px] font-bold z-20 border border-[#333] text-white flex items-center gap-1">{label}</div>}
+      {frozen && stream && <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-red-600/90 px-2 py-0.5 rounded text-[10px] font-bold z-20 border border-red-300 text-white flex items-center gap-1">CONGELADA</div>}
 
       {/* CONTROLES VISIBLES DIRECTAMENTE EN LA PANTALLA/RECUADRO DE CADA CÁMARA */}
       {(onToggleSpeaker || onToggleMic) && (
@@ -280,7 +301,13 @@ const MasterProgramMonitor = React.memo(function MasterProgramMonitor() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const check = () => setReady(hasMasterCanvasPresentedFrames());
+    // Auditoría de fluidez (E): este intervalo de 500 ms vive en la hoja
+    // MasterProgramMonitor, no en la raíz; además solo publica si el valor
+    // cambió, así que en reposo no re-renderiza ni siquiera esta hoja.
+    const check = () => {
+      const next = hasMasterCanvasPresentedFrames();
+      setReady(prev => (prev === next ? prev : next));
+    };
     check();
     const timer = setInterval(check, 500);
     return () => clearInterval(timer);
@@ -308,12 +335,186 @@ const MasterProgramMonitor = React.memo(function MasterProgramMonitor() {
   );
 });
 
+// ── Captura adaptativa USB (A-integración) ─────────────────────────────────
+// Perfiles por dispositivo persistidos en localStorage. La escalera y la
+// decisión viven en utils/cameraCapture.mjs (contrato de integración); aquí
+// solo se orquesta: elegir perfil, abrir, medir ~900 ms y bajar si hace falta.
+const CAPTURE_PROFILES_KEY = 'podcastudio_capture_profiles';
+
+function loadCaptureProfiles() {
+  try {
+    const raw = localStorage.getItem(CAPTURE_PROFILES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (e) { return {}; }
+}
+
+function persistCaptureProfile(deviceId, profileId) {
+  if (!deviceId || !profileId) return;
+  try {
+    const profiles = loadCaptureProfiles();
+    profiles[deviceId] = profileId;
+    localStorage.setItem(CAPTURE_PROFILES_KEY, JSON.stringify(profiles));
+  } catch (e) {}
+}
+
+function captureProfileId(profile) {
+  if (!profile) return null;
+  if (typeof profile === 'string') return profile;
+  return profile.id || null;
+}
+
+function normalizeCaptureProfile(profile) {
+  if (!profile) return null;
+  if (typeof profile === 'string') {
+    try { return profileById(profile) || { id: profile }; } catch (e) { return { id: profile }; }
+  }
+  if (typeof profile === 'object') {
+    if (profile.width || profile.height) return profile;
+    if (profile.id) {
+      try { const found = profileById(profile.id); if (found) return found; } catch (e) {}
+    }
+    return profile;
+  }
+  return null;
+}
+
+function captureProfileIndex(profile) {
+  // profileIndex del contrato recibe el ID del perfil, no el objeto.
+  try { return profileIndex(captureProfileId(profile)); } catch (e) { return -1; }
+}
+
+// Mide el stream recién abierto durante ~900 ms contando fotogramas reales
+// con requestVideoFrameCallback sobre un elemento desechable (no queda
+// montado: no es una superficie más, solo una sonda de medición) y lee el
+// modo real del track con getSettings().
+function measureStreamFrames(stream, durationMs = 900) {
+  return new Promise((resolve) => {
+    const track = stream?.getVideoTracks?.()[0] || null;
+    const settings = track?.getSettings?.() || {};
+    if (!track) {
+      resolve({ fps: 0, width: settings.width || 0, height: settings.height || 0, frameRate: settings.frameRate || 0 });
+      return;
+    }
+    const probe = document.createElement('video');
+    probe.muted = true;
+    probe.playsInline = true;
+    probe.srcObject = stream;
+    const hasRvfc = typeof probe.requestVideoFrameCallback === 'function';
+    let frames = 0;
+    let done = false;
+    let rvfcId = null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try { if (rvfcId != null && probe.cancelVideoFrameCallback) probe.cancelVideoFrameCallback(rvfcId); } catch (e) {}
+      try { probe.srcObject = null; } catch (e) {}
+      const s = track.getSettings?.() || settings;
+      // Con rVFC el conteo manda, incluido 0 (evaluateMeasurement trata
+      // fps=0 como «sin fotogramas» y baja un escalón). Sin rVFC no hay
+      // conteo posible: se usa el frameRate declarado por el track para
+      // no castigar a la cámara por una limitación de la sonda.
+      const fps = hasRvfc ? frames / (durationMs / 1000) : (s.frameRate || settings.frameRate || 0);
+      resolve({ fps, width: s.width || settings.width || 0, height: s.height || settings.height || 0, frameRate: s.frameRate || 0 });
+    };
+    const onFrame = () => {
+      frames += 1;
+      if (!done && hasRvfc) {
+        rvfcId = probe.requestVideoFrameCallback(onFrame);
+      }
+    };
+    try { probe.play().catch(() => {}); } catch (e) {}
+    if (hasRvfc) {
+      rvfcId = probe.requestVideoFrameCallback(onFrame);
+    }
+    setTimeout(finish, durationMs);
+  });
+}
+
+// Abre UNA cámara USB recorriendo la escalera: perfil inicial según lo
+// guardado y cuántas cámaras ya están en 1080p; OverconstrainedError baja un
+// escalón y reintenta; tras abrir, la medición puede forzar otra bajada
+// (máximo hasta el último escalón). Devuelve el stream y el perfil final.
+async function openAdaptiveUsbStream(deviceId, { gumTimeout, savedProfileId = null, idsAt1080 = [] } = {}) {
+  let profile = null;
+  try {
+    profile = normalizeCaptureProfile(chooseInitialProfile({ savedProfileId, idsAt1080, camId: deviceId }));
+  } catch (e) { profile = null; }
+  if (!profile) {
+    profile = normalizeCaptureProfile(savedProfileId);
+    if (!profile && Array.isArray(CAPTURE_PROFILES) && CAPTURE_PROFILES.length > 0) {
+      const mayUse1080 = (idsAt1080?.length || 0) < (MAX_CAMERAS_1080 ?? 1);
+      profile = normalizeCaptureProfile(CAPTURE_PROFILES[mayUse1080 ? 0 : 1] || CAPTURE_PROFILES[0]);
+    }
+  }
+  const maxSteps = (Array.isArray(CAPTURE_PROFILES) && CAPTURE_PROFILES.length ? CAPTURE_PROFILES.length : 3) + 1;
+  let lastError = null;
+  for (let step = 0; step < maxSteps; step += 1) {
+    let stream = null;
+    try {
+      let constraints = null;
+      if (profile) {
+        const built = buildVideoConstraints(profile, deviceId);
+        if (built) {
+          constraints = built.video ? built : { video: built, audio: false };
+        }
+      }
+      if (!constraints) {
+        constraints = {
+          video: { deviceId: { exact: deviceId }, width: { ideal: 1920, min: 320 }, height: { ideal: 1080, min: 240 }, frameRate: { ideal: 30, min: 15 } },
+          audio: false,
+        };
+      }
+      stream = await gumTimeout(constraints, 6000);
+    } catch (err) {
+      lastError = err;
+      if (err?.name === 'OverconstrainedError' && profile) {
+        let down = null;
+        try { down = normalizeCaptureProfile(nextProfileDown(profile)); } catch (e) {}
+        if (down && captureProfileId(down) !== captureProfileId(profile)) {
+          profile = down;
+          continue;
+        }
+      }
+      throw err;
+    }
+    const measurement = await measureStreamFrames(stream, 900);
+    let decision = null;
+    try {
+      decision = evaluateMeasurement({ profile, measuredFps: measurement.fps, measuredWidth: measurement.width, measuredHeight: measurement.height });
+    } catch (e) { decision = null; }
+    if (decision?.action === 'downgrade' && decision.nextProfile) {
+      const next = normalizeCaptureProfile(decision.nextProfile);
+      if (next && captureProfileId(next) !== captureProfileId(profile)) {
+        try { stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+        profile = next;
+        continue;
+      }
+    }
+    const finalId = captureProfileId(profile);
+    if (finalId) persistCaptureProfile(deviceId, finalId);
+    console.info('[capture] perfil final', { deviceId, profile: finalId, measured: measurement, reason: decision?.reason || null });
+    return { stream, profile, profileId: finalId, measurement };
+  }
+  throw lastError || new Error('No se pudo abrir la cámara en ningún perfil de captura.');
+}
+
 const defaultCamSettings = { zoom: 1.0, panX: 50, panY: 50, brightness: 100, contrast: 100, saturation: 100, temp: 0, tint: 0, luts: 'Original' };
 
 function PodcastStudioApp() {
   const [isRecording, setIsRecording] = useState(false);
   const [isStartingRecording, setIsStartingRecording] = useState(false);
   const [isStoppingRecordingUI, setIsStoppingRecordingUI] = useState(false);
+  // B2-ui: progreso real del cierre de grabación (etapa + percent que envía
+  // el proceso principal vía onFinalizeProgress; percent puede ser null).
+  const [finalizeProgress, setFinalizeProgress] = useState(null);
+  // A4: cámaras congeladas según getCameraFrameHealth() (mapa camId -> true).
+  const [frozenCams, setFrozenCams] = useState({});
+  const frozenCamsRef = useRef({});
+  // A-integración: cola global de apertura USB (una negociación UVC a la vez)
+  // y perfiles de captura vivos por dispositivo para calcular idsAt1080.
+  const usbOpenQueueRef = useRef(Promise.resolve());
+  const captureProfileByDeviceRef = useRef(loadCaptureProfiles());
   const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [countdown, setCountdown] = useState(null);
@@ -1792,21 +1993,20 @@ function PodcastStudioApp() {
         if (!targetDev) return;
         const effectiveDeviceId = targetDev.deviceId;
 
+        // A-integración: apertura adaptativa con escalera de perfiles y
+        // medición de ~900 ms (es la única cámara en este punto del
+        // arranque, así que la apertura ya es secuencial por construcción).
         let stream = null;
         try {
-          stream = await getUserMediaWithTimeout({
-            video: {
-              deviceId: { exact: effectiveDeviceId },
-              width: { ideal: 1920, min: 320 },
-              height: { ideal: 1080, min: 240 },
-              frameRate: { ideal: 30, min: 15 },
-            },
-            audio: false,
-          }, 4500);
+          const opened = await openAdaptiveUsbStream(effectiveDeviceId, {
+            gumTimeout: getUserMediaWithTimeout,
+            savedProfileId: loadCaptureProfiles()[effectiveDeviceId] || null,
+            idsAt1080: [],
+          });
+          stream = opened.stream;
+          if (opened.profileId) captureProfileByDeviceRef.current = { ...captureProfileByDeviceRef.current, [effectiveDeviceId]: opened.profileId };
         } catch (e1) {
-          try {
-            stream = await getUserMediaWithTimeout({ video: { deviceId: effectiveDeviceId }, audio: false }, 3500);
-          } catch (e2) {}
+          stream = null;
         }
 
         if (stream) {
@@ -1922,10 +2122,16 @@ function PodcastStudioApp() {
           pausedDurationRef.current += (Date.now() - pauseStartRef.current);
           pauseStartRef.current = null;
         }
+        // Auditoría de fluidez (E): el intervalo corre a 500 ms pero solo
+        // publica cuando el segundo mostrado cambia (efectivo: 1 Hz).
+        let lastPublishedElapsed = -1;
         const tick = () => {
           if (!recordingStartTimeRef.current) return;
           const elapsed = Math.max(0, Math.floor((Date.now() - recordingStartTimeRef.current - pausedDurationRef.current) / 1000));
-          setRecordingTime(elapsed);
+          if (elapsed !== lastPublishedElapsed) {
+            lastPublishedElapsed = elapsed;
+            setRecordingTime(elapsed);
+          }
         };
         tick();
         timer = setInterval(tick, 500);
@@ -1956,6 +2162,14 @@ function PodcastStudioApp() {
     isRecordingRef.current = isRecording;
   }, [isRecording]);
 
+  // Auditoría de fluidez (E) — contador de duración del stream (1 Hz):
+  // NO se mueve a un componente hoja a propósito. streamDuration no es solo
+  // el texto de cabecera: es la fuente que applyRemoteStudioState sobrescribe
+  // en modo espejo (iPad) y que sendStudioState publica vía
+  // streamDurationRef. Extraerlo a una hoja con reloj propio partiría esa
+  // fuente de verdad en dos (master e iPad mostrarían tiempos distintos) y
+  // el espejo dejaría de poder fijar la duración. Se queda en la raíz a
+  // 1 Hz exacto (no por encima de 1 Hz): es el coste mínimo seguro.
   useEffect(() => {
     let timer;
     if (isStreaming) {
@@ -1997,13 +2211,57 @@ function PodcastStudioApp() {
         if (evt.status === 'down') {
           showToast(`${evt.targetName || 'Destino'}: la transmisión cayó. Reconectando automáticamente…`, 'warning', 7000);
         } else if (evt.status === 'failed') {
-          showToast(`${evt.targetName || 'Destino'}: no se pudo recuperar la transmisión tras 5 intentos.${evt.error ? ' ' + evt.error : ''}`, 'error', 9000);
+          // D-ui: si el proceso principal adjunta userMessage (kind 'url':
+          // URL/clave mal formada), ese texto accionable sustituye al
+          // genérico «Server error». El resto de kinds no cambia.
+          showToast(evt.userMessage
+            ? `${evt.targetName || 'Destino'}: ${evt.userMessage}`
+            : `${evt.targetName || 'Destino'}: no se pudo recuperar la transmisión tras 5 intentos.${evt.error ? ' ' + evt.error : ''}`, 'error', 9000);
         } else if (evt.status === 'live' && prev && prev.status !== 'live') {
           showToast(`${evt.targetName || 'Destino'}: transmisión recuperada.`, 'success', 5000);
         }
       });
       return unsubscribe;
     }
+  }, []);
+
+  // A4: salud de fotogramas por cámara. Sondeo a 1 Hz que SOLO publica
+  // estado cuando el conjunto de cámaras congeladas cambió (comparación
+  // contra la ref): sin cambios, cero re-renders.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      let health = null;
+      try { health = getCameraFrameHealth(); } catch (e) { health = null; }
+      if (!health || typeof health !== 'object') return;
+      const next = {};
+      Object.entries(health).forEach(([camId, h]) => { if (h?.frozen) next[camId] = true; });
+      const prev = frozenCamsRef.current;
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      const changed = prevKeys.length !== nextKeys.length || nextKeys.some(k => !prev[k]);
+      if (changed) {
+        frozenCamsRef.current = next;
+        setFrozenCams(next);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // B2-ui: progreso honesto del cierre de grabación desde el proceso
+  // principal. API opcional del preload: si no existe, la UI conserva el
+  // texto genérico de «Finalizando…» sin inventar porcentajes.
+  useEffect(() => {
+    let unsubscribe = null;
+    try {
+      unsubscribe = window.api?.onFinalizeProgress?.((payload) => {
+        if (!payload) return;
+        setFinalizeProgress({
+          stage: payload.stage || '',
+          percent: payload.percent == null ? null : Number(payload.percent),
+        });
+      });
+    } catch (e) { unsubscribe = null; }
+    return () => { try { if (typeof unsubscribe === 'function') unsubscribe(); } catch (e) {} };
   }, []);
 
   // Sincronización en tiempo real del Master Compositor y Audio Engine
@@ -2036,7 +2294,6 @@ function PodcastStudioApp() {
       guestRole,
       cintillosVisible,
       cintillo,
-      cintilloPosition,
       topic,
       teleprompterText,
       teleprompterSpeed,
@@ -2045,7 +2302,7 @@ function PodcastStudioApp() {
       getCamStream,
       remoteCams,
     });
-  }, [activeCam, pvwCam, pipCam, camSlots, cameraCrops, cameraBadges, cameraMeta, hostName, hostRole, guestName, guestRole, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, cintilloPosition, topic, teleprompterText, teleprompterSpeed, teleprompterFontSize, isTeleprompterPlaying, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
+  }, [activeCam, pvwCam, pipCam, camSlots, cameraCrops, cameraBadges, cameraMeta, hostName, hostRole, guestName, guestRole, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, topic, teleprompterText, teleprompterSpeed, teleprompterFontSize, isTeleprompterPlaying, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
     const officialQr = 'https://www.podcastudio.mx/remote-cam?auto=true';
@@ -2666,6 +2923,7 @@ function PodcastStudioApp() {
       if (recordingStopPendingRef.current) return;
       recordingStopPendingRef.current = true;
       setIsStoppingRecordingUI(true);
+      setFinalizeProgress(null);
       try {
         // Capturar miniatura en alta resolución directamente del canvas maestro en vivo
         const snapshotCanvas = captureMasterCanvasSnapshot();
@@ -2782,6 +3040,7 @@ function PodcastStudioApp() {
         recordingStopPendingRef.current = false;
         recordingStartPendingRef.current = false;
         setIsStoppingRecordingUI(false);
+        setFinalizeProgress(null);
         setIsStartingRecording(false);
       }
     }
@@ -2946,7 +3205,10 @@ function PodcastStudioApp() {
             setIsStreamStarting(false);
             setIsStreaming(false);
             if (!isRecordingRef.current) await stopBroadcastEngine();
-            showToast('No se pudo conectar con el servidor de transmisión.\n' + (res.error || 'Verifica que la transmisión esté activa en la plataforma y revisa la clave y la URL.'), 'error', 7000);
+            // D-ui: userMessage del payload (kind 'url') manda sobre el
+            // texto genérico y sobre el «Server error» crudo del destino.
+            const friendlyStreamError = res.userMessage || (Array.isArray(res.failures) ? res.failures.map(f => f?.userMessage).find(Boolean) : null);
+            showToast(friendlyStreamError || ('No se pudo conectar con el servidor de transmisión.\n' + (res.error || 'Verifica que la transmisión esté activa en la plataforma y revisa la clave y la URL.')), 'error', 7000);
           }
         } catch (error) {
           isStreamStartingRef.current = false;
@@ -3108,7 +3370,20 @@ function PodcastStudioApp() {
     };
   }, [showConnectModal]);
 
-  const handleUsbConnect = async (deviceId, slot, label) => {
+  // Apertura USB SECUENCIAL (A-integración): handleUsbConnect encola cada
+  // apertura tras la anterior; una cámara se estabiliza y se mide antes de
+  // abrir la siguiente. Nunca llamarla desde dentro de la propia cola.
+  const enqueueUsbOpen = (task) => {
+    const run = usbOpenQueueRef.current.then(task, task);
+    usbOpenQueueRef.current = run.then(() => {}, () => {});
+    return run;
+  };
+
+  const computeIdsAt1080 = () => Object.entries(captureProfileByDeviceRef.current || {})
+    .filter(([, profileId]) => captureProfileIndex(profileId) === 0)
+    .map(([deviceId]) => deviceId);
+
+  const handleUsbConnectSequential = async (deviceId, slot, label) => {
     // Si la cámara ya está activa en este slot con el mismo deviceId, mantenerla
     const currentStream = slotStreamsRef.current[slot] || slotStreams[slot] || (slot === 0 ? localStreamRef.current || localStream : null);
     const activeVideoTrack = currentStream?.getVideoTracks()?.[0];
@@ -3154,28 +3429,27 @@ function PodcastStudioApp() {
 
     let stream = null;
     let lastError = null;
+    let finalCaptureProfileId = null;
 
-    // Negociación adaptativa nativa: solicita 1080p con rango flexible (mínimo 320x240)
-    // para que el subsistema de Windows entregue de inmediato la resolución más alta posible
-    // sin trabar el bus USB ni cancelar streams en vuelo.
+    // A-integración: escalera adaptativa por cámara (perfil guardado +
+    // presupuesto de 1080p ya en uso), OverconstrainedError baja un escalón
+    // dentro de la misma negociación, y la medición de ~900 ms puede bajar
+    // otro escalón antes de aceptar el stream. Sustituye al antiguo intento
+    // fijo 1080p + respaldo «sin constraints», que dejaba al driver elegir
+    // el modo que satura el bus.
     try {
-      stream = await getUserMediaWithTimeout({
-        video: {
-          deviceId: { exact: deviceId },
-          width: { ideal: 1920, min: 320 },
-          height: { ideal: 1080, min: 240 },
-          frameRate: { ideal: 30, min: 15 },
-        },
-        audio: false,
-      }, 6000);
+      const opened = await openAdaptiveUsbStream(deviceId, {
+        gumTimeout: getUserMediaWithTimeout,
+        savedProfileId: loadCaptureProfiles()[deviceId] || null,
+        idsAt1080: computeIdsAt1080(),
+      });
+      stream = opened.stream;
+      finalCaptureProfileId = opened.profileId;
+      if (finalCaptureProfileId) {
+        captureProfileByDeviceRef.current = { ...captureProfileByDeviceRef.current, [deviceId]: finalCaptureProfileId };
+      }
     } catch (err) {
       lastError = err;
-      // Intento secundario relajado solo si el primero falló y no hay otro intento
-      try {
-        stream = await getUserMediaWithTimeout({ video: { deviceId }, audio: false }, 5000);
-      } catch (err2) {
-        lastError = err2;
-      }
     }
 
     if (stream) {
@@ -3186,9 +3460,9 @@ function PodcastStudioApp() {
       usbConnectInFlightRef.current.delete(flightKey);
       slotStreamsRef.current = { ...slotStreamsRef.current, [slot]: stream };
       const videoInfo = getVideoTrackInfo(stream);
-      cameraMetaRef.current = { ...cameraMetaRef.current, [slot]: { deviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } };
+      cameraMetaRef.current = { ...cameraMetaRef.current, [slot]: { deviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb', captureProfile: finalCaptureProfileId } };
       setSlotStreams(prev => ({ ...prev, [slot]: stream }));
-      setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb' } }));
+      setCameraMeta(prev => ({ ...prev, [slot]: { deviceId, resolution: getVideoTrackResolution(stream), videoInfo, label: label || 'Cámara USB', type: 'usb', captureProfile: finalCaptureProfileId } }));
       if (slot >= camSlots.length && slot < 12) {
         const expandedSlots = Array.from({ length: slot + 1 }, (_, i) => i + 1);
         setCamSlots(expandedSlots);
@@ -3232,6 +3506,15 @@ function PodcastStudioApp() {
       throw new Error(`No se pudo abrir la cámara "${label || 'USB'}". Verifica que no esté abierta en otra aplicación o vuelve a conectar el cable.`);
     }
   };
+
+  // Punto de entrada público: serializa TODAS las aperturas USB (modal de
+  // conexión y restauración de cámaras guardadas vía handleReconnectSavedCamera,
+  // que delega aquí) en la cola global. Puntos NO adaptados a propósito:
+  // handleWifiConnect/createWifiMediaStream (IP/RTSP/MJPEG, sin getUserMedia
+  // USB), handleScreenConnect (captura de escritorio de Electron),
+  // handleAssignRemoteStream y los slots cloud/WebRTC (streams ya abiertos
+  // por el transporte), y attachCameraAudio (solo audio, sin vídeo).
+  const handleUsbConnect = (deviceId, slot, label) => enqueueUsbOpen(() => handleUsbConnectSequential(deviceId, slot, label));
 
   const createWifiMediaStream = async (url) => {
     return new Promise((resolve, reject) => {
@@ -4575,8 +4858,8 @@ function PodcastStudioApp() {
                 </div>
               )}
               
-              {/* LOGO OFICIAL DEL PROYECTO O VIDEO 3D ANIMADO (en Electron Master el lienzo canvas ya lo compone de forma nativa) */}
-              {!isElectronMaster && (logoConfig.url || logoBase64) && (
+              {/* LOGO OFICIAL DEL PROYECTO O VIDEO 3D ANIMADO */}
+              {isElectronMaster && (logoConfig.url || logoBase64) && (
                 (() => {
                   const url = logoConfig.url || logoBase64;
                   const isVideo = logoConfig.mediaType === 'video' || (typeof url === 'string' && (url.startsWith('data:video') || url.match(/\.(mp4|webm|mov|mkv)($|\?)/i)));
@@ -4616,8 +4899,8 @@ function PodcastStudioApp() {
               )}
 
 
-              {/* CINTILLO BROADCAST TRANSLÚCIDO 3D (en Electron Master el lienzo canvas ya compone el cintillo para evitar duplicación 1:1) */}
-              {!isElectronMaster && cintillosVisible && cintillo?.active && (
+              {/* CINTILLO BROADCAST TRANSLÚCIDO 3D */}
+              {cintillosVisible && cintillo?.active && (
                 <CintilloOverlay
                   styleId={cintilloStyle}
                   tag={cintillo.tag || 'TEMA'}
@@ -4691,7 +4974,7 @@ function PodcastStudioApp() {
                   title={dualMonitorMode ? `Seleccionar CAM ${camId} en PREVIEW (PVW) · Clic en CUT para conmutar a PROGRAM` : `Seleccionar CAM ${camId} como Cámara Master`}
                 >
                    {camStream ? (
-                     <VideoTile stream={camStream} isLocal={camId === 1} muted={camSpeakerMuted[camId] !== false} className="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
+                     <VideoTile camId={camId} registerWithEngine frozen={!!frozenCams[camId]} stream={camStream} isLocal={camId === 1} muted={camSpeakerMuted[camId] !== false} className="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
                    ) : camThumbnails[camId] ? (
                      <img src={camThumbnails[camId]} className="w-full h-full object-cover" alt={`CAM ${camId}`} />
                    ) : (!isElectronMaster && isActive) ? (
@@ -6078,7 +6361,7 @@ function PodcastStudioApp() {
                 {isStoppingRecordingUI ? (
                   <>
                     <Loader2 size={15} className="animate-spin text-white" />
-                    <span>FINALIZANDO Y PROCESANDO FORMATOS...</span>
+                    <span>{finalizeProgress?.stage ? `${finalizeProgress.stage}${finalizeProgress.percent != null ? ` · ${Math.round(finalizeProgress.percent)}%` : ''}` : 'FINALIZANDO Y PROCESANDO FORMATOS...'}</span>
                   </>
                 ) : isStartingRecording ? (
                   <>
@@ -6109,6 +6392,19 @@ function PodcastStudioApp() {
                   </>
                 )}
               </button>
+              {isStoppingRecordingUI && finalizeProgress && (
+                <div className="px-1 flex flex-col gap-1">
+                  <div className="flex justify-between text-[10px] font-bold text-amber-300">
+                    <span>{finalizeProgress.stage || 'Finalizando…'}</span>
+                    {finalizeProgress.percent != null && <span>{Math.round(finalizeProgress.percent)}%</span>}
+                  </div>
+                  {finalizeProgress.percent != null && (
+                    <div className="w-full h-1.5 bg-[#222] rounded-full overflow-hidden">
+                      <div className="h-full bg-amber-500 transition-all" style={{ width: `${Math.max(0, Math.min(100, finalizeProgress.percent))}%` }} />
+                    </div>
+                  )}
+                </div>
+              )}
               {isRecording && (
                 <button
                   type="button"
@@ -6146,7 +6442,7 @@ function PodcastStudioApp() {
       <footer className="h-6 bg-[#08080a] border-t border-[#262626] px-4 flex justify-between items-center text-[10.5px] text-gray-400 shrink-0 z-30 select-none">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]"></span>
-          <span className="font-bold text-gray-200 tracking-wider">PODCASTUDIO v1.3.9</span>
+          <span className="font-bold text-gray-200 tracking-wider">{`PODCASTUDIO v${APP_VERSION}`}</span>
           <span className="text-[#333]">|</span>
           <span className="text-gray-400">Estudio Broadcast Pro</span>
         </div>
@@ -6569,7 +6865,7 @@ function PodcastStudioApp() {
           {Object.values(streamDestStatuses).filter(d => d.status && d.status !== 'live').map(d => (
             <div key={d.targetId} className={`px-3 py-2 rounded-lg border text-xs font-bold shadow-lg ${d.status === 'failed' ? 'bg-red-950/90 border-red-500 text-red-200' : 'bg-amber-950/90 border-amber-500 text-amber-200'}`}>
               {d.targetName || 'Destino'}: {d.status === 'failed' ? 'TRANSMISIÓN PERDIDA tras 5 intentos de reconexión' : d.status === 'down' ? 'la transmisión cayó' : `reconectando (intento ${d.attempt || 1} de 5)…`}
-              {d.error ? <div className="font-normal opacity-80 mt-0.5">{d.error}</div> : null}
+              {(d.userMessage || d.error) ? <div className="font-normal opacity-80 mt-0.5">{d.userMessage || d.error}</div> : null}
             </div>
           ))}
         </div>

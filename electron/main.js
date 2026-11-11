@@ -22,6 +22,7 @@ const readySignalPath = path.join(os.tmpdir(), 'podcaststudio_ready.signal');
 try { if (fs.existsSync(readySignalPath)) fs.unlinkSync(readySignalPath); } catch (e) {}
 const { setupNativeEngineIPC } = require('./media-engine/bridge');
 const { computeExportSignature, siblingSuffixFor } = require('./export-signature');
+const { classifyStreamError, STREAM_ERROR_USER_MESSAGES } = require('./stream-error');
 const exportEncodeSignatures = new Map(); // firma de encode -> ruta ya codificada (dedupe FB/YT)
 
 try {
@@ -105,6 +106,13 @@ let isRecording = false;
 let isStreaming = false;
 let recordChunkQueue = Promise.resolve();
 let recordChunkError = null;
+// v1.5.1 (Frente B): la grabación se escribe primero a .partial.mp4 y solo
+// se renombra al nombre final si el cierre es limpio. recordingProbe
+// acumula, del stderr del ÚNICO FFmpeg de grabación, los segmentos de
+// blackdetect de su segunda salida y el último time= procesado: con eso se
+// calcula blackWarning al cerrar, sin una segunda pasada de verificación.
+let currentRecordingPartialPath = null;
+let recordingProbe = null;
 let ffmpegStreamProcess = null;
 let wss = null;
 let mediaServerHttps = null;
@@ -1888,6 +1896,11 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
     currentRecordingPath = path.join(projectDir, `${cleanProjectName}_${timestamp}_Master_1080p.mp4`);
+    // v1.5.1 (Frente B): FFmpeg escribe a .partial.mp4; stop-recording lo
+    // renombra al nombre final SOLO si el cierre fue limpio. Un cierre
+    // fallido o un cuelgue deja el .partial.mp4 (nunca un MP4 "bueno" falso).
+    currentRecordingPartialPath = currentRecordingPath.replace(/\.mp4$/i, '.partial.mp4');
+    recordingProbe = createRecordingProbe();
 
     if (ffmpegRecordProcess) {
       try {
@@ -1925,7 +1938,17 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
         '-ar', '48000',
         '-movflags', '+faststart',
         '-y',
-        currentRecordingPath
+        currentRecordingPartialPath,
+        // v1.5.1 (Frente B): SEGUNDA SALIDA del MISMO proceso — detección de
+        // negro en la misma pasada (muestreo a 2 fps hacia el sumidero
+        // null). Sustituye a la pasada separada de blackdetect que en
+        // v1.5.0 corría EN SERIE tras el cierre (runRecordingVerification):
+        // ahora transcode + faststart + blackdetect son UNA sola pasada.
+        '-map', '0:v:0',
+        '-vf', 'fps=2,blackdetect=d=0.5:pix_th=0.10',
+        '-an',
+        '-f', 'null',
+        '-'
       ], {
         stdio: ['pipe', 'ignore', 'pipe']
       });
@@ -1933,6 +1956,7 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
       if (ffmpegRecordProcess.stderr) {
         ffmpegRecordProcess.stderr.on('data', (data) => {
           const msg = data.toString();
+          feedRecordingProbe(msg);
           if (msg.includes('Error') || msg.includes('fatal') || msg.includes('Opening') || msg.includes('frame=')) {
             console.log('[FFmpeg Grabación]:', msg.trim());
           }
@@ -2010,35 +2034,63 @@ function preservePartialRecording(recPath) {
   } catch (e) { return null; }
 }
 
-// v1.5.0: verificación automática post-cierre. Corre blackdetect sobre el
-// master finalizado y estima qué fracción del vídeo es negro; también lee la
-// duración real. Si >=90% es negro, el resultado lleva blackWarning=true.
-function runRecordingVerification(recPath) {
-  return new Promise((resolve) => {
-    let stderrBuf = '';
-    let proc;
-    try {
-      proc = spawn(ffmpegPath, ['-i', recPath, '-vf', 'blackdetect=d=0.5:pix_th=0.10', '-an', '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] });
-    } catch (e) { return resolve({}); }
-    const timer = setTimeout(() => { try { proc.kill(); } catch (e) {} }, 120000);
-    proc.stderr.on('data', (d) => { stderrBuf += d.toString(); });
-    proc.on('error', () => { clearTimeout(timer); resolve({}); });
-    proc.on('close', () => {
-      clearTimeout(timer);
-      const durMatch = stderrBuf.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})/);
-      const durationSec = durMatch ? parseInt(durMatch[1], 10) * 3600 + parseInt(durMatch[2], 10) * 60 + parseFloat(durMatch[3]) : 0;
-      let blackSec = 0;
-      const blackRe = /black_start:(\d+(?:\.\d+)?) black_end:(\d+(?:\.\d+)?)/g;
-      let m;
-      while ((m = blackRe.exec(stderrBuf)) !== null) blackSec += Math.max(0, parseFloat(m[2]) - parseFloat(m[1]));
-      const blackRatio = durationSec > 0 ? Math.min(1, blackSec / durationSec) : 0;
-      resolve({
-        durationSec: Math.round(durationSec * 10) / 10,
-        blackRatio: Math.round(blackRatio * 100) / 100,
-        blackWarning: durationSec > 0 && blackRatio >= 0.9,
-      });
-    });
-  });
+// v1.5.1 (Frente B): la verificación de negro YA NO es una pasada aparte.
+// El blackdetect corre como segunda salida del mismo FFmpeg que graba
+// (ver start-recording) y esta sonda acumula sus segmentos desde stderr
+// junto con el último time= procesado (la duración real de lo grabado).
+function createRecordingProbe() {
+  return { blackSec: 0, lastBlackEnd: null, lastTimeSec: 0, carry: '' };
+}
+
+function feedRecordingProbe(text) {
+  const probe = recordingProbe;
+  if (!probe) return;
+  const buf = probe.carry + String(text || '');
+  const timeRe = /time=(\d{2}):(\d{2}):(\d{2}\.\d{2})/g;
+  let tm;
+  while ((tm = timeRe.exec(buf)) !== null) {
+    probe.lastTimeSec = parseInt(tm[1], 10) * 3600 + parseInt(tm[2], 10) * 60 + parseFloat(tm[3]);
+  }
+  const blackRe = /black_start:(\d+(?:\.\d+)?) black_end:(\d+(?:\.\d+)?)/g;
+  let bm;
+  let consumed = 0;
+  while ((bm = blackRe.exec(buf)) !== null) {
+    probe.blackSec += Math.max(0, parseFloat(bm[2]) - parseFloat(bm[1]));
+    probe.lastBlackEnd = parseFloat(bm[2]);
+    consumed = blackRe.lastIndex;
+  }
+  // Cola sin consumir: puede traer un match partido entre dos chunks de
+  // stderr. Los ya contados quedan fuera (consumed) para no duplicar.
+  probe.carry = buf.slice(Math.max(consumed, buf.length - 128));
+}
+
+// Mismo criterio que la verificación v1.5.0: >=90% negro => blackWarning.
+// Único ajuste: con el muestreo fps=2, un segmento negro que llega hasta el
+// final del vídeo cierra en el último fotograma MUESTREADO (hasta 0,5 s
+// antes del final real); si el último segmento termina a menos de un paso
+// de muestreo del final, se extiende hasta el final — sin esto, una
+// grabación corta 100% negra marcaría ~85% y no avisaría.
+function buildRecordingVerification() {
+  if (!recordingProbe) return {};
+  const durationSec = recordingProbe.lastTimeSec;
+  let blackSec = recordingProbe.blackSec;
+  if (durationSec > 0 && recordingProbe.lastBlackEnd != null
+      && recordingProbe.lastBlackEnd < durationSec
+      && recordingProbe.lastBlackEnd >= durationSec - 0.55) {
+    blackSec += durationSec - recordingProbe.lastBlackEnd;
+  }
+  const blackRatio = durationSec > 0 ? Math.min(1, blackSec / durationSec) : 0;
+  return {
+    durationSec: Math.round(durationSec * 10) / 10,
+    blackRatio: Math.round(blackRatio * 100) / 100,
+    blackWarning: durationSec > 0 && blackRatio >= 0.9,
+  };
+}
+
+function sendFinalizeProgress(percent) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('finalize-progress', { stage: 'procesando', percent });
+  }
 }
 
 ipcMain.handle('stop-recording', async () => {
@@ -2050,6 +2102,11 @@ ipcMain.handle('stop-recording', async () => {
       ffmpegRecordProcess = null;
       try { proc.removeAllListeners('close'); proc.removeAllListeners('error'); } catch (e) {}
       const recPath = currentRecordingPath;
+      // Progreso de finalización (v1.5.1): la codificación ocurrió EN VIVO
+      // en la misma pasada, así que al detener no hay un % de transcode que
+      // calcular: se reporta indeterminado (null) y 100 al terminar el
+      // cierre. La duración procesada (time=) ya la acumuló la sonda.
+      sendFinalizeProgress(null);
       let finished = false;
       let stopTimeout = null;
       let forcedCloseTimeout = null;
@@ -2059,9 +2116,21 @@ ipcMain.handle('stop-recording', async () => {
         finished = true;
         ffmpegRecordProcess = null;
 
+        // Cierre limpio: el .partial.mp4 pasa a ser el master final. La
+        // verificación de negro salió de la MISMA pasada de grabación
+        // (buildRecordingVerification): aquí ya no se lanza ningún FFmpeg
+        // de verificación ni de faststart aparte.
+        const partialInProgress = currentRecordingPartialPath;
+        try {
+          if (recPath && partialInProgress && partialInProgress !== recPath && fs.existsSync(partialInProgress)) {
+            fs.renameSync(partialInProgress, recPath);
+          }
+        } catch (e) { console.warn('[FFmpeg Grabación] No se pudo renombrar el parcial a master:', e.message); }
+        currentRecordingPartialPath = null;
+
         if (recPath && fs.existsSync(recPath) && fs.statSync(recPath).size > 0) {
-          // Verificación automática de negro + duración antes de reportar éxito.
-          const verification = await runRecordingVerification(recPath);
+          const verification = buildRecordingVerification();
+          sendFinalizeProgress(100);
           if (verification.blackWarning) {
             console.warn(`[FFmpeg Grabación] ADVERTENCIA: el master salió >=90% negro (${recPath}).`);
           }
@@ -2120,10 +2189,12 @@ ipcMain.handle('stop-recording', async () => {
         if (code !== 0 || recordChunkError) {
           finished = true;
           if (ffmpegRecordProcess === proc) ffmpegRecordProcess = null;
-          // v1.5.0: NO se borra el parcial. Un MP4 sin moov no es la grabación,
-          // pero se conserva como .partial.mp4 (diagnóstico/recuperación) y el
+          // v1.5.0/v1.5.1: NO se borra el parcial. La grabación ya se escribió
+          // como .partial.mp4 desde el inicio; un MP4 sin moov no es la
+          // grabación, pero se conserva para diagnóstico/recuperación y el
           // resultado lo reporta como parcial, nunca como éxito.
-          const partialPath = preservePartialRecording(recPath);
+          const partialPath = (currentRecordingPartialPath && fs.existsSync(currentRecordingPartialPath)) ? currentRecordingPartialPath : preservePartialRecording(recPath);
+          currentRecordingPartialPath = null;
           resolve({ success: false, path: recPath, partial: true, partialPath, error: recordChunkError || `FFmpeg terminó con código ${code}.` });
           return;
         }
@@ -2145,7 +2216,8 @@ ipcMain.handle('stop-recording', async () => {
           forcedCloseTimeout = setTimeout(() => {
             if (finished) return;
             finished = true;
-            const partialPath = preservePartialRecording(recPath);
+            const partialPath = (currentRecordingPartialPath && fs.existsSync(currentRecordingPartialPath)) ? currentRecordingPartialPath : preservePartialRecording(recPath);
+            currentRecordingPartialPath = null;
             if (ffmpegRecordProcess === proc) ffmpegRecordProcess = null;
             resolve({ success: false, path: recPath, partial: true, partialPath, error: 'FFmpeg no cerró el archivo de grabación dentro del tiempo permitido. El parcial se conservó como .partial.mp4 para diagnóstico; no es una grabación válida.' });
           }, 5000);
@@ -2577,8 +2649,11 @@ ipcMain.handle('export-highlight-clip', async (event, { sourcePath, startTime, d
 ipcMain.handle('cancel-recording', async () => {
   const proc = ffmpegRecordProcess;
   const recPath = currentRecordingPath;
+  const partialPath = currentRecordingPartialPath;
   ffmpegRecordProcess = null;
   currentRecordingPath = null;
+  currentRecordingPartialPath = null;
+  recordingProbe = null;
   if (!proc && !isStoppingRecording) {
     return { success: true };
   }
@@ -2594,6 +2669,13 @@ ipcMain.handle('cancel-recording', async () => {
   recordChunkError = null;
   if (proc && recPath) {
     try { await fs.promises.unlink(recPath); } catch (error) {
+      if (error.code !== 'ENOENT') return { success: false, error: error.message };
+    }
+  }
+  // La grabación en curso vive en el .partial.mp4 (v1.5.1): cancelar
+  // también lo elimina, para no dejar parciales huérfanos en el proyecto.
+  if (partialPath && partialPath !== recPath) {
+    try { await fs.promises.unlink(partialPath); } catch (error) {
       if (error.code !== 'ENOENT') return { success: false, error: error.message };
     }
   }
@@ -2922,25 +3004,28 @@ function redactStreamUrl(text, destUrl) {
   return out;
 }
 
-function classifyStreamError(text) {
-  const t = String(text || '');
-  if (/h264_mf|libx264|x264|mediafoundation|encoder|codec|mft\b|avcodec|invalid argument.*video|no such encoder/i.test(t)) return 'encoder';
-  if (/tls|ssl|handshake|certificate|schannel|gnutls|protocol not found|unsupported protocol/i.test(t)) return 'tls';
-  if (/invalid.*(?:key|stream)|unauthor|access denied|forbidden|login|403|401/i.test(t)) return 'auth';
-  if (/connection refused|timed out|timeout|unreachable|no route|failed to resolve|network|input\/output error|broken pipe/i.test(t)) return 'network';
-  return 'unknown';
-}
-
+// classifyStreamError y STREAM_ERROR_USER_MESSAGES viven en
+// electron/stream-error.js (v1.5.1, Frente D1): módulo puro testeable que
+// suma el kind 'url' ("Publish Rejected: Invalid URL") a los previos.
 function sendStreamDestinationStatus(entry, status, extra = {}) {
   if (mainWindow && !mainWindow.isDestroyed()) {
+    // Junto al error técnico viaja su clasificación y el mensaje accionable
+    // en español (campos nuevos; los existentes no cambian).
+    const kind = extra.kind || (extra.error ? classifyStreamError(extra.error) : null);
     mainWindow.webContents.send('stream-destination-status', {
       targetId: entry.id,
       targetName: entry.name,
       status,
       attempt: entry.reconnectAttempts || 0,
       ...extra,
+      ...(kind ? { kind, userMessage: STREAM_ERROR_USER_MESSAGES[kind] || STREAM_ERROR_USER_MESSAGES.unknown } : {}),
     });
   }
+}
+
+function streamFailureFields(kind) {
+  const k = kind || 'unknown';
+  return { kind: k, userMessage: STREAM_ERROR_USER_MESSAGES[k] || STREAM_ERROR_USER_MESSAGES.unknown };
 }
 
 function streamStderrTail(entry, maxChars = 500) {
@@ -3137,10 +3222,12 @@ function handleStreamWorkerDown(entry, reason) {
   if (entry.intentionalStop || !streamingSessionActive) return;
   entry.connected = false;
   const tail = streamStderrTail(entry);
+  const downKind = classifyStreamError(`${reason}\n${tail || ''}`);
   appendStreamLog(`${entry.name}: CAÍDO. ${reason}${tail ? `\n  stderr: ${tail.replace(/\n/g, ' | ')}` : ''}`);
   sendStreamDestinationStatus(entry, 'down', {
     error: redactStreamUrl(reason, entry.url),
     stderrTail: tail || undefined,
+    kind: downKind,
   });
 
   if (entry.reconnectAttempts >= STREAM_RECONNECT_DELAYS_MS.length) {
@@ -3148,6 +3235,7 @@ function handleStreamWorkerDown(entry, reason) {
     sendStreamDestinationStatus(entry, 'failed', {
       error: redactStreamUrl(reason, entry.url),
       stderrTail: tail || undefined,
+      kind: downKind,
     });
     if (activeStreamWorkers.length > 0 && activeStreamWorkers.every(w => !w.connected && w.reconnectAttempts >= STREAM_RECONNECT_DELAYS_MS.length && !w.reconnectTimer)) {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3263,11 +3351,12 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
       sendStreamDestinationStatus(entry, 'failed', {
         error: redactStreamUrl(result.error || 'Error de conexión RTMP/RTMPS.', entry.url),
         stderrTail: tail || undefined,
+        kind: result.kind,
       });
       entry.intentionalStop = true;
       try { entry.process?.stdin?.destroy(); entry.process?.kill('SIGINT'); } catch (e) {}
       activeStreamWorkers = activeStreamWorkers.filter(w => w !== entry);
-      return { target, success: false, error: redactStreamUrl(result.error || 'Error de conexión RTMP/RTMPS.', entry.url) };
+      return { target, success: false, error: redactStreamUrl(result.error || 'Error de conexión RTMP/RTMPS.', entry.url), ...streamFailureFields(result.kind) };
     }
     return { target, success: true, worker: entry };
   }));
@@ -3276,7 +3365,7 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
   const connectedDestinations = startupResults
     .filter(result => result.success && result.worker && !result.worker.closed)
     .map(result => result.target);
-  const failures = startupResults.filter(result => !result.success).map(result => ({ name: result.target.name, error: result.error }));
+  const failures = startupResults.filter(result => !result.success).map(result => ({ name: result.target.name, error: result.error, kind: result.kind, userMessage: result.userMessage }));
   if (!connectedDestinations.length) {
     streamingSessionActive = false;
     for (const worker of activeStreamWorkers) destroyStreamWorker(worker);

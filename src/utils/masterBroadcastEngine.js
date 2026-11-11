@@ -63,7 +63,6 @@ let currentState = {
   logoConfig: null,
   cintillosVisible: false,
   cintillo: null,
-  cintilloPosition: 'bl',
   topic: '',
   voiceEffect: 'normal',
   voiceTarget: 'all',
@@ -90,6 +89,23 @@ const videoElements = new Map();
 // en getOrCreateVideo(). La clave es el camId; el valor es
 // metadata.presentedFrames cuando el navegador lo da, o un contador propio.
 const videoPresentedFrames = new Map();
+// --- Frente cámaras (vídeo único): una cámara = un solo <video> ---
+// Elementos <video> EXTERNOS registrados por la UI (p. ej. el VideoTile
+// visible de App.jsx) vía registerCameraVideoElement(). Si hay uno para
+// una cámara, el motor compone desde él y NO crea su <video> oculto
+// propio: antes el mismo stream se presentaba en el monitor + la
+// miniatura + el <video> oculto del motor (informe-1 §3.4, 3-4 veces).
+const externalVideoElements = new Map();
+// Elementos creados por el propio motor. Solo estos se pueden destruir
+// al limpiar/reemplazar; un elemento externo es de la UI y el motor
+// jamás lo retira del DOM ni lo destruye.
+const engineOwnedVideoElements = new Set();
+// Salud de fotogramas por cámara: timestamp (Date.now()) del último
+// fotograma presentado (mismo requestVideoFrameCallback que alimenta
+// videoPresentedFrames) y del momento en que se asignó el stream
+// vigente — la referencia mientras aún no llega el primer fotograma.
+const videoLastFrameAt = new Map();
+const videoStreamAssignedAt = new Map();
 let videoFrameCallbackSupported = false;
 let lastRenderedPresentedTotal = -1;
 let lastCompositionSignature = null;
@@ -301,6 +317,7 @@ function registerVideoFrameCallback(camId, v) {
       ? metadata.presentedFrames
       : (videoPresentedFrames.get(camId) || 0) + 1;
     videoPresentedFrames.set(camId, presented);
+    videoLastFrameAt.set(camId, Date.now());
     try { v.requestVideoFrameCallback(onFrame); } catch (e) {}
   };
   try { v.requestVideoFrameCallback(onFrame); } catch (e) {}
@@ -352,7 +369,7 @@ function buildCompositionSignature() {
       currentState.transitionProgress, currentState.transitionFromCam, currentState.transitionToCam,
       currentState.chromaKeyActive ? 1 : 0, compositionFingerprint(currentState.virtualBg),
       compositionFingerprint(currentState.logoBase64), JSON.stringify(currentState.logoConfig || {}),
-      currentState.cintillosVisible ? 1 : 0, JSON.stringify(currentState.cintillo || {}), currentState.cintilloPosition || 'bl', currentState.topic || '',
+      currentState.cintillosVisible ? 1 : 0, JSON.stringify(currentState.cintillo || {}), currentState.topic || '',
       currentState.subtitlesVisible ? 1 : 0, currentState.liveSubtitleText || '',
       currentState.isReplaying ? 1 : 0, JSON.stringify(currentState.replayOverlay || {}),
       JSON.stringify(currentState.cameraBadges || {}),
@@ -376,8 +393,85 @@ function hasTimeVaryingComposition() {
   );
 }
 
+// Destruye SOLO un <video> creado por el motor (registrado en
+// engineOwnedVideoElements). Un elemento externo jamás pasa por aquí:
+// es propiedad de la UI que lo registró.
+function disposeEngineOwnedVideo(v) {
+  if (!v || !engineOwnedVideoElements.has(v)) return;
+  engineOwnedVideoElements.delete(v);
+  try { if (typeof v.pause === 'function') v.pause(); } catch (e) {}
+  try { v.srcObject = null; } catch (e) {}
+  try {
+    if (typeof v.remove === 'function') v.remove();
+    else if (v.parentNode) v.parentNode.removeChild(v);
+  } catch (e) {}
+}
+
+// Vídeo único por cámara: la UI registra el <video> que YA presenta el
+// stream (su VideoTile visible) y el motor compone desde ese mismo
+// elemento en vez de crear un oculto duplicado alimentado con el mismo
+// stream 1080p (informe-1 §3.4). Con el=null se desregistra: el motor
+// deja de apuntar a él (sin destruirlo) y volverá a crear el suyo
+// propio en la siguiente sincronización si la cámara sigue viva.
+export function registerCameraVideoElement(camId, el) {
+  if (el == null) {
+    const registered = externalVideoElements.get(camId);
+    externalVideoElements.delete(camId);
+    if (registered && videoElements.get(camId) === registered) {
+      videoElements.delete(camId);
+    }
+    return;
+  }
+  externalVideoElements.set(camId, el);
+  const existing = videoElements.get(camId);
+  if (existing && existing !== el) {
+    // El elemento propio que hubiera queda sustituido por el externo.
+    disposeEngineOwnedVideo(existing);
+  }
+  videoElements.set(camId, el);
+  registerVideoFrameCallback(camId, el);
+  if (el.srcObject && !videoStreamAssignedAt.has(camId)) {
+    videoStreamAssignedAt.set(camId, Date.now());
+  }
+}
+
+// Salud de fotogramas por cámara, para que la UI/captura detecte una
+// cámara congelada (stream vivo pero sin fotogramas nuevos):
+//   lastFrameAt — Date.now() del último fotograma presentado (vía
+//                 requestVideoFrameCallback), o null si aún no llegó
+//                 ninguno del stream vigente.
+//   frozen      — tiene stream asignado y el último fotograma (o la
+//                 asignación del stream, si aún no hay fotogramas)
+//                 es de hace más de 500 ms.
+export function getCameraFrameHealth(now = Date.now()) {
+  const health = {};
+  videoElements.forEach((v, camId) => {
+    const hasStream = !!(v && v.srcObject);
+    const lastFrameAt = videoLastFrameAt.has(camId) ? videoLastFrameAt.get(camId) : null;
+    const reference = lastFrameAt != null
+      ? lastFrameAt
+      : (videoStreamAssignedAt.get(camId) || 0);
+    health[camId] = {
+      lastFrameAt,
+      frozen: hasStream && (now - reference) > 500,
+    };
+  });
+  return health;
+}
+
 function getOrCreateVideo(camId, stream) {
-  if (!videoElements.has(camId)) {
+  const external = externalVideoElements.get(camId) || null;
+  if (external) {
+    // Elemento externo registrado: se usa tal cual. No se crea uno
+    // propio, no se mueve al contenedor oculto y no se le imponen
+    // tamaño/estilos: su presentación la manda la UI.
+    const existing = videoElements.get(camId);
+    if (existing !== external) {
+      if (existing) disposeEngineOwnedVideo(existing);
+      videoElements.set(camId, external);
+    }
+    registerVideoFrameCallback(camId, external);
+  } else if (!videoElements.has(camId)) {
     const v = document.createElement('video');
     v.autoplay = true;
     v.playsInline = true;
@@ -393,6 +487,7 @@ function getOrCreateVideo(camId, stream) {
       const container = getOffscreenContainer();
       if (container) container.appendChild(v);
     } catch {}
+    engineOwnedVideoElements.add(v);
     videoElements.set(camId, v);
     registerVideoFrameCallback(camId, v);
   }
@@ -400,7 +495,11 @@ function getOrCreateVideo(camId, stream) {
   if (stream) {
     if (v.srcObject !== stream) {
       // Stream nuevo: su contador de fotogramas presentados vuelve a empezar.
+      // Si el elemento (externo o propio) YA trae este stream, no se
+      // reasigna: reasignar reinicia la presentación sin necesidad.
       videoPresentedFrames.set(camId, 0);
+      videoLastFrameAt.delete(camId);
+      videoStreamAssignedAt.set(camId, Date.now());
       v.srcObject = stream;
       if (!v.hasTrackListeners) {
         v.hasTrackListeners = true;
@@ -415,12 +514,15 @@ function getOrCreateVideo(camId, stream) {
           t.addEventListener('unmute', triggerPlay);
         });
       }
+    } else if (!videoStreamAssignedAt.has(camId)) {
+      videoStreamAssignedAt.set(camId, Date.now());
     }
     if (v.paused) {
       v.play().catch(() => {});
     }
   } else if (v.srcObject) {
     v.srcObject = null;
+    videoStreamAssignedAt.delete(camId);
   }
   return v;
 }
@@ -632,15 +734,32 @@ function drawCameraNameBadge(x, y, w, h, camId) {
   const badges = currentState.cameraBadges || {};
   const badge = badges[camId];
 
-  // Solo mostrar rótulo si el usuario lo activó explícitamente en la configuración de la ranura.
-  // Jamás pintar el nombre de dispositivo de hardware (meta.label) ni textos no solicitados.
-  if (!badge || badge.enabled !== true || !badge.name || !badge.name.trim()) {
-    return;
+  let name = '';
+  let subtitle = '';
+  let position = 'bottom-left';
+
+  if (badge && badge.name && badge.name.trim() && badge.enabled !== false) {
+    name = badge.name.trim();
+    subtitle = (badge.subtitle || '').trim();
+    position = badge.position || 'bottom-left';
+  } else if (!badge || badge.enabled !== false) {
+    const slotIdx = camId - 1;
+    const meta = currentState.cameraMeta ? (currentState.cameraMeta[slotIdx] || currentState.cameraMeta[camId]) : null;
+    if (meta && meta.guestName && meta.guestName.trim()) {
+      name = meta.guestName.trim();
+      subtitle = (meta.guestRole || '').trim();
+    } else if (meta && meta.label && !meta.label.startsWith('CAM') && !meta.label.startsWith('Cámara') && !meta.label.startsWith('Celular')) {
+      name = meta.label.trim();
+    } else if (camId === 1 && currentState.hostName && currentState.hostName.trim()) {
+      name = currentState.hostName.trim();
+      subtitle = (currentState.hostRole || '').trim();
+    } else if (camId === 2 && currentState.guestName && currentState.guestName.trim() && currentState.guestName !== 'Invitado Especial') {
+      name = currentState.guestName.trim();
+      subtitle = (currentState.guestRole || '').trim();
+    }
   }
 
-  const name = badge.name.trim();
-  const subtitle = (badge.subtitle || '').trim();
-  const position = badge.position || 'bottom-left';
+  if (!name) return;
 
   ctx.save();
   const scale = Math.max(0.65, Math.min(1.25, w / 960));
@@ -719,27 +838,11 @@ function drawCintillo(cintillo, topic) {
   const subtitle = cintillo.subtitle || '';
   const color = cintillo.color || '#e8612a';
 
-  const pos = cintillo.position || currentState.cintilloPosition || 'bl';
+  const x = 70;
+  const y = 1080 - 190;
   const w = Math.min(1050, Math.max(550, title.length * 20 + 200));
   const h = subtitle ? 115 : 85;
   const radius = 16;
-
-  let x = 70;
-  let y = 1080 - 190;
-  if (pos === 'br' || pos === 'bottom-right') {
-    x = 1920 - w - 70;
-  } else if (pos === 'bc' || pos === 'bottom-center') {
-    x = Math.round((1920 - w) / 2);
-  } else if (pos === 'tl' || pos === 'top-left') {
-    x = 70;
-    y = 70;
-  } else if (pos === 'tc' || pos === 'top-center') {
-    x = Math.round((1920 - w) / 2);
-    y = 70;
-  } else if (pos === 'tr' || pos === 'top-right') {
-    x = 1920 - w - 70;
-    y = 70;
-  }
 
   ctx.save();
   ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';

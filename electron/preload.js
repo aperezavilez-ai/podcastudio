@@ -13,6 +13,13 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('recording-process-error', handler);
     return () => ipcRenderer.removeListener('recording-process-error', handler);
   },
+  // Progreso de la finalización de la grabación (v1.5.1, Frente B):
+  // payload { stage: 'procesando', percent: <0-100 | null> }.
+  onFinalizeProgress: (cb) => {
+    const handler = (e, data) => cb(data);
+    ipcRenderer.on('finalize-progress', handler);
+    return () => ipcRenderer.removeListener('finalize-progress', handler);
+  },
   saveRecordingThumbnail: (payload) => ipcRenderer.invoke('save-recording-thumbnail', payload),
   saveToDownloads: (payload) => ipcRenderer.invoke('save-to-downloads', payload),
   exportSocialFormat: (payload) => ipcRenderer.invoke('export-social-format', payload),

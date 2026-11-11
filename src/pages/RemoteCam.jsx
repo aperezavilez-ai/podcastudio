@@ -3,11 +3,15 @@ import { RotateCw, Mic, MicOff, Video, VideoOff, Volume2, VolumeX, PhoneOff, Dis
 import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
 
+// Niveles alineados con VIDEO_ENCODING_LADDER y con la captura inicial en
+// 720p: cada escalón baja resolución Y bitrate. Antes los cuatro niveles
+// iban a scaleResolutionDownBy: 1 con hasta 6 Mbps (1080p forzado), así que
+// la «adaptación» nunca reducía la resolución de envío.
 const QUALITY_TIERS = [
-  { label: 'Full HD 1080p Pro · 6.0 Mbps (Cristalino)', maxBitrate: 6000000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'Full HD 1080p · 4.2 Mbps (Alta Calidad)', maxBitrate: 4200000, scaleResolutionDownBy: 1, frameRate: 30 },
-  { label: 'HD 720p Pro · 2.8 Mbps (Fluido)', maxBitrate: 2800000, scaleResolutionDownBy: 1, frameRate: 30 },
   { label: 'HD 720p · 1.8 Mbps (Estable)', maxBitrate: 1800000, scaleResolutionDownBy: 1, frameRate: 30 },
+  { label: 'Media · 900 kbps (Fluida)', maxBitrate: 900000, scaleResolutionDownBy: 1.5, frameRate: 30 },
+  { label: 'Baja · 400 kbps (Red débil)', maxBitrate: 400000, scaleResolutionDownBy: 2.5, frameRate: 30 },
+  { label: 'Mínima · 150 kbps (Red muy débil)', maxBitrate: 150000, scaleResolutionDownBy: 4, frameRate: 30 },
 ]
 const VIDEO_ENCODING_LADDER = [
   { scaleResolutionDownBy: 1, maxBitrate: 1800000 },
@@ -31,10 +35,14 @@ function applyVideoSenderParams(sender, tier) {
   if (!sender) return
   try {
     const params = sender.getParameters() || {}
-    // Escalera real de encodings: cada capa baja resolución y bitrate, para
-    // que la adaptación tenga a dónde caer en redes móviles débiles (antes
-    // todas las capas iban con scaleResolutionDownBy: 1 a 1080p).
-    params.encodings = VIDEO_ENCODING_LADDER.map((encoding) => ({ ...encoding }))
+    // Escalera real de encodings acotada por el nivel activo: al degradar
+    // de nivel desaparecen las capas superiores, así el envío baja de
+    // resolución y bitrate de verdad (antes se ignoraba `tier` y siempre
+    // se reinstalaba la escalera completa, con la capa 1080p/scale 1).
+    const ceiling = Number(tier?.maxBitrate) > 0 ? tier.maxBitrate : VIDEO_ENCODING_LADDER[0].maxBitrate
+    const ladder = VIDEO_ENCODING_LADDER.filter((encoding) => encoding.maxBitrate <= ceiling)
+    params.encodings = (ladder.length ? ladder : [VIDEO_ENCODING_LADDER[VIDEO_ENCODING_LADDER.length - 1]])
+      .map((encoding) => ({ ...encoding }))
     // Ante falta de ancho de banda se preservan los fotogramas, no la
     // resolución: 'maintain-resolution' congelaba la imagen del invitado.
     params.degradationPreference = 'maintain-framerate'
@@ -92,7 +100,7 @@ export default function RemoteCam() {
   const [videoPaused, setVideoPaused] = useState(false)
   const [micMuted, setMicMuted] = useState(false)
   const [speakerMuted, setSpeakerMuted] = useState(true)
-  const [qualityLabel, setQualityLabel] = useState('Full HD 1080p · Conectando')
+  const [qualityLabel, setQualityLabel] = useState('HD 720p · Conectando')
 
   const [localBackupActive, setLocalBackupActive] = useState(false)
   const [localBackupDuration, setLocalBackupDuration] = useState(0)
@@ -121,7 +129,7 @@ export default function RemoteCam() {
   const tierIndexRef = useRef(1)
   const healthyChecksRef = useRef(0)
   const poorChecksRef = useRef(0)
-  const captureResolutionRef = useRef('Full HD 1080p')
+  const captureResolutionRef = useRef('HD 720p')
   const lastBytesRef = useRef({ bytes: 0, ts: 0 })
 
   const startAdaptationEngine = useCallback(() => {
@@ -665,7 +673,7 @@ export default function RemoteCam() {
           }
         })
       } catch (e1) {
-        console.warn('getUserMedia 1080p falló; intentando 720p compatible:', e1)
+        console.warn('getUserMedia 720p falló; intentando 720p compatible:', e1)
         try {
           stream = await navigator.mediaDevices.getUserMedia({
             video: {
@@ -741,13 +749,15 @@ export default function RemoteCam() {
       const oldTrack = streamRef.current?.getVideoTracks?.()?.[0]
       let newStream = null
 
-      // Intentar primero resolución Full HD flexible sin límites restrictivos de mínimo o aspectRatio que rompen la cámara frontal
+      // Mismo arranque que startCamera: 720p ideal, sin mínimos ni
+      // aspectRatio que rompan la cámara frontal. Antes el volteo volvía a
+      // pedir 1080p ideal y deshacía el arranque en 720p.
       try {
         newStream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: { ideal: nextFacing }, 
-            width: { ideal: 1920 }, 
-            height: { ideal: 1080 },
+          video: {
+            facingMode: { ideal: nextFacing },
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
             frameRate: { ideal: 30, max: 30 }
           },
           audio: false,
@@ -775,12 +785,18 @@ export default function RemoteCam() {
       if (newTrack) {
         newTrack.enabled = true
         try { newTrack.contentHint = 'motion' } catch {}
+        try {
+          const newSettings = newTrack.getSettings?.() || {}
+          if (newSettings.width || newSettings.height) captureResolutionRef.current = getCaptureResolutionLabel(newSettings)
+        } catch {}
       }
 
       const sender = videoSenderRef.current || pcRef.current?.getSenders?.()?.find(s => s.track?.kind === 'video' || s.kind === 'video')
       if (sender && newTrack) {
         await sender.replaceTrack(newTrack)
-        try { applyVideoSenderParams(sender, currentTierRef.current || QUALITY_TIERS[0]) } catch {}
+        // currentTierRef no existía: la referencia lanzaba dentro del try
+        // y los parámetros del sender nunca se reaplicaban tras el volteo.
+        try { applyVideoSenderParams(sender, QUALITY_TIERS[tierIndexRef.current] || QUALITY_TIERS[0]) } catch {}
       }
 
       // Detener pista anterior SOLO DESPUÉS de que la nueva pista ya esté transmitiendo en el PeerConnection

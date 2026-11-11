@@ -19,6 +19,7 @@ import {
   Info
 } from 'lucide-react';
 import { getMixMinusStatus } from '../utils/masterBroadcastEngine.js';
+import { buildRemoteCameraUrl } from '../utils/remoteCameraSlots.mjs';
 
 export default function MultiGuestRoomModal({
   open,
@@ -79,7 +80,11 @@ export default function MultiGuestRoomModal({
 
   if (!open) return null;
 
-  const masterRoomUrl = `http://${localIp}:3001/camara?auto=true`;
+  // Enlace principal SIEMPRE en la ruta oficial https: en http:// (IP LAN)
+  // el teléfono está en contexto inseguro y deniega la cámara. La URL LAN
+  // queda solo como texto secundario, sin copiar ni QR.
+  const masterRoomUrl = buildRemoteCameraUrl({ autoAssign: true });
+  const masterLanUrl = `http://${localIp}:3001/camara?auto=true`;
 
   return (
     <div
@@ -208,7 +213,7 @@ export default function MultiGuestRoomModal({
                     <Share2 size={15} />
                     <span>Enlace Maestro de Invitación (Asignación Automática)</span>
                   </div>
-                  <span style={{ fontSize: 10, color: '#64748b' }}>LAN / Wi-Fi</span>
+                  <span style={{ fontSize: 10, color: '#64748b' }}>HTTPS / Internet</span>
                 </div>
                 <p style={{ fontSize: 12, color: '#94a3b8', margin: 0, lineHeight: 1.4, marginBottom: 12 }}>
                   Comparte este enlace con cualquier participante. El sistema le asignará automáticamente el primer canal libre disponible.
@@ -261,6 +266,9 @@ export default function MultiGuestRoomModal({
                   >
                     <QrCode size={14} />
                   </button>
+                </div>
+                <div style={{ fontSize: 10, color: '#64748b', fontFamily: 'monospace', marginTop: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  En la misma red local también: {masterLanUrl}
                 </div>
               </div>
             </div>
@@ -361,7 +369,7 @@ export default function MultiGuestRoomModal({
                   Escanear con Cámara de Celular / iPad
                 </div>
                 <div style={{ fontSize: 12, color: '#94a3b8', maxWidth: 360, lineHeight: 1.4, marginBottom: 12 }}>
-                  Apunta con la cámara de tu iPhone o Android conectado a la misma red Wi-Fi para ingresar de inmediato al estudio.
+                  Apunta con la cámara de tu iPhone o Android para ingresar de inmediato al estudio. El enlace es seguro (HTTPS) y funciona también fuera de la red local.
                 </div>
                 <button
                   onClick={() => setQrSlot(null)}
@@ -393,7 +401,16 @@ export default function MultiGuestRoomModal({
                 const stream = slotStreams[slotNum];
                 const isConnected = Boolean(stream);
                 const level = cameraLevels[slotNum] || 0;
-                const slotUrl = `http://${localIp}:3001/camara?slot=${slotNum}&name=${encodeURIComponent(meta.guestName || '')}&role=${encodeURIComponent(meta.guestRole || 'guest')}`;
+                // URL oficial https del slot: buildRemoteCameraUrl espera el
+                // índice base 0, así que CAM N -> slotIndex N-1 y genera
+                // ?slot=N&room=studio_cam_N&name=...&role=... (role 'guest'
+                // se omite porque es el valor por defecto en RemoteCam).
+                const slotUrl = buildRemoteCameraUrl({
+                  slotIndex: slotNum - 1,
+                  guestName: meta.guestName || '',
+                  guestRole: meta.guestRole || 'guest',
+                });
+                const slotLanUrl = `http://${localIp}:3001/camara?slot=${slotNum}&name=${encodeURIComponent(meta.guestName || '')}&role=${encodeURIComponent(meta.guestRole || 'guest')}`;
 
                 return (
                   <div
@@ -565,6 +582,11 @@ export default function MultiGuestRoomModal({
                           <QrCode size={11} />
                         </button>
                       </div>
+                    </div>
+
+                    {/* URL LAN solo como texto secundario, sin copiar ni QR */}
+                    <div style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      En la misma red local también: {slotLanUrl}
                     </div>
                   </div>
                 );
