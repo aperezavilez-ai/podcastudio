@@ -10,12 +10,43 @@
 let configuredServersPromise = null;
 let configuredServersCache = null;
 
+const DEFAULT_CONFIGURED_TTL_MS = 5 * 60 * 1000;
+const CACHE_REFRESH_MARGIN_MS = 60 * 1000;
+
 export function getIceServers() {
   return STUN_SERVERS.map((server) => ({ ...server }));
 }
 
+// Acepta los servidores tal cual vengan del proveedor (STUN sin
+// username/credential, TURN de Cloudflare o de coturn) y los fusiona con
+// los STUN públicos de respaldo sin duplicar ninguna URL.
+function mergeIceServers(serverList) {
+  const seenUrls = new Set();
+  const merged = [];
+  const candidates = [
+    ...(Array.isArray(serverList) ? serverList : []),
+    ...STUN_SERVERS,
+  ];
+  for (const server of candidates) {
+    if (!server) continue;
+    const rawUrls = Array.isArray(server.urls) ? server.urls : [server.urls];
+    const urls = rawUrls.filter((url) => typeof url === 'string' && url && !seenUrls.has(url));
+    if (!urls.length) continue;
+    urls.forEach((url) => seenUrls.add(url));
+    merged.push({ ...server, urls: Array.isArray(server.urls) ? urls : urls[0] });
+  }
+  return merged.length ? merged : getIceServers();
+}
+
+function resolveExpiresAtMs(data) {
+  const raw = Number(data?.expiresAt || 0);
+  if (!raw || !Number.isFinite(raw)) return Date.now() + DEFAULT_CONFIGURED_TTL_MS;
+  // El endpoint devuelve segundos; si ya viniera en ms se respeta.
+  return raw > 1e12 ? raw : raw * 1000;
+}
+
 export async function getConfiguredIceServers() {
-  if (configuredServersCache && configuredServersCache.expiresAt > Date.now() + 30000) {
+  if (configuredServersCache && configuredServersCache.expiresAt > Date.now() + CACHE_REFRESH_MARGIN_MS) {
     return configuredServersCache.iceServers;
   }
   if (!configuredServersPromise) {
@@ -35,9 +66,10 @@ export async function getConfiguredIceServers() {
       }
 
       try {
-        // El servidor solo emite credenciales TURN con sesión de Supabase;
-        // sin sesión devuelve solo STUN. Las cámaras invitadas no tienen
-        // cuenta, por eso el token es opcional y cualquier fallo se ignora.
+        // El servidor emite TURN de Cloudflare con o sin sesión (TTL corto
+        // para invitados) y coturn solo con sesión. Las cámaras invitadas
+        // no tienen cuenta, por eso el token es opcional y cualquier fallo
+        // se ignora cayendo a los STUN de respaldo.
         let authHeaders = {};
         try {
           const { supabase } = await import('../lib/supabase.js');
@@ -52,15 +84,18 @@ export async function getConfiguredIceServers() {
         });
         if (!response.ok) return null;
         const data = await response.json();
-        if (!Array.isArray(data.iceServers)) return null;
-        const turnServers = data.iceServers.filter((server) =>
-          server && typeof server.username === 'string' && typeof server.credential === 'string' &&
-          (typeof server.urls === 'string' || Array.isArray(server.urls))
-        );
-        if (!turnServers.length) return null;
+        // Respuesta normalizada venga del proveedor que venga: se acepta
+        // { iceServers: [...] } tal cual (ya no se descartan los STUN ni
+        // ningún servidor sin username/credential). mergeIceServers
+        // garantiza que la lista nunca quede vacía.
+        const remoteServers = Array.isArray(data?.iceServers)
+          ? data.iceServers
+          : data?.iceServers
+            ? [data.iceServers]
+            : [];
         return {
-          iceServers: [...STUN_SERVERS.map((s) => ({ ...s })), ...turnServers],
-          expiresAt: Number(data.expiresAt || 0) * 1000,
+          iceServers: mergeIceServers(remoteServers),
+          expiresAt: resolveExpiresAtMs(data),
         };
       } catch {
         return null;

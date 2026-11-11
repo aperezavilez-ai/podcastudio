@@ -35,6 +35,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('stream-telemetry', handler);
     return () => ipcRenderer.removeListener('stream-telemetry', handler);
   },
+  onStreamDestinationStatus: (cb) => {
+    const handler = (e, data) => cb(data);
+    ipcRenderer.on('stream-destination-status', handler);
+    return () => ipcRenderer.removeListener('stream-destination-status', handler);
+  },
 
   getQrUrl: () => ipcRenderer.invoke('get-qr-url'),
   discoverNetworkCameras: () => ipcRenderer.invoke('discover-network-cameras'),

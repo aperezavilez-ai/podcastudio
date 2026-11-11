@@ -40,11 +40,11 @@ export default function StreamingTelemetryPill({ isStreaming }) {
 
       <div className="flex items-center gap-2 text-[11px]">
         <span className="text-gray-300">
-          {telemetry?.bitrate || '2500 kb/s'}
+          {telemetry?.bitrate || '—'}
         </span>
         <span className="text-gray-500">|</span>
         <span className="text-gray-300">
-          {telemetry?.fps ? `${Math.round(telemetry.fps)} FPS` : '30 FPS'}
+          {telemetry?.fps ? `${Math.round(telemetry.fps)} FPS` : '—'}
         </span>
         <span className="text-gray-500">|</span>
         <span className={telemetry?.droppedFrames > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400'}>

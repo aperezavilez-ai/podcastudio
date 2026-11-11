@@ -9,6 +9,12 @@ const QUALITY_TIERS = [
   { label: 'HD 720p Pro · 2.8 Mbps (Fluido)', maxBitrate: 2800000, scaleResolutionDownBy: 1, frameRate: 30 },
   { label: 'HD 720p · 1.8 Mbps (Estable)', maxBitrate: 1800000, scaleResolutionDownBy: 1, frameRate: 30 },
 ]
+const VIDEO_ENCODING_LADDER = [
+  { scaleResolutionDownBy: 1, maxBitrate: 1800000 },
+  { scaleResolutionDownBy: 1.5, maxBitrate: 900000 },
+  { scaleResolutionDownBy: 2.5, maxBitrate: 400000 },
+  { scaleResolutionDownBy: 4, maxBitrate: 150000 },
+]
 const RTT_DEGRADE_MS = 450
 const RTT_HEALTHY_MS = 180
 const HEALTHY_CHECKS_TO_RISE = 2
@@ -25,20 +31,13 @@ function applyVideoSenderParams(sender, tier) {
   if (!sender) return
   try {
     const params = sender.getParameters() || {}
-    if (!params.encodings || params.encodings.length === 0) params.encodings = [{}]
-    const e = params.encodings[0]
-    
-    e.maxBitrate = tier.maxBitrate
-    e.maxFramerate = tier.frameRate || 30
-    if (tier.scaleResolutionDownBy && tier.scaleResolutionDownBy > 1) {
-      e.scaleResolutionDownBy = tier.scaleResolutionDownBy
-    } else {
-      delete e.scaleResolutionDownBy
-    }
-    e.networkPriority = 'high'
-    e.priority = 'high'
-    // 'maintain-resolution' preserva nitidez cristalina Full HD 1080p sin pixelado
-    params.degradationPreference = 'maintain-resolution'
+    // Escalera real de encodings: cada capa baja resolución y bitrate, para
+    // que la adaptación tenga a dónde caer en redes móviles débiles (antes
+    // todas las capas iban con scaleResolutionDownBy: 1 a 1080p).
+    params.encodings = VIDEO_ENCODING_LADDER.map((encoding) => ({ ...encoding }))
+    // Ante falta de ancho de banda se preservan los fotogramas, no la
+    // resolución: 'maintain-resolution' congelaba la imagen del invitado.
+    params.degradationPreference = 'maintain-framerate'
     sender.setParameters(params).catch(() => {})
   } catch {}
 }
@@ -511,10 +510,13 @@ export default function RemoteCam() {
           if (vTransceiver && 'setCodecPreferences' in vTransceiver && window.RTCRtpReceiver && RTCRtpReceiver.getCapabilities) {
             const caps = RTCRtpReceiver.getCapabilities('video');
             if (caps && caps.codecs) {
-              const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
+              // H264 primero (codificación por hardware en iOS/Android),
+              // luego VP8/VP9 y el resto.
               const h264 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/h264');
-              const others = caps.codecs.filter(c => !h264.includes(c) && !vp8.includes(c));
-              const preferred = [...vp8, ...h264, ...others];
+              const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp8');
+              const vp9 = caps.codecs.filter(c => c.mimeType.toLowerCase() === 'video/vp9');
+              const others = caps.codecs.filter(c => !h264.includes(c) && !vp8.includes(c) && !vp9.includes(c));
+              const preferred = [...h264, ...vp8, ...vp9, ...others];
               try { vTransceiver.setCodecPreferences(preferred); } catch (e) {}
             }
           }
@@ -522,7 +524,7 @@ export default function RemoteCam() {
 
         let offer = await pc.createOffer({ offerToReceiveVideo: false, offerToReceiveAudio: false, ...(isRestart ? { iceRestart: true } : {}) })
         if (offer.sdp && offer.sdp.includes('m=video')) {
-          const sdp = offer.sdp.replace(/(m=video[^\r\n]*(\r\n|\n))/, '$1b=AS:6000\r\nb=TIAS:6000000\r\n')
+          const sdp = offer.sdp.replace(/(m=video[^\r\n]*(\r\n|\n))/, '$1b=AS:2500\r\nb=TIAS:2500000\r\n')
           offer = new RTCSessionDescription({ type: offer.type, sdp })
         }
         await pc.setLocalDescription(offer)
@@ -646,13 +648,14 @@ export default function RemoteCam() {
         throw new Error('Navegador no compatible. Abre el enlace en Safari o Chrome usando HTTPS.');
       }
 
-      // Captura nítida 1080p nativa compatible con iOS Safari y Android Chrome en cualquier orientación
+      // Arranque en 720p compatible con iOS Safari y Android Chrome en
+      // cualquier orientación (antes se pedía 1080p a un teléfono en móvil).
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: targetFacing ? { ideal: targetFacing } : 'environment',
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
             frameRate: { ideal: 30, max: 30 },
           },
           audio: {

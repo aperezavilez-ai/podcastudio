@@ -5,6 +5,13 @@ import { getBroadcastAudioContext } from '../utils/masterBroadcastEngine.js';
  * Hook para monitorear en tiempo real los niveles de audio de cada cámara conectada (VU meter),
  * detectar si la cámara cuenta con micrófono activo y reflejar el estado de silencio (Mute).
  */
+// Redondeo de niveles: se publican en pasos de 5 (escala 0..100, equivale a
+// 0.05 en escala 0..1) y solo se llama a setLevels si algún nivel se movió
+// al menos un paso completo respecto a lo último publicado. Sin esto, cada
+// fluctuación mínima del VU re-renderizaba toda la cabina 5 veces por segundo.
+const AUDIO_LEVEL_STEP = 5;
+const AUDIO_LEVEL_MATERIAL_DELTA = AUDIO_LEVEL_STEP;
+
 export function useCameraAudioLevels(camStreamsMap = {}, camMutedMap = {}) {
   const [levels, setLevels] = useState({});
   const levelsRef = useRef({});
@@ -96,8 +103,10 @@ export function useCameraAudioLevels(camStreamsMap = {}, camMutedMap = {}) {
               sum += entry.dataArray[i];
             }
             const avg = sum / entry.dataArray.length;
-            // Normalizar a porcentaje 0..100 con curva perceptual
-            const normalized = Math.min(100, Math.round((avg / 110) * 20) * 5);
+            // Normalizar a porcentaje 0..100 con curva perceptual, ya
+            // redondeado a pasos de AUDIO_LEVEL_STEP antes de comparar.
+            const rawLevel = (avg / 110) * 100;
+            const normalized = Math.min(100, Math.round(rawLevel / AUDIO_LEVEL_STEP) * AUDIO_LEVEL_STEP);
             nextLevels[id] = { hasMic: true, level: normalized, isMuted: false };
           } else {
             nextLevels[id] = { hasMic: true, level: 0, isMuted: false };
@@ -107,10 +116,17 @@ export function useCameraAudioLevels(camStreamsMap = {}, camMutedMap = {}) {
 
       const previous = levelsRef.current;
       const ids = new Set([...Object.keys(previous), ...Object.keys(nextLevels)]);
+      // Comparación material ANTES de setLevels: alta/baja de cámara, cambio
+      // de hasMic/isMuted, o un salto de nivel >= un paso completo. Si nada
+      // cambió materialmente se conserva el estado anterior (y levelsRef no
+      // se toca, para que una deriva pequeña se acumule contra lo publicado
+      // y no se pierda).
       const changed = [...ids].some((id) => {
         const before = previous[id];
         const after = nextLevels[id];
-        return !before || !after || before.hasMic !== after.hasMic || before.isMuted !== after.isMuted || before.level !== after.level;
+        if (!before || !after) return true;
+        if (before.hasMic !== after.hasMic || before.isMuted !== after.isMuted) return true;
+        return Math.abs(before.level - after.level) >= AUDIO_LEVEL_MATERIAL_DELTA;
       });
       if (changed) {
         levelsRef.current = nextLevels;

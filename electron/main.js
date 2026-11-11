@@ -21,6 +21,8 @@ const os = require('os');
 const readySignalPath = path.join(os.tmpdir(), 'podcaststudio_ready.signal');
 try { if (fs.existsSync(readySignalPath)) fs.unlinkSync(readySignalPath); } catch (e) {}
 const { setupNativeEngineIPC } = require('./media-engine/bridge');
+const { computeExportSignature, siblingSuffixFor } = require('./export-signature');
+const exportEncodeSignatures = new Map(); // firma de encode -> ruta ya codificada (dedupe FB/YT)
 
 try {
   setupNativeEngineIPC();
@@ -1909,9 +1911,11 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
         '-map', '0:a?',
         '-c:v', 'libx264',
         '-preset', 'veryfast',
-        '-crf', '17',
-        '-maxrate', '16M',
-        '-bufsize', '32M',
+        // Presupuesto único de bitrate v1.5.0: CRF 21 con techo 8M (antes
+        // CRF 17 / 16M ≈ 7,2 GB por hora de master).
+        '-crf', '21',
+        '-maxrate', '8M',
+        '-bufsize', '16M',
         '-pix_fmt', 'yuv420p',
         '-r', '30',
         '-g', '60',
@@ -1994,6 +1998,49 @@ ipcMain.handle('flush-recording-chunks', async () => {
   return { success: !recordChunkError, error: recordChunkError };
 });
 
+// v1.5.0: si la finalización del MP4 falla, el parcial NO se borra: se
+// conserva como .partial.mp4 para poder diagnosticar/recuperar, y el
+// resultado lo reporta como parcial, nunca como grabación buena.
+function preservePartialRecording(recPath) {
+  try {
+    if (!recPath || !fs.existsSync(recPath)) return null;
+    const partialPath = recPath.replace(/\.mp4$/i, '.partial.mp4');
+    fs.renameSync(recPath, partialPath);
+    return partialPath;
+  } catch (e) { return null; }
+}
+
+// v1.5.0: verificación automática post-cierre. Corre blackdetect sobre el
+// master finalizado y estima qué fracción del vídeo es negro; también lee la
+// duración real. Si >=90% es negro, el resultado lleva blackWarning=true.
+function runRecordingVerification(recPath) {
+  return new Promise((resolve) => {
+    let stderrBuf = '';
+    let proc;
+    try {
+      proc = spawn(ffmpegPath, ['-i', recPath, '-vf', 'blackdetect=d=0.5:pix_th=0.10', '-an', '-f', 'null', '-'], { stdio: ['ignore', 'ignore', 'pipe'] });
+    } catch (e) { return resolve({}); }
+    const timer = setTimeout(() => { try { proc.kill(); } catch (e) {} }, 120000);
+    proc.stderr.on('data', (d) => { stderrBuf += d.toString(); });
+    proc.on('error', () => { clearTimeout(timer); resolve({}); });
+    proc.on('close', () => {
+      clearTimeout(timer);
+      const durMatch = stderrBuf.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+      const durationSec = durMatch ? parseInt(durMatch[1], 10) * 3600 + parseInt(durMatch[2], 10) * 60 + parseFloat(durMatch[3]) : 0;
+      let blackSec = 0;
+      const blackRe = /black_start:(\d+(?:\.\d+)?) black_end:(\d+(?:\.\d+)?)/g;
+      let m;
+      while ((m = blackRe.exec(stderrBuf)) !== null) blackSec += Math.max(0, parseFloat(m[2]) - parseFloat(m[1]));
+      const blackRatio = durationSec > 0 ? Math.min(1, blackSec / durationSec) : 0;
+      resolve({
+        durationSec: Math.round(durationSec * 10) / 10,
+        blackRatio: Math.round(blackRatio * 100) / 100,
+        blackWarning: durationSec > 0 && blackRatio >= 0.9,
+      });
+    });
+  });
+}
+
 ipcMain.handle('stop-recording', async () => {
   isStoppingRecording = true;
   await recordChunkQueue;
@@ -2007,12 +2054,17 @@ ipcMain.handle('stop-recording', async () => {
       let stopTimeout = null;
       let forcedCloseTimeout = null;
 
-      const finishAndGenerateThumb = () => {
+      const finishAndGenerateThumb = async () => {
         if (finished) return;
         finished = true;
         ffmpegRecordProcess = null;
 
         if (recPath && fs.existsSync(recPath) && fs.statSync(recPath).size > 0) {
+          // Verificación automática de negro + duración antes de reportar éxito.
+          const verification = await runRecordingVerification(recPath);
+          if (verification.blackWarning) {
+            console.warn(`[FFmpeg Grabación] ADVERTENCIA: el master salió >=90% negro (${recPath}).`);
+          }
           const stats = fs.statSync(recPath);
           console.log(`[FFmpeg Grabación] Master MP4 finalizado: ${recPath} (${stats.size} bytes)`);
           const thumbPath = recPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
@@ -2030,7 +2082,7 @@ ipcMain.handle('stop-recording', async () => {
               if (thumbResolved) return;
               thumbResolved = true;
               try { thumbProcess.kill(); } catch (e) {}
-              resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: 'No se pudo generar la miniatura del video.' });
+              resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, ...verification, thumbnailError: 'No se pudo generar la miniatura del video.' });
             }, 15000);
             thumbProcess.on('close', (code) => {
               if (thumbResolved) return;
@@ -2038,9 +2090,9 @@ ipcMain.handle('stop-recording', async () => {
               clearTimeout(thumbTimeout);
               currentRecordingPath = null;
               if (code === 0 && fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 0) {
-                resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailPath: thumbPath });
+                resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, ...verification, thumbnailPath: thumbPath });
               } else {
-                resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: 'El MP4 se guardó, pero no se pudo generar su miniatura.' });
+                resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, ...verification, thumbnailError: 'El MP4 se guardó, pero no se pudo generar su miniatura.' });
               }
             });
             thumbProcess.on('error', (err) => {
@@ -2048,12 +2100,12 @@ ipcMain.handle('stop-recording', async () => {
               thumbResolved = true;
               clearTimeout(thumbTimeout);
               currentRecordingPath = null;
-              resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: `No se pudo generar la miniatura: ${err.message}` });
+              resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, ...verification, thumbnailError: `No se pudo generar la miniatura: ${err.message}` });
             });
             return;
           } catch (e) {
             currentRecordingPath = null;
-            resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, thumbnailError: `No se pudo iniciar la miniatura: ${e.message}` });
+            resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, ...verification, thumbnailError: `No se pudo iniciar la miniatura: ${e.message}` });
             return;
           }
         }
@@ -2068,10 +2120,11 @@ ipcMain.handle('stop-recording', async () => {
         if (code !== 0 || recordChunkError) {
           finished = true;
           if (ffmpegRecordProcess === proc) ffmpegRecordProcess = null;
-          // Un MP4 que FFmpeg no cerró no tiene moov válido: es inabrible.
-          // Se elimina para que no quede en el proyecto como si fuera la grabación.
-          try { if (recPath && fs.existsSync(recPath)) fs.unlinkSync(recPath); } catch (e) {}
-          resolve({ success: false, path: recPath, error: recordChunkError || `FFmpeg terminó con código ${code}.` });
+          // v1.5.0: NO se borra el parcial. Un MP4 sin moov no es la grabación,
+          // pero se conserva como .partial.mp4 (diagnóstico/recuperación) y el
+          // resultado lo reporta como parcial, nunca como éxito.
+          const partialPath = preservePartialRecording(recPath);
+          resolve({ success: false, path: recPath, partial: true, partialPath, error: recordChunkError || `FFmpeg terminó con código ${code}.` });
           return;
         }
         finishAndGenerateThumb();
@@ -2092,9 +2145,9 @@ ipcMain.handle('stop-recording', async () => {
           forcedCloseTimeout = setTimeout(() => {
             if (finished) return;
             finished = true;
-            try { if (recPath && fs.existsSync(recPath)) fs.unlinkSync(recPath); } catch (e) {}
+            const partialPath = preservePartialRecording(recPath);
             if (ffmpegRecordProcess === proc) ffmpegRecordProcess = null;
-            resolve({ success: false, path: recPath, error: 'FFmpeg no cerró el archivo de grabación dentro del tiempo permitido. El archivo parcial se eliminó para no dejar un MP4 dañado en el proyecto.' });
+            resolve({ success: false, path: recPath, partial: true, partialPath, error: 'FFmpeg no cerró el archivo de grabación dentro del tiempo permitido. El parcial se conservó como .partial.mp4 para diagnóstico; no es una grabación válida.' });
           }, 5000);
         }
       }, 60000);
@@ -2326,6 +2379,41 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
       outPath
     );
 
+    // v1.5.0 (Frente B): dedupe por firma de parámetros. Si este mismo encode
+    // ya se produjo (p. ej. el gemelo Facebook/YouTube 16:9, parámetros
+    // idénticos), se copia el archivo en vez de codificar por segunda vez.
+    const exportSig = computeExportSignature({
+      sourcePath,
+      sourceSize: fs.statSync(sourcePath).size,
+      filter,
+      mode,
+      codecKey: 'libx264|ultrafast|crf18|maxrate8M|bufsize16M|yuv420p|audio-copy|faststart',
+    });
+    {
+      const siblingSuffix = siblingSuffixFor(suffix);
+      const siblingPath = siblingSuffix ? path.join(projectDir, `${baseName}_${siblingSuffix}.mp4`) : null;
+      let dedupeSource = null;
+      const cachedPath = exportEncodeSignatures.get(exportSig);
+      if (cachedPath && cachedPath !== outPath && fs.existsSync(cachedPath)) dedupeSource = cachedPath;
+      else if (siblingPath && siblingPath !== outPath && fs.existsSync(siblingPath) && fs.statSync(siblingPath).mtimeMs >= fs.statSync(sourcePath).mtimeMs) dedupeSource = siblingPath;
+      if (dedupeSource) {
+        try {
+          fs.copyFileSync(dedupeSource, outPath);
+          exportEncodeSignatures.set(exportSig, outPath);
+          const dedupeThumb = outPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
+          const sibThumb = dedupeSource.replace(/\.mp4$/i, '_Thumbnail.jpg');
+          if (fs.existsSync(sibThumb)) { try { fs.copyFileSync(sibThumb, dedupeThumb); } catch (e) {} }
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('export-progress', { formatKey, percent: 100 });
+          }
+          console.log(`[Export] Dedupe: ${outFilename} copiado desde ${path.basename(dedupeSource)} (mismos parámetros).`);
+          return resolve({ success: true, path: outPath, dedupedFrom: dedupeSource, thumbnailPath: fs.existsSync(dedupeThumb) ? dedupeThumb : null });
+        } catch (e) {
+          console.warn('[Export] Dedupe falló, se codifica normalmente:', e.message);
+        }
+      }
+    }
+
     // Duración real de la fuente para un progreso honesto (antes era
     // segundos transcodificados x 15, un número inventado).
     let totalSecs = 0;
@@ -2366,6 +2454,7 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
 
     convertProc.on('close', (code) => {
       if (code === 0 && fs.existsSync(outPath) && fs.statSync(outPath).size > 0) {
+        exportEncodeSignatures.set(exportSig, outPath);
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('export-progress', { formatKey, percent: 100 });
         }
@@ -2786,6 +2875,310 @@ ipcMain.handle('scan-network-cameras', async () => {
 // TRANSMISIÓN EN VIVO REAL / MULTI-STREAMING SIMULTÁNEO (FACEBOOK LIVE RTMPS + YOUTUBE + TIKTOK)
 // Cada destino corre en su propio worker FFmpeg dedicado para evitar caídas y asegurar handshake TLS
 // ============================================================================
+// ============================================================================
+// STREAMING v1.5.0 — cadena de arranque sana, reconexión por destino,
+// telemetría real y diagnóstico persistente.
+// Corrección de raíz (informe forense, Frente D):
+//  - streamInitHeader se limpia al INICIAR (antes una sesión anterior podía
+//    inyectar su cabecera EBML a todos los workers nuevos).
+//  - Encoder por defecto libx264 zerolatency (ruta determinista); h264_mf
+//    queda como reintento único si el arranque muere por error de encoder.
+//  - Si un destino cae tras conectar, se reconecta con backoff
+//    5/10/20/40/60 s (máx. 5) y la UI recibe eventos por destino por el canal
+//    'stream-destination-status'. Un destino muerto NUNCA desaparece en silencio.
+//  - Cola de envío con tope (~32 MB): al exceder se marca reinicio del destino.
+//  - stderr con memoria: anillo por destino; al fallar, el fragmento viaja en
+//    el evento de error y se anexa a logs/streaming.log en userData.
+//  - Telemetría REAL: se parsea frame=/fps=/bitrate= del stderr de FFmpeg y
+//    se envía como máximo 1 vez/s por destino, sin valores de relleno.
+// ============================================================================
+let streamInitHeader = null;
+let streamingSessionActive = false;
+const STREAM_RECONNECT_DELAYS_MS = [5000, 10000, 20000, 40000, 60000];
+const STREAM_QUEUE_CAP_BYTES = 32 * 1024 * 1024;
+const STREAM_STARTUP_TIMEOUT_MS = 20000;
+const STREAM_HEADER_WAIT_MS = 4000;
+
+function appendStreamLog(line) {
+  try {
+    const logPath = path.join(app.getPath('userData'), 'logs', 'streaming.log');
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${line}\n`);
+  } catch (e) {}
+}
+
+function redactStreamUrl(text, destUrl) {
+  let out = String(text || '');
+  try {
+    const parsed = new URL(destUrl);
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    if (segments.length) segments[segments.length - 1] = '[clave oculta]';
+    parsed.pathname = `/${segments.join('/')}`;
+    parsed.search = '';
+    out = out.replaceAll(destUrl, parsed.toString());
+  } catch (e) {
+    out = out.replaceAll(destUrl, '[URL RTMP oculta]');
+  }
+  return out;
+}
+
+function classifyStreamError(text) {
+  const t = String(text || '');
+  if (/h264_mf|libx264|x264|mediafoundation|encoder|codec|mft\b|avcodec|invalid argument.*video|no such encoder/i.test(t)) return 'encoder';
+  if (/tls|ssl|handshake|certificate|schannel|gnutls|protocol not found|unsupported protocol/i.test(t)) return 'tls';
+  if (/invalid.*(?:key|stream)|unauthor|access denied|forbidden|login|403|401/i.test(t)) return 'auth';
+  if (/connection refused|timed out|timeout|unreachable|no route|failed to resolve|network|input\/output error|broken pipe/i.test(t)) return 'network';
+  return 'unknown';
+}
+
+function sendStreamDestinationStatus(entry, status, extra = {}) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('stream-destination-status', {
+      targetId: entry.id,
+      targetName: entry.name,
+      status,
+      attempt: entry.reconnectAttempts || 0,
+      ...extra,
+    });
+  }
+}
+
+function streamStderrTail(entry, maxChars = 500) {
+  return redactStreamUrl((entry.stderrRing || []).join('\n'), entry.url).slice(-maxChars);
+}
+
+function enqueueStreamChunk(entry, buf) {
+  entry.queuedBytes += buf.length;
+  entry.writeQueue = entry.writeQueue
+    .then(() => writeChunkWithBackpressure(entry.process.stdin, buf))
+    .then(() => { entry.queuedBytes -= buf.length; })
+    .catch((error) => {
+      entry.queuedBytes -= buf.length;
+      entry.writeError = error.message || String(error);
+    });
+  return entry.writeQueue;
+}
+
+function buildStreamWorkerArgs(entry, threadsPerDestination) {
+  const encoderArgs = entry.encoder === 'h264_mf'
+    ? ['-c:v', 'h264_mf', '-b:v', '4500k']
+    : [
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-tune', 'zerolatency',
+        '-threads', String(threadsPerDestination),
+        '-profile:v', 'high',
+        '-level', '4.1',
+        '-b:v', '4500k',
+      ];
+  return [
+    '-probesize', '8M',
+    '-analyzeduration', '2000000',
+    '-fflags', '+discardcorrupt+nobuffer',
+    '-f', 'webm',
+    '-i', 'pipe:0',
+    ...encoderArgs,
+    '-maxrate', '5000k',
+    '-bufsize', '5000k',
+    '-pix_fmt', 'yuv420p',
+    '-g', '60',
+    '-keyint_min', '30',
+    '-r', '30',
+    '-c:a', 'aac',
+    '-b:a', '160k',
+    '-ar', '48000',
+    '-ac', '2',
+    '-max_interleave_delta', '0',
+    '-flvflags', 'no_duration_filesize',
+    '-rtmp_buffer', '1000',
+    '-rtmp_live', 'live',
+    '-rw_timeout', '30000000',
+    '-f', 'flv',
+    entry.url,
+  ];
+}
+
+// Lanza (o relanza) el FFmpeg de un destino. Devuelve una promesa que se
+// resuelve con { success, error?, kind? } cuando el destino conecta (frame=)
+// o el arranque fracasa (cierre, error o timeout de 20 s). Nunca rechaza.
+function spawnStreamWorker(entry, threadsPerDestination) {
+  return new Promise((resolveStartup) => {
+    if (entry.reconnectTimer) { clearTimeout(entry.reconnectTimer); entry.reconnectTimer = null; }
+    if (entry.startupTimer) { clearTimeout(entry.startupTimer); entry.startupTimer = null; }
+    try { entry.process?.stdin?.destroy(); entry.process?.kill('SIGINT'); } catch (e) {}
+    entry.connected = false;
+    entry.closed = false;
+    entry.headerSent = false;
+    entry.needsRestart = false;
+    entry.writeQueue = Promise.resolve();
+    entry.queuedBytes = 0;
+    entry.stderrRing = [];
+
+    let proc;
+    try {
+      proc = spawn(ffmpegPath, buildStreamWorkerArgs(entry, threadsPerDestination), { stdio: ['pipe', 'ignore', 'pipe'] });
+    } catch (error) {
+      resolveStartup({ success: false, error: error.message, kind: classifyStreamError(error.message) });
+      return;
+    }
+    entry.process = proc;
+    let startupSettled = false;
+    const settleStartup = (result) => {
+      if (startupSettled) return;
+      startupSettled = true;
+      if (entry.startupTimer) { clearTimeout(entry.startupTimer); entry.startupTimer = null; }
+      if (!result.success) { try { proc.kill('SIGINT'); } catch (e) {} }
+      resolveStartup(result);
+    };
+
+    // Cabecera EBML de inmediato para decodificar desde el byte 0.
+    if (streamInitHeader && proc.stdin && !proc.stdin.destroyed) {
+      entry.headerSent = true;
+      enqueueStreamChunk(entry, streamInitHeader);
+    }
+
+    proc.stderr.on('data', (data) => {
+      if (entry.process !== proc) return; // proceso viejo de un respawn
+      const message = data.toString();
+      for (const line of message.split(/\r?\n/)) {
+        if (line.trim()) {
+          entry.stderrRing.push(line.trim());
+          if (entry.stderrRing.length > 40) entry.stderrRing.shift();
+        }
+      }
+
+      if (!entry.connected) {
+        const fatal = message.match(/connection refused|connection timed out|network is unreachable|could not write header|error opening output|server error|authorization failed|access denied|invalid stream key|handshake failed|tls[^\r\n]*(?:error|fail)|failed to resolve|no route to host|input\/output error|permission denied/i);
+        if (fatal) {
+          settleStartup({ success: false, error: fatal[0], kind: classifyStreamError(message) });
+        }
+      }
+
+      const frameMatch = message.match(/frame=\s*(\d+)/);
+      if (frameMatch && !entry.connected) {
+        entry.connected = true;
+        entry.everConnected = true;
+        entry.reconnectAttempts = 0;
+        appendStreamLog(`${entry.name}: EN VIVO (encoder ${entry.encoder}).`);
+        sendStreamDestinationStatus(entry, 'live');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('stream-status', { active: true, destinations: activeStreamWorkers.filter(w => w.connected).map(w => w.target) });
+        }
+        settleStartup({ success: true });
+      }
+
+      // Telemetría real: solo valores parseados, máx. 1 vez/s por destino.
+      if (entry.connected && frameMatch) {
+        const now = Date.now();
+        const fpsMatch = message.match(/fps=\s*([\d.]+)/);
+        const bitrateMatch = message.match(/bitrate=\s*([\d.]+\s*\w+\/s)/);
+        const dropMatch = message.match(/drop=\s*(\d+)/);
+        if (dropMatch) entry.lastDroppedFrames = parseInt(dropMatch[1], 10);
+        if (fpsMatch && bitrateMatch && now - (entry.lastTelemetryAt || 0) >= 1000) {
+          entry.lastTelemetryAt = now;
+          const dropped = entry.lastDroppedFrames || 0;
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('stream-telemetry', {
+              targetId: entry.id,
+              targetName: entry.name,
+              fps: parseFloat(fpsMatch[1]),
+              bitrate: bitrateMatch[1],
+              droppedFrames: dropped,
+              health: dropped > 15 ? 'warning' : 'excellent',
+            });
+          }
+        }
+      }
+    });
+
+    proc.once('error', (error) => {
+      if (entry.process !== proc) return;
+      if (!startupSettled) {
+        settleStartup({ success: false, error: error.message, kind: classifyStreamError(error.message) });
+      } else if (entry.connected) {
+        handleStreamWorkerDown(entry, `Error del proceso FFmpeg: ${error.message}`);
+      }
+    });
+
+    proc.once('close', (code, signal) => {
+      if (entry.process !== proc) return;
+      entry.closed = true;
+      entry.connected = false;
+      if (!startupSettled) {
+        const tail = streamStderrTail(entry, 300);
+        settleStartup({
+          success: false,
+          error: `FFmpeg cerró antes de conectar (código ${code ?? signal ?? 'desconocido'}).${tail ? ` Última salida: ${tail}` : ''}`,
+          kind: classifyStreamError(entry.stderrRing.join('\n')),
+        });
+        return;
+      }
+      if (entry.everConnected && !entry.intentionalStop) {
+        handleStreamWorkerDown(entry, `FFmpeg se cerró (código ${code ?? signal ?? 'desconocido'}).`);
+      }
+    });
+
+    entry.startupTimer = setTimeout(() => {
+      if (!entry.connected) {
+        const tail = streamStderrTail(entry, 300);
+        settleStartup({
+          success: false,
+          error: `Tiempo agotado (20 s) esperando que el servidor acepte el video.${tail ? ` Última salida: ${tail}` : ''}`,
+          kind: classifyStreamError(entry.stderrRing.join('\n')),
+        });
+        try { proc.kill('SIGINT'); } catch (e) {}
+      }
+    }, STREAM_STARTUP_TIMEOUT_MS);
+  });
+}
+
+// Un destino que ya había conectado cayó: avisar, registrar y reconectar.
+function handleStreamWorkerDown(entry, reason) {
+  if (entry.intentionalStop || !streamingSessionActive) return;
+  entry.connected = false;
+  const tail = streamStderrTail(entry);
+  appendStreamLog(`${entry.name}: CAÍDO. ${reason}${tail ? `\n  stderr: ${tail.replace(/\n/g, ' | ')}` : ''}`);
+  sendStreamDestinationStatus(entry, 'down', {
+    error: redactStreamUrl(reason, entry.url),
+    stderrTail: tail || undefined,
+  });
+
+  if (entry.reconnectAttempts >= STREAM_RECONNECT_DELAYS_MS.length) {
+    appendStreamLog(`${entry.name}: reconexión agotada (5 intentos). Queda marcado como fallido.`);
+    sendStreamDestinationStatus(entry, 'failed', {
+      error: redactStreamUrl(reason, entry.url),
+      stderrTail: tail || undefined,
+    });
+    if (activeStreamWorkers.length > 0 && activeStreamWorkers.every(w => !w.connected && w.reconnectAttempts >= STREAM_RECONNECT_DELAYS_MS.length && !w.reconnectTimer)) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('stream-status', { active: false, destinations: [] });
+      }
+    }
+    return;
+  }
+
+  const delay = STREAM_RECONNECT_DELAYS_MS[entry.reconnectAttempts];
+  entry.reconnectAttempts += 1;
+  sendStreamDestinationStatus(entry, 'reconnecting', { nextRetryMs: delay });
+  entry.reconnectTimer = setTimeout(async () => {
+    entry.reconnectTimer = null;
+    if (entry.intentionalStop || !streamingSessionActive) return;
+    const availableCores = Math.max(1, os.cpus().length - 1);
+    const threads = Math.max(1, Math.min(4, Math.floor(availableCores / Math.max(1, activeStreamWorkers.length))));
+    const result = await spawnStreamWorker(entry, threads);
+    if (!result.success && !entry.intentionalStop && streamingSessionActive) {
+      handleStreamWorkerDown(entry, result.error || 'La reconexión no logró conectar.');
+    }
+  }, delay);
+}
+
+function destroyStreamWorker(entry) {
+  entry.intentionalStop = true;
+  if (entry.reconnectTimer) { clearTimeout(entry.reconnectTimer); entry.reconnectTimer = null; }
+  if (entry.startupTimer) { clearTimeout(entry.startupTimer); entry.startupTimer = null; }
+  try { entry.process?.stdin?.destroy(); entry.process?.kill('SIGINT'); } catch (e) {}
+}
+
 ipcMain.handle('start-streaming', async (_event, payload = {}) => {
   const targets = typeof payload === 'string'
     ? [{ id: 'custom', name: 'Stream', url: payload.trim() }]
@@ -2795,11 +3188,13 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
 
   if (!targets.length) return { success: false, error: 'No se proporcionaron destinos con una clave de transmisión.' };
 
-  for (const worker of activeStreamWorkers) {
-    try { worker.process?.stdin?.destroy(); worker.process?.kill('SIGINT'); } catch (error) {}
-  }
+  // Cadena sana: cerrar la sesión anterior y LIMPIAR la cabecera al iniciar,
+  // para que ningún worker nuevo reciba la cabecera EBML de otra sesión.
+  streamingSessionActive = false;
+  for (const worker of activeStreamWorkers) destroyStreamWorker(worker);
   activeStreamWorkers = [];
   streamDestinations = targets;
+  streamInitHeader = null;
   streamStartupInProgress = true;
 
   if (payload.initialHeader) {
@@ -2809,158 +3204,73 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
     }
   }
 
+  // Sin cabecera no hay decodificación posible: esperar hasta 4 s a que el
+  // motor master entregue su primer chunk (llega por 'stream-chunk') y, si no
+  // llega, fallar con un error claro en vez de quemar el timeout de arranque.
+  if (!streamInitHeader) {
+    const waitStart = Date.now();
+    while (!streamInitHeader && Date.now() - waitStart < STREAM_HEADER_WAIT_MS) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+  if (!streamInitHeader) {
+    streamStartupInProgress = false;
+    streamDestinations = [];
+    appendStreamLog('Arranque abortado: el motor master no entregó cabecera de vídeo en 4 s.');
+    return { success: false, error: 'El motor de vídeo no entregó la cabecera inicial en 4 segundos: no hay fotogramas del programa para transmitir. Revisa que la cámara de programa esté activa.' };
+  }
+
+  streamingSessionActive = true;
   const availableCores = Math.max(1, os.cpus().length - 1);
   const threadsPerDestination = Math.max(1, Math.min(4, Math.floor(availableCores / targets.length)));
-  const startupResults = await Promise.all(targets.map((target) => new Promise((resolve) => {
-    const destUrl = target.url.trim();
-    let settled = false;
-    let startupTimer;
-    let workerEntry = null;
-    const settle = (result) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(startupTimer);
-      if (!result.success && workerEntry && !workerEntry.connected) {
-        activeStreamWorkers = activeStreamWorkers.filter(worker => worker !== workerEntry);
-        try { workerEntry.process?.stdin?.destroy(); workerEntry.process?.kill('SIGINT'); } catch (error) {}
-      }
-      resolve(result);
-    };
-    const safeError = (message) => {
-      let safeMessage = String(message || 'Error de conexión RTMP/RTMPS.');
-      try {
-        const parsed = new URL(destUrl);
-        const segments = parsed.pathname.split('/').filter(Boolean);
-        if (segments.length) segments[segments.length - 1] = '[clave oculta]';
-        parsed.pathname = `/${segments.join('/')}`;
-        parsed.search = '';
-        safeMessage = safeMessage.replaceAll(destUrl, parsed.toString());
-      } catch (error) {
-        safeMessage = safeMessage.replaceAll(destUrl, '[URL RTMP oculta]');
-      }
-      return safeMessage.slice(-700);
-    };
-    const isWindows = process.platform === 'win32';
-    const videoEncoder = isWindows ? 'h264_mf' : 'libx264';
-    const videoEncoderArgs = videoEncoder === 'h264_mf'
-      ? ['-c:v', 'h264_mf', '-b:v', '4500k']
-      : [
-          '-c:v', 'libx264',
-          '-preset', 'veryfast',
-          '-tune', 'zerolatency',
-          '-threads', String(threadsPerDestination),
-          '-profile:v', 'main',
-          '-level', '4.1',
-          '-b:v', '4500k',
-        ];
 
-    const workerArgs = [
-      '-probesize', '2M',
-      '-analyzeduration', '1000000',
-      '-fpsprobesize', '0',
-      '-fflags', '+discardcorrupt+nobuffer',
-      '-f', 'webm',
-      '-i', 'pipe:0',
-      ...videoEncoderArgs,
-      '-maxrate', '5000k',
-      '-bufsize', '5000k',
-      '-pix_fmt', 'yuv420p',
-      '-g', '60',
-      '-keyint_min', '30',
-      '-r', '30',
-      '-c:a', 'aac',
-      '-b:a', '160k',
-      '-ar', '48000',
-      '-ac', '2',
-      '-max_interleave_delta', '0',
-      '-flvflags', 'no_duration_filesize',
-      '-rtmp_buffer', '200',
-      '-rtmp_live', 'live',
-      '-rw_timeout', '12000000',
-      '-f', 'flv',
-      destUrl,
-    ];
-
-    let proc;
-    try {
-      proc = spawn(ffmpegPath, workerArgs, { stdio: ['pipe', 'ignore', 'pipe'] });
-    } catch (error) {
-      settle({ target, success: false, error: safeError(error.message) });
-      return;
-    }
-
-    workerEntry = {
+  const startupResults = await Promise.all(targets.map(async (target) => {
+    const entry = {
       id: target.id,
       name: target.name,
-      url: destUrl,
-      process: proc,
+      url: target.url.trim(),
+      target,
+      process: null,
       connected: false,
+      everConnected: false,
+      closed: false,
+      encoder: 'libx264',
       writeQueue: Promise.resolve(),
+      queuedBytes: 0,
+      needsRestart: false,
       writeError: null,
+      stderrRing: [],
+      reconnectAttempts: 0,
+      reconnectTimer: null,
+      startupTimer: null,
+      lastTelemetryAt: 0,
+      lastDroppedFrames: 0,
+      headerSent: false,
+      intentionalStop: false,
     };
-    activeStreamWorkers.push(workerEntry);
+    activeStreamWorkers.push(entry);
 
-    // Escribir cabecera EBML de inmediato para iniciar la decodificación en byte 0
-    if (streamInitHeader && proc.stdin && !proc.stdin.destroyed) {
-      workerEntry.writeQueue = workerEntry.writeQueue
-        .then(() => writeChunkWithBackpressure(proc.stdin, streamInitHeader))
-        .catch((err) => {
-          console.warn(`[start-streaming] Error escribiendo cabecera inicial a ${target.name}:`, err.message);
-        });
+    let result = await spawnStreamWorker(entry, threadsPerDestination);
+    // Reintento único con h264_mf si libx264 murió por error de encoder.
+    if (!result.success && result.kind === 'encoder' && entry.encoder === 'libx264') {
+      appendStreamLog(`${entry.name}: libx264 falló en el arranque (encoder); reintentando con h264_mf.`);
+      entry.encoder = 'h264_mf';
+      result = await spawnStreamWorker(entry, threadsPerDestination);
     }
-
-    proc.stderr.on('data', (data) => {
-      const message = data.toString();
-      const connectionError = message.match(/connection refused|connection timed out|network is unreachable|could not write header|error opening output|server error|authorization failed|access denied|invalid stream key|handshake failed|tls[^\r\n]*(?:error|fail)|failed to resolve|no route to host|input\/output error|broken pipe|permission denied/i);
-      if (connectionError && !workerEntry.connected) {
-        settle({ target, success: false, error: safeError(connectionError[0]) });
-      }
-
-      if (!workerEntry.connected && /frame=\s*\d+/.test(message)) {
-        workerEntry.connected = true;
-        settle({ target, success: true, worker: workerEntry });
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('stream-status', { active: true, destinations: activeStreamWorkers.filter(worker => worker.connected) });
-        }
-      }
-
-      if (/frame=|bitrate=/.test(message) && mainWindow && !mainWindow.isDestroyed()) {
-        const fpsMatch = message.match(/fps=\s*([\d.]+)/);
-        const bitrateMatch = message.match(/bitrate=\s*([\d.]+\s*\w+\/s)/);
-        const dropMatch = message.match(/drop=\s*(\d+)/);
-        const speedMatch = message.match(/speed=\s*([\d.]+x)/);
-        const dropped = dropMatch ? parseInt(dropMatch[1], 10) : 0;
-        mainWindow.webContents.send('stream-telemetry', {
-          targetId: target.id,
-          targetName: target.name,
-          fps: fpsMatch ? parseFloat(fpsMatch[1]) : 30,
-          bitrate: bitrateMatch ? bitrateMatch[1] : '4500 kbits/s',
-          droppedFrames: dropped,
-          speed: speedMatch ? speedMatch[1] : '1.0x',
-          health: dropped > 15 ? 'warning' : 'excellent',
-        });
-      }
-    });
-
-    proc.once('error', (error) => {
-      settle({ target, success: false, error: safeError(error.message) });
-    });
-    proc.once('close', (code, signal) => {
-      workerEntry.closed = true;
-      if (!workerEntry.connected) {
-        settle({ target, success: false, error: `FFmpeg cerró antes de conectar (código ${code ?? signal ?? 'desconocido'}).` });
-      }
-      activeStreamWorkers = activeStreamWorkers.filter(worker => worker !== workerEntry);
-      if (workerEntry.connected && !streamStartupInProgress && activeStreamWorkers.every(worker => !worker.connected) && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('stream-status', { active: false, destinations: [] });
-      }
-    });
-
-    startupTimer = setTimeout(() => {
-      settle({ target, success: false, error: 'Tiempo agotado esperando que el servidor acepte el video. Verifica que el evento esté activo.' });
-      try { proc.kill('SIGINT'); } catch (error) {}
-    }, 15000);
-  })));
+    if (!result.success) {
+      const tail = streamStderrTail(entry);
+      appendStreamLog(`${entry.name}: NO conectó. ${result.error || ''}${tail ? `\n  stderr: ${tail.replace(/\n/g, ' | ')}` : ''}`);
+      sendStreamDestinationStatus(entry, 'failed', {
+        error: redactStreamUrl(result.error || 'Error de conexión RTMP/RTMPS.', entry.url),
+        stderrTail: tail || undefined,
+      });
+      entry.intentionalStop = true;
+      try { entry.process?.stdin?.destroy(); entry.process?.kill('SIGINT'); } catch (e) {}
+      activeStreamWorkers = activeStreamWorkers.filter(w => w !== entry);
+      return { target, success: false, error: redactStreamUrl(result.error || 'Error de conexión RTMP/RTMPS.', entry.url) };
+    }
+    return { target, success: true, worker: entry };
+  }));
 
   streamStartupInProgress = false;
   const connectedDestinations = startupResults
@@ -2968,9 +3278,8 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
     .map(result => result.target);
   const failures = startupResults.filter(result => !result.success).map(result => ({ name: result.target.name, error: result.error }));
   if (!connectedDestinations.length) {
-    for (const worker of activeStreamWorkers) {
-      try { worker.process?.stdin?.destroy(); worker.process?.kill('SIGINT'); } catch (error) {}
-    }
+    streamingSessionActive = false;
+    for (const worker of activeStreamWorkers) destroyStreamWorker(worker);
     activeStreamWorkers = [];
     streamDestinations = [];
     return { success: false, error: failures.map(failure => `${failure.name}: ${failure.error}`).join('\n') || 'No se pudo conectar con el servidor de transmisión.', failures };
@@ -2982,41 +3291,47 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
   return { success: true, connectedDestinations, failures };
 });
 
-let streamInitHeader = null;
-
 // Receptor de chunks de audio/video del Master en vivo
 ipcMain.on('stream-chunk', (event, chunkBuffer) => {
   if (!chunkBuffer) return;
   try {
     const buf = Buffer.isBuffer(chunkBuffer) ? chunkBuffer : Buffer.from(chunkBuffer);
-    if (!streamInitHeader) {
-      streamInitHeader = buf;
-    } else if (buf.length >= 4 && buf[0] === 0x1A && buf[1] === 0x45 && buf[2] === 0xDF && buf[3] === 0xA3) {
+    const isHeaderChunk = buf.length >= 4 && buf[0] === 0x1A && buf[1] === 0x45 && buf[2] === 0xDF && buf[3] === 0xA3;
+    if (!streamInitHeader || isHeaderChunk) {
       streamInitHeader = buf;
     }
     if (activeStreamWorkers.length === 0) return;
     for (const worker of activeStreamWorkers) {
       if (!worker.process?.stdin || worker.process.stdin.destroyed) continue;
-      worker.writeQueue = worker.writeQueue
-        .then(() => writeChunkWithBackpressure(worker.process.stdin, buf))
-        .catch((error) => {
-          worker.writeError = error.message || String(error);
-          console.warn(`[stream-chunk] ${worker.name} write error:`, worker.writeError);
-        });
+      if (isHeaderChunk) worker.headerSent = true;
+      // Cola con tope: un destino lento no acumula RAM ni retraso sin fin;
+      // se marca para reinicio (su cierre dispara la reconexión con backoff).
+      if (worker.needsRestart) continue;
+      if (worker.queuedBytes > STREAM_QUEUE_CAP_BYTES) {
+        worker.needsRestart = true;
+        appendStreamLog(`${worker.name}: cola de envío superó 32 MB; se reinicia el destino.`);
+        sendStreamDestinationStatus(worker, 'down', { error: 'Cola de envío saturada (más de 32 MB sin drenar): el destino se reinicia.' });
+        try { worker.process?.kill('SIGINT'); } catch (e) {}
+        continue;
+      }
+      enqueueStreamChunk(worker, buf);
     }
   } catch (err) {}
 });
 
 ipcMain.handle('stop-streaming', async () => {
   streamStartupInProgress = false;
-  streamInitHeader = null;
+  streamingSessionActive = false;
   const workers = activeStreamWorkers.slice();
   await Promise.all(workers.map(async (worker) => {
+    worker.intentionalStop = true;
+    if (worker.reconnectTimer) { clearTimeout(worker.reconnectTimer); worker.reconnectTimer = null; }
+    if (worker.startupTimer) { clearTimeout(worker.startupTimer); worker.startupTimer = null; }
     try {
       await worker.writeQueue;
       if (worker.process?.stdin && !worker.process.stdin.destroyed) worker.process.stdin.end();
       await new Promise((resolve) => {
-        if (worker.process?.exitCode != null) return resolve();
+        if (!worker.process || worker.process.exitCode != null) return resolve();
         const timeout = setTimeout(() => {
           try { worker.process?.kill('SIGINT'); } catch (e) {}
           resolve();
@@ -3030,6 +3345,8 @@ ipcMain.handle('stop-streaming', async () => {
   }));
   activeStreamWorkers = [];
   streamDestinations = [];
+  streamInitHeader = null;
+  appendStreamLog('Sesión de streaming detenida por el usuario.');
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('stream-status', {
       active: false,

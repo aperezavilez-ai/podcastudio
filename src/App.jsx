@@ -38,11 +38,12 @@ import { MUSIC_TRACKS, MUSIC_SFX, MUSIC_GENRES, SFX_CATEGORIES } from './config/
 import { useBackgroundMusic } from './hooks/useBackgroundMusic.js';
 import { useSoundEffect } from './hooks/useSoundEffect.js';
 import { 
-  startBroadcastEngine, updateBroadcastState, stopBroadcastEngine, 
-  captureMasterCanvasSnapshot, getMasterCanvas,
+  startBroadcastEngine, updateBroadcastState, stopBroadcastEngine,
+  captureMasterCanvasSnapshot, getMasterCanvas, getProgramStream, hasMasterCanvasPresentedFrames,
   setVoiceMonitor, syncStudioAudio, getCameraSnapshots,
   startNativeEngineBroadcast, stopNativeEngineBroadcast,
   getOrWaitForInitHeader, getInitHeader, getActiveInitHeader,
+  startRecordingRecorder, stopRecordingRecorder, setRecordingRecorderPaused,
 } from './utils/masterBroadcastEngine.js';
 import { logger } from './utils/logger.js';
 import { isNativeEngineEnabled, getNativeEngineConfig, FEATURE_FLAGS } from './config/featureFlags.js';
@@ -265,6 +266,45 @@ const VideoTile = React.forwardRef(({
         </div>
       )}
     </div>
+  );
+});
+
+// PGM = canvas maestro: cuando el motor ya presentó fotogramas, el monitor de
+// programa muestra el stream del canvas (con escena, overlays y cintillos tal
+// como salen en grabación/streaming, no el <video> crudo). Su estado vive en
+// este componente, no en la raíz: sondea hasMasterCanvasPresentedFrames() y
+// solo se re-renderiza él. Si el canvas aún no tiene fotogramas, no pinta
+// nada y debajo quedan los VideoTile directos como respaldo.
+const MasterProgramMonitor = React.memo(function MasterProgramMonitor() {
+  const videoRef = useRef(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const check = () => setReady(hasMasterCanvasPresentedFrames());
+    check();
+    const timer = setInterval(check, 500);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !ready) return;
+    try {
+      const programStream = getProgramStream();
+      if (programStream && v.srcObject !== programStream) v.srcObject = programStream;
+      if (v.paused) v.play().catch(() => {});
+    } catch (e) {}
+  }, [ready]);
+
+  if (!ready) return null;
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className="absolute inset-0 w-full h-full object-cover z-40 pointer-events-none"
+    />
   );
 });
 
@@ -915,6 +955,8 @@ function PodcastStudioApp() {
   const [virtualBg, setVirtualBg] = useState('https://images.unsplash.com/photo-1598550476439-6847785fce6b?auto=format&fit=crop&w=1920&q=80');
 
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamDestStatuses, setStreamDestStatuses] = useState({});
+  const streamDestStatusesRef = useRef({});
   const [isStreamStarting, setIsStreamStarting] = useState(false);
   const isStreamStartingRef = useRef(false);
   const [activeStreamTab, setActiveStreamTab] = useState('facebook');
@@ -1935,6 +1977,29 @@ function PodcastStudioApp() {
           isStreamingRef.current = false;
           setIsStreaming(false);
           setActiveLiveDestinations([]);
+          streamDestStatusesRef.current = {};
+          setStreamDestStatuses({});
+        }
+      });
+      return unsubscribe;
+    }
+  }, []);
+
+  // Estado por destino del directo (v1.5.0): un destino caído se avisa SIEMPRE.
+  useEffect(() => {
+    if (window.api?.onStreamDestinationStatus) {
+      const unsubscribe = window.api.onStreamDestinationStatus((evt) => {
+        if (!evt?.targetId) return;
+        const prev = streamDestStatusesRef.current[evt.targetId];
+        const next = { ...streamDestStatusesRef.current, [evt.targetId]: evt };
+        streamDestStatusesRef.current = next;
+        setStreamDestStatuses(next);
+        if (evt.status === 'down') {
+          showToast(`${evt.targetName || 'Destino'}: la transmisión cayó. Reconectando automáticamente…`, 'warning', 7000);
+        } else if (evt.status === 'failed') {
+          showToast(`${evt.targetName || 'Destino'}: no se pudo recuperar la transmisión tras 5 intentos.${evt.error ? ' ' + evt.error : ''}`, 'error', 9000);
+        } else if (evt.status === 'live' && prev && prev.status !== 'live') {
+          showToast(`${evt.targetName || 'Destino'}: transmisión recuperada.`, 'success', 5000);
         }
       });
       return unsubscribe;
@@ -2346,14 +2411,17 @@ function PodcastStudioApp() {
   }, []);
 
   const hasSentHeaderRef = useRef(false);
+  const useDedicatedRecorderRef = useRef(false);
   const usbConnectInFlightRef = useRef(new Set());
 
   const handleMasterChunk = (buffer) => {
     if ((isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk) {
       window.api.sendStreamChunk(buffer);
     }
-    // Enviar fragmentos a FFmpeg de forma estrictamente secuencial y sin duplicar cabeceras
-    if (isRecordingRef.current && !isRecordingPausedRef.current) {
+    // Enviar fragmentos a FFmpeg de forma estrictamente secuencial y sin duplicar cabeceras.
+    // Con el grabador dedicado activo (v1.5.0) la grabación recibe sus propios
+    // chunks por handleRecordingChunk y su pausa es pause() real del recorder.
+    if (isRecordingRef.current && !useDedicatedRecorderRef.current) {
       if (!window.api) {
         recordingChunksRef.current.push(buffer);
         recordingChunkCountRef.current += 1;
@@ -2371,6 +2439,27 @@ function PodcastStudioApp() {
             logger.error('[recording] Error entregando segmento a FFmpeg:', error);
           });
       }
+    }
+  };
+
+  const handleRecordingChunk = (buffer) => {
+    if (!isRecordingRef.current) return;
+    if (!window.api) {
+      recordingChunksRef.current.push(buffer);
+      recordingChunkCountRef.current += 1;
+      return;
+    }
+    if (window.api?.sendRecordChunk) {
+      recordingChunkDeliveryRef.current = recordingChunkDeliveryRef.current
+        .then(async () => {
+          const result = await window.api.sendRecordChunk(buffer);
+          if (!result?.success) throw new Error(result?.error || 'Electron rechazó el segmento de grabación.');
+          recordingChunkCountRef.current += 1;
+        })
+        .catch((error) => {
+          recordingChunkErrorRef.current = error?.message || String(error);
+          logger.error('[recording] Error entregando segmento a FFmpeg:', error);
+        });
     }
   };
 
@@ -2397,9 +2486,11 @@ function PodcastStudioApp() {
         recordingChunkDeliveryRef.current = Promise.resolve();
         recordingChunkCountRef.current = 0;
         recordingChunkErrorRef.current = null;
+        let preEngineHeader = null;
+        try { preEngineHeader = getActiveInitHeader(); } catch {}
         // Mismo caso sin Electron: si el motor ya estaba activo, la cabecera
         // ya pasó y debe ser el primer fragmento del arreglo de grabación.
-        try { const activeHeader = getActiveInitHeader(); if (activeHeader && !window.api) recordingChunksRef.current.push(activeHeader); } catch {}
+        if (preEngineHeader && !window.api) recordingChunksRef.current.push(preEngineHeader);
         setRecordingTime(0);
         setIsRecordingPaused(false);
         isRecordingPausedRef.current = false;
@@ -2416,7 +2507,7 @@ function PodcastStudioApp() {
               // recibiría: sin ella el MP4 sale vacío o con error. El handler
               // de Electron ya sabía escribirla (options.initialHeader), pero
               // nadie se la pasaba.
-              initialHeader: getActiveInitHeader(),
+              initialHeader: preEngineHeader,
             });
           } catch (error) {
             res = { success: false, error: error.message };
@@ -2470,6 +2561,48 @@ function PodcastStudioApp() {
         if (!masterStream || masterStream.getVideoTracks().length === 0) {
           throw new Error('El compositor Master no generó video grabable. Verifica una cámara activa y los permisos de medios.');
         }
+
+        // Compuerta de primer fotograma (v1.5.0, Frente B): no se graba hasta
+        // que el programa presente un fotograma REAL de cámara (fotograma
+        // presentado + muestra de píxeles no uniforme). Si en 3 s no hay
+        // señal, error honesto en vez de un archivo en negro.
+        {
+          const sampleHasRealFrame = () => {
+            try {
+              if (!hasMasterCanvasPresentedFrames()) return false;
+              const snap = captureMasterCanvasSnapshot();
+              if (!snap) return false;
+              const small = document.createElement('canvas');
+              small.width = 160; small.height = 90;
+              const sctx = small.getContext('2d');
+              if (!sctx) return false;
+              sctx.drawImage(snap, 0, 0, 160, 90);
+              const data = sctx.getImageData(0, 0, 160, 90).data;
+              let min = 255, max = 0;
+              for (let i = 0; i < data.length; i += 16) {
+                const lum = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                if (lum < min) min = lum;
+                if (lum > max) max = lum;
+                if (max - min > 16) return true;
+              }
+              return max - min > 16;
+            } catch { return false; }
+          };
+          const gateStart = Date.now();
+          let gateOk = sampleHasRealFrame();
+          while (!gateOk && Date.now() - gateStart < 3000) {
+            await new Promise((r) => setTimeout(r, 150));
+            gateOk = sampleHasRealFrame();
+          }
+          if (!gateOk) {
+            try { await window.api?.cancelRecording?.(); } catch {}
+            throw new Error('Sin señal de cámara: el programa no presentó ningún fotograma real en 3 segundos. No se grabó nada para no generar un archivo en negro.');
+          }
+        }
+
+        // Grabador dedicado con pausa real (v1.5.0): si no arranca, el
+        // enrutado anterior por handleMasterChunk sigue como respaldo.
+        useDedicatedRecorderRef.current = startRecordingRecorder(handleRecordingChunk, { skipFirstChunk: !!preEngineHeader });
 
           // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
           if (isoRecordingEnabled && window.api?.startIsoRecording) {
@@ -2565,8 +2698,11 @@ function PodcastStudioApp() {
         }
 
         let stopRes = null;
-        // Si no hay directo al aire, detener el único MediaRecorder del Master y esperar
-        // su último chunk antes de cerrar FFmpeg. En vivo se conserva el encoder activo.
+        // Detener primero el grabador dedicado (v1.5.0) para vaciar sus chunks;
+        // si no hay directo al aire, también se apaga el motor. En vivo se
+        // conserva el encoder activo.
+        await stopRecordingRecorder();
+        useDedicatedRecorderRef.current = false;
         if (!isStreamingRef.current) {
           await stopBroadcastEngine();
         }
@@ -2591,8 +2727,11 @@ function PodcastStudioApp() {
             stopRes = await window.api.stopRecording();
             if (!stopRes?.success || !stopRes.path) {
               recordingChunksRef.current = [];
-              showToast('No se pudo finalizar el MP4: ' + (stopRes?.error || 'No se generó un archivo válido.'), 'error', 6000);
+              showToast('No se pudo finalizar el MP4: ' + (stopRes?.error || 'No se generó un archivo válido.') + (stopRes?.partialPath ? `\nSe conservó un parcial para diagnóstico: ${stopRes.partialPath}` : ''), 'error', 6000);
               return;
+            }
+            if (stopRes.blackWarning) {
+              showToast('ADVERTENCIA: la grabación finalizada salió en negro (90% o más de fotogramas negros). Revísala antes de usarla; no es un éxito limpio.', 'warning', 9000);
             }
             if (thumbnailDataUrl && window.api.saveRecordingThumbnail) {
               const thumbRes = await window.api.saveRecordingThumbnail({
@@ -2620,6 +2759,8 @@ function PodcastStudioApp() {
           snapshotCanvas,
           thumbnailDataUrl,
           filePath: stopRes?.path || null,
+          blackWarning: !!stopRes?.blackWarning,
+          recordedDurationSec: stopRes?.durationSec || null,
           projectName: stopRes?.projectName || topic || 'Proyecto_General',
           name: `PodcaStudio_${cleanTopicName}_${Date.now()}`,
           duration: recordingTime || 1,
@@ -2649,6 +2790,9 @@ function PodcastStudioApp() {
     const next = !isRecordingPausedRef.current;
     isRecordingPausedRef.current = next;
     setIsRecordingPaused(next);
+    // Pausa REAL (v1.5.0): pause()/resume() del grabador dedicado; ya no se
+    // descartan chunks. Sin grabador dedicado, queda el corte de enrutado.
+    setRecordingRecorderPaused(next);
   };
 
   const handleCancelRecording = async () => {
@@ -2663,6 +2807,8 @@ function PodcastStudioApp() {
     setIsRecordingPaused(false);
     recordingChunksRef.current = [];
     try {
+      await stopRecordingRecorder();
+      useDedicatedRecorderRef.current = false;
       if (!isStreamingRef.current) await stopBroadcastEngine();
       const isoStops = Array.from(isoRecordersRef.current.values()).map(rec => new Promise(resolve => {
         if (!rec || rec.state === 'inactive') return resolve();
@@ -2775,7 +2921,7 @@ function PodcastStudioApp() {
           if (!nativeStarted) {
             let initHeader = null;
             try {
-              initHeader = await getOrWaitForInitHeader(1500);
+              initHeader = await getOrWaitForInitHeader(4000);
             } catch (e) {}
 
             res = await window.api.startStreaming({
@@ -3957,6 +4103,9 @@ function PodcastStudioApp() {
             </div>
           );
         })}
+        {/* PGM real: canvas maestro encima cuando ya presentó fotogramas;
+            si no, quedan visibles los VideoTile directos de arriba. */}
+        <MasterProgramMonitor />
       </div>
     );
   };
@@ -5966,6 +6115,7 @@ function PodcastStudioApp() {
                     const paused = !isRecordingPausedRef.current;
                     isRecordingPausedRef.current = paused;
                     setIsRecordingPaused(paused);
+                    setRecordingRecorderPaused(paused);
                   }}
                   className="w-full py-2 rounded-lg border border-[#444] bg-[#18181b] hover:bg-[#242428] text-gray-100 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
                   title={isRecordingPaused ? 'Continuar la grabación' : 'Pausar temporalmente la grabación'}
@@ -6409,6 +6559,18 @@ function PodcastStudioApp() {
             </div>
 
           </div>
+        </div>
+      )}
+
+      {/* Aviso persistente por destino del directo (v1.5.0): nunca en silencio */}
+      {Object.values(streamDestStatuses).filter(d => d.status && d.status !== 'live').length > 0 && (
+        <div className="fixed top-4 right-4 z-[130] flex flex-col gap-2 max-w-sm">
+          {Object.values(streamDestStatuses).filter(d => d.status && d.status !== 'live').map(d => (
+            <div key={d.targetId} className={`px-3 py-2 rounded-lg border text-xs font-bold shadow-lg ${d.status === 'failed' ? 'bg-red-950/90 border-red-500 text-red-200' : 'bg-amber-950/90 border-amber-500 text-amber-200'}`}>
+              {d.targetName || 'Destino'}: {d.status === 'failed' ? 'TRANSMISIÓN PERDIDA tras 5 intentos de reconexión' : d.status === 'down' ? 'la transmisión cayó' : `reconectando (intento ${d.attempt || 1} de 5)…`}
+              {d.error ? <div className="font-normal opacity-80 mt-0.5">{d.error}</div> : null}
+            </div>
+          ))}
         </div>
       )}
 

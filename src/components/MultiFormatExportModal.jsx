@@ -376,6 +376,12 @@ export default function MultiFormatExportModal({
 
         <div className={styles.scrollBody}>
 
+        {recording?.blackWarning && (
+          <div style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 10, border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.12)', color: '#fbbf24', fontSize: 12, fontWeight: 700 }}>
+            ADVERTENCIA: la verificación automática detectó que esta grabación salió en negro (90% o más de fotogramas negros). Revísala antes de exportarla o publicarla.
+          </div>
+        )}
+
         <div className={styles.targetNetworksBar}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: '#fff' }}>Redes destino:</span>

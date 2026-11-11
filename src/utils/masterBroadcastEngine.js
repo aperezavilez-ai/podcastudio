@@ -84,6 +84,17 @@ let currentState = {
 };
 
 const videoElements = new Map();
+// --- Frente fluidez: composición sincronizada (punto 2) ---
+// Fotogramas presentados por cámara, alimentado por requestVideoFrameCallback
+// en getOrCreateVideo(). La clave es el camId; el valor es
+// metadata.presentedFrames cuando el navegador lo da, o un contador propio.
+const videoPresentedFrames = new Map();
+let videoFrameCallbackSupported = false;
+let lastRenderedPresentedTotal = -1;
+let lastCompositionSignature = null;
+// Fotogramas que el canvas maestro ya compuso de verdad (monitor PGM, punto 3).
+let programRenderedFrames = 0;
+let programMonitorStream = null;
 let virtualBgImage = null;
 let logoImage = null;
 let logoVideoElement = null;
@@ -189,8 +200,24 @@ function getOffscreenContainer() {
 }
 
 // Inicializa el Worker de renderizado para saltar el límite de requestAnimationFrame
-// Inicializa el Worker de renderizado para saltar el límite de requestAnimationFrame
+// Fuente del Worker como constante exportable (la usa scripts/render-loop.test.mjs).
+// Idempotencia DENTRO del Worker: ante 'start' primero se limpia el intervalo
+// previo; ante 'stop' se limpia y se anula. Antes cada 'start' creaba un
+// setInterval nuevo sin limpiar el anterior (fuga C-5.1 del informe de fluidez).
+export const RENDER_WORKER_SOURCE = `
+  let interval = null;
+  self.onmessage = function(e) {
+    if (e.data === 'start') {
+      if (interval) { clearInterval(interval); interval = null; }
+      interval = setInterval(() => self.postMessage('tick'), 1000 / 30);
+    } else if (e.data === 'stop') {
+      if (interval) { clearInterval(interval); interval = null; }
+    }
+  };
+`;
+
 function fallbackRafLoop() {
+  if (animFrameId) return;
   const loop = () => {
     if (!isCanvasRenderLoopActive) return;
     try { renderFrame(); } catch (e) {}
@@ -199,20 +226,14 @@ function fallbackRafLoop() {
   animFrameId = requestAnimationFrame(loop);
 }
 
-function startRenderLoop() {
+// Bucle único idempotente: si ya está activo no hace nada (no re-postea
+// 'start' al Worker, así que tampoco se crea ningún intervalo extra).
+export function startRenderLoop() {
+  if (isCanvasRenderLoopActive) return;
   isCanvasRenderLoopActive = true;
   try {
     if (!renderWorker) {
-      const blob = new Blob([`
-        let interval;
-        self.onmessage = function(e) {
-          if (e.data === 'start') {
-            interval = setInterval(() => self.postMessage('tick'), 1000 / 30);
-          } else if (e.data === 'stop') {
-            if (interval) { clearInterval(interval); interval = null; }
-          }
-        };
-      `], { type: 'application/javascript' });
+      const blob = new Blob([RENDER_WORKER_SOURCE], { type: 'application/javascript' });
       const url = URL.createObjectURL(blob);
       renderWorker = new Worker(url);
       renderWorker.onmessage = () => { if (isCanvasRenderLoopActive) { try { renderFrame(); } catch(e) {} } };
@@ -220,7 +241,7 @@ function startRenderLoop() {
         console.warn('Render worker failed, falling back to RAF');
         try { URL.revokeObjectURL(url); } catch(e){}
         renderWorker = null;
-        fallbackRafLoop();
+        if (isCanvasRenderLoopActive) fallbackRafLoop();
       };
     }
     renderWorker.postMessage('start');
@@ -230,13 +251,128 @@ function startRenderLoop() {
   }
 }
 
-function stopRenderLoop() {
+export function stopRenderLoop() {
   isCanvasRenderLoopActive = false;
-  if (renderWorker) renderWorker.postMessage('stop');
+  if (renderWorker) {
+    try { renderWorker.postMessage('stop'); } catch (e) {}
+  }
   if (animFrameId) {
     cancelAnimationFrame(animFrameId);
     animFrameId = null;
   }
+}
+
+// Contador de consumidores del bucle: <video> registrados CON stream vivo,
+// más el elemento de replay si está en uso. Grabando/transmitiendo el motor
+// cuenta como consumidor aunque no haya cámaras.
+function countLiveRenderConsumers() {
+  let count = 0;
+  videoElements.forEach((v) => { if (v && v.srcObject) count++; });
+  if (currentState.replayVideoElement) count++;
+  return count;
+}
+
+// Conectado en syncVideoStreams() y reutilizable: si no queda ningún
+// consumidor y no se está grabando/transmitiendo, el bucle se apaga.
+// Una composición que varía con el tiempo (teleprompter, visualizador,
+// pizarra, replay…) también es consumidora aunque no haya cámaras.
+export function stopRenderLoopIfNoConsumers() {
+  if (isBroadcastEngineActive || mediaRecorder) return false;
+  if (hasTimeVaryingComposition()) return false;
+  if (countLiveRenderConsumers() > 0) return false;
+  stopRenderLoop();
+  // Sin consumidores el PGM vuelve al respaldo de <video> directos: el
+  // contador de presentados se reinicia para que el monitor no se quede
+  // con el último fotograma congelado encima de los tiles.
+  programRenderedFrames = 0;
+  return true;
+}
+
+// Registra requestVideoFrameCallback sobre un <video> del motor (una sola
+// vez por elemento) para contar los fotogramas que presenta de verdad.
+function registerVideoFrameCallback(camId, v) {
+  if (!v || v.__psFrameCallbackWired) return;
+  if (typeof v.requestVideoFrameCallback !== 'function') return;
+  v.__psFrameCallbackWired = true;
+  videoFrameCallbackSupported = true;
+  const onFrame = (now, metadata) => {
+    const presented = metadata && typeof metadata.presentedFrames === 'number'
+      ? metadata.presentedFrames
+      : (videoPresentedFrames.get(camId) || 0) + 1;
+    videoPresentedFrames.set(camId, presented);
+    try { v.requestVideoFrameCallback(onFrame); } catch (e) {}
+  };
+  try { v.requestVideoFrameCallback(onFrame); } catch (e) {}
+}
+
+function getPresentedFramesTotal() {
+  let total = 0;
+  videoPresentedFrames.forEach((n) => { total += Number(n) || 0; });
+  return total;
+}
+
+// Red de seguridad del contador anterior: si requestVideoFrameCallback se
+// estrangulara en algún driver/GPU (el <video> del motor vive casi oculto),
+// el avance de currentTime sigue delatando que hay fotograma nuevo.
+const videoCurrentTimeAtLastRender = new Map();
+
+function anyVideoCurrentTimeAdvanced() {
+  let advanced = false;
+  videoElements.forEach((v, camId) => {
+    if (!v || v.readyState < 2 || typeof v.currentTime !== 'number') return;
+    const previous = videoCurrentTimeAtLastRender.get(camId);
+    if (previous === undefined || v.currentTime !== previous) advanced = true;
+  });
+  return advanced;
+}
+
+function snapshotVideoCurrentTimes() {
+  videoElements.forEach((v, camId) => {
+    if (v && typeof v.currentTime === 'number') {
+      videoCurrentTimeAtLastRender.set(camId, v.currentTime);
+    }
+  });
+}
+
+// Huella barata del estado que afecta a la composición (sin payloads grandes:
+// logo/fondos se representan por longitud + prefijo, nunca por el data-URL).
+function compositionFingerprint(value) {
+  if (value == null) return '';
+  const s = String(value);
+  return `${s.length}:${s.slice(0, 16)}`;
+}
+
+function buildCompositionSignature() {
+  try {
+    return JSON.stringify([
+      currentState.activeCam, currentState.layoutMode,
+      Array.isArray(currentState.camSlots) ? currentState.camSlots.join(',') : '',
+      currentState.pvwCam, currentState.pipCam,
+      currentState.transitionProgress, currentState.transitionFromCam, currentState.transitionToCam,
+      currentState.chromaKeyActive ? 1 : 0, compositionFingerprint(currentState.virtualBg),
+      compositionFingerprint(currentState.logoBase64), JSON.stringify(currentState.logoConfig || {}),
+      currentState.cintillosVisible ? 1 : 0, JSON.stringify(currentState.cintillo || {}), currentState.topic || '',
+      currentState.subtitlesVisible ? 1 : 0, currentState.liveSubtitleText || '',
+      currentState.isReplaying ? 1 : 0, JSON.stringify(currentState.replayOverlay || {}),
+      JSON.stringify(currentState.cameraBadges || {}),
+    ]);
+  } catch (e) {
+    return '';
+  }
+}
+
+// Capas cuyo dibujo cambia con el tiempo aunque no llegue fotograma nuevo:
+// con cualquiera activa nunca se salta el render.
+function hasTimeVaryingComposition() {
+  return !!(
+    (currentState.isTeleprompterPlaying && currentState.teleprompterText) ||
+    currentState.showAudioVisualizer ||
+    currentState.replayOverlay?.active ||
+    currentState.isReplaying ||
+    currentState.whiteboardCanvas ||
+    (typeof currentState.transitionProgress === 'number' && currentState.transitionProgress > 0 && currentState.transitionProgress < 1) ||
+    (logoVideoElement && logoVideoElement.readyState >= 2)
+  );
 }
 
 function getOrCreateVideo(camId, stream) {
@@ -257,10 +393,13 @@ function getOrCreateVideo(camId, stream) {
       if (container) container.appendChild(v);
     } catch {}
     videoElements.set(camId, v);
+    registerVideoFrameCallback(camId, v);
   }
   const v = videoElements.get(camId);
   if (stream) {
     if (v.srcObject !== stream) {
+      // Stream nuevo: su contador de fotogramas presentados vuelve a empezar.
+      videoPresentedFrames.set(camId, 0);
       v.srcObject = stream;
       if (!v.hasTrackListeners) {
         v.hasTrackListeners = true;
@@ -311,6 +450,11 @@ function syncVideoStreams() {
       }
     });
   }
+  // Sin ningún stream vivo (y sin grabar/transmitir) no hay nada que
+  // componer: aquí queda conectado el apagado por contador de consumidores.
+  // Al conectar una cámara, updateBroadcastState()->ensureMasterCanvas()
+  // vuelve a arrancar el bucle (startRenderLoop es idempotente).
+  stopRenderLoopIfNoConsumers();
 }
 
 let thumbCanvas = null;
@@ -835,6 +979,22 @@ function applyChromaKey(ctx, videoFrame, bgImage, width, height, options = {}) {
 
 function renderFrame() {
   if (!ctx) return;
+  // Composición sincronizada: si ningún <video> presentó fotograma nuevo
+  // desde el último render y la composición no cambió, saltar el dibujo.
+  // Sin requestVideoFrameCallback disponible no se salta nunca: el tick de
+  // 30 fps del Worker queda como respaldo, como hasta ahora.
+  const presentedTotal = getPresentedFramesTotal();
+  const compositionSignature = buildCompositionSignature();
+  if (
+    videoFrameCallbackSupported &&
+    !hasTimeVaryingComposition() &&
+    !anyVideoCurrentTimeAdvanced() &&
+    lastRenderedPresentedTotal >= 0 &&
+    presentedTotal === lastRenderedPresentedTotal &&
+    compositionSignature === lastCompositionSignature
+  ) {
+    return;
+  }
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
   const width = 1920;
@@ -1114,6 +1274,12 @@ function renderFrame() {
       window.api.nativeEngine.writeFrame(imgData.data.buffer);
     } catch (e) {}
   }
+
+  // Solo tras un dibujo completo se marca el fotograma como presentado.
+  lastRenderedPresentedTotal = presentedTotal;
+  lastCompositionSignature = compositionSignature;
+  snapshotVideoCurrentTimes();
+  programRenderedFrames++;
 }
 
 function initMixerBuses() {
@@ -1865,9 +2031,9 @@ export function startBroadcastEngine(initialState, onChunk) {
 
   try {
     // El canvas Master es la única fuente de video y audio del archivo final.
-    // 12 Mbps preserva detalle de una composición 1080p sin forzar a la cámara
-    // USB a renegociar su propia resolución.
-    const recOptions = { videoBitsPerSecond: 12000000, audioBitsPerSecond: 192000 };
+    // Presupuesto único v1.5.0: 8 Mbps de vídeo (antes 12 Mbps, que con el
+    // transcode CRF 17/16M producía masters de ~7,2 GB por hora).
+    const recOptions = { videoBitsPerSecond: 8000000, audioBitsPerSecond: 192000 };
     if (chosenMime) recOptions.mimeType = chosenMime;
     mediaRecorder = new MediaRecorder(masterStream, recOptions);
   } catch (instantiationErr) {
@@ -1901,6 +2067,75 @@ export function startBroadcastEngine(initialState, onChunk) {
 
   isBroadcastEngineActive = true;
   return masterStream;
+}
+
+// ============================================================================
+// GRABADOR DEDICADO DE GRABACIÓN (v1.5.0, Frente B)
+// Antes la "pausa" de grabación descartaba chunks en App.jsx mientras el
+// MediaRecorder compartido seguía corriendo: el archivo final quedaba con un
+// salto temporal. Ahora la grabación tiene su PROPIO MediaRecorder sobre el
+// mismo masterStream, con pause()/resume() reales, sin afectar al directo
+// (que sigue alimentándose del MediaRecorder principal).
+// ============================================================================
+let recordingRecorder = null;
+let recordingChunkListener = null;
+let pendingRecordingChunkDelivery = Promise.resolve();
+let recordingSkipNextChunk = false;
+
+export function startRecordingRecorder(onChunk, { skipFirstChunk = false } = {}) {
+  if (!masterStream || !isBroadcastEngineActive) return false;
+  if (recordingRecorder && recordingRecorder.state !== 'inactive') return true;
+  recordingChunkListener = onChunk;
+  recordingSkipNextChunk = !!skipFirstChunk;
+  const recOptions = { videoBitsPerSecond: 8000000, audioBitsPerSecond: 192000 };
+  try {
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) recOptions.mimeType = 'video/webm;codecs=vp8,opus';
+  } catch (e) {}
+  try {
+    recordingRecorder = new MediaRecorder(masterStream, recOptions);
+  } catch (err) {
+    try { recordingRecorder = new MediaRecorder(masterStream); } catch (e) { recordingRecorder = null; return false; }
+  }
+  recordingRecorder.ondataavailable = (e) => {
+    if (!e.data || e.data.size === 0) return;
+    if (recordingSkipNextChunk) { recordingSkipNextChunk = false; return; }
+    pendingRecordingChunkDelivery = pendingRecordingChunkDelivery.then(async () => {
+      const buffer = await e.data.arrayBuffer();
+      if (recordingChunkListener) { try { recordingChunkListener(buffer); } catch (err) {} }
+    }).catch((err) => {
+      console.warn('[RecordingRecorder] Error procesando segmento:', err?.message || err);
+    });
+  };
+  try {
+    recordingRecorder.start(250);
+  } catch (err) {
+    recordingRecorder = null;
+    return false;
+  }
+  return true;
+}
+
+export function setRecordingRecorderPaused(paused) {
+  if (!recordingRecorder) return false;
+  try {
+    if (paused && recordingRecorder.state === 'recording') { recordingRecorder.pause(); return true; }
+    if (!paused && recordingRecorder.state === 'paused') { recordingRecorder.resume(); return true; }
+  } catch (e) {}
+  return false;
+}
+
+export async function stopRecordingRecorder() {
+  const rec = recordingRecorder;
+  recordingRecorder = null;
+  recordingChunkListener = null;
+  if (rec && rec.state !== 'inactive') {
+    await new Promise((resolve) => {
+      const timeout = setTimeout(resolve, 5000);
+      rec.addEventListener('stop', () => { clearTimeout(timeout); resolve(); }, { once: true });
+      try { rec.stop(); } catch (e) { clearTimeout(timeout); resolve(); }
+    });
+  }
+  await pendingRecordingChunkDelivery;
 }
 
 export function updateBroadcastState(updates) {
@@ -1959,6 +2194,7 @@ export function captureMasterCanvasSnapshot() {
 
 export async function stopBroadcastEngine() {
   isBroadcastEngineActive = false;
+  await stopRecordingRecorder();
 
   const recorderToStop = mediaRecorder;
   if (recorderToStop && recorderToStop.state !== 'inactive') {
@@ -1983,6 +2219,10 @@ export async function stopBroadcastEngine() {
 
   chunkListeners.clear();
   cachedInitHeader = null;
+  // Ruta de apagado del motor: aquí queda conectado stopRenderLoop()
+  // (antes no tenía ningún llamador) y la limpieza del handler de visibilidad.
+  stopRenderLoop();
+  cleanupVisibilityHandler();
 }
 
 // Handler de visibilidad para pausar renderizado en background
@@ -1992,19 +2232,13 @@ function setupVisibilityHandler() {
   if (typeof document === 'undefined') return;
   if (visibilityHandler) return;
   visibilityHandler = () => {
-    // Si la emisión o grabación está activa, NUNCA detener el renderizado en segundo plano
+    // Si la emisión o grabación está activa, NUNCA detener el renderizado en segundo plano.
+    // Se pasa por start/stopRenderLoop (idempotentes) en vez de tocar la
+    // bandera y postear a mano, que era otra vía de 'start' duplicados.
     if (document.hidden && !isBroadcastEngineActive && !mediaRecorder) {
-      isCanvasRenderLoopActive = false;
-      if (renderWorker) {
-        try { renderWorker.postMessage('stop'); } catch (e) {}
-      }
+      stopRenderLoop();
     } else {
-      isCanvasRenderLoopActive = true;
-      if (renderWorker) {
-        try { renderWorker.postMessage('start'); } catch (e) {}
-      } else if (!animFrameId) {
-        startRenderLoop();
-      }
+      startRenderLoop();
     }
   };
   document.addEventListener('visibilitychange', visibilityHandler);
@@ -2029,12 +2263,42 @@ export function ensureMasterCanvas() {
     }
   }
   setupVisibilityHandler();
+  // startRenderLoop() es idempotente: llamarlo en cada invocación ya no
+  // suma intervalos; solo arranca si el bucle estaba apagado.
   startRenderLoop();
   return canvas;
 }
 
 export function getMasterCanvas() {
   return ensureMasterCanvas();
+}
+
+// --- Monitor de programa (PGM, punto 3) ---
+export function getProgramCanvas() {
+  return ensureMasterCanvas();
+}
+
+export function hasMasterCanvasPresentedFrames() {
+  return programRenderedFrames > 0;
+}
+
+export function getMasterCanvasPresentedFrames() {
+  return programRenderedFrames;
+}
+
+// Stream de monitor alimentado por el canvas maestro (un solo captureStream
+// cacheado; si su pista muere, se recrea en la siguiente llamada).
+export function getProgramStream() {
+  const programCanvas = ensureMasterCanvas();
+  const tracks = programMonitorStream ? programMonitorStream.getVideoTracks() : [];
+  if (!programMonitorStream || tracks.length === 0 || tracks.every((t) => t.readyState === 'ended')) {
+    try {
+      programMonitorStream = programCanvas.captureStream(30);
+    } catch (e) {
+      programMonitorStream = null;
+    }
+  }
+  return programMonitorStream;
 }
 
 export function setReplayOverlay(active, label = 'REPLAY', speed = 0.5, progress = 0) {
