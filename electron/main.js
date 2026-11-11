@@ -23,6 +23,7 @@ try { if (fs.existsSync(readySignalPath)) fs.unlinkSync(readySignalPath); } catc
 const { setupNativeEngineIPC } = require('./media-engine/bridge');
 const { computeExportSignature, siblingSuffixFor } = require('./export-signature');
 const { classifyStreamError, STREAM_ERROR_USER_MESSAGES } = require('./stream-error');
+const { createStreamEncoderSession } = require('./stream-encoder');
 const exportEncodeSignatures = new Map(); // firma de encode -> ruta ya codificada (dedupe FB/YT)
 
 try {
@@ -100,12 +101,14 @@ app.commandLine.appendSwitch('ignore-gpu-blocklist');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 let mainWindow;
-let ffmpegRecordProcess = null;
+// v2.0.0 (núcleo nuevo): ya no hay un proceso FFmpeg de grabación suelto
+// ni workers por destino en este archivo: el grafo de programa (proceso
+// codificador/mezclador único + consumidores con copia) vive en
+// electron/program-core.js y se instancia en la sección de streaming.
 let isStoppingRecording = false;
 let isRecording = false;
 let isStreaming = false;
-let recordChunkQueue = Promise.resolve();
-let recordChunkError = null;
+let coreRecordingFailure = null;
 // v1.5.1 (Frente B): la grabación se escribe primero a .partial.mp4 y solo
 // se renombra al nombre final si el cierre es limpio. recordingProbe
 // acumula, del stderr del ÚNICO FFmpeg de grabación, los segmentos de
@@ -1442,9 +1445,7 @@ if (!gotTheLock) {
     const finishExit = () => {
       try {
         if (ffmpegStreamProcess) ffmpegStreamProcess.kill('SIGKILL');
-        if (typeof activeStreamWorkers !== 'undefined' && Array.isArray(activeStreamWorkers)) {
-          activeStreamWorkers.forEach(w => { try { w.process?.kill('SIGKILL'); } catch (e) {} });
-        }
+        try { programCore?.shutdown(); } catch (e) {}
         if (typeof ffmpegIsoProcesses !== 'undefined' && ffmpegIsoProcesses.size > 0) {
           ffmpegIsoProcesses.forEach(entry => { try { entry.proc?.kill('SIGKILL'); } catch (e) {} });
         }
@@ -1453,21 +1454,18 @@ if (!gotTheLock) {
       try { process.exit(0); } catch (e) {}
     };
     // La grabación NO se mata con SIGKILL: un MP4 con +faststart solo queda
-    // válido si FFmpeg cierra el contenedor y mueve el moov al frente. Se le
-    // cierra la entrada y se le dan hasta 8 s para terminar antes de salir;
-    // matar el proceso a mitad dejaba el archivo inabrible en el proyecto.
+    // válido si FFmpeg cierra el contenedor y mueve el moov al frente. Al
+    // núcleo se le pide el cierre del consumidor de grabación y se le dan
+    // hasta 8 s antes de salir (el parcial queda como .partial.mp4, igual
+    // que en un cierre forzado: nunca se renombra a máster al salir).
     try {
-      const recProc = ffmpegRecordProcess;
-      if (recProc && recProc.stdin && !recProc.stdin.destroyed) {
-        ffmpegRecordProcess = null;
+      if (programCore && programCore.getRecordingState()) {
         let exitDone = false;
-        const goExit = () => { if (exitDone) return; exitDone = true; try { recProc.kill('SIGKILL'); } catch (e) {} finishExit(); };
-        recProc.once('close', () => { if (exitDone) return; exitDone = true; finishExit(); });
-        try { recProc.stdin.end(); } catch (e) { goExit(); }
+        const goExit = () => { if (exitDone) return; exitDone = true; finishExit(); };
+        programCore.stopRecording().then(goExit).catch(goExit);
         setTimeout(goExit, 8000);
         return;
       }
-      if (recProc) { try { recProc.kill('SIGKILL'); } catch (e) {} ffmpegRecordProcess = null; }
     } catch (e) {}
     finishExit();
   };
@@ -1866,8 +1864,6 @@ ipcMain.on('open-recordings-folder', (event, projectName) => {
 
 let currentRecordingPath = null;
 let streamDestinations = [];
-let activeStreamWorkers = [];
-let streamStartupInProgress = false;
 let currentRecordingProjectName = 'Proyecto_General';
 
 // ============================================================================
@@ -1884,9 +1880,8 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
       .trim() || 'Proyecto_General';
     
     currentRecordingProjectName = cleanProjectName;
-    recordChunkQueue = Promise.resolve();
-    recordChunkError = null;
     isStoppingRecording = false;
+    coreRecordingFailure = null;
 
     const projectsRoot = getProjectsRootDir();
     const projectDir = path.join(projectsRoot, cleanProjectName);
@@ -1897,131 +1892,47 @@ ipcMain.handle('start-recording', async (event, options = {}) => {
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
     currentRecordingPath = path.join(projectDir, `${cleanProjectName}_${timestamp}_Master_1080p.mp4`);
-    // v1.5.1 (Frente B): FFmpeg escribe a .partial.mp4; stop-recording lo
-    // renombra al nombre final SOLO si el cierre fue limpio. Un cierre
-    // fallido o un cuelgue deja el .partial.mp4 (nunca un MP4 "bueno" falso).
+    // v1.5.1 (Frente B): el consumidor de grabación del núcleo escribe a
+    // .partial.mp4; stop-recording lo renombra al nombre final SOLO si el
+    // cierre fue limpio. Un cierre fallido deja el .partial.mp4 (nunca un
+    // MP4 "bueno" falso).
     currentRecordingPartialPath = currentRecordingPath.replace(/\.mp4$/i, '.partial.mp4');
     recordingProbe = createRecordingProbe();
 
-    if (ffmpegRecordProcess) {
-      try {
-        const oldProc = ffmpegRecordProcess;
-        ffmpegRecordProcess = null;
-        oldProc.removeAllListeners();
-        if (oldProc.stdin && !oldProc.stdin.destroyed) oldProc.stdin.end();
-        oldProc.kill('SIGINT');
-      } catch (e) {}
-    }
-
-    try {
-      // El mismo MediaStream Master contiene el video compuesto y el audio
-      // mezclado: una sola línea de tiempo evita desincronización A/V.
-      ffmpegRecordProcess = spawn(ffmpegPath, [
-        '-probesize', '2M',
-        '-analyzeduration', '1000000',
-        '-f', 'webm',
-        '-i', 'pipe:0',
-        '-map', '0:v:0',
-        '-map', '0:a?',
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        // Presupuesto único de bitrate v1.5.0: CRF 21 con techo 8M (antes
-        // CRF 17 / 16M ≈ 7,2 GB por hora de master).
-        '-crf', '21',
-        '-maxrate', '8M',
-        '-bufsize', '16M',
-        '-pix_fmt', 'yuv420p',
-        '-r', '30',
-        '-g', '60',
-        '-keyint_min', '30',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-ar', '48000',
-        '-movflags', '+faststart',
-        '-y',
-        currentRecordingPartialPath,
-        // v1.5.1 (Frente B): SEGUNDA SALIDA del MISMO proceso — detección de
-        // negro en la misma pasada (muestreo a 2 fps hacia el sumidero
-        // null). Sustituye a la pasada separada de blackdetect que en
-        // v1.5.0 corría EN SERIE tras el cierre (runRecordingVerification):
-        // ahora transcode + faststart + blackdetect son UNA sola pasada.
-        '-map', '0:v:0',
-        '-vf', 'fps=2,blackdetect=d=0.5:pix_th=0.10',
-        '-an',
-        '-f', 'null',
-        '-'
-      ], {
-        stdio: ['pipe', 'ignore', 'pipe']
-      });
-
-      if (ffmpegRecordProcess.stderr) {
-        ffmpegRecordProcess.stderr.on('data', (data) => {
-          const msg = data.toString();
-          feedRecordingProbe(msg);
-          if (msg.includes('Error') || msg.includes('fatal') || msg.includes('Opening') || msg.includes('frame=')) {
-            console.log('[FFmpeg Grabación]:', msg.trim());
-          }
-        });
-      }
-
-      ffmpegRecordProcess.on('error', (err) => {
-        console.error('Error FFmpeg Grabación:', err.message);
-        if (mainWindow && !mainWindow.isDestroyed() && !isStoppingRecording) {
-          mainWindow.webContents.send('recording-process-error', { error: err.message });
+    // v2.0.0 (núcleo nuevo): la grabación ya NO abre su propio FFmpeg ni
+    // recibe chunks propios del renderer: se engancha como consumidor
+    // con copia del flujo de programa del núcleo (electron/program-core.js).
+    // options.initialHeader ya no se necesita: el núcleo une al consumidor
+    // en el último keyframe con sus etiquetas de secuencia re-selladas.
+    programCore.attachRecording({ partialPath: currentRecordingPartialPath })
+      .then((attach) => {
+        if (!attach.success) {
+          resolve({ success: false, error: attach.error || 'El núcleo no pudo enganchar la grabación.' });
+          return;
         }
+        acquirePowerSaveBlocker('recording');
+        resolve({ success: true, path: currentRecordingPath, projectName: cleanProjectName });
+      })
+      .catch((err) => {
+        console.error('Fallo al iniciar grabación (núcleo):', err);
+        resolve({ success: false, error: err.message });
       });
-
-      const currentSpawnedProc = ffmpegRecordProcess;
-      currentSpawnedProc.on('close', (code, signal) => {
-        console.log('[FFmpeg Grabación] Proceso finalizó con código:', code, 'señal:', signal);
-        if (code !== 0 && code !== null && !isStoppingRecording && ffmpegRecordProcess === currentSpawnedProc && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('recording-process-error', { code, error: `FFmpeg finalizó inesperadamente (código ${code})` });
-        }
-        if (ffmpegRecordProcess === currentSpawnedProc) ffmpegRecordProcess = null;
-      });
-
-
-
-      const initialHeader = options?.initialHeader;
-      if (initialHeader && ffmpegRecordProcess.stdin && !ffmpegRecordProcess.stdin.destroyed) {
-        const headerBuffer = toSafeBuffer(initialHeader);
-        if (headerBuffer && headerBuffer.length > 0) {
-          const proc = ffmpegRecordProcess;
-          recordChunkQueue = writeChunkWithBackpressure(proc.stdin, headerBuffer).catch((error) => {
-            recordChunkError = error.message || String(error);
-            console.warn('[FFmpeg Grabación] No se pudo escribir la cabecera WebM:', recordChunkError);
-          });
-        }
-      }
-
-      acquirePowerSaveBlocker('recording');
-      resolve({ success: true, path: currentRecordingPath, projectName: cleanProjectName });
-    } catch (err) {
-      console.error('Fallo al iniciar grabación FFmpeg:', err);
-      resolve({ success: false, error: err.message });
-    }
   });
 });
 
+// v2.0.0 (núcleo nuevo): el renderer ya no envía chunks de grabación: la
+// grabación consume el flujo del núcleo dentro del proceso principal.
+// Este handler queda como no-op tolerante por compatibilidad del preload.
 ipcMain.handle('record-chunk', async (event, chunkBuffer) => {
-  const proc = ffmpegRecordProcess;
-  if (!proc?.stdin || proc.stdin.destroyed || !chunkBuffer) {
-    throw new Error('El codificador de grabación no está disponible.');
-  }
-  const buf = toSafeBuffer(chunkBuffer);
-  if (!buf || buf.length === 0) throw new Error('El segmento de grabación está vacío.');
-  recordChunkQueue = recordChunkQueue.then(() => writeChunkWithBackpressure(proc.stdin, buf)).catch((error) => {
-    recordChunkError = error.message || String(error);
-    console.warn('Error escribiendo chunk de grabación:', recordChunkError);
-    throw error;
-  });
-  await recordChunkQueue;
-  return { success: true, bytes: buf.length };
+  const buf = chunkBuffer ? toSafeBuffer(chunkBuffer) : null;
+  return { success: true, bytes: buf ? buf.length : 0 };
 });
 
 ipcMain.handle('flush-recording-chunks', async () => {
-  await recordChunkQueue;
-  return { success: !recordChunkError, error: recordChunkError };
+  const state = programCore.getRecordingState();
+  if (!state) return { success: true };
+  const error = state.failure || state.writeError || coreRecordingFailure || null;
+  return { success: !error, error };
 });
 
 // v1.5.0: si la finalización del MP4 falla, el parcial NO se borra: se
@@ -2098,136 +2009,104 @@ function sendFinalizeProgress(percent) {
 ipcMain.handle('stop-recording', async () => {
   isStoppingRecording = true;
   releasePowerSaveBlocker('recording');
-  await recordChunkQueue;
-  return new Promise((resolve) => {
-    if (ffmpegRecordProcess) {
-      const proc = ffmpegRecordProcess;
-      ffmpegRecordProcess = null;
-      try { proc.removeAllListeners('close'); proc.removeAllListeners('error'); } catch (e) {}
-      const recPath = currentRecordingPath;
-      // Progreso de finalización (v1.5.1): la codificación ocurrió EN VIVO
-      // en la misma pasada, así que al detener no hay un % de transcode que
-      // calcular: se reporta indeterminado (null) y 100 al terminar el
-      // cierre. La duración procesada (time=) ya la acumuló la sonda.
-      sendFinalizeProgress(null);
-      let finished = false;
-      let stopTimeout = null;
-      let forcedCloseTimeout = null;
+  const recPath = currentRecordingPath;
+  const partialInProgress = currentRecordingPartialPath;
+  // Progreso de finalización: la codificación ocurrió EN VIVO en el
+  // núcleo; al detener no hay transcode que esperar: se reporta
+  // indeterminado (null) y 100 al terminar el cierre del consumidor.
+  sendFinalizeProgress(null);
 
-      const finishAndGenerateThumb = async () => {
-        if (finished) return;
-        finished = true;
-        ffmpegRecordProcess = null;
+  const stateBefore = programCore.getRecordingState();
+  if (!stateBefore && !recPath) {
+    return { success: false, error: 'No hay una grabación activa para finalizar.' };
+  }
+  const stopResult = await programCore.stopRecording();
+  const bytesWritten = stateBefore?.bytesWritten || 0;
+  const failure = stateBefore?.failure || stateBefore?.writeError || coreRecordingFailure || stopResult.error || null;
+  coreRecordingFailure = null;
+  currentRecordingPartialPath = null;
 
-        // Cierre limpio: el .partial.mp4 pasa a ser el master final. La
-        // verificación de negro salió de la MISMA pasada de grabación
-        // (buildRecordingVerification): aquí ya no se lanza ningún FFmpeg
-        // de verificación ni de faststart aparte.
-        const partialInProgress = currentRecordingPartialPath;
-        try {
-          if (recPath && partialInProgress && partialInProgress !== recPath && fs.existsSync(partialInProgress)) {
-            fs.renameSync(partialInProgress, recPath);
-          }
-        } catch (e) { console.warn('[FFmpeg Grabación] No se pudo renombrar el parcial a master:', e.message); }
-        currentRecordingPartialPath = null;
+  const partialExists = partialInProgress && fs.existsSync(partialInProgress);
+  if (stopResult.timedOut || (stopResult.code !== 0 && stopResult.code !== null) || failure) {
+    // Cierre no limpio: NO se renombra; el parcial se conserva como
+    // .partial.mp4 para diagnóstico, nunca como grabación buena (v1.5.0).
+    currentRecordingPath = null;
+    return {
+      success: false,
+      path: recPath,
+      partial: true,
+      partialPath: partialExists ? partialInProgress : null,
+      error: failure || (stopResult.timedOut
+        ? 'FFmpeg no cerró el archivo de grabación dentro del tiempo permitido. El parcial se conservó como .partial.mp4 para diagnóstico; no es una grabación válida.'
+        : `FFmpeg terminó con código ${stopResult.code}.`),
+    };
+  }
+  if (!partialExists) {
+    currentRecordingPath = null;
+    return { success: false, path: recPath, error: 'FFmpeg no creó un archivo MP4 válido.' };
+  }
+  if (bytesWritten === 0) {
+    return { success: false, path: recPath, partial: true, partialPath: partialInProgress, error: 'No se recibieron datos de video para la grabación.' };
+  }
 
-        if (recPath && fs.existsSync(recPath) && fs.statSync(recPath).size > 0) {
-          const verification = buildRecordingVerification();
-          sendFinalizeProgress(100);
-          if (verification.blackWarning) {
-            console.warn(`[FFmpeg Grabación] ADVERTENCIA: el master salió >=90% negro (${recPath}).`);
-          }
-          const stats = fs.statSync(recPath);
-          console.log(`[FFmpeg Grabación] Master MP4 finalizado: ${recPath} (${stats.size} bytes)`);
-          const thumbPath = recPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
-          try {
-            const thumbProcess = spawn(ffmpegPath, [
-              '-y',
-              '-ss', '00:00:00.800',
-              '-i', recPath,
-              '-vframes', '1',
-              '-q:v', '2',
-              thumbPath
-            ]);
-            let thumbResolved = false;
-            const thumbTimeout = setTimeout(() => {
-              if (thumbResolved) return;
-              thumbResolved = true;
-              try { thumbProcess.kill(); } catch (e) {}
-              resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, ...verification, thumbnailError: 'No se pudo generar la miniatura del video.' });
-            }, 15000);
-            thumbProcess.on('close', (code) => {
-              if (thumbResolved) return;
-              thumbResolved = true;
-              clearTimeout(thumbTimeout);
-              currentRecordingPath = null;
-              if (code === 0 && fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 0) {
-                resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, ...verification, thumbnailPath: thumbPath });
-              } else {
-                resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, ...verification, thumbnailError: 'El MP4 se guardó, pero no se pudo generar su miniatura.' });
-              }
-            });
-            thumbProcess.on('error', (err) => {
-              if (thumbResolved) return;
-              thumbResolved = true;
-              clearTimeout(thumbTimeout);
-              currentRecordingPath = null;
-              resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, ...verification, thumbnailError: `No se pudo generar la miniatura: ${err.message}` });
-            });
-            return;
-          } catch (e) {
-            currentRecordingPath = null;
-            resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, ...verification, thumbnailError: `No se pudo iniciar la miniatura: ${e.message}` });
-            return;
-          }
+  // Cierre limpio: el .partial.mp4 pasa a ser el máster final. La
+  // verificación de negro salió de la MISMA pasada del consumidor
+  // (buildRecordingVerification): no se lanza ningún FFmpeg de
+  // verificación ni de faststart aparte.
+  try {
+    if (partialInProgress !== recPath) fs.renameSync(partialInProgress, recPath);
+  } catch (e) { console.warn('[FFmpeg Grabación] No se pudo renombrar el parcial a master:', e.message); }
+
+  if (!(recPath && fs.existsSync(recPath) && fs.statSync(recPath).size > 0)) {
+    currentRecordingPath = null;
+    return { success: false, path: recPath, error: 'FFmpeg no creó un archivo MP4 válido.' };
+  }
+  const verification = buildRecordingVerification();
+  sendFinalizeProgress(100);
+  if (verification.blackWarning) {
+    console.warn(`[FFmpeg Grabación] ADVERTENCIA: el master salió >=90% negro (${recPath}).`);
+  }
+  const stats = fs.statSync(recPath);
+  console.log(`[FFmpeg Grabación] Master MP4 finalizado: ${recPath} (${stats.size} bytes)`);
+
+  // Miniatura con el mismo patrón asíncrono de siempre (proceso aparte,
+  // timeout 15 s; su fallo no invalida el máster).
+  const thumbPath = recPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
+  return await new Promise((resolve) => {
+    let thumbResolved = false;
+    const done = (extra) => {
+      if (thumbResolved) return;
+      thumbResolved = true;
+      currentRecordingPath = null;
+      resolve({ success: true, path: recPath, projectName: currentRecordingProjectName, ...verification, ...extra });
+    };
+    try {
+      const thumbProcess = spawn(ffmpegPath, [
+        '-y',
+        '-ss', '00:00:00.800',
+        '-i', recPath,
+        '-vframes', '1',
+        '-q:v', '2',
+        thumbPath
+      ]);
+      const thumbTimeout = setTimeout(() => {
+        try { thumbProcess.kill(); } catch (e) {}
+        done({ thumbnailError: 'No se pudo generar la miniatura del video.' });
+      }, 15000);
+      thumbProcess.on('close', (code) => {
+        clearTimeout(thumbTimeout);
+        if (code === 0 && fs.existsSync(thumbPath) && fs.statSync(thumbPath).size > 0) {
+          done({ thumbnailPath: thumbPath });
+        } else {
+          done({ thumbnailError: 'El MP4 se guardó, pero no se pudo generar su miniatura.' });
         }
-        currentRecordingPath = null;
-        resolve({ success: false, path: recPath, error: 'FFmpeg no creó un archivo MP4 válido.' });
-      };
-
-      proc.on('close', (code) => {
-        if (stopTimeout) clearTimeout(stopTimeout);
-        if (forcedCloseTimeout) clearTimeout(forcedCloseTimeout);
-        console.log('[FFmpeg Grabación] Proceso cerrado limpiamente con código:', code);
-        if (code !== 0 || recordChunkError) {
-          finished = true;
-          if (ffmpegRecordProcess === proc) ffmpegRecordProcess = null;
-          // v1.5.0/v1.5.1: NO se borra el parcial. La grabación ya se escribió
-          // como .partial.mp4 desde el inicio; un MP4 sin moov no es la
-          // grabación, pero se conserva para diagnóstico/recuperación y el
-          // resultado lo reporta como parcial, nunca como éxito.
-          const partialPath = (currentRecordingPartialPath && fs.existsSync(currentRecordingPartialPath)) ? currentRecordingPartialPath : preservePartialRecording(recPath);
-          currentRecordingPartialPath = null;
-          resolve({ success: false, path: recPath, partial: true, partialPath, error: recordChunkError || `FFmpeg terminó con código ${code}.` });
-          return;
-        }
-        finishAndGenerateThumb();
       });
-
-      // Señalizar fin de stream a FFmpeg para que escriba las cabeceras completas y faststart
-      try {
-        if (proc.stdin && !proc.stdin.destroyed) {
-          proc.stdin.end();
-        }
-      } catch (e) {}
-
-      // Dejar que FFmpeg finalice el contenedor y mueva el índice MP4 antes de terminar.
-      stopTimeout = setTimeout(() => {
-        if (!finished) {
-          console.error('[FFmpeg Grabación] FFmpeg tardó demasiado en cerrar; terminando con error.');
-          try { proc.kill(); } catch (e) {}
-          forcedCloseTimeout = setTimeout(() => {
-            if (finished) return;
-            finished = true;
-            const partialPath = (currentRecordingPartialPath && fs.existsSync(currentRecordingPartialPath)) ? currentRecordingPartialPath : preservePartialRecording(recPath);
-            currentRecordingPartialPath = null;
-            if (ffmpegRecordProcess === proc) ffmpegRecordProcess = null;
-            resolve({ success: false, path: recPath, partial: true, partialPath, error: 'FFmpeg no cerró el archivo de grabación dentro del tiempo permitido. El parcial se conservó como .partial.mp4 para diagnóstico; no es una grabación válida.' });
-          }, 5000);
-        }
-      }, 60000);
-    } else {
-      resolve({ success: false, error: 'No hay una grabación activa para finalizar.' });
+      thumbProcess.on('error', (err) => {
+        clearTimeout(thumbTimeout);
+        done({ thumbnailError: `No se pudo generar la miniatura: ${err.message}` });
+      });
+    } catch (e) {
+      done({ thumbnailError: `No se pudo iniciar la miniatura: ${e.message}` });
     }
   });
 });
@@ -2650,33 +2529,28 @@ ipcMain.handle('export-highlight-clip', async (event, { sourcePath, startTime, d
 });
 
 ipcMain.handle('cancel-recording', async () => {
-  const proc = ffmpegRecordProcess;
   const recPath = currentRecordingPath;
   const partialPath = currentRecordingPartialPath;
-  ffmpegRecordProcess = null;
   currentRecordingPath = null;
   currentRecordingPartialPath = null;
   recordingProbe = null;
-  if (!proc && !isStoppingRecording) {
+  coreRecordingFailure = null;
+  // v2.0.0: el consumidor de grabación vive en el núcleo; se desengancha
+  // y se mata sin finalizar (el archivo parcial se elimina abajo).
+  const hadRecording = !!programCore.getRecordingState();
+  programCore.detachRecording();
+  if (!hadRecording && !isStoppingRecording) {
     return { success: true };
   }
-  if (proc && proc.exitCode == null && !proc.killed) {
-    await new Promise((resolve) => {
-      const timeout = setTimeout(resolve, 2500);
-      proc.once('close', () => { clearTimeout(timeout); resolve(); });
-      try { proc.kill(); } catch { clearTimeout(timeout); resolve(); }
-    });
-  }
-  try { await recordChunkQueue; } catch {}
-  recordChunkQueue = Promise.resolve();
-  recordChunkError = null;
-  if (proc && recPath) {
+  isStoppingRecording = false;
+  releasePowerSaveBlocker('recording');
+  if (recPath) {
     try { await fs.promises.unlink(recPath); } catch (error) {
       if (error.code !== 'ENOENT') return { success: false, error: error.message };
     }
   }
-  // La grabación en curso vive en el .partial.mp4 (v1.5.1): cancelar
-  // también lo elimina, para no dejar parciales huérfanos en el proyecto.
+  // La grabación en curso vive en el .partial.mp4: cancelar también lo
+  // elimina, para no dejar parciales huérfanos en el proyecto.
   if (partialPath && partialPath !== recPath) {
     try { await fs.promises.unlink(partialPath); } catch (error) {
       if (error.code !== 'ENOENT') return { success: false, error: error.message };
@@ -2958,26 +2832,22 @@ ipcMain.handle('scan-network-cameras', async () => {
 
 // ============================================================================
 // TRANSMISIÓN EN VIVO REAL / MULTI-STREAMING SIMULTÁNEO (FACEBOOK LIVE RTMPS + YOUTUBE + TIKTOK)
-// Cada destino corre en su propio worker FFmpeg dedicado para evitar caídas y asegurar handshake TLS
+// v2.0.0: cada destino corre en su propio worker de COPIA (sin recodificar)
+// alimentado por el grafo único del núcleo (electron/program-core.js).
 // ============================================================================
 // ============================================================================
-// STREAMING v1.5.0 — cadena de arranque sana, reconexión por destino,
-// telemetría real y diagnóstico persistente.
-// Corrección de raíz (informe forense, Frente D):
-//  - streamInitHeader se limpia al INICIAR (antes una sesión anterior podía
-//    inyectar su cabecera EBML a todos los workers nuevos).
-//  - Encoder por defecto libx264 zerolatency (ruta determinista); h264_mf
-//    queda como reintento único si el arranque muere por error de encoder.
-//  - Si un destino cae tras conectar, se reconecta con backoff
-//    5/10/20/40/60 s (máx. 5) y la UI recibe eventos por destino por el canal
-//    'stream-destination-status'. Un destino muerto NUNCA desaparece en silencio.
-//  - Cola de envío con tope (~32 MB): al exceder se marca reinicio del destino.
-//  - stderr con memoria: anillo por destino; al fallar, el fragmento viaja en
-//    el evento de error y se anexa a logs/streaming.log en userData.
-//  - Telemetría REAL: se parsea frame=/fps=/bitrate= del stderr de FFmpeg y
-//    se envía como máximo 1 vez/s por destino, sin valores de relleno.
+// STREAMING — el grafo vive en el núcleo v2.0.0 (electron/program-core.js).
+// Lo que la v1.5.0–v1.7.x hacía en esta sección (un worker FFmpeg POR
+// destino transcodificando el WebM del renderer, cabecera EBML compartida
+// streamInitHeader, reconexión por destino) se conserva como disciplina
+// — backoff 5/10/20/40/60, cola con tope de 32 MB, stderr con memoria,
+// telemetría real parseada sin valores de relleno, log persistente —
+// pero la ejecuta el núcleo sobre trabajadores de COPIA: la única
+// codificación del programa ocurre una sola vez y se reparte.
+// La sonda de codificador (v1.7.0: h264_mf primero, libx264 cacheado de
+// respaldo, volteo si el arranque real muere por encoder) alimenta SOLO
+// el modo WebM de respaldo del núcleo.
 // ============================================================================
-let streamInitHeader = null;
 let streamingSessionActive = false;
 
 // v1.6.1: powerSaveBlocker acotado a streaming/grabación en curso (antes se
@@ -3001,9 +2871,8 @@ function releasePowerSaveBlocker(reason) {
     powerSaveBlockerId = null;
   }
 }
-const STREAM_RECONNECT_DELAYS_MS = [5000, 10000, 20000, 40000, 60000];
-const STREAM_QUEUE_CAP_BYTES = 32 * 1024 * 1024;
-const STREAM_STARTUP_TIMEOUT_MS = 20000;
+// La reconexión con backoff, la cola con tope y el timeout de arranque
+// viven ahora en electron/program-core.js (mismos valores históricos).
 const STREAM_HEADER_WAIT_MS = 4000;
 
 function appendStreamLog(line) {
@@ -3053,244 +2922,77 @@ function streamFailureFields(kind) {
   return { kind: k, userMessage: STREAM_ERROR_USER_MESSAGES[k] || STREAM_ERROR_USER_MESSAGES.unknown };
 }
 
-function streamStderrTail(entry, maxChars = 500) {
-  return redactStreamUrl((entry.stderrRing || []).join('\n'), entry.url).slice(-maxChars);
-}
+// ============================================================================
+// NÚCLEO EN VIVO v2.0.0 (Raíz A, reemplazo): el grafo de programa vive en
+// electron/program-core.js — UN proceso codificador/mezclador y reparto
+// con copia a destinos y grabación. Aquí quedan: la sesión de codificador
+// (sonda), la instancia del núcleo con sus puentes a la UI, y los handlers
+// IPC. Los workers por destino que transcodificaban (v1.5.0–v1.7.x) y la
+// cabecera EBML compartida (streamInitHeader) desaparecen: el núcleo une
+// a cada consumidor en el último keyframe con etiquetas re-selladas.
+// ============================================================================
+const { createProgramCore } = require('./program-core');
 
-function enqueueStreamChunk(entry, buf) {
-  entry.queuedBytes += buf.length;
-  entry.writeQueue = entry.writeQueue
-    .then(() => writeChunkWithBackpressure(entry.process.stdin, buf))
-    .then(() => { entry.queuedBytes -= buf.length; })
-    .catch((error) => {
-      entry.queuedBytes -= buf.length;
-      entry.writeError = error.message || String(error);
+// Sesión de codificador de streaming (v1.7.0, Raíz A): la sonda corre
+// perezosa al arrancar el primer destino y su resultado queda cacheado
+// para toda la sesión (electron/stream-encoder.js). En el núcleo v2.0.0
+// la usa SOLO el modo WebM de respaldo (la única transcodificación).
+const streamEncoderSession = createStreamEncoderSession({
+  spawnImpl: spawn,
+  ffmpegPath,
+  log: (line) => appendStreamLog(line),
+});
+
+// Destinos vivos según el núcleo, para reenviar la telemetría del ÚNICO
+// proceso de programa a cada destino conectado (la telemetría es del
+// programa; se etiqueta por destino para no cambiar el contrato de la UI).
+const liveDestinationEntries = new Map();
+
+const programCore = createProgramCore({
+  spawnImpl: spawn,
+  ffmpegPath,
+  sessionEncoder: streamEncoderSession,
+  // El núcleo espera classifyError(texto) -> kind (string), que es
+  // exactamente lo que devuelve el clasificador compartido.
+  classifyError: classifyStreamError,
+  log: (line) => appendStreamLog(line),
+  onDestinationStatus: (entry, status, extra = {}) => {
+    if (status === 'live') liveDestinationEntries.set(entry.id, entry);
+    if (status === 'failed') liveDestinationEntries.delete(entry.id);
+    sendStreamDestinationStatus(entry, status, {
+      ...extra,
+      ...(extra.error ? { error: redactStreamUrl(extra.error, entry.url) } : {}),
+      ...(extra.stderrTail ? { stderrTail: redactStreamUrl(extra.stderrTail, entry.url) } : {}),
     });
-  return entry.writeQueue;
-}
-
-function buildStreamWorkerArgs(entry, threadsPerDestination) {
-  const encoderArgs = entry.encoder === 'h264_mf'
-    ? ['-c:v', 'h264_mf', '-b:v', '4500k']
-    : [
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-tune', 'zerolatency',
-        '-threads', String(threadsPerDestination),
-        '-profile:v', 'high',
-        '-level', '4.1',
-        '-b:v', '4500k',
-      ];
-  return [
-    '-probesize', '8M',
-    '-analyzeduration', '2000000',
-    '-fflags', '+discardcorrupt+nobuffer',
-    '-f', 'webm',
-    '-i', 'pipe:0',
-    ...encoderArgs,
-    '-maxrate', '5000k',
-    '-bufsize', '5000k',
-    '-pix_fmt', 'yuv420p',
-    '-g', '60',
-    '-keyint_min', '30',
-    '-r', '30',
-    '-c:a', 'aac',
-    '-b:a', '160k',
-    '-ar', '48000',
-    '-ac', '2',
-    '-max_interleave_delta', '0',
-    '-flvflags', 'no_duration_filesize',
-    '-rtmp_buffer', '1000',
-    '-rtmp_live', 'live',
-    '-rw_timeout', '30000000',
-    '-f', 'flv',
-    entry.url,
-  ];
-}
-
-// Lanza (o relanza) el FFmpeg de un destino. Devuelve una promesa que se
-// resuelve con { success, error?, kind? } cuando el destino conecta (frame=)
-// o el arranque fracasa (cierre, error o timeout de 20 s). Nunca rechaza.
-function spawnStreamWorker(entry, threadsPerDestination) {
-  return new Promise((resolveStartup) => {
-    if (entry.reconnectTimer) { clearTimeout(entry.reconnectTimer); entry.reconnectTimer = null; }
-    if (entry.startupTimer) { clearTimeout(entry.startupTimer); entry.startupTimer = null; }
-    try { entry.process?.stdin?.destroy(); entry.process?.kill('SIGINT'); } catch (e) {}
-    entry.connected = false;
-    entry.closed = false;
-    entry.headerSent = false;
-    entry.needsRestart = false;
-    entry.writeQueue = Promise.resolve();
-    entry.queuedBytes = 0;
-    entry.stderrRing = [];
-
-    let proc;
-    try {
-      proc = spawn(ffmpegPath, buildStreamWorkerArgs(entry, threadsPerDestination), { stdio: ['pipe', 'ignore', 'pipe'] });
-    } catch (error) {
-      resolveStartup({ success: false, error: error.message, kind: classifyStreamError(error.message) });
-      return;
+    if (status === 'live' && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('stream-status', {
+        active: true,
+        destinations: [...liveDestinationEntries.values()].map(e => e.target),
+      });
     }
-    entry.process = proc;
-    let startupSettled = false;
-    const settleStartup = (result) => {
-      if (startupSettled) return;
-      startupSettled = true;
-      if (entry.startupTimer) { clearTimeout(entry.startupTimer); entry.startupTimer = null; }
-      if (!result.success) { try { proc.kill('SIGINT'); } catch (e) {} }
-      resolveStartup(result);
-    };
-
-    // Cabecera EBML de inmediato para decodificar desde el byte 0.
-    if (streamInitHeader && proc.stdin && !proc.stdin.destroyed) {
-      entry.headerSent = true;
-      enqueueStreamChunk(entry, streamInitHeader);
+  },
+  onTelemetry: ({ fps, bitrate, droppedFrames }) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    for (const entry of liveDestinationEntries.values()) {
+      mainWindow.webContents.send('stream-telemetry', {
+        targetId: entry.id,
+        targetName: entry.name,
+        fps,
+        bitrate,
+        droppedFrames,
+        health: droppedFrames > 15 ? 'warning' : 'excellent',
+      });
     }
-
-    proc.stderr.on('data', (data) => {
-      if (entry.process !== proc) return; // proceso viejo de un respawn
-      const message = data.toString();
-      for (const line of message.split(/\r?\n/)) {
-        if (line.trim()) {
-          entry.stderrRing.push(line.trim());
-          if (entry.stderrRing.length > 40) entry.stderrRing.shift();
-        }
-      }
-
-      if (!entry.connected) {
-        const fatal = message.match(/connection refused|connection timed out|network is unreachable|could not write header|error opening output|server error|authorization failed|access denied|invalid stream key|handshake failed|tls[^\r\n]*(?:error|fail)|failed to resolve|no route to host|input\/output error|permission denied/i);
-        if (fatal) {
-          settleStartup({ success: false, error: fatal[0], kind: classifyStreamError(message) });
-        }
-      }
-
-      const frameMatch = message.match(/frame=\s*(\d+)/);
-      if (frameMatch && !entry.connected) {
-        entry.connected = true;
-        entry.everConnected = true;
-        entry.reconnectAttempts = 0;
-        appendStreamLog(`${entry.name}: EN VIVO (encoder ${entry.encoder}).`);
-        sendStreamDestinationStatus(entry, 'live');
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('stream-status', { active: true, destinations: activeStreamWorkers.filter(w => w.connected).map(w => w.target) });
-        }
-        settleStartup({ success: true });
-      }
-
-      // Telemetría real: solo valores parseados, máx. 1 vez/s por destino.
-      if (entry.connected && frameMatch) {
-        const now = Date.now();
-        const fpsMatch = message.match(/fps=\s*([\d.]+)/);
-        const bitrateMatch = message.match(/bitrate=\s*([\d.]+\s*\w+\/s)/);
-        const dropMatch = message.match(/drop=\s*(\d+)/);
-        if (dropMatch) entry.lastDroppedFrames = parseInt(dropMatch[1], 10);
-        if (fpsMatch && bitrateMatch && now - (entry.lastTelemetryAt || 0) >= 1000) {
-          entry.lastTelemetryAt = now;
-          const dropped = entry.lastDroppedFrames || 0;
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('stream-telemetry', {
-              targetId: entry.id,
-              targetName: entry.name,
-              fps: parseFloat(fpsMatch[1]),
-              bitrate: bitrateMatch[1],
-              droppedFrames: dropped,
-              health: dropped > 15 ? 'warning' : 'excellent',
-            });
-          }
-        }
-      }
-    });
-
-    proc.once('error', (error) => {
-      if (entry.process !== proc) return;
-      if (!startupSettled) {
-        settleStartup({ success: false, error: error.message, kind: classifyStreamError(error.message) });
-      } else if (entry.connected) {
-        handleStreamWorkerDown(entry, `Error del proceso FFmpeg: ${error.message}`);
-      }
-    });
-
-    proc.once('close', (code, signal) => {
-      if (entry.process !== proc) return;
-      entry.closed = true;
-      entry.connected = false;
-      if (!startupSettled) {
-        const tail = streamStderrTail(entry, 300);
-        settleStartup({
-          success: false,
-          error: `FFmpeg cerró antes de conectar (código ${code ?? signal ?? 'desconocido'}).${tail ? ` Última salida: ${tail}` : ''}`,
-          kind: classifyStreamError(entry.stderrRing.join('\n')),
-        });
-        return;
-      }
-      if (entry.everConnected && !entry.intentionalStop) {
-        handleStreamWorkerDown(entry, `FFmpeg se cerró (código ${code ?? signal ?? 'desconocido'}).`);
-      }
-    });
-
-    entry.startupTimer = setTimeout(() => {
-      if (!entry.connected) {
-        const tail = streamStderrTail(entry, 300);
-        settleStartup({
-          success: false,
-          error: `Tiempo agotado (20 s) esperando que el servidor acepte el video.${tail ? ` Última salida: ${tail}` : ''}`,
-          kind: classifyStreamError(entry.stderrRing.join('\n')),
-        });
-        try { proc.kill('SIGINT'); } catch (e) {}
-      }
-    }, STREAM_STARTUP_TIMEOUT_MS);
-  });
-}
-
-// Un destino que ya había conectado cayó: avisar, registrar y reconectar.
-function handleStreamWorkerDown(entry, reason) {
-  if (entry.intentionalStop || !streamingSessionActive) return;
-  entry.connected = false;
-  const tail = streamStderrTail(entry);
-  const downKind = classifyStreamError(`${reason}\n${tail || ''}`);
-  appendStreamLog(`${entry.name}: CAÍDO. ${reason}${tail ? `\n  stderr: ${tail.replace(/\n/g, ' | ')}` : ''}`);
-  sendStreamDestinationStatus(entry, 'down', {
-    error: redactStreamUrl(reason, entry.url),
-    stderrTail: tail || undefined,
-    kind: downKind,
-  });
-
-  if (entry.reconnectAttempts >= STREAM_RECONNECT_DELAYS_MS.length) {
-    appendStreamLog(`${entry.name}: reconexión agotada (5 intentos). Queda marcado como fallido.`);
-    sendStreamDestinationStatus(entry, 'failed', {
-      error: redactStreamUrl(reason, entry.url),
-      stderrTail: tail || undefined,
-      kind: downKind,
-    });
-    if (activeStreamWorkers.length > 0 && activeStreamWorkers.every(w => !w.connected && w.reconnectAttempts >= STREAM_RECONNECT_DELAYS_MS.length && !w.reconnectTimer)) {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('stream-status', { active: false, destinations: [] });
-      }
+  },
+  onRecordingStderr: (text) => { feedRecordingProbe(text); },
+  onRecordingFailed: (message) => {
+    coreRecordingFailure = message;
+    appendStreamLog(`Grabación: ${message}`);
+    if (mainWindow && !mainWindow.isDestroyed() && !isStoppingRecording) {
+      mainWindow.webContents.send('recording-process-error', { error: message });
     }
-    return;
-  }
-
-  const delay = STREAM_RECONNECT_DELAYS_MS[entry.reconnectAttempts];
-  entry.reconnectAttempts += 1;
-  sendStreamDestinationStatus(entry, 'reconnecting', { nextRetryMs: delay });
-  entry.reconnectTimer = setTimeout(async () => {
-    entry.reconnectTimer = null;
-    if (entry.intentionalStop || !streamingSessionActive) return;
-    const availableCores = Math.max(1, os.cpus().length - 1);
-    const threads = Math.max(1, Math.min(4, Math.floor(availableCores / Math.max(1, activeStreamWorkers.length))));
-    const result = await spawnStreamWorker(entry, threads);
-    if (!result.success && !entry.intentionalStop && streamingSessionActive) {
-      handleStreamWorkerDown(entry, result.error || 'La reconexión no logró conectar.');
-    }
-  }, delay);
-}
-
-function destroyStreamWorker(entry) {
-  entry.intentionalStop = true;
-  if (entry.reconnectTimer) { clearTimeout(entry.reconnectTimer); entry.reconnectTimer = null; }
-  if (entry.startupTimer) { clearTimeout(entry.startupTimer); entry.startupTimer = null; }
-  try { entry.process?.stdin?.destroy(); entry.process?.kill('SIGINT'); } catch (e) {}
-}
+  },
+});
 
 ipcMain.handle('start-streaming', async (_event, payload = {}) => {
   const targets = typeof payload === 'string'
@@ -3301,102 +3003,54 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
 
   if (!targets.length) return { success: false, error: 'No se proporcionaron destinos con una clave de transmisión.' };
 
-  // Cadena sana: cerrar la sesión anterior y LIMPIAR la cabecera al iniciar,
-  // para que ningún worker nuevo reciba la cabecera EBML de otra sesión.
-  streamingSessionActive = false;
-  for (const worker of activeStreamWorkers) destroyStreamWorker(worker);
-  activeStreamWorkers = [];
+  // Cadena sana: cerrar la sesión anterior antes de abrir la nueva.
+  programCore.setSessionActive(false);
+  await programCore.removeAllDestinations();
+  liveDestinationEntries.clear();
   streamDestinations = targets;
-  streamInitHeader = null;
-  streamStartupInProgress = true;
 
-  if (payload.initialHeader) {
-    const passedHeader = toSafeBuffer(payload.initialHeader);
-    if (passedHeader && passedHeader.length > 0) {
-      streamInitHeader = passedHeader;
-    }
-  }
+  programCore.setSessionActive(true);
+  streamingSessionActive = true;
 
-  // Sin cabecera no hay decodificación posible: esperar hasta 4 s a que el
-  // motor master entregue su primer chunk (llega por 'stream-chunk') y, si no
-  // llega, fallar con un error claro en vez de quemar el timeout de arranque.
-  if (!streamInitHeader) {
-    const waitStart = Date.now();
-    while (!streamInitHeader && Date.now() - waitStart < STREAM_HEADER_WAIT_MS) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-  }
-  if (!streamInitHeader) {
-    streamStartupInProgress = false;
+  // Sin flujo no hay nada que repartir: el motor del renderer ya está
+  // alimentando el núcleo; se espera a que el flujo tenga cabecera y
+  // keyframe (unión posible) con el mismo presupuesto de 4 s de antes.
+  const flowReady = await programCore.waitForFlow(STREAM_HEADER_WAIT_MS);
+  if (!flowReady) {
+    programCore.setSessionActive(false);
+    streamingSessionActive = false;
     streamDestinations = [];
-    appendStreamLog('Arranque abortado: el motor master no entregó cabecera de vídeo en 4 s.');
+    appendStreamLog('Arranque abortado: el núcleo no recibió flujo de programa en 4 s.');
     return { success: false, error: 'El motor de vídeo no entregó la cabecera inicial en 4 segundos: no hay fotogramas del programa para transmitir. Revisa que la cámara de programa esté activa.' };
   }
 
-  streamingSessionActive = true;
-  const availableCores = Math.max(1, os.cpus().length - 1);
-  const threadsPerDestination = Math.max(1, Math.min(4, Math.floor(availableCores / targets.length)));
-
   const startupResults = await Promise.all(targets.map(async (target) => {
-    const entry = {
+    const result = await programCore.addDestination({
       id: target.id,
       name: target.name,
       url: target.url.trim(),
-      target,
-      process: null,
-      connected: false,
-      everConnected: false,
-      closed: false,
-      encoder: 'libx264',
-      writeQueue: Promise.resolve(),
-      queuedBytes: 0,
-      needsRestart: false,
-      writeError: null,
-      stderrRing: [],
-      reconnectAttempts: 0,
-      reconnectTimer: null,
-      startupTimer: null,
-      lastTelemetryAt: 0,
-      lastDroppedFrames: 0,
-      headerSent: false,
-      intentionalStop: false,
-    };
-    activeStreamWorkers.push(entry);
-
-    let result = await spawnStreamWorker(entry, threadsPerDestination);
-    // Reintento único con h264_mf si libx264 murió por error de encoder.
-    if (!result.success && result.kind === 'encoder' && entry.encoder === 'libx264') {
-      appendStreamLog(`${entry.name}: libx264 falló en el arranque (encoder); reintentando con h264_mf.`);
-      entry.encoder = 'h264_mf';
-      result = await spawnStreamWorker(entry, threadsPerDestination);
-    }
+    });
     if (!result.success) {
-      const tail = streamStderrTail(entry);
-      appendStreamLog(`${entry.name}: NO conectó. ${result.error || ''}${tail ? `\n  stderr: ${tail.replace(/\n/g, ' | ')}` : ''}`);
-      sendStreamDestinationStatus(entry, 'failed', {
-        error: redactStreamUrl(result.error || 'Error de conexión RTMP/RTMPS.', entry.url),
-        stderrTail: tail || undefined,
+      appendStreamLog(`${target.name}: NO conectó. ${result.error || ''}`);
+      const entryForStatus = result.entry || { id: target.id, name: target.name, url: target.url.trim(), target };
+      sendStreamDestinationStatus(entryForStatus, 'failed', {
+        error: redactStreamUrl(result.error || 'Error de conexión RTMP/RTMPS.', entryForStatus.url),
         kind: result.kind,
       });
-      entry.intentionalStop = true;
-      try { entry.process?.stdin?.destroy(); entry.process?.kill('SIGINT'); } catch (e) {}
-      activeStreamWorkers = activeStreamWorkers.filter(w => w !== entry);
-      return { target, success: false, error: redactStreamUrl(result.error || 'Error de conexión RTMP/RTMPS.', entry.url), ...streamFailureFields(result.kind) };
+      return { target, success: false, error: redactStreamUrl(result.error || 'Error de conexión RTMP/RTMPS.', entryForStatus.url), ...streamFailureFields(result.kind) };
     }
-    return { target, success: true, worker: entry };
+    return { target, success: true };
   }));
 
-  streamStartupInProgress = false;
-  const connectedDestinations = startupResults
-    .filter(result => result.success && result.worker && !result.worker.closed)
-    .map(result => result.target);
-  const failures = startupResults.filter(result => !result.success).map(result => ({ name: result.target.name, error: result.error, kind: result.kind, userMessage: result.userMessage }));
+  const connectedDestinations = startupResults.filter(r => r.success).map(r => r.target);
+  const failures = startupResults.filter(r => !r.success).map(r => ({ name: r.target.name, error: r.error, kind: r.kind, userMessage: r.userMessage }));
   if (!connectedDestinations.length) {
+    programCore.setSessionActive(false);
     streamingSessionActive = false;
-    for (const worker of activeStreamWorkers) destroyStreamWorker(worker);
-    activeStreamWorkers = [];
+    await programCore.removeAllDestinations();
+    liveDestinationEntries.clear();
     streamDestinations = [];
-    return { success: false, error: failures.map(failure => `${failure.name}: ${failure.error}`).join('\n') || 'No se pudo conectar con el servidor de transmisión.', failures };
+    return { success: false, error: failures.map(f => `${f.name}: ${f.error}`).join('\n') || 'No se pudo conectar con el servidor de transmisión.', failures };
   }
 
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -3406,61 +3060,41 @@ ipcMain.handle('start-streaming', async (_event, payload = {}) => {
   return { success: true, connectedDestinations, failures };
 });
 
-// Receptor de chunks de audio/video del Master en vivo
+// Entradas del flujo de programa (núcleo v2.0.0). 'stream-chunk' es la
+// ruta WebM de respaldo; 'program-video-chunk'/'program-audio-chunk' son
+// la ruta WebCodecs (H.264 elemental + audio WebM/Opus).
 ipcMain.on('stream-chunk', (event, chunkBuffer) => {
   if (!chunkBuffer) return;
-  try {
-    const buf = Buffer.isBuffer(chunkBuffer) ? chunkBuffer : Buffer.from(chunkBuffer);
-    const isHeaderChunk = buf.length >= 4 && buf[0] === 0x1A && buf[1] === 0x45 && buf[2] === 0xDF && buf[3] === 0xA3;
-    if (!streamInitHeader || isHeaderChunk) {
-      streamInitHeader = buf;
-    }
-    if (activeStreamWorkers.length === 0) return;
-    for (const worker of activeStreamWorkers) {
-      if (!worker.process?.stdin || worker.process.stdin.destroyed) continue;
-      if (isHeaderChunk) worker.headerSent = true;
-      // Cola con tope: un destino lento no acumula RAM ni retraso sin fin;
-      // se marca para reinicio (su cierre dispara la reconexión con backoff).
-      if (worker.needsRestart) continue;
-      if (worker.queuedBytes > STREAM_QUEUE_CAP_BYTES) {
-        worker.needsRestart = true;
-        appendStreamLog(`${worker.name}: cola de envío superó 32 MB; se reinicia el destino.`);
-        sendStreamDestinationStatus(worker, 'down', { error: 'Cola de envío saturada (más de 32 MB sin drenar): el destino se reinicia.' });
-        try { worker.process?.kill('SIGINT'); } catch (e) {}
-        continue;
-      }
-      enqueueStreamChunk(worker, buf);
-    }
-  } catch (err) {}
+  const buf = toSafeBuffer(chunkBuffer);
+  if (buf && buf.length) programCore.writeWebmChunk(buf);
+});
+
+ipcMain.on('program-video-chunk', (event, chunkBuffer) => {
+  if (!chunkBuffer) return;
+  const buf = toSafeBuffer(chunkBuffer);
+  if (buf && buf.length) programCore.writeVideoChunk(buf);
+});
+
+ipcMain.on('program-audio-chunk', (event, chunkBuffer) => {
+  if (!chunkBuffer) return;
+  const buf = toSafeBuffer(chunkBuffer);
+  if (buf && buf.length) programCore.writeAudioChunk(buf);
+});
+
+// Pausa de grabación del núcleo: el reparto deja de alimentar al
+// consumidor de grabación (equivalente a la pausa real del MediaRecorder
+// dedicado que esto reemplaza); el directo no se toca.
+ipcMain.handle('set-recording-paused', async (_event, paused) => {
+  programCore.setRecordingPaused(!!paused);
+  return { success: true };
 });
 
 ipcMain.handle('stop-streaming', async () => {
-  streamStartupInProgress = false;
+  programCore.setSessionActive(false);
   streamingSessionActive = false;
-  const workers = activeStreamWorkers.slice();
-  await Promise.all(workers.map(async (worker) => {
-    worker.intentionalStop = true;
-    if (worker.reconnectTimer) { clearTimeout(worker.reconnectTimer); worker.reconnectTimer = null; }
-    if (worker.startupTimer) { clearTimeout(worker.startupTimer); worker.startupTimer = null; }
-    try {
-      await worker.writeQueue;
-      if (worker.process?.stdin && !worker.process.stdin.destroyed) worker.process.stdin.end();
-      await new Promise((resolve) => {
-        if (!worker.process || worker.process.exitCode != null) return resolve();
-        const timeout = setTimeout(() => {
-          try { worker.process?.kill('SIGINT'); } catch (e) {}
-          resolve();
-        }, 5000);
-        worker.process?.once('close', () => { clearTimeout(timeout); resolve(); });
-      });
-    } catch (e) {
-      console.warn(`[stop-streaming] Error cerrando ${worker.name}:`, e.message);
-      try { worker.process?.kill('SIGINT'); } catch (killError) {}
-    }
-  }));
-  activeStreamWorkers = [];
+  await programCore.removeAllDestinations();
+  liveDestinationEntries.clear();
   streamDestinations = [];
-  streamInitHeader = null;
   releasePowerSaveBlocker('streaming');
   appendStreamLog('Sesión de streaming detenida por el usuario.');
   if (mainWindow && !mainWindow.isDestroyed()) {

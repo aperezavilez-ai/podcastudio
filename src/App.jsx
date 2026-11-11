@@ -41,10 +41,12 @@ import {
   captureMasterCanvasSnapshot, getMasterCanvas, getProgramStream, hasMasterCanvasPresentedFrames,
   setVoiceMonitor, syncStudioAudio, getCameraSnapshots,
   startNativeEngineBroadcast, stopNativeEngineBroadcast,
-  getOrWaitForInitHeader, getInitHeader, getActiveInitHeader,
-  startRecordingRecorder, stopRecordingRecorder, setRecordingRecorderPaused,
+  getActiveInitHeader,
+  setProgramFrameTap, switchEngineToWebmChunks,
   registerCameraVideoElement, getCameraFrameHealth,
 } from './utils/masterBroadcastEngine.js';
+import { probeProgramEncoderSupport, createProgramEncoderPump } from './utils/programEncoder.js';
+import { USB_OPEN_TIERS, nextUsbTierDown, decideUsbOpenTier } from './utils/usbBudget.mjs';
 import { logger } from './utils/logger.js';
 import { version as APP_VERSION } from '../package.json';
 import { isNativeEngineEnabled, getNativeEngineConfig, FEATURE_FLAGS } from './config/featureFlags.js';
@@ -330,26 +332,58 @@ const MasterProgramMonitor = React.memo(function MasterProgramMonitor() {
   );
 });
 
-// ── Apertura USB con constraints probadas (v1.6.1) ────────────────────────
+// ── Apertura USB con constraints probadas (v1.6.1) + presupuesto (v2.0.0) ──
 // La v1.6.0 medía cada cámara ~900 ms tras abrirla y persistía el escalón
 // resultante; medir bajo carga degradó cámaras sanas y el perfil guardado
-// fijó la principal del usuario en 854×480. v1.6.1 vuelve a la apertura
-// directa anterior: UNA llamada con las constraints probadas y, solo si el
-// driver responde OverconstrainedError, UN reintento a 720p. Sin medición,
-// sin escalera y sin perfiles persistidos.
-async function openProvenUsbStream(deviceId, gumTimeout) {
+// fijó la principal del usuario en 854×480. v1.6.1 volvió a la apertura
+// directa. v2.0.0 (Raíz B) suma el presupuesto de bus de usbBudget.mjs:
+// el escalón de apertura lo decide decideUsbOpenTier() desde las cámaras
+// YA vivas (máx. 2 a 1080p a la vez) — decisión previa, sin medir fps,
+// sin persistir rebajas — y ante OverconstrainedError hay UN solo
+// reintento en el escalón inferior.
+async function openProvenUsbStream(deviceId, gumTimeout, tier = '1080p') {
+  const constraintsFor = (t) => ({
+    video: { deviceId: { exact: deviceId }, ...USB_OPEN_TIERS[t] },
+    audio: false,
+  });
   try {
-    return await gumTimeout({
-      video: { deviceId: { exact: deviceId }, width: { ideal: 1920, min: 320 }, height: { ideal: 1080, min: 240 }, frameRate: { ideal: 30, min: 15 } },
-      audio: false,
-    }, 6000);
+    return await gumTimeout(constraintsFor(tier), 6000);
   } catch (err) {
     if (err?.name !== 'OverconstrainedError') throw err;
-    return await gumTimeout({
-      video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
-      audio: false,
-    }, 6000);
+    return await gumTimeout(constraintsFor(nextUsbTierDown(tier)), 6000);
   }
+}
+
+// v1.7.0 (Raíz A): codificación de miniatura SIN bloquear el hilo de UI.
+// El camino de Detener hacía snapshotCanvas.toDataURL('image/jpeg', 0.92)
+// SÍNCRONO a 1920×1080: codificar un JPEG de 2 MP en el hilo principal,
+// con la máquina ya saturada, era trabajo pesado síncrono en el camino
+// del clic. Esta versión reduce a 640 px de ancho y codifica con
+// canvas.toBlob (asíncrono) + FileReader (asíncrono). Nunca lanza.
+function canvasToJpegDataUrl(sourceCanvas, maxWidth = 640) {
+  return new Promise((resolve) => {
+    try {
+      if (!sourceCanvas || !sourceCanvas.width) return resolve(null);
+      const scale = Math.min(1, maxWidth / sourceCanvas.width);
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(sourceCanvas.width * scale));
+      c.height = Math.max(1, Math.round(sourceCanvas.height * scale));
+      const ctx = c.getContext('2d');
+      if (!ctx) return resolve(null);
+      ctx.drawImage(sourceCanvas, 0, 0, c.width, c.height);
+      if (typeof c.toBlob === 'function') {
+        c.toBlob((blob) => {
+          if (!blob) return resolve(null);
+          const reader = new FileReader();
+          reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+          reader.onerror = () => resolve(null);
+          reader.readAsDataURL(blob);
+        }, 'image/jpeg', 0.85);
+      } else {
+        resolve(c.toDataURL('image/jpeg', 0.85));
+      }
+    } catch { resolve(null); }
+  });
 }
 
 const defaultCamSettings = { zoom: 1.0, panX: 50, panY: 50, brightness: 100, contrast: 100, saturation: 100, temp: 0, tint: 0, luts: 'Original' };
@@ -389,12 +423,10 @@ function PodcastStudioApp() {
   const recordingStartTimeRef = useRef(null);
   const pausedDurationRef = useRef(0);
   const pauseStartRef = useRef(null);
-  // MediaRecorder emits Blobs asynchronously. Keep a renderer-side queue in
-  // addition to Electron's stdin queue so finalization cannot race the last
-  // IPC delivery.
-  const recordingChunkDeliveryRef = useRef(Promise.resolve());
+  // Contador de fragmentos SOLO del modo web (sin Electron): con Electron
+  // la grabación vive en el núcleo y el conteo lo lleva el proceso
+  // principal (bytesWritten del consumidor).
   const recordingChunkCountRef = useRef(0);
-  const recordingChunkErrorRef = useRef(null);
 
   const [isRightPanelOpen, setIsRightPanelOpen] = useState(true);
   const [isRightPanelCollapsed, setIsRightPanelCollapsed] = useState(false);
@@ -689,6 +721,12 @@ function PodcastStudioApp() {
   const [showCalibratorModal, setShowCalibratorModal] = useState(false);
   const [calibratorTargetSlot, setCalibratorTargetSlot] = useState(0);
   const [camFocusLocked, setCamFocusLocked] = useState({});
+  // v1.7.0 (Raíz D): estado HONESTO del foco por cámara, confirmado contra
+  // la pista: { supported:false, message } cuando la cámara no expone
+  // control de foco o el driver no lo aplicó; { supported:true,
+  // focusMode, unconfirmed? } cuando la pista lo confirmó (o aceptó la
+  // llamada sin ofrecer lectura de vuelta).
+  const [camFocusStatus, setCamFocusStatus] = useState({});
   const [cameraCrops, setCameraCrops] = useState(() => {
     const saved = localStorage.getItem('podcastudio_camera_crops');
     if (saved) {
@@ -763,6 +801,10 @@ function PodcastStudioApp() {
   const [prompterCopiedLink, setPrompterCopiedLink] = useState(false);
   const teleprompterTextRef = useRef(null);
   const teleprompterYRef = useRef(0);
+  // v1.7.0 (Raíz D): acumulador fraccional del scroll de la caja de
+  // lectura del panel (rightPrompterScrollRef): scrollTop redondea y los
+  // pasos sub-píxel a baja velocidad se perderían sin acumularlos.
+  const panelPrompterScrollRef = useRef(0);
   const rightPrompterScrollRef = useRef(null);
   const rightPrompterScrollPos = useRef(0);
 
@@ -1033,24 +1075,69 @@ function PodcastStudioApp() {
     setShowCalibratorModal(true);
   };
 
+  // v1.7.0 (Raíz D): el botón ya NO afirma el bloqueo antes de comprobar.
+  // Orden: (1) capacidad real vía getCapabilities().focusMode; si la
+  // cámara no expone el modo pedido, la UI lo dice y no se finge nada.
+  // (2) applyConstraints. (3) confirmación vía getSettings().focusMode:
+  // el estado guardado refleja lo que la pista CONFIRMÓ; si el driver
+  // aceptó la llamada pero sigue en 'continuous', no hay bloqueo y se
+  // dice. Sin catch silencioso: todo rechazo queda en log y en el estado.
   const toggleFocusLock = useCallback(async (camId) => {
-    const isCurrentlyLocked = Boolean(camFocusLocked[camId]);
-    const nextLocked = !isCurrentlyLocked;
-    setCamFocusLocked(prev => ({ ...prev, [camId]: nextLocked }));
+    const wantLock = !camFocusLocked[camId];
     const stream = getCamStream(camId);
     const track = stream?.getVideoTracks?.()[0];
-    if (track && typeof track.applyConstraints === 'function') {
-      try {
-        if (nextLocked) {
-          try {
-            await track.applyConstraints({ advanced: [{ focusMode: 'manual' }] });
-          } catch {
-            await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
-          }
-        } else {
-          await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+    const fail = (message) => {
+      logger.warn(`[FocusLock] CAM ${camId}: ${message}`);
+      setCamFocusLocked(prev => ({ ...prev, [camId]: false }));
+      setCamFocusStatus(prev => ({ ...prev, [camId]: { supported: false, message } }));
+    };
+    if (!track || typeof track.applyConstraints !== 'function') {
+      fail('Esta cámara no expone control de foco');
+      return;
+    }
+    let modes = null;
+    try { modes = track.getCapabilities?.()?.focusMode || null; } catch (e) { modes = null; }
+    if (Array.isArray(modes) && modes.length > 0) {
+      const canLock = modes.includes('manual') || modes.includes('single-shot');
+      const canUnlock = modes.includes('continuous');
+      if (wantLock && !canLock) { fail('Esta cámara no expone control de foco'); return; }
+      if (!wantLock && !canUnlock) { fail('Esta cámara no expone autoenfoque reactivable'); return; }
+    }
+    try {
+      if (wantLock) {
+        try {
+          await track.applyConstraints({ advanced: [{ focusMode: 'manual' }] });
+        } catch {
+          await track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] });
         }
-      } catch (e) {}
+      } else {
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      }
+    } catch (e) {
+      fail('La cámara rechazó el ajuste de foco');
+      return;
+    }
+    let confirmedMode = null;
+    try { confirmedMode = track.getSettings?.()?.focusMode || null; } catch (e) { confirmedMode = null; }
+    if (confirmedMode) {
+      const isLockedNow = confirmedMode === 'manual' || confirmedMode === 'single-shot';
+      if (wantLock && !isLockedNow) {
+        fail(`La cámara no aplicó el bloqueo de foco (sigue en «${confirmedMode}»)`);
+        return;
+      }
+      if (!wantLock && isLockedNow) {
+        logger.warn(`[FocusLock] CAM ${camId}: el driver mantiene «${confirmedMode}» tras pedir autoenfoque.`);
+        setCamFocusLocked(prev => ({ ...prev, [camId]: true }));
+        setCamFocusStatus(prev => ({ ...prev, [camId]: { supported: true, focusMode: confirmedMode, message: 'La cámara mantiene el foco fijo; no reactivó el autoenfoque' } }));
+        return;
+      }
+      setCamFocusLocked(prev => ({ ...prev, [camId]: isLockedNow }));
+      setCamFocusStatus(prev => ({ ...prev, [camId]: { supported: true, focusMode: confirmedMode } }));
+    } else {
+      // El driver aceptó la llamada pero no ofrece lectura de vuelta: se
+      // aplica lo pedido, marcado como NO confirmado (no como un hecho).
+      setCamFocusLocked(prev => ({ ...prev, [camId]: wantLock }));
+      setCamFocusStatus(prev => ({ ...prev, [camId]: { supported: true, unconfirmed: true, message: 'La cámara aceptó el ajuste pero no confirma el modo de foco' } }));
     }
   }, [camFocusLocked, slotStreams, localStream]);
   const openSettings = (id) => { setEditingCamId(id); setShowSettingsModal(true); };
@@ -1813,23 +1900,121 @@ function PodcastStudioApp() {
     }
   };
 
-  const attachCameraAudio = async (stream, videoDeviceId, { allowDefault = false } = {}) => {
-    if (!stream || stream.getAudioTracks().length > 0) return null;
-    const pairedAudioDeviceId = await findPairedAudioInput(videoDeviceId);
-    if (!pairedAudioDeviceId && !allowDefault) return null;
-    const audio = pairedAudioDeviceId
-      ? { deviceId: { exact: pairedAudioDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-      : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  // v1.7.0 (Raíz C): la fuente de audio de cada ranura es EXPLÍCITA.
+  // Antes, si la cámara no traía pista de audio y no se encontraba micro
+  // emparejado, attachCameraAudio abría con constraints genéricas el
+  // dispositivo POR DEFECTO del sistema — el micro de la computadora — y
+  // lo metía DENTRO del stream de la cámara máster (allowDefault): el
+  // micro de la PC quedaba invisible, mezclado e inseparable. PROHIBIDO:
+  // esta función solo abre (a) el micro elegido por el usuario
+  // (audioSourceDeviceId) o (b) el emparejado por groupId con la cámara.
+  // Sin ninguno de los dos, la ranura queda SIN audio hasta que el
+  // usuario elija fuente en la UI; jamás se sustituye por el default.
+  const attachCameraAudio = async (stream, videoDeviceId, { audioSourceDeviceId = null } = {}) => {
+    if (!stream) return null;
+    if (stream.getAudioTracks().length > 0) {
+      return stream.getAudioTracks()[0].getSettings?.()?.deviceId || null;
+    }
+    const targetDeviceId = audioSourceDeviceId || (await findPairedAudioInput(videoDeviceId));
+    if (!targetDeviceId) return null;
     try {
-      const audioStream = await getUserMediaWithTimeout({ audio, video: false }, 3500);
+      const audioStream = await getUserMediaWithTimeout({
+        audio: { deviceId: { exact: targetDeviceId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: false,
+      }, 3500);
       const audioTrack = audioStream.getAudioTracks()[0];
       if (audioTrack) stream.addTrack(audioTrack);
-      return audioTrack ? (pairedAudioDeviceId || audioTrack.getSettings?.()?.deviceId || null) : null;
+      return audioTrack ? targetDeviceId : null;
     } catch (error) {
-      logger.warn('[USB audio] No se pudo abrir el micrófono asociado:', error?.message || error);
+      logger.warn('[USB audio] No se pudo abrir la fuente de audio de la ranura:', error?.message || error);
       return null;
     }
   };
+
+  // Elección de fuente de audio por cámara (v1.7.0, Raíz C). Valores:
+  // 'camera' = micro emparejado de la propia cámara (defecto), 'none' =
+  // sin audio (bloqueado), o un deviceId de audioinput elegido. Se guarda
+  // por deviceId de vídeo: la elección sigue a la cámara, no a la ranura.
+  const slotAudioChoiceRef = useRef((() => {
+    try { return JSON.parse(localStorage.getItem('podcastudio_audio_source_by_device') || '{}'); } catch { return {}; }
+  })());
+  const [slotAudioChoices, setSlotAudioChoices] = useState({});
+  const getAudioChoiceForDevice = (videoDeviceId) => slotAudioChoiceRef.current[videoDeviceId] || 'camera';
+  const getSlotAudioChoice = (slot) => {
+    if (slotAudioChoices[slot]) return slotAudioChoices[slot];
+    const videoDeviceId = cameraMetaRef.current[slot]?.deviceId;
+    return videoDeviceId ? getAudioChoiceForDevice(videoDeviceId) : 'camera';
+  };
+  const persistAudioChoice = (videoDeviceId, choice) => {
+    if (!videoDeviceId) return;
+    slotAudioChoiceRef.current = { ...slotAudioChoiceRef.current, [videoDeviceId]: choice };
+    try { localStorage.setItem('podcastudio_audio_source_by_device', JSON.stringify(slotAudioChoiceRef.current)); } catch {}
+  };
+
+  // Adjunta el audio de una ranura respetando la elección del usuario:
+  // 'none' no adjunta nada y marca la ranura como bloqueada.
+  const attachSlotAudio = (slot, stream, videoDeviceId) => {
+    const choice = getAudioChoiceForDevice(videoDeviceId);
+    if (choice === 'none') {
+      setCameraMeta(prev => ({ ...prev, [slot]: { ...prev[slot], audioDeviceId: null, audioSourceBlocked: true } }));
+      return;
+    }
+    attachCameraAudio(stream, videoDeviceId, { audioSourceDeviceId: choice === 'camera' ? null : choice })
+      .then(audioDeviceId => {
+        if (audioDeviceId) {
+          cameraMetaRef.current[slot] = { ...cameraMetaRef.current[slot], audioDeviceId, audioSourceBlocked: false };
+          setCameraMeta(prev => ({ ...prev, [slot]: { ...prev[slot], audioDeviceId, audioSourceBlocked: false } }));
+        }
+      })
+      .catch(() => {});
+  };
+
+  // Cambio de fuente desde la UI (modal de configuración de la cámara):
+  // desacopla la pista actual y acopla la elegida, en caliente. Las
+  // cámaras USB se abren SOLO con vídeo (openProvenUsbStream, audio:
+  // false), así que toda pista de audio presente en su stream fue
+  // acoplada por attachCameraAudio y se puede retirar sin tocar el vídeo.
+  const handleAudioSourceChange = async (slot, choice) => {
+    const meta = cameraMetaRef.current[slot] || {};
+    const videoDeviceId = meta.deviceId;
+    persistAudioChoice(videoDeviceId, choice);
+    setSlotAudioChoices(prev => ({ ...prev, [slot]: choice }));
+    const stream = slotStreamsRef.current[slot] || (slot === 0 ? localStreamRef.current : null);
+    if (!stream) return;
+    if (meta.type === 'usb' || slot === 0) {
+      stream.getAudioTracks().slice().forEach(t => {
+        try { t.stop(); } catch {}
+        try { stream.removeTrack(t); } catch {}
+      });
+    }
+    if (choice === 'none') {
+      cameraMetaRef.current[slot] = { ...cameraMetaRef.current[slot], audioDeviceId: null, audioSourceBlocked: true };
+      setCameraMeta(prev => ({ ...prev, [slot]: { ...prev[slot], audioDeviceId: null, audioSourceBlocked: true } }));
+      return;
+    }
+    const audioDeviceId = await attachCameraAudio(stream, videoDeviceId, { audioSourceDeviceId: choice === 'camera' ? null : choice });
+    cameraMetaRef.current[slot] = { ...cameraMetaRef.current[slot], audioDeviceId, audioSourceBlocked: false };
+    setCameraMeta(prev => ({ ...prev, [slot]: { ...prev[slot], audioDeviceId, audioSourceBlocked: false } }));
+  };
+
+  // Dispositivos de entrada de audio para el selector de fuente (se
+  // refresca al abrir el modal de configuración y en devicechange).
+  const [audioInputDevices, setAudioInputDevices] = useState([]);
+  const refreshAudioInputDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices?.enumerateDevices?.() || [];
+      setAudioInputDevices(devices.filter(d => d.kind === 'audioinput'));
+    } catch {}
+  }, []);
+  useEffect(() => {
+    refreshAudioInputDevices();
+    const md = navigator.mediaDevices;
+    if (md?.addEventListener) {
+      md.addEventListener('devicechange', refreshAudioInputDevices);
+      return () => md.removeEventListener('devicechange', refreshAudioInputDevices);
+    }
+    return undefined;
+  }, [refreshAudioInputDevices]);
 
   useEffect(() => {
     if (!isElectronMaster) {
@@ -1872,13 +2057,11 @@ function PodcastStudioApp() {
           const devLabel = videoTrack?.label || targetDev.label || 'Cámara 1 (Principal)';
           setCameraMeta(prev => ({ ...prev, 0: { deviceId: devId, resolution: getVideoTrackResolution(stream), videoInfo: getVideoTrackInfo(stream), label: devLabel, type: 'usb' } }));
 
-          // Adjuntar audio asociado en segundo plano sin congelar el video en pantalla
+          // Adjuntar audio asociado en segundo plano sin congelar el video en pantalla.
+          // v1.7.0 (Raíz C): pasa por attachSlotAudio — respeta la fuente
+          // elegida y NUNCA inyecta el micro por defecto de la PC.
           const videoDeviceId = stream.getVideoTracks()[0]?.getSettings?.()?.deviceId || effectiveDeviceId;
-          attachCameraAudio(stream, videoDeviceId, { allowDefault: true }).then(audioDeviceId => {
-            if (audioDeviceId) {
-              setCameraMeta(prev => ({ ...prev, 0: { ...prev[0], audioDeviceId } }));
-            }
-          }).catch(() => {});
+          attachSlotAudio(0, stream, videoDeviceId);
 
 
 
@@ -1935,14 +2118,30 @@ function PodcastStudioApp() {
       const delta = Math.min(33, Math.max(1, time - lastTime));
       lastTime = time;
 
-      if (isTeleprompterPlaying && teleprompterTextRef.current) {
+      if (isTeleprompterPlaying) {
         const speed = (teleprompterSpeed || 3) * 1.8;
         const moveAmount = speed * (delta / 16.666);
-        
-        teleprompterYRef.current -= moveAmount;
-        teleprompterTextRef.current.style.transform = `translate3d(0, ${teleprompterYRef.current.toFixed(2)}px, 0)`;
-      }
-      if (isTeleprompterPlaying) {
+
+        // Superficie 1: el overlay sobre el programa (transform).
+        if (teleprompterTextRef.current) {
+          teleprompterYRef.current -= moveAmount;
+          teleprompterTextRef.current.style.transform = `translate3d(0, ${teleprompterYRef.current.toFixed(2)}px, 0)`;
+        }
+        // Superficie 2 (v1.7.0, Raíz D): la caja de lectura del PANEL
+        // (rightPrompterScrollRef) es la que el usuario lee en pantalla
+        // y NINGÚN bucle la desplazaba: el panel decía «Leyendo» y el
+        // texto no subía. El mismo paso del bucle ahora avanza su
+        // scrollTop (con acumulador fraccional y resincronización si el
+        // usuario la movió a mano o se reinició el guión).
+        const panel = rightPrompterScrollRef.current;
+        if (panel) {
+          if (Math.abs(panel.scrollTop - panelPrompterScrollRef.current) > 2) {
+            panelPrompterScrollRef.current = panel.scrollTop;
+          }
+          panelPrompterScrollRef.current += moveAmount;
+          const target = Math.floor(panelPrompterScrollRef.current);
+          if (target !== panel.scrollTop) panel.scrollTop = target;
+        }
         animationFrameId = requestAnimationFrame(animate);
       }
     };
@@ -2537,55 +2736,102 @@ function PodcastStudioApp() {
   }, []);
 
   const hasSentHeaderRef = useRef(false);
-  const useDedicatedRecorderRef = useRef(false);
   const usbConnectInFlightRef = useRef(new Set());
+
+  // ── Flujo de programa del núcleo v2.0.0 ─────────────────────────────
+  // UNA codificación por activación del motor:
+  //  - 'webcodecs': la bomba WebCodecs (programEncoder.js) codifica el
+  //    canvas en H.264 por hardware si la plataforma lo ofrece; el motor
+  //    NO crea su MediaRecorder (chunkSource 'external') y el audio
+  //    mezclado viaja en un MediaRecorder SOLO de audio (Opus).
+  //  - 'webm': el MediaRecorder histórico del motor (VP8) alimenta el
+  //    núcleo, que transcodifica UNA vez (h264_mf primero) y reparte.
+  //  - Sin Electron ('web'): chunks en memoria para descarga, como antes.
+  const programFlowRef = useRef({ mode: null, pump: null, audioRecorder: null });
+
+  const decideProgramFlowMode = async () => {
+    if (!window.api) return 'web';
+    if (programFlowRef.current.mode) return programFlowRef.current.mode;
+    try {
+      const support = await probeProgramEncoderSupport();
+      return support.supported ? 'webcodecs' : 'webm';
+    } catch {
+      return 'webm';
+    }
+  };
+
+  // Arranca la bomba WebCodecs + el grabador solo-audio sobre el
+  // masterStream ya creado por el motor en modo 'external'.
+  const startWebcodecsFlow = async (masterStream) => {
+    const pump = createProgramEncoderPump({
+      onChunk: (buf) => { try { window.api?.sendProgramVideoChunk?.(buf); } catch {} },
+      onError: (err) => {
+        logger.error('[Núcleo v2] La bomba WebCodecs falló en vivo; volteando a WebM:', err);
+        handleProgramEncoderFailure();
+      },
+    });
+    const started = await pump.start();
+    if (!started) return false;
+    programFlowRef.current.pump = pump;
+    setProgramFrameTap((canvas) => pump.captureFrame(canvas));
+    try {
+      const audioTrack = masterStream?.getAudioTracks?.()[0];
+      if (audioTrack) {
+        const audioOnly = new MediaStream([audioTrack]);
+        const mime = ['audio/webm;codecs=opus', 'audio/webm'].find(m => { try { return MediaRecorder.isTypeSupported(m); } catch { return false; } });
+        const rec = new MediaRecorder(audioOnly, mime ? { mimeType: mime, audioBitsPerSecond: 192000 } : { audioBitsPerSecond: 192000 });
+        rec.ondataavailable = (e) => {
+          if (!e.data || e.data.size === 0) return;
+          e.data.arrayBuffer().then(buf => { try { window.api?.sendProgramAudioChunk?.(buf); } catch {} }).catch(() => {});
+        };
+        rec.start(250);
+        programFlowRef.current.audioRecorder = rec;
+      }
+    } catch (e) {
+      logger.warn('[Núcleo v2] No se pudo iniciar el audio del flujo WebCodecs:', e);
+    }
+    programFlowRef.current.mode = 'webcodecs';
+    logger.log('[Núcleo v2] Flujo de programa: WebCodecs H.264 (una sola codificación).');
+    return true;
+  };
+
+  const stopProgramFlow = () => {
+    try { setProgramFrameTap(null); } catch {}
+    try { programFlowRef.current.pump?.stop(); } catch {}
+    try {
+      const rec = programFlowRef.current.audioRecorder;
+      if (rec && rec.state !== 'inactive') rec.stop();
+    } catch {}
+    programFlowRef.current = { mode: null, pump: null, audioRecorder: null };
+  };
+
+  // WebCodecs murió a mitad de sesión: se apaga la bomba y el motor crea
+  // su MediaRecorder WebM sobre el mismo masterStream (sin reiniciar la
+  // composición); el núcleo detecta el cambio de contenedor y reinicia
+  // su grafo en modo WebM. La sesión (directo/grabación) continúa.
+  const handleProgramEncoderFailure = () => {
+    if (programFlowRef.current.mode !== 'webcodecs') return;
+    stopProgramFlow();
+    if (!isStreamingRef.current && !isRecordingRef.current) return;
+    const ok = switchEngineToWebmChunks();
+    programFlowRef.current.mode = ok ? 'webm' : null;
+    if (ok) logger.log('[Núcleo v2] Flujo de programa: WebM de respaldo (una transcodificación en el núcleo).');
+  };
 
   const handleMasterChunk = (buffer) => {
     if ((isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk) {
       window.api.sendStreamChunk(buffer);
     }
-    // Enviar fragmentos a FFmpeg de forma estrictamente secuencial y sin duplicar cabeceras.
-    // Con el grabador dedicado activo (v1.5.0) la grabación recibe sus propios
-    // chunks por handleRecordingChunk y su pausa es pause() real del recorder.
-    if (isRecordingRef.current && !useDedicatedRecorderRef.current) {
-      if (!window.api) {
+    // v2.0.0: con Electron la grabación ya NO recibe chunks por aquí: es
+    // un consumidor del núcleo en el proceso principal. Solo el modo web
+    // (sin Electron) sigue acumulando el WebM en memoria para descargar,
+    // y su pausa descarta fragmentos (semántica histórica del respaldo).
+    if (isRecordingRef.current && !window.api) {
+      if (!isRecordingPausedRef.current) {
         recordingChunksRef.current.push(buffer);
         recordingChunkCountRef.current += 1;
-        return;
       }
-      if (window.api?.sendRecordChunk) {
-        recordingChunkDeliveryRef.current = recordingChunkDeliveryRef.current
-          .then(async () => {
-            const result = await window.api.sendRecordChunk(buffer);
-            if (!result?.success) throw new Error(result?.error || 'Electron rechazó el segmento de grabación.');
-            recordingChunkCountRef.current += 1;
-          })
-          .catch((error) => {
-            recordingChunkErrorRef.current = error?.message || String(error);
-            logger.error('[recording] Error entregando segmento a FFmpeg:', error);
-          });
-      }
-    }
-  };
-
-  const handleRecordingChunk = (buffer) => {
-    if (!isRecordingRef.current) return;
-    if (!window.api) {
-      recordingChunksRef.current.push(buffer);
-      recordingChunkCountRef.current += 1;
       return;
-    }
-    if (window.api?.sendRecordChunk) {
-      recordingChunkDeliveryRef.current = recordingChunkDeliveryRef.current
-        .then(async () => {
-          const result = await window.api.sendRecordChunk(buffer);
-          if (!result?.success) throw new Error(result?.error || 'Electron rechazó el segmento de grabación.');
-          recordingChunkCountRef.current += 1;
-        })
-        .catch((error) => {
-          recordingChunkErrorRef.current = error?.message || String(error);
-          logger.error('[recording] Error entregando segmento a FFmpeg:', error);
-        });
     }
   };
 
@@ -2609,44 +2855,16 @@ function PodcastStudioApp() {
         recordingStartPendingRef.current = true;
         recordingStartPendingTimeRef.current = Date.now();
         recordingChunksRef.current = [];
-        recordingChunkDeliveryRef.current = Promise.resolve();
         recordingChunkCountRef.current = 0;
-        recordingChunkErrorRef.current = null;
-        let preEngineHeader = null;
-        try { preEngineHeader = getActiveInitHeader(); } catch {}
-        // Mismo caso sin Electron: si el motor ya estaba activo, la cabecera
-        // ya pasó y debe ser el primer fragmento del arreglo de grabación.
-        if (preEngineHeader && !window.api) recordingChunksRef.current.push(preEngineHeader);
+        if (!window.api) {
+          // Modo web: si el motor ya estaba activo, su cabecera WebM es el
+          // primer fragmento del arreglo de descarga.
+          try { const h = getActiveInitHeader(); if (h) recordingChunksRef.current.push(h); } catch {}
+        }
         setRecordingTime(0);
         setIsRecordingPaused(false);
         isRecordingPausedRef.current = false;
         setCountdown(null);
-
-        // 1. Iniciar primero el proceso FFmpeg en Electron
-        if (window.api) {
-          let res;
-          try {
-            res = await window.api.startRecording({
-              projectName: topic || 'Proyecto_General',
-              // Si el motor ya estaba activo (p. ej. transmitiendo), la cabecera
-              // WebM ya pasó por el listener y el FFmpeg de grabación nunca la
-              // recibiría: sin ella el MP4 sale vacío o con error. El handler
-              // de Electron ya sabía escribirla (options.initialHeader), pero
-              // nadie se la pasaba.
-              initialHeader: preEngineHeader,
-            });
-          } catch (error) {
-            res = { success: false, error: error.message };
-          }
-
-          if (!res?.success) {
-            recordingStartPendingRef.current = false;
-            setIsStartingRecording(false);
-            logger.error('[handleRecord] Falló el inicio de grabación:', res?.error);
-            showToast('Error al iniciar grabación: ' + (res?.error || 'Desconocido'), 'error', 6000);
-            return;
-          }
-        }
 
         // 2. Activar timer y estado de grabación inmediatamente
         isRecordingRef.current = true;
@@ -2656,10 +2874,11 @@ function PodcastStudioApp() {
         pausedDurationRef.current = 0;
         pauseStartRef.current = null;
 
-        // 3. Iniciar el compositor Master. El estado REC ya está visible y el
-        // contador en marcha; el primer fragmento WebM llega de forma asíncrona.
-        // Nunca se debe cancelar una toma válida sólo porque el navegador tardó
-        // en entregar ese primer fragmento al MediaRecorder.
+        // 3. Iniciar el compositor Master con el flujo del núcleo v2.0.0:
+        // WebCodecs (sin MediaRecorder de vídeo en el motor) si la
+        // plataforma lo soporta; WebM histórico si no. El estado REC ya
+        // está visible y el contador en marcha.
+        const flowMode = await decideProgramFlowMode();
         const masterStream = startBroadcastEngine({
           activeCam,
           pvwCam,
@@ -2682,10 +2901,21 @@ function PodcastStudioApp() {
           remoteCams,
           camStreamsMap,
           camMuted,
-        }, handleMasterChunk);
+        }, handleMasterChunk, { chunkSource: flowMode === 'webcodecs' ? 'external' : 'mediarecorder' });
 
         if (!masterStream || masterStream.getVideoTracks().length === 0) {
           throw new Error('El compositor Master no generó video grabable. Verifica una cámara activa y los permisos de medios.');
+        }
+        if (flowMode === 'webcodecs' && !programFlowRef.current.pump) {
+          const flowOk = await startWebcodecsFlow(masterStream);
+          if (!flowOk) {
+            // La bomba no arrancó: el motor crea su MediaRecorder WebM y
+            // el núcleo transcodifica una sola vez (respaldo declarado).
+            switchEngineToWebmChunks();
+            programFlowRef.current.mode = 'webm';
+          }
+        } else if (flowMode === 'webm') {
+          programFlowRef.current.mode = 'webm';
         }
 
         // Compuerta de primer fotograma (v1.5.0, Frente B): no se graba hasta
@@ -2721,14 +2951,20 @@ function PodcastStudioApp() {
             gateOk = sampleHasRealFrame();
           }
           if (!gateOk) {
-            try { await window.api?.cancelRecording?.(); } catch {}
             throw new Error('Sin señal de cámara: el programa no presentó ningún fotograma real en 3 segundos. No se grabó nada para no generar un archivo en negro.');
           }
         }
 
-        // Grabador dedicado con pausa real (v1.5.0): si no arranca, el
-        // enrutado anterior por handleMasterChunk sigue como respaldo.
-        useDedicatedRecorderRef.current = startRecordingRecorder(handleRecordingChunk, { skipFirstChunk: !!preEngineHeader });
+        // v2.0.0: la grabación se engancha como consumidor del núcleo
+        // (copia del flujo ya codificado). Ya no hay grabador dedicado ni
+        // chunks propios: si el enganche falla, el catch general limpia.
+        if (window.api) {
+          const recRes = await window.api.startRecording({ projectName: topic || 'Proyecto_General' })
+            .catch((error) => ({ success: false, error: error.message }));
+          if (!recRes?.success) {
+            throw new Error('El núcleo no pudo iniciar la grabación: ' + (recRes?.error || 'error desconocido'));
+          }
+        }
 
           // Iniciar Grabación ISO Multicanal si está habilitada (P4.1)
           if (isoRecordingEnabled && window.api?.startIsoRecording) {
@@ -2779,7 +3015,7 @@ function PodcastStudioApp() {
         setIsRecording(false);
         setIsStartingRecording(false);
         recordingStartTimeRef.current = null;
-        if (!isStreamingRef.current) stopBroadcastEngine();
+        if (!isStreamingRef.current) { stopBroadcastEngine(); stopProgramFlow(); }
         try { await window.api?.cancelRecording?.(); } catch (cancelError) {}
         logger.error('[handleRecord] Error general al iniciar grabación:', err);
         showToast('Error al iniciar grabación: ' + (err?.message || 'Desconocido'), 'error', 6000);
@@ -2793,16 +3029,13 @@ function PodcastStudioApp() {
       setIsStoppingRecordingUI(true);
       setFinalizeProgress(null);
       try {
-        // Capturar miniatura en alta resolución directamente del canvas maestro en vivo
+        // Captura del fotograma para la miniatura: SOLO la copia del
+        // canvas (un drawImage). La codificación JPEG ya NO ocurre aquí:
+        // era síncrona a 1920×1080 en el camino del clic de Detener
+        // (v1.7.0, Raíz A); se genera asíncrona y reducida tras finalizar
+        // el MP4 (canvasToJpegDataUrl, más abajo).
         const snapshotCanvas = captureMasterCanvasSnapshot();
         let thumbnailDataUrl = null;
-        if (snapshotCanvas) {
-          try {
-            thumbnailDataUrl = snapshotCanvas.toDataURL('image/jpeg', 0.92);
-          } catch (e) {
-            logger.warn('[handleRecord] No se pudo obtener toDataURL del canvas:', e);
-          }
-        }
 
         // Detener y finalizar grabadores ISO multicanal (P4.1)
         const stopIsoPromises = Array.from(isoRecordersRef.current.entries()).map(([sNum, rec]) => new Promise((resolve) => {
@@ -2825,22 +3058,14 @@ function PodcastStudioApp() {
         }
 
         let stopRes = null;
-        // Detener primero el grabador dedicado (v1.5.0) para vaciar sus chunks;
-        // si no hay directo al aire, también se apaga el motor. En vivo se
-        // conserva el encoder activo.
-        await stopRecordingRecorder();
-        useDedicatedRecorderRef.current = false;
+        // v2.0.0: la grabación vive en el núcleo (proceso principal); no
+        // hay grabador en el renderer que vaciar ni entregas que esperar:
+        // stopRecording() del núcleo cierra el consumidor y finaliza el
+        // MP4 (y reporta él mismo si no recibió datos). Si no hay directo
+        // al aire, también se apaga el motor y el flujo.
         if (!isStreamingRef.current) {
           await stopBroadcastEngine();
-        }
-        // stopBroadcastEngine waits for Blob conversion; now also wait for all
-        // renderer→Electron acknowledgements before FFmpeg closes stdin.
-        await recordingChunkDeliveryRef.current;
-        if (recordingChunkErrorRef.current) {
-          throw new Error(recordingChunkErrorRef.current);
-        }
-        if (recordingChunkCountRef.current === 0) {
-          throw new Error('No se recibieron datos de video para la grabación.');
+          stopProgramFlow();
         }
         isRecordingRef.current = false;
         setIsRecording(false);
@@ -2860,18 +3085,24 @@ function PodcastStudioApp() {
             if (stopRes.blackWarning) {
               showToast('ADVERTENCIA: la grabación finalizada salió en negro (90% o más de fotogramas negros). Revísala antes de usarla; no es un éxito limpio.', 'warning', 9000);
             }
-            if (thumbnailDataUrl && window.api.saveRecordingThumbnail) {
-              const thumbRes = await window.api.saveRecordingThumbnail({
-                projectName: topic || 'Proyecto_General',
-                base64Data: thumbnailDataUrl
-              }).catch(e => ({ success: false, error: e.message }));
-              if (!thumbRes?.success) logger.warn('[App] Error guardando miniatura:', thumbRes?.error);
-            }
           } catch (e) {
             logger.warn('Error parando grabación FFmpeg:', e);
             recordingChunksRef.current = [];
             showToast('No se pudo finalizar la grabación: ' + (e.message || 'Error desconocido'), 'error', 6000);
             return;
+          }
+        }
+        // v1.7.0 (Raíz A): la miniatura se codifica AQUÍ — el MP4 ya
+        // finalizó — de forma asíncrona y a 640 px (canvasToJpegDataUrl),
+        // fuera del camino síncrono del clic de Detener.
+        if (!thumbnailDataUrl && snapshotCanvas) {
+          thumbnailDataUrl = await canvasToJpegDataUrl(snapshotCanvas, 640);
+          if (thumbnailDataUrl && window.api?.saveRecordingThumbnail && stopRes?.path) {
+            const thumbRes = await window.api.saveRecordingThumbnail({
+              projectName: topic || 'Proyecto_General',
+              base64Data: thumbnailDataUrl
+            }).catch(e => ({ success: false, error: e.message }));
+            if (!thumbRes?.success) logger.warn('[App] Error guardando miniatura:', thumbRes?.error);
           }
         }
         const chunks = recordingChunksRef.current;
@@ -2918,9 +3149,12 @@ function PodcastStudioApp() {
     const next = !isRecordingPausedRef.current;
     isRecordingPausedRef.current = next;
     setIsRecordingPaused(next);
-    // Pausa REAL (v1.5.0): pause()/resume() del grabador dedicado; ya no se
-    // descartan chunks. Sin grabador dedicado, queda el corte de enrutado.
-    setRecordingRecorderPaused(next);
+    // Pausa (v2.0.0): el núcleo deja de alimentar al consumidor de
+    // grabación; el directo sigue intacto. En modo web (sin Electron) la
+    // pausa descarta fragmentos en handleMasterChunk (respaldo histórico).
+    if (window.api?.setRecordingPaused) {
+      window.api.setRecordingPaused(next).catch(() => {});
+    }
   };
 
   const handleCancelRecording = async () => {
@@ -2935,9 +3169,7 @@ function PodcastStudioApp() {
     setIsRecordingPaused(false);
     recordingChunksRef.current = [];
     try {
-      await stopRecordingRecorder();
-      useDedicatedRecorderRef.current = false;
-      if (!isStreamingRef.current) await stopBroadcastEngine();
+      if (!isStreamingRef.current) { await stopBroadcastEngine(); stopProgramFlow(); }
       const isoStops = Array.from(isoRecordersRef.current.values()).map(rec => new Promise(resolve => {
         if (!rec || rec.state === 'inactive') return resolve();
         rec.addEventListener('stop', resolve, { once: true });
@@ -2966,7 +3198,6 @@ function PodcastStudioApp() {
     setRecordedVideoData(null);
     recordingChunksRef.current = [];
     recordingChunkCountRef.current = 0;
-    recordingChunkErrorRef.current = null;
     setRecordingTime(0);
     setIsRecording(false);
     setIsRecordingPaused(false);
@@ -3000,8 +3231,11 @@ function PodcastStudioApp() {
         return;
       }
 
-      // 1. Asegurar que el compositor broadcast esté activo y generando el Master con 0 retraso
-      startBroadcastEngine({
+      // 1. Asegurar que el compositor broadcast esté activo y generando el
+      // Master, con el flujo del núcleo v2.0.0 decidido (WebCodecs si la
+      // plataforma lo soporta; WebM histórico si no).
+      const flowMode = await decideProgramFlowMode();
+      const masterStream = startBroadcastEngine({
         activeCam,
         pvwCam,
         pipCam,
@@ -3023,7 +3257,16 @@ function PodcastStudioApp() {
         remoteCams,
         camStreamsMap,
         camMuted,
-      }, handleMasterChunk);
+      }, handleMasterChunk, { chunkSource: flowMode === 'webcodecs' ? 'external' : 'mediarecorder' });
+      if (flowMode === 'webcodecs' && masterStream && !programFlowRef.current.pump) {
+        const flowOk = await startWebcodecsFlow(masterStream);
+        if (!flowOk) {
+          switchEngineToWebmChunks();
+          programFlowRef.current.mode = 'webm';
+        }
+      } else if (flowMode === 'webm') {
+        programFlowRef.current.mode = 'webm';
+      }
 
       if (window.api) {
         isStreamStartingRef.current = true;
@@ -3047,14 +3290,8 @@ function PodcastStudioApp() {
         try {
           let res = { success: true };
           if (!nativeStarted) {
-            let initHeader = null;
-            try {
-              initHeader = await getOrWaitForInitHeader(4000);
-            } catch (e) {}
-
             res = await window.api.startStreaming({
               destinations: activeTargets,
-              initialHeader: initHeader ? Array.from(new Uint8Array(initHeader)) : null,
             });
           }
           if (res.success || nativeStarted) {
@@ -3072,7 +3309,7 @@ function PodcastStudioApp() {
             isStreamingRef.current = false;
             setIsStreamStarting(false);
             setIsStreaming(false);
-            if (!isRecordingRef.current) await stopBroadcastEngine();
+            if (!isRecordingRef.current) { await stopBroadcastEngine(); stopProgramFlow(); }
             // D-ui: userMessage del payload (kind 'url') manda sobre el
             // texto genérico y sobre el «Server error» crudo del destino.
             const friendlyStreamError = res.userMessage || (Array.isArray(res.failures) ? res.failures.map(f => f?.userMessage).find(Boolean) : null);
@@ -3083,7 +3320,7 @@ function PodcastStudioApp() {
           isStreamingRef.current = false;
           setIsStreamStarting(false);
           setIsStreaming(false);
-          if (!isRecordingRef.current) await stopBroadcastEngine();
+          if (!isRecordingRef.current) { await stopBroadcastEngine(); stopProgramFlow(); }
           showToast('No se pudo iniciar la conexión RTMP/RTMPS: ' + (error.message || 'Error de red desconocido.'), 'error', 7000);
         }
       } else {
@@ -3100,7 +3337,7 @@ function PodcastStudioApp() {
       }
       setIsStreaming(false);
       setActiveLiveDestinations([]);
-      if (!isRecordingRef.current) stopBroadcastEngine();
+      if (!isRecordingRef.current) { stopBroadcastEngine(); stopProgramFlow(); }
     }
   };
 
@@ -3294,13 +3531,25 @@ function PodcastStudioApp() {
     let stream = null;
     let lastError = null;
 
-    // Apertura directa con las constraints probadas (v1.6.1): una sola
-    // llamada a 1080p ideal y, solo ante OverconstrainedError, un reintento
-    // a 720p dentro de openProvenUsbStream. Sin medición ni perfiles.
+    // Apertura con presupuesto de bus (v2.0.0, Raíz B): el escalón se
+    // decide ANTES de abrir desde los formatos ya negociados por las
+    // cámaras vivas (máx. 2 a 1080p simultáneas; la tercera en adelante
+    // abre a 720p). Sin medir fps y sin persistir la rebaja: si una
+    // cámara 1080p se desconecta, la próxima apertura vuelve a evaluarse.
+    const liveFormats = Object.entries(slotStreamsRef.current || {})
+      .filter(([sKey, s]) => Number(sKey) !== slot && s?.getVideoTracks?.().length)
+      .map(([, s]) => {
+        const st = s.getVideoTracks()[0]?.getSettings?.() || {};
+        return { width: st.width || 0, height: st.height || 0 };
+      });
+    const openTier = decideUsbOpenTier(liveFormats);
     try {
-      stream = await openProvenUsbStream(deviceId, getUserMediaWithTimeout);
+      stream = await openProvenUsbStream(deviceId, getUserMediaWithTimeout, openTier);
     } catch (err) {
       lastError = err;
+    }
+    if (stream && openTier !== '1080p') {
+      showToast(`CAM ${slot + 1} abrió en 720p por presupuesto de bus USB (máximo 2 cámaras a 1080p a la vez). No es un fallo de la cámara: al liberar una 1080p, la próxima apertura vuelve a ser 1080p.`, 'info', 8000);
     }
 
     if (stream) {
@@ -3331,13 +3580,11 @@ function PodcastStudioApp() {
         setLocalStream(stream);
       }
 
-      // Adjuntar micrófono emparejado en segundo plano sin frenar el flujo de video en pantalla
-      attachCameraAudio(stream, deviceId, { allowDefault: slot === 0 }).then(audioDeviceId => {
-        if (audioDeviceId) {
-          cameraMetaRef.current[slot] = { ...cameraMetaRef.current[slot], audioDeviceId };
-          setCameraMeta(prev => ({ ...prev, [slot]: { ...prev[slot], audioDeviceId } }));
-        }
-      }).catch(() => {});
+      // Adjuntar micrófono emparejado en segundo plano sin frenar el flujo de video en pantalla.
+      // v1.7.0 (Raíz C): attachSlotAudio respeta la fuente elegida por el
+      // usuario; sin micro emparejado la ranura queda SIN audio (antes la
+      // máster recibía el micro por defecto de la PC inyectado).
+      attachSlotAudio(slot, stream, deviceId);
 
       return stream;
     } else {
@@ -4944,16 +5191,27 @@ function PodcastStudioApp() {
                       <Settings size={11} />
                     </button>
 
-                    {/* BOTÓN BLOQUEO DE ENFOQUE (ANTI-DESENFOQUE PARA MANOS Y ROSTRO) */}
+                    {/* BOTÓN BLOQUEO DE ENFOQUE (ANTI-DESENFOQUE PARA MANOS Y ROSTRO)
+                        v1.7.0 (Raíz D): el estado que se pinta es el CONFIRMADO
+                        por la pista; si la cámara no expone control de foco, el
+                        botón se marca en rojo y el título lo dice, sin fingir. */}
                     {camStream && (
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleFocusLock(camId); }}
                         className={`p-1 rounded transition-colors ${
-                          camFocusLocked[camId]
-                            ? 'text-amber-400 bg-amber-950/70 hover:bg-amber-900 border border-amber-500/50'
-                            : 'text-gray-300 hover:text-amber-300 hover:bg-black/60'
+                          camFocusStatus[camId]?.supported === false
+                            ? 'text-red-400 bg-red-950/70 hover:bg-red-900 border border-red-500/60'
+                            : camFocusLocked[camId]
+                              ? 'text-amber-400 bg-amber-950/70 hover:bg-amber-900 border border-amber-500/50'
+                              : 'text-gray-300 hover:text-amber-300 hover:bg-black/60'
                         }`}
-                        title={camFocusLocked[camId] ? 'Enfoque BLOQUEADO (Fijo en ti sin respiración de lente) · Clic para reactivar auto-enfoque' : 'Bloquear enfoque en tu posición actual (Evita que desenfoque cuando muevas las manos o el cuerpo)'}
+                        title={
+                          camFocusStatus[camId]?.supported === false
+                            ? camFocusStatus[camId].message
+                            : camFocusStatus[camId]?.message
+                              ? `${camFocusStatus[camId].message} · Clic para ${camFocusLocked[camId] ? 'reactivar auto-enfoque' : 'bloquear enfoque'}`
+                              : camFocusLocked[camId] ? 'Enfoque BLOQUEADO (confirmado por la cámara) · Clic para reactivar auto-enfoque' : 'Bloquear enfoque en tu posición actual (Evita que desenfoque cuando muevas las manos o el cuerpo)'
+                        }
                       >
                         {camFocusLocked[camId] ? <Lock size={11} className="text-amber-400" /> : <Focus size={11} />}
                       </button>
@@ -6249,7 +6507,9 @@ function PodcastStudioApp() {
                     const paused = !isRecordingPausedRef.current;
                     isRecordingPausedRef.current = paused;
                     setIsRecordingPaused(paused);
-                    setRecordingRecorderPaused(paused);
+                    if (window.api?.setRecordingPaused) {
+                      window.api.setRecordingPaused(paused).catch(() => {});
+                    }
                   }}
                   className="w-full py-2 rounded-lg border border-[#444] bg-[#18181b] hover:bg-[#242428] text-gray-100 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer"
                   title={isRecordingPaused ? 'Continuar la grabación' : 'Pausar temporalmente la grabación'}
@@ -6612,6 +6872,33 @@ function PodcastStudioApp() {
               <div className="flex-1 p-4 bg-black flex flex-col items-center justify-center relative border-r border-[#222]"><div className="w-full max-w-2xl aspect-video bg-[#050505] border border-[#333] rounded relative overflow-hidden"><VideoTile stream={getCamStream(editingCamId)} isLocal={editingCamId === 1} className="w-full h-full" style={getVideoStyle(editingCamId)} /></div></div>
               <div className="w-[400px] overflow-y-auto p-4 space-y-6 bg-[#111] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
                 <div><div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-orange-500 flex items-center gap-2"><Search size={12}/> ZOOM / ENCUADRE</span></div><div className="grid grid-cols-4 gap-1 mb-2">{[1.0, 1.25, 1.5, 2.0].map(z => (<button key={z} onClick={() => updateSetting('zoom', z)} className={`py-1 text-[10px] rounded border ${camSettings[editingCamId].zoom === z ? 'bg-orange-600 border-orange-500 text-white' : 'bg-[#222] border-[#333] text-gray-400'}`}>{z}x</button>))}</div><input type="range" min="1.0" max="4.0" step="0.05" value={camSettings[editingCamId].zoom} onChange={e => updateSetting('zoom', Math.max(1.0, parseFloat(e.target.value)))} className="w-full accent-orange-500" /></div>
+                {/* FUENTE DE AUDIO DE LA RANURA (v1.7.0, Raíz C): elección
+                    explícita y visible. 'camera' = micro emparejado de la
+                    propia cámara; un deviceId = micrófono externo elegido;
+                    'none' = sin audio (bloqueado). El micro por defecto de
+                    la PC NUNCA se inyecta solo en una cámara. */}
+                <div>
+                  <div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-orange-500 flex items-center gap-2"><Mic size={12}/> FUENTE DE AUDIO · CAM {editingCamId}</span></div>
+                  <select
+                    value={getSlotAudioChoice(editingCamId - 1)}
+                    onFocus={() => refreshAudioInputDevices()}
+                    onChange={e => handleAudioSourceChange(editingCamId - 1, e.target.value)}
+                    className="w-full bg-[#1a1a1a] border border-[#333] rounded px-2 py-1.5 text-xs text-gray-200 cursor-pointer"
+                  >
+                    <option value="camera">Micrófono de la cámara (emparejado)</option>
+                    <option value="none">Sin audio — bloqueado</option>
+                    {audioInputDevices.map(d => (
+                      <option key={d.deviceId} value={d.deviceId}>{d.label || 'Micrófono externo'}</option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
+                    {cameraMeta[editingCamId - 1]?.audioSourceBlocked
+                      ? 'Esta ranura está bloqueada: no entra ningún micrófono.'
+                      : cameraMeta[editingCamId - 1]?.audioDeviceId
+                        ? 'Fuente activa: la elegida/emparejada de esta cámara. El micrófono de la computadora solo entra si lo eliges aquí.'
+                        : 'Sin fuente activa: la cámara no trajo micrófono emparejado. Elige uno externo o déjala bloqueada; la app ya no mete el micro de la PC por su cuenta.'}
+                  </p>
+                </div>
               </div>
             </div>
             <div className="p-3 bg-[#16171b] border-t border-[#2a2b30] flex justify-between items-center"><button onClick={resetSettings} className="px-4 py-2 bg-transparent text-gray-400 hover:text-white flex items-center gap-2 text-xs"><Disc size={14}/> Restablecer</button><button onClick={() => setShowSettingsModal(false)} className="px-6 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-bold flex items-center gap-2 shadow-lg">Guardar y Cerrar</button></div>

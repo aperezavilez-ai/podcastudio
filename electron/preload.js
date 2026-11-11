@@ -31,6 +31,11 @@ contextBridge.exposeInMainWorld('api', {
 
   startStreaming: (payload) => ipcRenderer.invoke('start-streaming', payload),
   sendStreamChunk: (chunk) => ipcRenderer.send('stream-chunk', chunk),
+  // Núcleo v2.0.0: ruta WebCodecs — H.264 elemental del ÚNICO codificador
+  // del programa + audio mezclado en WebM/Opus, hacia el grafo de reparto.
+  sendProgramVideoChunk: (chunk) => ipcRenderer.send('program-video-chunk', chunk),
+  sendProgramAudioChunk: (chunk) => ipcRenderer.send('program-audio-chunk', chunk),
+  setRecordingPaused: (paused) => ipcRenderer.invoke('set-recording-paused', paused),
   stopStreaming: () => ipcRenderer.invoke('stop-streaming'),
   onStreamStatus: (cb) => {
     const handler = (e, data) => cb(data);

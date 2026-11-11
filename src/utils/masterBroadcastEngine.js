@@ -344,7 +344,8 @@ function hasTimeVaryingComposition() {
     currentState.isReplaying ||
     currentState.whiteboardCanvas ||
     (typeof currentState.transitionProgress === 'number' && currentState.transitionProgress > 0 && currentState.transitionProgress < 1) ||
-    (logoVideoElement && logoVideoElement.readyState >= 2)
+    (logoVideoElement && logoVideoElement.readyState >= 2) ||
+    (cintilloAnimState.phase === 'entering' || cintilloAnimState.phase === 'exiting')
   );
 }
 
@@ -695,25 +696,16 @@ function drawCameraNameBadge(x, y, w, h, camId) {
   let subtitle = '';
   let position = 'bottom-left';
 
+  // v1.6.2: la placa sobre el programa se dibuja SOLO si el usuario la
+  // configuró explícitamente para esta cámara (badge con nombre y activa).
+  // Se eliminó la cadena de respaldo que inventaba un nombre desde la
+  // etiqueta del dispositivo («EasyCamera (04f2:b57e)»), el anfitrión o el
+  // invitado y lo quemaba en la salida máster sin que nadie lo pidiera:
+  // ningún nombre de cámara aparece en el programa por defecto.
   if (badge && badge.name && badge.name.trim() && badge.enabled !== false) {
     name = badge.name.trim();
     subtitle = (badge.subtitle || '').trim();
     position = badge.position || 'bottom-left';
-  } else if (!badge || badge.enabled !== false) {
-    const slotIdx = camId - 1;
-    const meta = currentState.cameraMeta ? (currentState.cameraMeta[slotIdx] || currentState.cameraMeta[camId]) : null;
-    if (meta && meta.guestName && meta.guestName.trim()) {
-      name = meta.guestName.trim();
-      subtitle = (meta.guestRole || '').trim();
-    } else if (meta && meta.label && !meta.label.startsWith('CAM') && !meta.label.startsWith('Cámara') && !meta.label.startsWith('Celular')) {
-      name = meta.label.trim();
-    } else if (camId === 1 && currentState.hostName && currentState.hostName.trim()) {
-      name = currentState.hostName.trim();
-      subtitle = (currentState.hostRole || '').trim();
-    } else if (camId === 2 && currentState.guestName && currentState.guestName.trim() && currentState.guestName !== 'Invitado Especial') {
-      name = currentState.guestName.trim();
-      subtitle = (currentState.guestRole || '').trim();
-    }
   }
 
   if (!name) return;
@@ -785,6 +777,70 @@ function drawCameraNameBadge(x, y, w, h, camId) {
     ctx.fillText(subtitle, bx + padX, by + padY + fontSizeName + Math.round(4 * scale));
   }
 
+  ctx.restore();
+}
+
+// Animación del cintillo en el canvas (v1.6.2): el overlay DOM que se
+// eliminó en la v1.6.1 animaba la entrada/salida con CSS y el dibujo del
+// canvas no tenía movimiento — el cintillo aparecía y desaparecía de golpe.
+// Aquí la animación vive en el propio dibujo del programa (la ven también
+// la grabación y el streaming): entra deslizando desde la izquierda con
+// fundido (380 ms), sale igual (300 ms); si la rotación cambia la tarjeta
+// estando visible, la nueva re-entra. El estado guarda la última tarjeta
+// para poder dibujar la salida aunque el estado ya la marque inactiva.
+const CINTILLO_ANIM_IN_MS = 380;
+const CINTILLO_ANIM_OUT_MS = 300;
+const cintilloAnimState = { key: null, phase: 'hidden', startedAt: 0, last: null, lastTopic: '' };
+
+function cintilloAnimKey(c) {
+  return c ? [c.tag || '', c.text || '', c.subtitle || '', c.color || ''].join('|') : '';
+}
+function cintilloEaseOut(t) { return 1 - Math.pow(1 - t, 3); }
+function cintilloEaseIn(t) { return t * t * t; }
+
+function drawCintilloAnimated(now) {
+  const st = cintilloAnimState;
+  const visible = !!(currentState.cintillosVisible && currentState.cintillo?.active);
+  if (visible) {
+    const key = cintilloAnimKey(currentState.cintillo);
+    if (st.phase === 'hidden' || st.phase === 'exiting') {
+      st.phase = 'entering';
+      st.startedAt = now;
+      st.key = key;
+    } else if (st.phase === 'shown' && key !== st.key) {
+      st.phase = 'entering';
+      st.startedAt = now;
+      st.key = key;
+    }
+    st.last = currentState.cintillo;
+    st.lastTopic = currentState.topic;
+    if (st.phase === 'entering' && now - st.startedAt >= CINTILLO_ANIM_IN_MS) {
+      st.phase = 'shown';
+    }
+  } else if (st.phase === 'entering' || st.phase === 'shown') {
+    st.phase = 'exiting';
+    st.startedAt = now;
+  } else if (st.phase === 'exiting' && now - st.startedAt >= CINTILLO_ANIM_OUT_MS) {
+    st.phase = 'hidden';
+    st.last = null;
+    st.key = null;
+  }
+  if (st.phase === 'hidden' || !st.last) return;
+  let alpha = 1;
+  let slide = 0;
+  if (st.phase === 'entering') {
+    const t = cintilloEaseOut(Math.min(1, (now - st.startedAt) / CINTILLO_ANIM_IN_MS));
+    alpha = t;
+    slide = (1 - t) * -56;
+  } else if (st.phase === 'exiting') {
+    const t = cintilloEaseIn(Math.min(1, (now - st.startedAt) / CINTILLO_ANIM_OUT_MS));
+    alpha = 1 - t;
+    slide = t * -56;
+  }
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(slide, 0);
+  drawCintillo(st.last, st.lastTopic);
   ctx.restore();
 }
 
@@ -1261,9 +1317,7 @@ function renderFrame() {
     ctx.restore();
   }
 
-  if (currentState.cintillosVisible && currentState.cintillo?.active) {
-    drawCintillo(currentState.cintillo, currentState.topic);
-  }
+  drawCintilloAnimated(Date.now());
 
   if (currentState.subtitlesVisible && currentState.liveSubtitleText) {
     drawLiveSubtitle(currentState.liveSubtitleText, currentState.subtitleStyle);
@@ -1331,8 +1385,24 @@ function renderFrame() {
     } catch (e) {}
   }
 
+  // Núcleo v2.0.0: tap del fotograma compuesto para la ÚNICA codificación
+  // del programa (WebCodecs). Se invoca tras el dibujo completo, una vez
+  // por tick: ningún fotograma se entrega dos veces y la bomba decide
+  // (sin bloquear) si lo codifica o lo descarta por cola llena.
+  if (programFrameTap) {
+    try { programFrameTap(canvas); } catch (e) {}
+  }
+
   // Solo tras un dibujo completo se marca el fotograma como presentado.
   programRenderedFrames++;
+}
+
+// Tap de fotogramas del programa (núcleo v2.0.0): lo registra App con la
+// bomba WebCodecs cuando el flujo va en modo 'external'; null en la ruta
+// WebM histórica (el MediaRecorder del motor consume el canvasStream).
+let programFrameTap = null;
+export function setProgramFrameTap(fn) {
+  programFrameTap = typeof fn === 'function' ? fn : null;
 }
 
 function initMixerBuses() {
@@ -1999,13 +2069,20 @@ export async function getOrWaitForInitHeader(timeoutMs = 1500) {
   return cachedInitHeader ? cachedInitHeader.slice(0) : null;
 }
 
-export function startBroadcastEngine(initialState, onChunk) {
+// Núcleo v2.0.0: en modo de chunks 'external' el motor NO crea su
+// MediaRecorder (esa era la codificación VP8 del programa): el flujo lo
+// produce la bomba WebCodecs alimentada por el tap de fotogramas. El
+// masterStream (canvas + audio mezclado) se construye igual: el audio
+// del programa y el monitor lo siguen consumiendo.
+let externalChunkMode = false;
+
+export function startBroadcastEngine(initialState, onChunk, { chunkSource = 'mediarecorder' } = {}) {
   currentState = { ...currentState, ...initialState };
   updateImages();
   ensureMasterCanvas();
 
   // Si ya está activo y grabando con chunks fluyendo, devolver el masterStream
-  if (isBroadcastEngineActive && mediaRecorder && mediaRecorder.state === 'recording') {
+  if (isBroadcastEngineActive && ((mediaRecorder && mediaRecorder.state === 'recording') || externalChunkMode)) {
     updateBroadcastState(initialState);
     if (onChunk) addChunkListener(onChunk);
     return masterStream;
@@ -2060,6 +2137,26 @@ export function startBroadcastEngine(initialState, onChunk) {
   if (audioTrack) tracks.push(audioTrack);
   masterStream = new MediaStream(tracks);
 
+  externalChunkMode = chunkSource === 'external';
+  if (externalChunkMode) {
+    // Sin MediaRecorder: la codificación del programa es la bomba
+    // WebCodecs de App (una sola, con hardware si la plataforma lo da).
+    mediaRecorder = null;
+    isBroadcastEngineActive = true;
+    return masterStream;
+  }
+
+  createMasterMediaRecorder();
+
+  isBroadcastEngineActive = true;
+  return masterStream;
+}
+
+// Crea el MediaRecorder histórico del motor (ruta WebM de respaldo). Se
+// extrajo de startBroadcastEngine para poder invocarlo también en el
+// volteo en vivo WebCodecs → WebM (switchEngineToWebmChunks).
+function createMasterMediaRecorder() {
+  if (!masterStream) return null;
   const hasAudioTrack = masterStream.getAudioTracks().length > 0;
   const preferredMimes = hasAudioTrack
     ? [
@@ -2118,78 +2215,29 @@ export function startBroadcastEngine(initialState, onChunk) {
     }
   }
 
-  isBroadcastEngineActive = true;
-  return masterStream;
+  return mediaRecorder;
+}
+
+// Volteo en vivo (núcleo v2.0.0): si la bomba WebCodecs muere a mitad de
+// sesión, App pide este cambio y el motor crea su MediaRecorder WebM
+// sobre el MISMO masterStream, sin reiniciar la composición. El núcleo
+// en el proceso principal detecta el cambio de contenedor y reinicia su
+// grafo en modo WebM (una sola transcodificación de respaldo).
+export function switchEngineToWebmChunks() {
+  if (!isBroadcastEngineActive || !masterStream) return false;
+  if (mediaRecorder && mediaRecorder.state === 'recording') return true;
+  externalChunkMode = false;
+  createMasterMediaRecorder();
+  return !!mediaRecorder;
 }
 
 // ============================================================================
-// GRABADOR DEDICADO DE GRABACIÓN (v1.5.0, Frente B)
-// Antes la "pausa" de grabación descartaba chunks en App.jsx mientras el
-// MediaRecorder compartido seguía corriendo: el archivo final quedaba con un
-// salto temporal. Ahora la grabación tiene su PROPIO MediaRecorder sobre el
-// mismo masterStream, con pause()/resume() reales, sin afectar al directo
-// (que sigue alimentándose del MediaRecorder principal).
+// GRABADOR DEDICADO DE GRABACIÓN (v1.5.0, Frente B) — RETIRADO en v2.0.0:
+// era la SEGUNDA codificación del programa (su propio MediaRecorder VP8
+// sobre el mismo masterStream). En el núcleo nuevo la grabación consume
+// el flujo ya codificado en el proceso principal (copia sin recodificar),
+// así que este grabador y su plomería en App.jsx desaparecen.
 // ============================================================================
-let recordingRecorder = null;
-let recordingChunkListener = null;
-let pendingRecordingChunkDelivery = Promise.resolve();
-let recordingSkipNextChunk = false;
-
-export function startRecordingRecorder(onChunk, { skipFirstChunk = false } = {}) {
-  if (!masterStream || !isBroadcastEngineActive) return false;
-  if (recordingRecorder && recordingRecorder.state !== 'inactive') return true;
-  recordingChunkListener = onChunk;
-  recordingSkipNextChunk = !!skipFirstChunk;
-  const recOptions = { videoBitsPerSecond: 8000000, audioBitsPerSecond: 192000 };
-  try {
-    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) recOptions.mimeType = 'video/webm;codecs=vp8,opus';
-  } catch (e) {}
-  try {
-    recordingRecorder = new MediaRecorder(masterStream, recOptions);
-  } catch (err) {
-    try { recordingRecorder = new MediaRecorder(masterStream); } catch (e) { recordingRecorder = null; return false; }
-  }
-  recordingRecorder.ondataavailable = (e) => {
-    if (!e.data || e.data.size === 0) return;
-    if (recordingSkipNextChunk) { recordingSkipNextChunk = false; return; }
-    pendingRecordingChunkDelivery = pendingRecordingChunkDelivery.then(async () => {
-      const buffer = await e.data.arrayBuffer();
-      if (recordingChunkListener) { try { recordingChunkListener(buffer); } catch (err) {} }
-    }).catch((err) => {
-      console.warn('[RecordingRecorder] Error procesando segmento:', err?.message || err);
-    });
-  };
-  try {
-    recordingRecorder.start(250);
-  } catch (err) {
-    recordingRecorder = null;
-    return false;
-  }
-  return true;
-}
-
-export function setRecordingRecorderPaused(paused) {
-  if (!recordingRecorder) return false;
-  try {
-    if (paused && recordingRecorder.state === 'recording') { recordingRecorder.pause(); return true; }
-    if (!paused && recordingRecorder.state === 'paused') { recordingRecorder.resume(); return true; }
-  } catch (e) {}
-  return false;
-}
-
-export async function stopRecordingRecorder() {
-  const rec = recordingRecorder;
-  recordingRecorder = null;
-  recordingChunkListener = null;
-  if (rec && rec.state !== 'inactive') {
-    await new Promise((resolve) => {
-      const timeout = setTimeout(resolve, 5000);
-      rec.addEventListener('stop', () => { clearTimeout(timeout); resolve(); }, { once: true });
-      try { rec.stop(); } catch (e) { clearTimeout(timeout); resolve(); }
-    });
-  }
-  await pendingRecordingChunkDelivery;
-}
 
 export function updateBroadcastState(updates) {
   const voiceUpdated = (updates.voiceEffect !== undefined && updates.voiceEffect !== currentState.voiceEffect) ||
@@ -2247,7 +2295,8 @@ export function captureMasterCanvasSnapshot() {
 
 export async function stopBroadcastEngine() {
   isBroadcastEngineActive = false;
-  await stopRecordingRecorder();
+  externalChunkMode = false;
+  setProgramFrameTap(null);
 
   const recorderToStop = mediaRecorder;
   if (recorderToStop && recorderToStop.state !== 'inactive') {
