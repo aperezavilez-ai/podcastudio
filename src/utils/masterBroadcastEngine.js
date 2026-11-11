@@ -63,6 +63,7 @@ let currentState = {
   logoConfig: null,
   cintillosVisible: false,
   cintillo: null,
+  cintilloPosition: 'bl',
   topic: '',
   voiceEffect: 'normal',
   voiceTarget: 'all',
@@ -351,7 +352,7 @@ function buildCompositionSignature() {
       currentState.transitionProgress, currentState.transitionFromCam, currentState.transitionToCam,
       currentState.chromaKeyActive ? 1 : 0, compositionFingerprint(currentState.virtualBg),
       compositionFingerprint(currentState.logoBase64), JSON.stringify(currentState.logoConfig || {}),
-      currentState.cintillosVisible ? 1 : 0, JSON.stringify(currentState.cintillo || {}), currentState.topic || '',
+      currentState.cintillosVisible ? 1 : 0, JSON.stringify(currentState.cintillo || {}), currentState.cintilloPosition || 'bl', currentState.topic || '',
       currentState.subtitlesVisible ? 1 : 0, currentState.liveSubtitleText || '',
       currentState.isReplaying ? 1 : 0, JSON.stringify(currentState.replayOverlay || {}),
       JSON.stringify(currentState.cameraBadges || {}),
@@ -631,32 +632,15 @@ function drawCameraNameBadge(x, y, w, h, camId) {
   const badges = currentState.cameraBadges || {};
   const badge = badges[camId];
 
-  let name = '';
-  let subtitle = '';
-  let position = 'bottom-left';
-
-  if (badge && badge.name && badge.name.trim() && badge.enabled !== false) {
-    name = badge.name.trim();
-    subtitle = (badge.subtitle || '').trim();
-    position = badge.position || 'bottom-left';
-  } else if (!badge || badge.enabled !== false) {
-    const slotIdx = camId - 1;
-    const meta = currentState.cameraMeta ? (currentState.cameraMeta[slotIdx] || currentState.cameraMeta[camId]) : null;
-    if (meta && meta.guestName && meta.guestName.trim()) {
-      name = meta.guestName.trim();
-      subtitle = (meta.guestRole || '').trim();
-    } else if (meta && meta.label && !meta.label.startsWith('CAM') && !meta.label.startsWith('Cámara') && !meta.label.startsWith('Celular')) {
-      name = meta.label.trim();
-    } else if (camId === 1 && currentState.hostName && currentState.hostName.trim()) {
-      name = currentState.hostName.trim();
-      subtitle = (currentState.hostRole || '').trim();
-    } else if (camId === 2 && currentState.guestName && currentState.guestName.trim() && currentState.guestName !== 'Invitado Especial') {
-      name = currentState.guestName.trim();
-      subtitle = (currentState.guestRole || '').trim();
-    }
+  // Solo mostrar rótulo si el usuario lo activó explícitamente en la configuración de la ranura.
+  // Jamás pintar el nombre de dispositivo de hardware (meta.label) ni textos no solicitados.
+  if (!badge || badge.enabled !== true || !badge.name || !badge.name.trim()) {
+    return;
   }
 
-  if (!name) return;
+  const name = badge.name.trim();
+  const subtitle = (badge.subtitle || '').trim();
+  const position = badge.position || 'bottom-left';
 
   ctx.save();
   const scale = Math.max(0.65, Math.min(1.25, w / 960));
@@ -735,11 +719,27 @@ function drawCintillo(cintillo, topic) {
   const subtitle = cintillo.subtitle || '';
   const color = cintillo.color || '#e8612a';
 
-  const x = 70;
-  const y = 1080 - 190;
+  const pos = cintillo.position || currentState.cintilloPosition || 'bl';
   const w = Math.min(1050, Math.max(550, title.length * 20 + 200));
   const h = subtitle ? 115 : 85;
   const radius = 16;
+
+  let x = 70;
+  let y = 1080 - 190;
+  if (pos === 'br' || pos === 'bottom-right') {
+    x = 1920 - w - 70;
+  } else if (pos === 'bc' || pos === 'bottom-center') {
+    x = Math.round((1920 - w) / 2);
+  } else if (pos === 'tl' || pos === 'top-left') {
+    x = 70;
+    y = 70;
+  } else if (pos === 'tc' || pos === 'top-center') {
+    x = Math.round((1920 - w) / 2);
+    y = 70;
+  } else if (pos === 'tr' || pos === 'top-right') {
+    x = 1920 - w - 70;
+    y = 70;
+  }
 
   ctx.save();
   ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';

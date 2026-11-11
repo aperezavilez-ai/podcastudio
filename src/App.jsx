@@ -2036,6 +2036,7 @@ function PodcastStudioApp() {
       guestRole,
       cintillosVisible,
       cintillo,
+      cintilloPosition,
       topic,
       teleprompterText,
       teleprompterSpeed,
@@ -2044,7 +2045,7 @@ function PodcastStudioApp() {
       getCamStream,
       remoteCams,
     });
-  }, [activeCam, pvwCam, pipCam, camSlots, cameraCrops, cameraBadges, cameraMeta, hostName, hostRole, guestName, guestRole, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, topic, teleprompterText, teleprompterSpeed, teleprompterFontSize, isTeleprompterPlaying, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
+  }, [activeCam, pvwCam, pipCam, camSlots, cameraCrops, cameraBadges, cameraMeta, hostName, hostRole, guestName, guestRole, layoutMode, chromaKeyActive, virtualBg, logoBase64, logoConfig, cintillosVisible, cintillo, cintilloPosition, topic, teleprompterText, teleprompterSpeed, teleprompterFontSize, isTeleprompterPlaying, voiceEffect, voiceTarget, voiceMonitorActive, localStream, remoteCams, camStreamsMap, camMuted, isStreaming, isRecording]);
 
   useEffect(() => {
     const officialQr = 'https://www.podcastudio.mx/remote-cam?auto=true';
@@ -4574,8 +4575,8 @@ function PodcastStudioApp() {
                 </div>
               )}
               
-              {/* LOGO OFICIAL DEL PROYECTO O VIDEO 3D ANIMADO */}
-              {isElectronMaster && (logoConfig.url || logoBase64) && (
+              {/* LOGO OFICIAL DEL PROYECTO O VIDEO 3D ANIMADO (en Electron Master el lienzo canvas ya lo compone de forma nativa) */}
+              {!isElectronMaster && (logoConfig.url || logoBase64) && (
                 (() => {
                   const url = logoConfig.url || logoBase64;
                   const isVideo = logoConfig.mediaType === 'video' || (typeof url === 'string' && (url.startsWith('data:video') || url.match(/\.(mp4|webm|mov|mkv)($|\?)/i)));
@@ -4615,8 +4616,8 @@ function PodcastStudioApp() {
               )}
 
 
-              {/* CINTILLO BROADCAST TRANSLÚCIDO 3D */}
-              {cintillosVisible && cintillo?.active && (
+              {/* CINTILLO BROADCAST TRANSLÚCIDO 3D (en Electron Master el lienzo canvas ya compone el cintillo para evitar duplicación 1:1) */}
+              {!isElectronMaster && cintillosVisible && cintillo?.active && (
                 <CintilloOverlay
                   styleId={cintilloStyle}
                   tag={cintillo.tag || 'TEMA'}
