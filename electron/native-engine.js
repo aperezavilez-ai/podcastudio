@@ -1,13 +1,17 @@
 'use strict';
 // ============================================================================
-// Motor Nativo hospedado — Hito 2 (v3.1.0).
+// Motor Nativo hospedado — Hito 2 (v3.1.0); Hito 3 (v3.2.0): los botones
+// reales de la app gobiernan el motor.
 //
 // La app gobierna una tubería de GStreamer FUERA de la ventana: captura
 // (mfvideosrc) → conversión/composición D3D11 → tee de programa →
 // vista previa nativa (d3d11videosink) y, según la sesión, codificación
-// H.264 por hardware → MP4 fragmentado y/o FLV hacia un RTMP LOCAL de
-// prueba. Electron solo arranca, observa y detiene esa tubería; ningún
-// fotograma pasa por el canvas ni por el proceso de la ventana.
+// H.264 por hardware → MP4 fragmentado y/o FLV hacia los destinos RTMP
+// REALES guardados (sesiones 'stream'/'recordStream' con streamUrls) o
+// hacia el RTMP LOCAL de prueba (recordStream sin destinos: el botón de
+// prueba del panel). Electron solo arranca, observa y detiene esa
+// tubería; ningún fotograma pasa por el canvas ni por el proceso de la
+// ventana.
 //
 // Este módulo NO importa Electron: todas sus dependencias llegan por
 // inyección (createNativeEngine(deps)), igual que electron/program-core.js,
@@ -18,7 +22,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-// Destino LOCAL de prueba de la sesión 'recordStream': el destino real se conecta en un hito posterior.
+// Destino LOCAL de prueba de la sesión 'recordStream' SIN destinos
+// reales (el botón «Grabar + Transmitir (prueba local)» del panel). Con
+// streamUrls, recordStream transmite a los destinos reales y esta
+// constante no se usa.
 const RTMP_PRUEBA_URL = 'rtmp://127.0.0.1:1935/live/prueba';
 
 // Escalera de codificadores H.264, de mejor a peor: hardware primero.
@@ -156,13 +163,18 @@ function agregarCapsDesdeTexto(lista, texto) {
 // «Source/Video» (invertida) en las de MediaFoundation — son las que usa
 // mfvideosrc —: se aceptan AMBAS; cualquier otra clase se descarta.
 // ----------------------------------------------------------------------------
-function parseDeviceMonitorOutput(texto) {
+function parseDeviceMonitorOutput(texto, opciones) {
+  // Hito 3: con { audio: true } el parser acepta las fuentes de AUDIO
+  // (clases «Audio/Source»/«Source/Audio») para la regla de coincidencia
+  // del micrófono; sin la opción conserva el comportamiento del Hito 2
+  // (solo vídeo) y descarta cualquier bloque de audio.
+  const esAudio = !!(opciones && opciones.audio);
   const dispositivos = [];
   const bloques = String(texto || '').split(/Device found:/);
   // El primer trozo es lo anterior al primer «Device found:»: se descarta.
   for (let i = 1; i < bloques.length; i += 1) {
     const lineas = bloques[i].split(/\r?\n/);
-    const disp = { name: null, class: null, caps: [], devicePath: null, api: null, deviceIndex: dispositivos.length };
+    const disp = { name: null, class: null, caps: [], devicePath: null, deviceId: null, api: null, deviceIndex: dispositivos.length };
     let enCaps = false;
     for (const linea of lineas) {
       const recortada = linea.trim();
@@ -173,6 +185,7 @@ function parseDeviceMonitorOutput(texto) {
       if ((m = recortada.match(/^caps\s*:\s*(.+)$/))) { agregarCapsDesdeTexto(disp.caps, m[1]); enCaps = true; continue; }
       if ((m = recortada.match(/^device-path\s*=\s*(.+)$/))) { disp.devicePath = m[1].trim(); continue; }
       if ((m = recortada.match(/^device\.path\s*=\s*(.+)$/))) { disp.devicePath = m[1].trim(); continue; }
+      if ((m = recortada.match(/^device\.id\s*=\s*(.+)$/))) { disp.deviceId = m[1].trim(); continue; }
       if ((m = recortada.match(/^device\.api\s*=\s*(.+)$/))) { disp.api = m[1].trim(); continue; }
       if ((m = recortada.match(/^gst-launch-1\.0\s/))) { enCaps = false; continue; }
       if (/^[A-Za-z0-9_-]+\s*:/.test(recortada) || /^[A-Za-z0-9_-]+\s*=/.test(recortada)) {
@@ -183,16 +196,19 @@ function parseDeviceMonitorOutput(texto) {
         enCaps = false;
         continue;
       }
-      if (enCaps && (recortada.startsWith('video/') || recortada.startsWith('image/') || recortada.includes('width='))) {
+      if (enCaps && (recortada.startsWith('video/') || recortada.startsWith('image/') || recortada.includes('width=') || (esAudio && recortada.startsWith('audio/')))) {
         agregarCapsDesdeTexto(disp.caps, recortada);
         continue;
       }
     }
-    // Solo interesan las fuentes de vídeo; si el bloque declara otra clase
-    // se conserva igual cuando no hay clase (robustez ante variantes),
-    // pero las clases que no son de fuente de vídeo se descartan si vienen
-    // dadas. OJO: MediaFoundation declara «Source/Video» (invertida).
-    if (disp.class && disp.class !== 'Video/Source' && disp.class !== 'Source/Video') continue;
+    // Solo interesan las fuentes del tipo pedido (vídeo por defecto, o
+    // audio con { audio: true }); si el bloque declara otra clase se
+    // conserva igual cuando no hay clase (robustez ante variantes),
+    // pero las clases que no son del tipo pedido se descartan si vienen
+    // dadas. OJO: MediaFoundation declara «Source/Video» (invertida) y
+    // WASAPI2 puede declarar «Source/Audio».
+    const clasesAceptadas = esAudio ? ['Audio/Source', 'Source/Audio'] : ['Video/Source', 'Source/Video'];
+    if (disp.class && !clasesAceptadas.includes(disp.class)) continue;
     if (!disp.name && disp.caps.length === 0 && !disp.devicePath) continue;
     disp.deviceIndex = dispositivos.length;
     dispositivos.push(disp);
@@ -308,13 +324,45 @@ async function chooseEncoder(inspectFn) {
 }
 
 // ----------------------------------------------------------------------------
+// Tope de transmisión (Hito 3): los destinos RTMP reciben COMO MÁXIMO
+// 1920×1080. capsParaStream reduce cualquier formato mayor a exactamente
+// 1920×1080 conservando fps y formato; un formato ≤1080p pasa intacto.
+// Devuelve un objeto de caps nuevo (no muta el recibido).
+// ----------------------------------------------------------------------------
+function capsParaStream(caps) {
+  if (!caps || typeof caps.width !== 'number' || typeof caps.height !== 'number') return caps;
+  if (caps.width <= 1920 && caps.height <= 1080) return { ...caps };
+  return { ...caps, width: 1920, height: 1080 };
+}
+
+// ----------------------------------------------------------------------------
+// Regla de audio (Hito 3): el micrófono debe ser EL DE LA CÁMARA elegida
+// (p. ej. «Micrófono (Steren COM-126)» para la cámara «Steren COM-126»),
+// nunca el dispositivo por defecto de Windows EN SILENCIO.
+//
+// chooseAudioDevice(dispositivosAudio, nombreCamara) devuelve
+// { matched: boolean, device } con el primer dispositivo de audio cuyo
+// nombre CONTIENE el nombre de la cámara (sin distinción de mayúsculas),
+// o { matched: false, device: null } si no hay coincidencia.
+// ----------------------------------------------------------------------------
+function chooseAudioDevice(dispositivosAudio, nombreCamara) {
+  const lista = Array.isArray(dispositivosAudio) ? dispositivosAudio : [];
+  const aguja = String(nombreCamara || '').trim().toLowerCase();
+  if (!aguja) return { matched: false, device: null };
+  const encontrado = lista.find((d) => d && d.name && d.name.toLowerCase().includes(aguja));
+  return encontrado ? { matched: true, device: encontrado } : { matched: false, device: null };
+}
+
+// ----------------------------------------------------------------------------
 // buildPipelineArgs(opts) PURO: devuelve el array de tokens para
 // spawn(gstLaunch, tokens) SIN '-e' (el cierre elegante llega en un hito
 // posterior; el MP4 fragmentado hace válido el cierre forzado, probado en
 // el Hito 1). El array lleva además la propiedad usedDeviceIndexFallback
 // para que el llamador pueda loguear esa rebaja declarada.
 // opts: { session, deviceIndex, devicePath, caps, encoder, withPreset,
-//         encoderProps, withAudio, audioSrc, outFile }
+//         encoderProps, withAudio, audioSrc, audioDevice, outFile,
+//         streamUrls } — streamUrls: destinos RTMP reales (Hito 3);
+//         audioDevice: identificador WASAPI para wasapi2src device=….
 // ----------------------------------------------------------------------------
 function buildPipelineArgs(opts) {
   const o = opts || {};
@@ -327,6 +375,20 @@ function buildPipelineArgs(opts) {
   const outFileFwd = o.outFile ? String(o.outFile).replace(/\\/g, '/') : '';
   const audioSrc = o.audioSrc || 'wasapi2src';
   const conAudio = !!o.withAudio && session !== 'preview';
+  // Hito 3 — destinos reales de transmisión: URLs completas ya
+  // compuestas (servidor+clave una sola vez, en la app). Cada una es UN
+  // token argv (spawn por array, sin shell) en su rtmpsink.
+  const streamUrls = Array.isArray(o.streamUrls) ? o.streamUrls.filter((u) => typeof u === 'string' && u.trim()) : [];
+  // Hito 3 — tope 1080 para los destinos: si el formato negociado
+  // supera 1920×1080, el stream baja a 1080p en GPU con su propio
+  // codificador (bitrate del peldaño 1080 de la escalera: 12000).
+  const necesitaEscalaStream = caps.width > 1920 || caps.height > 1080;
+  const capsStream = capsParaStream(caps);
+  const propsStream = Array.isArray(o.encoderProps) ? o.encoderProps : encoderProps(o.encoder, conPreset, capsStream);
+  const capsStreamTexto = `video/x-raw(memory:D3D11Memory),format=NV12,width=${capsStream.width},height=${capsStream.height},framerate=${fps}/1`;
+  // Fuente de audio: con el dispositivo WASAPI elegido por coincidencia
+  // (regla de audio del Hito 3), el token device=<id> va tras el nombre.
+  const fuenteAudio = o.audioDevice ? [audioSrc, `device=${o.audioDevice}`] : [audioSrc];
 
   const tokens = [];
   tokens.push('mfvideosrc');
@@ -340,15 +402,45 @@ function buildPipelineArgs(opts) {
   if (session === 'record') {
     tokens.push('tprog.', '!', 'queue', '!', o.encoder, ...props, '!', 'h264parse', '!', 'mp4mux', 'fragment-duration=2000', 'name=mp4', '!', 'filesink', `location=${outFileFwd}`);
     if (conAudio) {
-      tokens.push(audioSrc, '!', 'audioconvert', '!', 'audioresample', '!', 'avenc_aac', '!', 'mp4.');
+      tokens.push(...fuenteAudio, '!', 'audioconvert', '!', 'audioresample', '!', 'avenc_aac', '!', 'mp4.');
     }
-  } else if (session === 'recordStream') {
-    tokens.push('tprog.', '!', 'queue', '!', o.encoder, ...props, '!', 'h264parse', '!', 'tee', 'name=tenc',
-      'tenc.', '!', 'queue', '!', 'mp4mux', 'fragment-duration=2000', 'name=mp4', '!', 'filesink', `location=${outFileFwd}`,
-      'tenc.', '!', 'queue', '!', 'flvmux', 'name=flv', '!', 'rtmpsink', `location=${RTMP_PRUEBA_URL}`);
+  } else if (session === 'recordStream' || session === 'stream') {
+    const graba = session === 'recordStream';
+    // Ramas FLV: una por destino real (flv0, flv1, …). Sin destinos,
+    // recordStream conserva la rama ÚNICA a la prueba local (flv), como
+    // en el Hito 2; 'stream' sin destinos no llega aquí (start lo
+    // declara error antes de construir la tubería).
+    const ramasFlv = [];
+    if (streamUrls.length > 0) {
+      streamUrls.forEach((url, i) => ramasFlv.push({ nombre: `flv${i}`, url }));
+    } else if (graba) {
+      ramasFlv.push({ nombre: 'flv', url: RTMP_PRUEBA_URL });
+    }
+    if (!necesitaEscalaStream) {
+      // Formato ≤1080p: UN solo codificador y el tee tras h264parse
+      // reparte el mismo H.264 a la grabación y a cada destino (la
+      // forma probada en el Hito 1/2).
+      tokens.push('tprog.', '!', 'queue', '!', o.encoder, ...props, '!', 'h264parse', '!', 'tee', 'name=tenc');
+      if (graba) tokens.push('tenc.', '!', 'queue', '!', 'mp4mux', 'fragment-duration=2000', 'name=mp4', '!', 'filesink', `location=${outFileFwd}`);
+      for (const rama of ramasFlv) {
+        tokens.push('tenc.', '!', 'queue', '!', 'flvmux', `name=${rama.nombre}`, '!', 'rtmpsink', `location=${rama.url}`);
+      }
+    } else {
+      // Formato >1080p: la grabación conserva la resolución completa
+      // con su codificador; el stream nace de tprog con conversión GPU
+      // a 1920×1080 y su PROPIO codificador al bitrate de 1080p.
+      if (graba) tokens.push('tprog.', '!', 'queue', '!', o.encoder, ...props, '!', 'h264parse', '!', 'mp4mux', 'fragment-duration=2000', 'name=mp4', '!', 'filesink', `location=${outFileFwd}`);
+      tokens.push('tprog.', '!', 'queue', '!', 'd3d11convert', '!', capsStreamTexto, '!', o.encoder, ...propsStream, '!', 'h264parse', '!', 'tee', 'name=tenc');
+      for (const rama of ramasFlv) {
+        tokens.push('tenc.', '!', 'queue', '!', 'flvmux', `name=${rama.nombre}`, '!', 'rtmpsink', `location=${rama.url}`);
+      }
+    }
     if (conAudio) {
-      tokens.push(audioSrc, '!', 'audioconvert', '!', 'audioresample', '!', 'avenc_aac', '!', 'tee', 'name=ta',
-        'ta.', '!', 'queue', '!', 'mp4.', 'ta.', '!', 'queue', '!', 'flv.');
+      tokens.push(...fuenteAudio, '!', 'audioconvert', '!', 'audioresample', '!', 'avenc_aac', '!', 'tee', 'name=ta');
+      if (graba) tokens.push('ta.', '!', 'queue', '!', 'mp4.');
+      for (const rama of ramasFlv) {
+        tokens.push('ta.', '!', 'queue', '!', `${rama.nombre}.`);
+      }
     }
   }
 
@@ -399,6 +491,14 @@ function createNativeEngine(deps) {
     validation: null,
     streamValidation: null,
     streamBytes: 0,
+    // Hito 3: regla de audio declarada en el estado — { name, matched }:
+    // matched=true SOLO si wasapi2src recibió el device= del micrófono
+    // que coincide con la cámara; si no, matched=false y el log dice
+    // que se usa el dispositivo por defecto de Windows.
+    audioDevice: { name: null, matched: false },
+    // Hito 3: número de destinos RTMP reales de la sesión en curso
+    // (las URL NUNCA entran al estado ni al registro: llevan la clave).
+    streamCount: 0,
     lastError: null,
     logTail: [],
     gstInstalled: null,
@@ -429,6 +529,18 @@ function createNativeEngine(deps) {
   }
 
   function getState() {
+    // Hito 3 — disponibilidad perezosa: la app pregunta «¿hay motor
+    // nativo?» al montar, ANTES de cualquier start, para decidir qué
+    // cadena gobierna los botones reales. locateGstTools es síncrono
+    // (solo comprobaciones de existencia en disco) y el resultado se
+    // cachea en el estado; sin GStreamer, gstInstalled queda false y la
+    // app lo declara y cae a la cadena anterior.
+    if (state.gstInstalled === null) {
+      try {
+        const tools = locateGstTools({ env, platform, fsExists });
+        state = { ...state, gstInstalled: !!tools };
+      } catch (e) { state = { ...state, gstInstalled: false }; }
+    }
     return { ...state, logTail: [...state.logTail] };
   }
 
@@ -530,7 +642,7 @@ function createNativeEngine(deps) {
       const nombraCodificador = /nvh264enc|encoder|codificador/i.test(stderrAcumulado);
       if (!reintentoSinPresetHecho && contexto && contexto.encoder === 'nvh264enc'
         && contexto.withPreset && transcurrido < 2500 && nombraCodificador
-        && (contexto.session === 'record' || contexto.session === 'recordStream')) {
+        && ['record', 'recordStream', 'stream'].includes(contexto.session)) {
         reintentoSinPresetHecho = true;
         contexto.withPreset = false;
         log('El codificador nvh264enc con preset=hq murió al arrancar; reintento declarado SIN preset (presetUsed pasa a «sin preset (reintento declarado)»).');
@@ -559,6 +671,11 @@ function createNativeEngine(deps) {
       withPreset: contexto.withPreset,
       withAudio: contexto.withAudio,
       audioSrc: 'wasapi2src',
+      // Hito 3: el identificador WASAPI resuelto por la regla de audio
+      // (null = dispositivo por defecto, ya declarado en el registro).
+      audioDevice: contexto.audioDeviceId || null,
+      // Hito 3: destinos reales de la sesión (vacío en la prueba local).
+      streamUrls: contexto.streamUrls || [],
       outFile: contexto.outFile,
     };
   }
@@ -591,11 +708,19 @@ function createNativeEngine(deps) {
     else { opts = arg1 || {}; session = opts.session; }
     const cameraName = opts.cameraName || null;
     const outDir = opts.outDir || path.join(os.tmpdir(), 'podcastudio-motor-nativo');
+    // Hito 3: destinos reales (URLs completas ya compuestas; NUNCA se
+    // escriben en el registro — solo cuántos son) y base del nombre del
+    // máster (la compone main con el esquema del proyecto).
+    const streamUrls = Array.isArray(opts.streamUrls) ? opts.streamUrls.filter((u) => typeof u === 'string' && u.trim()) : [];
+    const outFileBase = typeof opts.outFileBase === 'string' && opts.outFileBase.trim() ? opts.outFileBase.trim() : null;
 
-    if (!['preview', 'record', 'recordStream'].includes(session)) {
+    if (!['preview', 'record', 'recordStream', 'stream'].includes(session)) {
       return { success: false, error: `Sesión no válida: ${session || '(vacía)'}.` };
     }
-    if (gstProc || ['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'validando'].includes(state.phase)) {
+    if (session === 'stream' && streamUrls.length === 0) {
+      return { success: false, error: 'La sesión de transmisión necesita al menos un destino (streamUrls vacío).' };
+    }
+    if (gstProc || ['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'transmitiendo', 'validando'].includes(state.phase)) {
       return { success: false, error: 'Ya hay una sesión del motor nativo en curso.' };
     }
 
@@ -605,7 +730,11 @@ function createNativeEngine(deps) {
       phase: 'encendiendo', session, cameraName, caps: null, encoder: null,
       presetUsed: null, outFile: null, streamFile: null, validation: null,
       streamValidation: null, streamBytes: 0, lastError: null, logTail: [],
+      audioDevice: { name: null, matched: false }, streamCount: streamUrls.length,
     });
+    if (streamUrls.length > 0) {
+      log(`Destinos de transmisión reales: ${streamUrls.length} (las URL no se escriben en el registro: llevan la clave de transmisión).`);
+    }
 
     // 1) Herramientas.
     const tools = locateGstTools({ env, platform, fsExists, log });
@@ -669,18 +798,56 @@ function createNativeEngine(deps) {
       }
     }
 
-    // 5) Carpeta y nombres de archivo.
+    // 4-bis) Hito 3 — REGLA DE AUDIO: el micrófono debe ser EL DE LA
+    // CÁMARA elegida. Se enumera Audio/Source con el mismo monitor y se
+    // busca el endpoint cuyo nombre contiene el de la cámara; si trae
+    // identificador (device.id del monitor), wasapi2src lo recibe como
+    // su propiedad device=. Sin coincidencia UTILIZABLE se usa el
+    // dispositivo por defecto de Windows Y QUEDA DECLARADO en el
+    // registro y en el estado (audioDevice.matched=false) — nunca en
+    // silencio.
+    let audioDeviceId = null;
+    let audioDeviceInfo = { name: null, matched: false };
+    if (withAudio) {
+      const rAud = await ejecutar(tools.monitor, ['Audio/Source'], 15000);
+      const dispositivosAudio = rAud && rAud.stdout ? parseDeviceMonitorOutput(rAud.stdout, { audio: true }) : [];
+      const eleccionAudio = chooseAudioDevice(dispositivosAudio, device.name);
+      if (eleccionAudio.matched && eleccionAudio.device) {
+        const idDisp = eleccionAudio.device.deviceId || eleccionAudio.device.devicePath || null;
+        if (idDisp) {
+          audioDeviceId = idDisp;
+          audioDeviceInfo = { name: eleccionAudio.device.name || null, matched: true };
+          log(`Audio: micrófono «${eleccionAudio.device.name}» — coincide con la cámara «${device.name || ''}» y wasapi2src lo captura por su identificador (device=…).`);
+        } else {
+          log(`Audio: «${eleccionAudio.device.name}» coincide por nombre con la cámara pero el monitor no le dio identificador (device.id): no se puede fijar en wasapi2src (declarado).`);
+        }
+      }
+      if (!audioDeviceId) {
+        log(`Audio: dispositivo por defecto de Windows — no se encontró micrófono utilizable que coincida con la cámara «${device.name || ''}» (declarado, nunca en silencio).`);
+      }
+    }
+
+    // 5) Carpeta y nombres de archivo. Hito 3: con outFileBase (main lo
+    // compone con el nombre del proyecto y la marca de tiempo, como el
+    // máster de la app) el archivo se llama <base>_Master_<alto>p.mp4;
+    // sin él, el nombre histórico del panel.
     try { fs.mkdirSync(outDir, { recursive: true }); } catch (e) {}
-    const nombre = `PodcastStudio_motor_${marcaDeTiempoLocal(new Date())}.mp4`;
-    const outFile = session === 'preview' ? null : path.join(outDir, nombre);
-    const streamFile = session === 'recordStream' ? path.join(outDir, 'motor-stream-recibido.flv') : null;
+    const nombre = outFileBase
+      ? `${outFileBase}_Master_${caps.height}p.mp4`
+      : `PodcastStudio_motor_${marcaDeTiempoLocal(new Date())}.mp4`;
+    const outFile = (session === 'preview' || session === 'stream') ? null : path.join(outDir, nombre);
+    // El FLV recibido (y su oyente) existen SOLO en la prueba local del
+    // panel: recordStream SIN destinos reales.
+    const streamFile = session === 'recordStream' && streamUrls.length === 0 ? path.join(outDir, 'motor-stream-recibido.flv') : null;
 
     contexto = {
       tools, session, device, caps, encoder, withPreset, withAudio, outFile, streamFile,
+      streamUrls, audioDeviceId,
     };
+    fijar({ audioDevice: audioDeviceInfo });
 
-    // 6) Oyente RTMP local (recordStream): ANTES de lanzar GStreamer.
-    if (session === 'recordStream') {
+    // 6) Oyente RTMP local (solo la prueba local): ANTES de lanzar GStreamer.
+    if (streamFile) {
       if (streamFile) { try { if (fs.existsSync(streamFile)) fs.unlinkSync(streamFile); } catch (e) {} }
       listenerExited = false;
       try {
@@ -714,7 +881,7 @@ function createNativeEngine(deps) {
     const lanzado = lanzarGst(tokens);
     if (!lanzado) return { success: false, error: state.lastError || 'No se pudo lanzar GStreamer.' };
 
-    fijar({ phase: session === 'preview' ? 'vista-previa' : session === 'record' ? 'grabando' : 'grabando-transmitiendo' });
+    fijar({ phase: session === 'preview' ? 'vista-previa' : session === 'record' ? 'grabando' : session === 'stream' ? 'transmitiendo' : 'grabando-transmitiendo' });
     return { success: true };
   }
 
@@ -781,6 +948,8 @@ module.exports = {
   encoderProps,
   bitrateParaCaps,
   chooseEncoder,
+  capsParaStream,
+  chooseAudioDevice,
   ENCODER_LADDER,
   RTMP_PRUEBA_URL,
 };

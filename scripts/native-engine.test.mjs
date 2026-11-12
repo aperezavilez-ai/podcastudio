@@ -46,7 +46,10 @@ const {
   buildPipelineArgs,
   locateGstTools,
   chooseEncoder,
+  capsParaStream,
+  chooseAudioDevice,
   ENCODER_LADDER,
+  RTMP_PRUEBA_URL,
 } = require('../electron/native-engine.js');
 
 // ---------------------------------------------------------------------------
@@ -530,4 +533,255 @@ test('sintética 1440p: el mejor caps es 2560x1440@30 y la tubería graba con bi
     encoder: 'nvh264enc', withPreset: true, withAudio: false, outFile: 'C:\\x\\grabar.mp4',
   }).join(' ');
   assert.ok(unida.includes('bitrate=20000'));
+});
+
+// ---------------------------------------------------------------------------
+// (vi) HITO 3 (v3.2.0): destinos reales, tope 1080 del stream, regla de
+// audio y nombre del máster. Las URL de destino son FICTICIAS (fixtures
+// declaradas, no son claves reales) y la fixture de audio es SINTÉTICA
+// con la forma de la salida real del monitor (clases Audio/Source y
+// properties con device.id, como imprime WASAPI2 en Windows).
+// ---------------------------------------------------------------------------
+const URL_FB_PRUEBA = 'rtmps://live-api-s.facebook.com:443/rtmp/FB-CLAVE-DE-PRUEBA';
+const URL_YT_PRUEBA = 'rtmps://a.upload.youtube.com/live2/CLAVE-DE-PRUEBA-2';
+const CAPS_4K = { raw: 'video/x-raw, format=(string)NV12, width=(int)3840, height=(int)2160, framerate=(fraction)30/1', format: 'NV12', width: 3840, height: 2160, framerate: 30 };
+
+test('Hito 3 · tubería: recordStream con 2 destinos reales crea 2 ramas rtmpsink con las URL verbatim', () => {
+  const tokens = argsDe('recordStream', { streamUrls: [URL_FB_PRUEBA, URL_YT_PRUEBA] });
+  const unida = tokens.join(' ');
+  assert.equal(tokens.filter((t) => t === 'rtmpsink').length, 2);
+  // Cada URL es UN token argv exacto (spawn por array, sin shell).
+  assert.ok(tokens.includes(`location=${URL_FB_PRUEBA}`));
+  assert.ok(tokens.includes(`location=${URL_YT_PRUEBA}`));
+  // Con destinos reales NO aparece la URL local de prueba.
+  assert.ok(!unida.includes(RTMP_PRUEBA_URL));
+  assert.ok(tokens.includes('name=flv0'));
+  assert.ok(tokens.includes('name=flv1'));
+  // El audio se reparte al MP4 y a CADA flvmux.
+  assert.ok(tokens.includes('mp4.'));
+  assert.ok(tokens.includes('flv0.'));
+  assert.ok(tokens.includes('flv1.'));
+});
+
+test('Hito 3 · tubería: la sesión stream transmite sin grabar', () => {
+  const tokens = argsDe('stream', { streamUrls: [URL_FB_PRUEBA] });
+  assert.equal(tokens.filter((t) => t === 'rtmpsink').length, 1);
+  assert.ok(tokens.includes(`location=${URL_FB_PRUEBA}`));
+  assert.ok(!tokens.includes('mp4mux'), 'stream no debe llevar rama de grabación');
+  assert.ok(!tokens.includes('mp4.'), 'sin grabación, el audio no va a ningún mp4');
+  assert.ok(tokens.includes('flv0.'));
+  assert.ok(tokens.includes('d3d11videosink'), 'la vista previa nativa sigue presente');
+});
+
+test('Hito 3 · tubería: recordStream SIN destinos conserva la prueba local del Hito 2', () => {
+  const tokens = argsDe('recordStream');
+  const unida = tokens.join(' ');
+  assert.equal(tokens.filter((t) => t === 'rtmpsink').length, 1);
+  assert.ok(unida.includes(RTMP_PRUEBA_URL));
+  assert.ok(tokens.includes('name=flv'));
+  assert.ok(!tokens.includes('name=flv0'));
+});
+
+test('Hito 3 · tubería: con caps 4K el stream baja a 1920×1080 con su propio codificador y la grabación queda en 4K', () => {
+  const tokens = argsDe('recordStream', { caps: CAPS_4K, streamUrls: [URL_FB_PRUEBA] });
+  const unida = tokens.join(' ');
+  // DOS codificadores: el de grabación (4K, 40 Mbps) y el del stream.
+  assert.equal(tokens.filter((t) => t === 'nvh264enc').length, 2);
+  assert.ok(unida.includes('bitrate=40000'), 'la grabación conserva el bitrate de 4K');
+  assert.ok(unida.includes('bitrate=12000'), 'el stream usa el bitrate del peldaño 1080');
+  assert.ok(tokens.some((t) => t.includes('width=1920,height=1080')), 'la rama de stream lleva el caps de bajada a 1080');
+  assert.ok(tokens.includes('mp4mux'), 'la grabación sigue presente');
+});
+
+test('Hito 3 · tubería: la sesión stream con caps 4K solo codifica el peldaño 1080', () => {
+  const tokens = argsDe('stream', { caps: CAPS_4K, streamUrls: [URL_FB_PRUEBA] });
+  const unida = tokens.join(' ');
+  assert.equal(tokens.filter((t) => t === 'nvh264enc').length, 1);
+  assert.ok(unida.includes('bitrate=12000'));
+  assert.ok(!unida.includes('bitrate=40000'));
+  assert.ok(!tokens.includes('mp4mux'));
+});
+
+test('Hito 3 · capsParaStream: ≤1080 pasa intacto y >1080 baja a 1920×1080 conservando fps', () => {
+  const c1080 = capsParaStream(CAPS_1080);
+  assert.equal(c1080.width, 1920);
+  assert.equal(c1080.height, 1080);
+  const c720 = capsParaStream({ format: 'NV12', width: 1280, height: 720, framerate: 30 });
+  assert.equal(c720.width, 1280);
+  assert.equal(c720.height, 720);
+  const c4k = capsParaStream(CAPS_4K);
+  assert.equal(c4k.width, 1920);
+  assert.equal(c4k.height, 1080);
+  assert.equal(c4k.framerate, 30);
+});
+
+// Fixture SINTÉTICA de «gst-device-monitor-1.0 Audio/Source» con la forma
+// de la salida WASAPI2 real: el micrófono de la Steren trae su device.id.
+const FIXTURE_MONITOR_AUDIO = `
+Probing devices...
+Device found:
+\tname  : Micrófono (Steren COM-126)
+\tclass : Audio/Source
+\tcaps  : audio/x-raw, format=S16LE, rate=48000, channels=2
+\tgst-launch-1.0 wasapi2src device="\\{0.0.0.00000000\\}.\\{11111111-2222-3333-4444-555555555555\\}" ! audioconvert ! ...
+\tproperties:
+\t\tdevice.id = \\{0.0.0.00000000\\}.\\{11111111-2222-3333-4444-555555555555\\}
+\t\tdevice.api = wasapi2
+Device found:
+\tname  : Micrófono (Realtek(R) Audio)
+\tclass : Audio/Source
+\tcaps  : audio/x-raw, format=S16LE, rate=48000, channels=2
+\tproperties:
+\t\tdevice.id = \\{0.0.0.00000000\\}.\\{66666666-7777-8888-9999-000000000000\\}
+\t\tdevice.api = wasapi2
+`;
+
+const FIXTURE_MONITOR_AUDIO_SIN_COINCIDENCIA = `
+Probing devices...
+Device found:
+\tname  : Micrófono (Realtek(R) Audio)
+\tclass : Audio/Source
+\tcaps  : audio/x-raw, format=S16LE, rate=48000, channels=2
+\tproperties:
+\t\tdevice.id = \\{0.0.0.00000000\\}.\\{66666666-7777-8888-9999-000000000000\\}
+\t\tdevice.api = wasapi2
+`;
+
+test('Hito 3 · parser de audio: con { audio: true } lee Audio/Source y captura device.id', () => {
+  const devs = parseDeviceMonitorOutput(FIXTURE_MONITOR_AUDIO, { audio: true });
+  assert.equal(devs.length, 2);
+  assert.equal(devs[0].name, 'Micrófono (Steren COM-126)');
+  assert.equal(devs[0].deviceId, '\\{0.0.0.00000000\\}.\\{11111111-2222-3333-4444-555555555555\\}');
+  // En modo vídeo (defecto) los bloques de audio se descartan, como antes.
+  assert.equal(parseDeviceMonitorOutput(FIXTURE_MONITOR_AUDIO).length, 0);
+});
+
+test('Hito 3 · chooseAudioDevice: coincide por contención de nombre y declara la no coincidencia', () => {
+  const devs = parseDeviceMonitorOutput(FIXTURE_MONITOR_AUDIO, { audio: true });
+  const ok = chooseAudioDevice(devs, 'Steren COM-126');
+  assert.equal(ok.matched, true);
+  assert.equal(ok.device.name, 'Micrófono (Steren COM-126)');
+  const no = chooseAudioDevice(devs, 'EasyCamera');
+  assert.equal(no.matched, false);
+  assert.equal(no.device, null);
+});
+
+test('Hito 3 · tubería: con audioDevice, wasapi2src lleva el token device= adyacente', () => {
+  const tokens = argsDe('record', { audioDevice: '{0.0.0.00000000}.{ABC-123}' });
+  const i = tokens.indexOf('wasapi2src');
+  assert.ok(i >= 0);
+  assert.equal(tokens[i + 1], 'device={0.0.0.00000000}.{ABC-123}');
+  // Sin audioDevice no hay token device= suelto (device-path= es otro).
+  const sin = argsDe('record');
+  assert.ok(!sin.some((t) => t.startsWith('device=')));
+});
+
+// Prepara un motor con stubs cuyo monitor responde vídeo o audio según
+// el filtro pedido (argv[2]), como hace el monitor real.
+function prepararMotorHito3(dir, fixtureAudio, logs) {
+  escribirHerramientaStub(dir, 'gst-launch-1.0', `#!/usr/bin/env node
+const fs = require('node:fs');
+if (process.env.PS_HITO3_ARGV_FILE) { try { fs.writeFileSync(process.env.PS_HITO3_ARGV_FILE, process.argv.slice(2).join('\\n')); } catch (e) {} }
+process.stderr.write('Setting pipeline to PAUSED ...\\n');
+for (const a of process.argv.slice(2)) {
+  if (a.startsWith('location=') && a.endsWith('.mp4')) {
+    try { fs.writeFileSync(a.slice('location='.length), Buffer.alloc(4096, 7)); } catch (e) {}
+  }
+}
+setInterval(() => {}, 1000);
+`);
+  escribirHerramientaStub(dir, 'gst-inspect-1.0', `#!/usr/bin/env node
+process.exit(0);
+`);
+  const videoEsc = JSON.stringify(FIXTURE_MONITOR_REAL);
+  const audioEsc = JSON.stringify(fixtureAudio);
+  escribirHerramientaStub(dir, 'gst-device-monitor-1.0', `#!/usr/bin/env node
+process.stdout.write(process.argv[2] === 'Audio/Source' ? ${audioEsc} : ${videoEsc});
+`);
+  const ffmpegStub = escribirHerramientaStub(dir, 'ffmpeg-stub', `#!/usr/bin/env node
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+const i = args.indexOf('-i');
+const archivo = i >= 0 ? args[i + 1] : null;
+if (archivo) {
+  try { fs.writeFileSync(archivo + '.probe-called', 'sonda invocada\\n'); } catch (e) {}
+  process.stderr.write('  Duration: 00:01:00.03, start: 0.000000, bitrate: 12000 kb/s\\n');
+  process.stderr.write('  Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 30 fps\\n');
+}
+process.exit(0);
+`);
+  return createNativeEngine({
+    ffmpegPath: ffmpegStub,
+    log: (l) => { if (Array.isArray(logs)) logs.push(l); },
+    onState: () => {},
+    env: { ...process.env, PODCASTUDIO_GST_BIN: dir, PATH: process.env.PATH || '' },
+    platform: process.platform,
+    fsExists: (p) => fs.existsSync(p),
+    spawnImpl: crearSpawnParaStubs(dir, spawn),
+  });
+}
+
+test('Hito 3 · anfitrión: audio coincidente, outFileBase nombra el máster y la sesión stream transmite', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-hito3-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  const argvFile = path.join(dir, 'argv-gst.txt');
+  process.env.PS_HITO3_ARGV_FILE = argvFile;
+  const engine = prepararMotorHito3(dir, FIXTURE_MONITOR_AUDIO, []);
+  try {
+    // Disponibilidad perezosa: la app decide los botones SIN start.
+    assert.equal(engine.getState().gstInstalled, true);
+
+    const r1 = await engine.start({ session: 'record', outDir, outFileBase: 'ProyectoX_2026-11-12_15-30-00' });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    const st1 = engine.getState();
+    assert.ok(st1.outFile.endsWith('ProyectoX_2026-11-12_15-30-00_Master_1080p.mp4'), st1.outFile);
+    assert.equal(st1.audioDevice.matched, true);
+    assert.equal(st1.audioDevice.name, 'Micrófono (Steren COM-126)');
+    // El argv REAL que recibió gst-launch lleva el device= del micrófono.
+    let argvTxt = '';
+    for (let i = 0; i < 50 && !argvTxt; i += 1) {
+      if (fs.existsSync(argvFile)) argvTxt = fs.readFileSync(argvFile, 'utf8');
+      if (!argvTxt) await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.ok(argvTxt.includes('device=\\{0.0.0.00000000\\}.\\{11111111-2222-3333-4444-555555555555\\}'), argvTxt.slice(0, 400));
+    const rStop1 = await engine.stop();
+    assert.equal(rStop1.success, true);
+    assert.equal(engine.getState().validation.valid, true);
+
+    // Sesión de solo transmisión con un destino real.
+    const r2 = await engine.start({ session: 'stream', outDir, streamUrls: [URL_FB_PRUEBA] });
+    assert.equal(r2.success, true, JSON.stringify(r2));
+    assert.equal(engine.getState().phase, 'transmitiendo');
+    assert.equal(engine.getState().streamCount, 1);
+    const rStop2 = await engine.stop();
+    assert.equal(rStop2.success, true);
+    assert.equal(engine.getState().phase, 'apagado');
+
+    // stream sin destinos = error declarado desde el arranque.
+    const r3 = await engine.start({ session: 'stream', outDir });
+    assert.equal(r3.success, false);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_HITO3_ARGV_FILE;
+  }
+});
+
+test('Hito 3 · anfitrión: sin micrófono coincidente, el dispositivo por defecto queda DECLARADO', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-hito3b-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  const logs = [];
+  const engine = prepararMotorHito3(dir, FIXTURE_MONITOR_AUDIO_SIN_COINCIDENCIA, logs);
+  try {
+    const r1 = await engine.start('record', { outDir });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    const st = engine.getState();
+    assert.equal(st.audioDevice.matched, false);
+    assert.equal(st.audioDevice.name, null);
+    assert.ok(logs.join('\n').includes('dispositivo por defecto de Windows'), logs.join(' | ').slice(0, 500));
+    await engine.stop();
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+  }
 });

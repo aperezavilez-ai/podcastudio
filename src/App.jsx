@@ -1068,7 +1068,8 @@ function PodcastStudioApp() {
   const selfTestFlowRef = useRef(false);
 
   // ==========================================================================
-  // MOTOR NATIVO (Hito 2, v3.1.0): estado del motor GStreamer hospedado en
+  // MOTOR NATIVO (Hito 2, v3.1.0; botones reales en el Hito 3, v3.2.0):
+  // estado del motor GStreamer hospedado en
   // el proceso principal (electron/native-engine.js). Llega por el puente
   // window.electronAPI.nativeEngine (preload.js) y por su evento de estado.
   // ==========================================================================
@@ -1082,8 +1083,228 @@ function PodcastStudioApp() {
     try { off = bridge.onState?.((s) => setNativeEngineState(s)); } catch (e) {}
     return () => { cancelado = true; try { if (typeof off === 'function') off(); } catch (e) {} };
   }, []);
+
+  // ==========================================================================
+  // HITO 3 (v3.2.0): los BOTONES REALES (Grabar / Transmitir) gobiernan el
+  // motor nativo cuando GStreamer está disponible (gstInstalled llega en
+  // el estado del motor; el anfitrión lo resuelve al montar). Si NO está,
+  // los botones usan la cadena anterior CON AVISO VISIBLE — nunca un
+  // respaldo silencioso. La señal nativa es la cámara principal LIMPIA:
+  // cintillos, logos y cambio de cámaras DENTRO de la señal nativa son
+  // el hito siguiente. Las transiciones de sesión (grabar mientras se
+  // transmite y viceversa) REINICIAN la tubería: la UI lo declara.
+  // ==========================================================================
+  const nativeFlagsRef = useRef({ forRecord: false, forStream: false });
+  const nativeStreamUrlsRef = useRef([]);
+  const nativeStreamTargetsRef = useRef([]);
+  const [nativeNotice, setNativeNotice] = useState('');
+  const [nativeStreamError, setNativeStreamError] = useState('');
+  const nativeGstAvailable = nativeEngineState?.gstInstalled === true;
+  const nativeGstUnavailable = nativeEngineState?.gstInstalled === false;
+
+  // Espera a que el motor confirme la fase «apagado» (su parada valida
+  // el máster antes de publicar el estado final).
+  const esperarMotorApagado = async (timeoutMs = 20000) => {
+    const bridge = window.electronAPI?.nativeEngine;
+    if (!bridge) return null;
+    const t0 = Date.now();
+    let st = null;
+    while (Date.now() - t0 < timeoutMs) {
+      try { st = await bridge.getState(); } catch (e) {}
+      if (st && st.phase === 'apagado') return st;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    try { st = await bridge.getState(); } catch (e) {}
+    return st;
+  };
+
+  // Entrega el máster nativo VALIDADO al mismo estado que abre el modal
+  // de exportación tras una grabación de la cadena anterior (el modal
+  // trabaja igual con el MP4 fragmentado del motor).
+  const entregarMasterNativoAlModal = (st) => {
+    const cleanTopicName = (topic || 'Episodio').replace(/[^\w\d-_]/g, '_');
+    setRecordedVideoData({
+      blob: null,
+      url: null,
+      snapshotCanvas: null,
+      thumbnailDataUrl: null,
+      filePath: st?.outFile || st?.validation?.path || null,
+      blackWarning: false,
+      recordedDurationSec: st?.validation?.durationSec || null,
+      projectName: topic || 'Proyecto_General',
+      name: `PodcaStudio_${cleanTopicName}_${Date.now()}`,
+      duration: st?.validation?.durationSec ? Math.round(st.validation.durationSec) : (recordingTime || 1),
+    });
+    setShowExportModal(true);
+  };
+
+  const iniciarGrabacionNativa = async () => {
+    const bridge = window.electronAPI?.nativeEngine;
+    if (!bridge) return;
+    const subiendo = nativeFlagsRef.current.forStream;
+    setNativeNotice(subiendo
+      ? 'Reconectando sesión: la grabación se suma a la transmisión (la tubería se reinicia)…'
+      : 'Iniciando grabación con el motor nativo…');
+    let res = null;
+    try {
+      res = subiendo
+        ? await bridge.start({ session: 'recordStream', projectName: topic || 'Proyecto_General', streamUrls: nativeStreamUrlsRef.current })
+        : await bridge.start({ session: 'record', projectName: topic || 'Proyecto_General' });
+    } catch (e) { res = { success: false, error: e?.message || String(e) }; }
+    if (!res?.success) {
+      setNativeNotice('');
+      showToast(res?.error || 'El motor nativo no pudo iniciar la grabación.', 'error', 7000);
+      return;
+    }
+    nativeFlagsRef.current = { ...nativeFlagsRef.current, forRecord: true };
+    isRecordingRef.current = true;
+    setIsRecording(true);
+    recordingStartTimeRef.current = Date.now();
+    setRecordingTime(0);
+    isRecordingPausedRef.current = false;
+    setIsRecordingPaused(false);
+    pausedDurationRef.current = 0;
+    pauseStartRef.current = null;
+    setCountdown(null);
+    setNativeNotice('');
+    showToast(subiendo ? 'Grabando el máster nativo SIN dejar de transmitir.' : 'Grabando con el motor nativo (cámara principal).', 'success');
+  };
+
+  const detenerGrabacionNativa = async () => {
+    const bridge = window.electronAPI?.nativeEngine;
+    if (!bridge) return;
+    const seguirTransmitiendo = nativeFlagsRef.current.forStream;
+    setIsStoppingRecordingUI(true);
+    setNativeNotice('Deteniendo el motor: validando el máster…');
+    try {
+      try { await bridge.stop(); } catch (e) {}
+      const st = await esperarMotorApagado();
+      if (st?.validation?.valid) {
+        entregarMasterNativoAlModal(st);
+      } else {
+        showToast(`El máster nativo no superó la validación${st?.lastError ? `: ${st.lastError}` : ''}. Revisa el panel Motor Nativo.`, 'error', 8000);
+      }
+      if (seguirTransmitiendo) {
+        // Downgrade declarado: la transmisión CONTINÚA en una sesión
+        // nueva solo-stream (la tubería se reinicia y el directo se
+        // reconecta; los visores pueden notar un corte breve).
+        setNativeNotice('Reconectando sesión: la transmisión continúa sin grabación…');
+        let res2 = null;
+        try { res2 = await bridge.start({ session: 'stream', streamUrls: nativeStreamUrlsRef.current }); } catch (e) { res2 = { success: false, error: e?.message || String(e) }; }
+        if (!res2?.success) {
+          nativeFlagsRef.current = { forRecord: false, forStream: false };
+          nativeStreamUrlsRef.current = [];
+          nativeStreamTargetsRef.current = [];
+          isStreamingRef.current = false;
+          setIsStreaming(false);
+          setActiveLiveDestinations([]);
+          setNativeStreamError(res2?.error || 'No se pudo reanudar la transmisión tras detener la grabación.');
+          showToast('La transmisión no pudo reanudarse tras detener la grabación.', 'error', 8000);
+        }
+      }
+    } finally {
+      nativeFlagsRef.current = { ...nativeFlagsRef.current, forRecord: false };
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      setRecordingTime(0);
+      recordingStartTimeRef.current = null;
+      setIsStoppingRecordingUI(false);
+      setNativeNotice('');
+    }
+  };
+
+  const iniciarTransmisionNativa = async (targets) => {
+    const bridge = window.electronAPI?.nativeEngine;
+    if (!bridge) return;
+    const urls = (targets || []).map((t) => t.url).filter(Boolean);
+    if (urls.length === 0) {
+      setNativeStreamError('Ningún destino tiene una URL válida.');
+      return;
+    }
+    const conGrabacion = nativeFlagsRef.current.forRecord;
+    setNativeStreamError('');
+    isStreamStartingRef.current = true;
+    setIsStreamStarting(true);
+    setNativeNotice(conGrabacion
+      ? 'Reconectando sesión: la transmisión se suma a la grabación en curso (la tubería se reinicia)…'
+      : 'Iniciando transmisión con el motor nativo…');
+    let res = null;
+    try {
+      res = await bridge.start({
+        session: conGrabacion ? 'recordStream' : 'stream',
+        projectName: topic || 'Proyecto_General',
+        streamUrls: urls,
+      });
+    } catch (e) { res = { success: false, error: e?.message || String(e) }; }
+    isStreamStartingRef.current = false;
+    setIsStreamStarting(false);
+    if (!res?.success) {
+      // Sin respaldo silencioso a mitad de clic: el error del motor se
+      // muestra EN el modal y el modal queda abierto.
+      setNativeStreamError(res?.error || 'El motor nativo no pudo iniciar la transmisión.');
+      setNativeNotice('');
+      showToast(res?.error || 'El motor nativo no pudo iniciar la transmisión.', 'error', 8000);
+      return;
+    }
+    nativeFlagsRef.current = { ...nativeFlagsRef.current, forStream: true };
+    nativeStreamUrlsRef.current = urls;
+    nativeStreamTargetsRef.current = targets;
+    isStreamingRef.current = true;
+    setIsStreaming(true);
+    setActiveLiveDestinations(targets);
+    setShowStreamModal(false);
+    setNativeNotice('');
+    showToast(`Transmitiendo con el motor nativo a ${targets.length} destino(s).`, 'success');
+  };
+
+  const detenerTransmisionNativa = async () => {
+    const bridge = window.electronAPI?.nativeEngine;
+    if (!bridge) return;
+    const conGrabacion = nativeFlagsRef.current.forRecord;
+    setNativeNotice('Deteniendo la transmisión del motor nativo…');
+    try { await bridge.stop(); } catch (e) {}
+    const st = await esperarMotorApagado();
+    nativeFlagsRef.current = { ...nativeFlagsRef.current, forStream: false };
+    nativeStreamUrlsRef.current = [];
+    nativeStreamTargetsRef.current = [];
+    isStreamingRef.current = false;
+    setIsStreaming(false);
+    setActiveLiveDestinations([]);
+    if (conGrabacion && st?.validation?.valid) {
+      // La parada también cerró y validó el máster en curso: se entrega
+      // al modal y la grabación CONTINÚA en un máster nuevo (declarado).
+      entregarMasterNativoAlModal(st);
+      let res2 = null;
+      try { res2 = await bridge.start({ session: 'record', projectName: topic || 'Proyecto_General' }); } catch (e) { res2 = { success: false, error: e?.message || String(e) }; }
+      if (res2?.success) {
+        setNativeNotice('La transmisión terminó; la grabación sigue en un máster nuevo.');
+        showToast('Transmisión detenida. La grabación continúa en un máster nuevo.', 'success', 7000);
+      } else {
+        nativeFlagsRef.current = { ...nativeFlagsRef.current, forRecord: false };
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        showToast('La grabación no pudo continuar tras detener la transmisión.', 'error', 8000);
+      }
+    } else {
+      if (conGrabacion) {
+        nativeFlagsRef.current = { ...nativeFlagsRef.current, forRecord: false };
+        isRecordingRef.current = false;
+        setIsRecording(false);
+        showToast('Al detener la transmisión, el máster en curso no superó la validación.', 'error', 8000);
+      }
+      showToast('Transmisión detenida.', 'success');
+    }
+    if (!nativeFlagsRef.current.forRecord) setNativeNotice('');
+  };
+
   const handleNativeEngineStart = async (session) => {
     try {
+      // Hito 3: una sesión lanzada desde el PANEL no pertenece a los
+      // botones reales: las banderas se reinician para que los Detener
+      // de Grabar/Transmitir no reclamen una sesión que no es suya.
+      nativeFlagsRef.current = { forRecord: false, forStream: false };
+      nativeStreamUrlsRef.current = [];
+      nativeStreamTargetsRef.current = [];
       // outDir va undefined A PROPÓSITO: la carpeta de grabaciones del
       // proyecto la resuelve el proceso principal (getProjectsRootDir en
       // main.js) y NO está expuesta al renderer; al ir undefined aplica
@@ -3044,6 +3265,23 @@ function PodcastStudioApp() {
       dispatchRemoteCommand('TOGGLE_RECORD');
       return;
     }
+    // HITO 3 (v3.2.0): con GStreamer disponible, el botón gobierna el
+    // MOTOR NATIVO (la cadena anterior queda de respaldo). Con la
+    // grabación ISO activa manda la cadena anterior, que es la que sabe
+    // grabar por cámara (declarado en el LEEME del hito).
+    if (window.electronAPI?.nativeEngine && !isoRecordingEnabled) {
+      if (isRecordingRef.current && nativeFlagsRef.current.forRecord) {
+        await detenerGrabacionNativa();
+        return;
+      }
+      if (!isRecordingRef.current && nativeGstAvailable) {
+        await iniciarGrabacionNativa();
+        return;
+      }
+      if (!isRecordingRef.current && nativeGstUnavailable) {
+        showToast('Motor nativo no disponible: se usa la cadena anterior.', 'warning', 6000);
+      }
+    }
     if (!isRecordingRef.current) {
       try {
         setIsStartingRecording(true);
@@ -3427,6 +3665,18 @@ function PodcastStudioApp() {
         return;
       }
 
+      // HITO 3 (v3.2.0): con GStreamer disponible, la transmisión la
+      // hace el MOTOR NATIVO con las URL que YA compuso
+      // buildStreamDestinations (servidor+clave una sola vez). Si el
+      // motor no está, aviso visible y cadena anterior.
+      if (window.api && nativeGstAvailable) {
+        await iniciarTransmisionNativa(activeTargets);
+        return;
+      }
+      if (window.api && nativeGstUnavailable) {
+        showToast('Motor nativo no disponible: se usa la cadena anterior.', 'warning', 6000);
+      }
+
       // 1. Asegurar que el compositor broadcast esté activo y generando el
       // Master, con el flujo del núcleo v2.0.0 decidido (WebCodecs si la
       // plataforma lo soporta; WebM histórico si no).
@@ -3527,6 +3777,12 @@ function PodcastStudioApp() {
         setShowStreamModal(false);
       }
     } else {
+      // HITO 3: si la transmisión en curso es del motor nativo, la
+      // detiene el motor (y la grabación combinada se gobierna ahí).
+      if (nativeFlagsRef.current.forStream) {
+        await detenerTransmisionNativa();
+        return;
+      }
       isStreamingRef.current = false;
       if (window.api) {
         await stopNativeEngineBroadcast();
@@ -6617,33 +6873,39 @@ function PodcastStudioApp() {
                        </div>
                      </div>
 
-                     {/* MOTOR NATIVO (Hito 2, v3.1.0): la app gobierna la
-                         tubería GStreamer fuera de la ventana: vista
-                         previa nativa, grabación y transmisión local. */}
+                     {/* MOTOR NATIVO (Hito 2, v3.1.0; Hito 3, v3.2.0): la
+                         app gobierna la tubería GStreamer fuera de la
+                         ventana. Los botones reales (Grabar/Transmitir)
+                         usan este motor; este panel es su tablero y
+                         conserva la transmisión local de prueba. */}
                      <div className="mt-3 border border-cyan-500/40 rounded-lg bg-[#0d1618] p-3">
                        <div className="flex items-center justify-between">
                          <span className="flex items-center gap-2 text-xs font-black text-cyan-200">
                            <Monitor size={14} className="text-cyan-400" /> Motor Nativo
                          </span>
-                         <span className="text-[10px] font-bold text-cyan-300/80">Hito 2 · v3.1.0</span>
+                         <span className="text-[10px] font-bold text-cyan-300/80">Hito 3 · v3.2.0</span>
                        </div>
                        <div className="mt-2 text-[11px] leading-relaxed text-gray-300 space-y-0.5">
                          <div>Fase: <b className="text-cyan-100">{nativeEngineState?.phase || '—'}</b></div>
                          <div>Cámara: <b className="text-cyan-100">{nativeEngineState?.cameraName || '—'}</b></div>
                          <div>Formato negociado: <b className="text-cyan-100">{nativeEngineState?.caps ? `${nativeEngineState.caps.width}×${nativeEngineState.caps.height} @ ${nativeEngineState.caps.framerate ?? '—'} fps${nativeEngineState.caps.format ? ` (${nativeEngineState.caps.format})` : ''}` : '—'}</b></div>
                          <div>Codificador: <b className="text-cyan-100">{nativeEngineState?.encoder || '—'}{nativeEngineState?.presetUsed ? ` · preset: ${nativeEngineState.presetUsed}` : ''}</b></div>
+                         <div>Audio: <b className="text-cyan-100">{nativeEngineState?.audioDevice?.matched ? `micrófono de la cámara (${nativeEngineState.audioDevice.name || 'coincidente'})` : 'dispositivo por defecto de Windows (sin coincidencia con la cámara)'}</b></div>
+                         {nativeEngineState?.streamCount > 0 && (
+                           <div>Destinos en vivo: <b className="text-cyan-100">{nativeEngineState.streamCount}</b></div>
+                         )}
                          {nativeEngineState?.lastError && (
                            <div className="text-red-300">{nativeEngineState.lastError}</div>
                          )}
                        </div>
                        <div className="mt-2.5 space-y-1.5">
-                         <button type="button" disabled={['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'validando'].includes(nePhase)} onClick={() => handleNativeEngineStart('preview')} className="w-full py-2 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Vista previa</button>
-                         <button type="button" disabled={['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'validando'].includes(nePhase)} onClick={() => handleNativeEngineStart('record')} className="w-full py-2 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Grabar</button>
-                         <button type="button" disabled={['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'validando'].includes(nePhase)} onClick={() => handleNativeEngineStart('recordStream')} className="w-full py-2 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Grabar + Transmitir (prueba local)</button>
-                         <p className="text-[10px] leading-snug text-amber-300/90">Transmisión LOCAL de prueba (rtmp://127.0.0.1:1935/live/prueba): el destino real se conecta en el hito siguiente.</p>
+                         <button type="button" disabled={['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'transmitiendo', 'validando'].includes(nePhase)} onClick={() => handleNativeEngineStart('preview')} className="w-full py-2 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Vista previa</button>
+                         <button type="button" disabled={['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'transmitiendo', 'validando'].includes(nePhase)} onClick={() => handleNativeEngineStart('record')} className="w-full py-2 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Grabar</button>
+                         <button type="button" disabled={['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'transmitiendo', 'validando'].includes(nePhase)} onClick={() => handleNativeEngineStart('recordStream')} className="w-full py-2 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Grabar + Transmitir (prueba local)</button>
+                         <p className="text-[10px] leading-snug text-amber-300/90">Este botón sigue siendo la transmisión LOCAL de prueba (rtmp://127.0.0.1:1935/live/prueba). Los destinos REALES salen del botón TRANSMITIR EN VIVO, que desde el Hito 3 también gobierna este motor.</p>
                          <button type="button" disabled={['apagado', 'validando'].includes(nePhase)} onClick={handleNativeEngineStop} className="w-full py-2 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Detener</button>
                        </div>
-                       {nePhase === 'grabando-transmitiendo' && (
+                       {nePhase === 'grabando-transmitiendo' && nativeEngineState?.streamFile && (
                          <div className="mt-2 text-[11px] text-cyan-200">Bytes recibidos del stream: <b>{formatMotorBytes(nativeEngineState?.streamBytes)}</b></div>
                        )}
                        {nativeEngineState?.validation && (
@@ -6795,6 +7057,9 @@ function PodcastStudioApp() {
                   </>
                 )}
               </button>
+              {nativeNotice ? (
+                <div className="mt-1.5 px-1 text-[10px] font-bold leading-snug text-cyan-300">{nativeNotice}</div>
+              ) : null}
               {isStoppingRecordingUI && finalizeProgress && (
                 <div className="px-1 flex flex-col gap-1">
                   <div className="flex justify-between text-[10px] font-bold text-amber-300">
@@ -7282,6 +7547,12 @@ function PodcastStudioApp() {
                   {Object.entries(streamConfigs).filter(([_, c]) => c.enabled && c.key && c.key.trim().length > 0).map(([k]) => k.toUpperCase()).join(' · ') || 'Pega tu clave en cada red para emitir simultáneamente'}
                 </div>
               </div>
+              {(nativeNotice || nativeStreamError) ? (
+                <div className="flex max-w-xs flex-col gap-1 text-[11px] font-bold leading-snug">
+                  {nativeNotice ? <div className="text-cyan-300">{nativeNotice}</div> : null}
+                  {nativeStreamError ? <div className="text-red-300">Motor nativo: {nativeStreamError}</div> : null}
+                </div>
+              ) : null}
               <button onClick={handleStream} disabled={isStreamStarting} className="px-6 py-2 bg-red-600 hover:bg-red-500 disabled:bg-red-900 disabled:cursor-wait text-white rounded font-bold text-xs flex items-center gap-2 shadow-lg shadow-red-900/20 transition-colors">
                  <Wifi size={14}/> {isStreamStarting ? 'Conectando con RTMP…' : isStreaming ? 'Detener Transmisión' : 'Iniciar Transmisión En Vivo'}
               </button>

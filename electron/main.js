@@ -9,7 +9,7 @@ const { app, BrowserWindow, Menu, ipcMain, session, shell, desktopCapturer, powe
 Menu.setApplicationMenu(null);
 const path = require('path');
 const fs = require('fs');
-const { spawn, exec } = require('child_process');
+const { spawn, exec, spawnSync } = require('child_process');
 const net = require('net');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
@@ -22,9 +22,27 @@ const readySignalPath = path.join(os.tmpdir(), 'podcaststudio_ready.signal');
 try { if (fs.existsSync(readySignalPath)) fs.unlinkSync(readySignalPath); } catch (e) {}
 const { setupNativeEngineIPC } = require('./media-engine/bridge');
 const { computeExportSignature, siblingSuffixFor } = require('./export-signature');
+const { buildExportArgs, probeExportEncoder, filtroParaFormato } = require('./export-args');
 const { classifyStreamError, STREAM_ERROR_USER_MESSAGES } = require('./stream-error');
 const { createStreamEncoderSession } = require('./stream-encoder');
 const exportEncodeSignatures = new Map(); // firma de encode -> ruta ya codificada (dedupe FB/YT)
+
+// Hito 3: codificador de exportación sondeado UNA vez por proceso con
+// la escalera de electron/export-args.js (h264_nvenc → h264_qsv →
+// h264_mf → libx264) sobre la salida de «ffmpeg -encoders» del binario
+// empaquetado. Si la sonda falla, la escalera cae a libx264.
+let exportEncoderCache = null;
+function getExportEncoder() {
+  if (exportEncoderCache) return exportEncoderCache;
+  let listaCodificadores = '';
+  try {
+    const r = spawnSync(ffmpegPath, ['-hide_banner', '-encoders'], { encoding: 'utf8', timeout: 15000 });
+    listaCodificadores = `${(r && r.stdout) || ''}\n${(r && r.stderr) || ''}`;
+  } catch (e) { listaCodificadores = ''; }
+  exportEncoderCache = probeExportEncoder((nombre) => listaCodificadores.includes(nombre));
+  try { console.log(`[Export] Codificador de exportación (escalera Hito 3): ${exportEncoderCache}`); } catch (e) {}
+  return exportEncoderCache;
+}
 
 try {
   setupNativeEngineIPC();
@@ -2286,62 +2304,55 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
       try { fs.mkdirSync(projectDir, { recursive: true }); } catch (e) {}
     }
 
-    // El modo de reencuadre que el usuario elige en el modal ('smart-crop',
-    // 'blur-fill', 'split-stack') antes NUNCA llegaba hasta aquí: este handler
-    // siempre hacía recorte central fijo dijera lo que dijera la pantalla.
-    // 'smart-crop' sigue siendo recorte central (no hay detección de sujeto);
-    // 'blur-fill' conserva el cuadro completo sobre fondo difuminado y
-    // 'split-stack' apila las dos mitades del cuadro (dos personas lado a lado).
-    const mode = cropMode || 'smart-crop';
-    let filter = '';
-    let useComplex = false;
-    let suffix = '16x9';
-    const blurFill = (W, H) => `split[a][b];[a]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},boxblur=20:5[bg];[b]scale=${W}:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[vout]`;
-    const stackVertical = '[0:v]crop=iw:ih/2:0:0,scale=1080:960[top];[0:v]crop=iw:ih/2:0:ih/2,scale=1080:960[bottom];[top][bottom]vstack=inputs=2,setsar=1[vout]';
-    const stackSquare = '[0:v]crop=iw/2:ih:0:0,scale=540:1080[left];[0:v]crop=iw/2:ih:iw/2:0,scale=540:1080[right];[left][right]hstack=inputs=2,setsar=1[vout]';
+    // Hito 3: la sonda de la fuente corre ANTES de construir los
+    // argumentos: hacen falta la duración (progreso honesto) y las
+    // DIMENSIONES (el 16:9 al mismo tamaño que el máster es COPIA de
+    // flujos, no re-codificación). Antes la sonda corría después de
+    // construir los argumentos y el 16:9 se re-codificaba siempre por
+    // software (libx264 ultrafast), tardando ~10× la duración.
+    let totalSecs = 0;
+    let sourceWidth = 0;
+    let sourceHeight = 0;
+    try {
+      const probeOut = await new Promise((res2) => {
+        let errBuf = '';
+        const probe = spawn(ffmpegPath, ['-i', sourcePath]);
+        probe.stderr.on('data', (d) => { errBuf += d.toString(); });
+        probe.on('close', () => res2(errBuf));
+        probe.on('error', () => res2(errBuf));
+        setTimeout(() => { try { probe.kill(); } catch (e) {} res2(errBuf); }, 5000);
+      });
+      const durMatch = probeOut.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})/);
+      if (durMatch) totalSecs = parseInt(durMatch[1], 10) * 3600 + parseInt(durMatch[2], 10) * 60 + parseFloat(durMatch[3]);
+      const dimMatch = probeOut.match(/Video:[^\n]*?(\d{2,5})x(\d{2,5})/);
+      if (dimMatch) { sourceWidth = parseInt(dimMatch[1], 10); sourceHeight = parseInt(dimMatch[2], 10); }
+    } catch (e) {}
 
-    if (formatKey === '9:16') {
-      suffix = 'TikTok_Reels_9x16';
-      if (mode === 'blur-fill') { filter = blurFill(1080, 1920); useComplex = true; }
-      else if (mode === 'split-stack') { filter = stackVertical; useComplex = true; }
-      else filter = 'crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920';
-    } else if (formatKey === '1:1') {
-      suffix = 'Instagram_Feed_1x1';
-      if (mode === 'blur-fill') { filter = blurFill(1080, 1080); useComplex = true; }
-      else if (mode === 'split-stack') { filter = stackSquare; useComplex = true; }
-      else filter = 'crop=ih:ih:(iw-ih)/2:0,scale=1080:1080';
-    } else if (formatKey === '4:5') {
-      suffix = 'Facebook_Feed_4x5';
-      if (mode === 'blur-fill') { filter = blurFill(1080, 1350); useComplex = true; }
-      else filter = 'crop=ih*4/5:ih:(iw-ih*4/5)/2:0,scale=1080:1350';
-    } else if (formatKey === '16:9_yt') {
-      suffix = 'YouTube_16x9';
-      filter = 'scale=1920:1080';
-    } else {
-      suffix = 'Facebook_16x9';
-      filter = 'scale=1920:1080';
-    }
+    // El modo de reencuadre que el usuario elige en el modal
+    // ('smart-crop', 'blur-fill', 'split-stack') viaja en cropMode
+    // ('smart-crop' sigue siendo recorte central — no hay detección de
+    // sujeto; 'blur-fill' conserva el cuadro completo sobre fondo
+    // difuminado y 'split-stack' apila las dos mitades del cuadro).
+    // Filtros y argumentos salen de las funciones PURAS de
+    // electron/export-args.js (probadas en scripts/export-args.test.mjs).
+    const mode = cropMode || 'smart-crop';
+    const fInfo = filtroParaFormato(formatKey, mode);
+    const filter = fInfo.filter;
+    const suffix = fInfo.suffix;
 
     const baseName = path.basename(sourcePath, '.mp4');
     const outFilename = `${baseName}_${suffix}.mp4`;
     const outPath = path.join(projectDir, outFilename);
 
-    const args = ['-y', '-i', sourcePath];
-    if (useComplex) args.push('-filter_complex', filter, '-map', '[vout]', '-map', '0:a?');
-    else args.push('-vf', filter);
-    args.push(
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-crf', '18',
-      // Tope de bitrate: sin él, un export 16:9 de un Master granulado podía
-      // salir MÁS pesado que el propio Master.
-      '-maxrate', '8M',
-      '-bufsize', '16M',
-      '-pix_fmt', 'yuv420p',
-      '-c:a', 'copy',
-      '-movflags', '+faststart',
-      outPath
-    );
+    // Hito 3: los argumentos los construye buildExportArgs (pura):
+    // 16:9 al tamaño del máster = copia de flujos + faststart (segundos);
+    // el resto = filtro + codificador de la escalera de hardware con el
+    // bitrate por área del motor nativo (1080p→12 Mbps en los presets).
+    const built = buildExportArgs({
+      sourcePath, outPath, formatKey, cropMode: mode,
+      encoder: getExportEncoder(), sourceWidth, sourceHeight,
+    });
+    const args = built.args;
 
     // v1.5.0 (Frente B): dedupe por firma de parámetros. Si este mismo encode
     // ya se produjo (p. ej. el gemelo Facebook/YouTube 16:9, parámetros
@@ -2351,7 +2362,7 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
       sourceSize: fs.statSync(sourcePath).size,
       filter,
       mode,
-      codecKey: 'libx264|ultrafast|crf18|maxrate8M|bufsize16M|yuv420p|audio-copy|faststart',
+      codecKey: built.codecKey,
     });
     {
       const siblingSuffix = siblingSuffixFor(suffix);
@@ -2364,36 +2375,21 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
         try {
           fs.copyFileSync(dedupeSource, outPath);
           exportEncodeSignatures.set(exportSig, outPath);
-          const dedupeThumb = outPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
-          const sibThumb = dedupeSource.replace(/\.mp4$/i, '_Thumbnail.jpg');
-          if (fs.existsSync(sibThumb)) { try { fs.copyFileSync(sibThumb, dedupeThumb); } catch (e) {} }
+          // Hito 3: el dedupe ya NO copia el «_Thumbnail.jpg» hermano:
+          // ningún JPG automático (la miniatura es solo su botón).
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send('export-progress', { formatKey, percent: 100 });
           }
           console.log(`[Export] Dedupe: ${outFilename} copiado desde ${path.basename(dedupeSource)} (mismos parámetros).`);
-          return resolve({ success: true, path: outPath, dedupedFrom: dedupeSource, thumbnailPath: fs.existsSync(dedupeThumb) ? dedupeThumb : null });
+          return resolve({ success: true, path: outPath, dedupedFrom: dedupeSource });
         } catch (e) {
           console.warn('[Export] Dedupe falló, se codifica normalmente:', e.message);
         }
       }
     }
 
-    // Duración real de la fuente para un progreso honesto (antes era
-    // segundos transcodificados x 15, un número inventado).
-    let totalSecs = 0;
-    try {
-      const probeOut = await new Promise((res2) => {
-        let errBuf = '';
-        const probe = spawn(ffmpegPath, ['-i', sourcePath]);
-        probe.stderr.on('data', (d) => { errBuf += d.toString(); });
-        probe.on('close', () => res2(errBuf));
-        probe.on('error', () => res2(errBuf));
-        setTimeout(() => { try { probe.kill(); } catch (e) {} res2(errBuf); }, 5000);
-      });
-      const durMatch = probeOut.match(/Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})/);
-      if (durMatch) totalSecs = parseInt(durMatch[1], 10) * 3600 + parseInt(durMatch[2], 10) * 60 + parseFloat(durMatch[3]);
-    } catch (e) {}
-
+    // (La sonda de duración/dimensiones ya corrió arriba, antes de
+    // construir los argumentos — Hito 3.)
     const convertProc = spawn(ffmpegPath, args);
     let stderrTail = '';
 
@@ -2422,32 +2418,13 @@ ipcMain.handle('export-social-format', async (event, { sourcePath, formatKey, pr
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('export-progress', { formatKey, percent: 100 });
         }
-        // Generar miniatura JPG para el formato exportado directamente en la carpeta del proyecto
-        const thumbPath = outPath.replace(/\.mp4$/i, '_Thumbnail.jpg');
-        try {
-          const tProc = spawn(ffmpegPath, ['-y', '-ss', '00:00:00.800', '-i', outPath, '-vframes', '1', '-q:v', '2', thumbPath]);
-          let thumbFinished = false;
-          const thumbTimeout = setTimeout(() => {
-            if (thumbFinished) return;
-            thumbFinished = true;
-            try { tProc.kill(); } catch (e) {}
-            resolve({ success: true, path: outPath, thumbnailError: 'La miniatura tardó en generarse.' });
-          }, 15000);
-          tProc.on('close', (thumbCode) => {
-            if (thumbFinished) return;
-            thumbFinished = true;
-            clearTimeout(thumbTimeout);
-            resolve({ success: true, path: outPath, thumbnailPath: fs.existsSync(thumbPath) ? thumbPath : null });
-          });
-          tProc.on('error', (err) => {
-            if (thumbFinished) return;
-            thumbFinished = true;
-            clearTimeout(thumbTimeout);
-            resolve({ success: true, path: outPath, thumbnailError: err.message });
-          });
-        } catch (err) {
-          resolve({ success: true, path: outPath });
-        }
+        // Hito 3 — disciplina de escritura: NO se genera ningún JPG
+        // automático tras exportar (antes, cada MP4 dejaba un
+        // «_Thumbnail.jpg» no pedido en la carpeta del proyecto y la
+        // respuesta esperaba a ese proceso). La carpeta contiene SOLO
+        // los MP4 generados; la miniatura JPG sigue disponible bajo
+        // demanda con su botón en el modal.
+        resolve({ success: true, path: outPath });
       } else {
         // Nada de archivos a medias presentados como exportados, y nada de
         // error genérico: se devuelve el final real de la salida de FFmpeg.
@@ -3062,8 +3039,26 @@ for (const canalLegado of ['native-engine:start', 'native-engine:stop', 'native-
 ipcMain.handle('native-engine:start', async (_event, payload) => {
   try {
     if (payload && typeof payload.session === 'string' && payload.session) {
-      const outDir = payload.outDir || path.join(app.getPath('userData'), 'motor-nativo');
-      return await nativeEngineHost.start({ ...payload, outDir });
+      // Hito 3: con projectName (los botones reales de la app) el máster
+      // nativo cae en la carpeta del proyecto con el esquema del máster
+      // de la app — <Proyecto>_<AAAA-MM-DD_HH-MM-SS> — y el motor añade
+      // «_Master_<alto>p.mp4». El saneado del nombre es el MISMO del
+      // handler start-recording y la raíz la de getProjectsRootDir().
+      // Sin projectName ni outDir (panel de prueba) se conserva el
+      // destino histórico en userData/motor-nativo.
+      let outDir = payload.outDir;
+      let outFileBase = payload.outFileBase;
+      if (!outDir && payload.projectName) {
+        const cleanProjectName = String(payload.projectName).replace(/^PodcaStudio_/i, '').replace(/_\d{10,}$/, '').replace(/[/\\?%*:|"<>]/g, '_').trim() || 'Proyecto_General';
+        outDir = path.join(getProjectsRootDir(), cleanProjectName);
+        if (!outFileBase) {
+          const now = new Date();
+          const pad2 = (n) => String(n).padStart(2, '0');
+          outFileBase = `${cleanProjectName}_${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}_${pad2(now.getHours())}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}`;
+        }
+      }
+      if (!outDir) outDir = path.join(app.getPath('userData'), 'motor-nativo');
+      return await nativeEngineHost.start({ ...payload, outDir, ...(outFileBase ? { outFileBase } : {}) });
     }
     const result = legacyMediaEngine.start(payload || {});
     legacyMediaEngineRunning = !!result.success;
