@@ -35,6 +35,10 @@ contextBridge.exposeInMainWorld('api', {
   // del programa + audio mezclado en WebM/Opus, hacia el grafo de reparto.
   sendProgramVideoChunk: (chunk) => ipcRenderer.send('program-video-chunk', chunk),
   sendProgramAudioChunk: (chunk) => ipcRenderer.send('program-audio-chunk', chunk),
+  setProgramProfile: (profile) => ipcRenderer.invoke('set-program-profile', profile),
+  runProgramSelfTest: () => ipcRenderer.invoke('run-program-selftest'),
+  onProgramSelfTestResult: (cb) => { const h = (_e, v) => cb(v); ipcRenderer.on('program-selftest-result', h); return () => ipcRenderer.removeListener('program-selftest-result', h); },
+  onProgramSelfTestRequest: (cb) => { const h = () => cb(); ipcRenderer.on('program-selftest-request', h); return () => ipcRenderer.removeListener('program-selftest-request', h); },
   setRecordingPaused: (paused) => ipcRenderer.invoke('set-recording-paused', paused),
   stopStreaming: () => ipcRenderer.invoke('stop-streaming'),
   onStreamStatus: (cb) => {
@@ -116,27 +120,6 @@ contextBridge.exposeInMainWorld('api', {
   },
   sendProgramFeedFrame: (frameData) => ipcRenderer.send('program-feed-frame', frameData),
   sendCamThumbnails: (thumbnails) => ipcRenderer.send('cam-thumbnails', thumbnails),
-
-  // Motor OBS (Plan B, v2.1.0): OBS Studio como motor gobernado por
-  // PodcastStudio vía obs-websocket. namespace `obs:` en main; el motor
-  // interno no se ve afectado por estos puentes.
-  obs: {
-    connect: (cfg) => ipcRenderer.invoke('obs:connect', cfg),
-    disconnect: () => ipcRenderer.invoke('obs:disconnect'),
-    getStatus: () => ipcRenderer.invoke('obs:get-status'),
-    provision: (payload) => ipcRenderer.invoke('obs:provision', payload),
-    setProgramScene: (name) => ipcRenderer.invoke('obs:set-program-scene', name),
-    startStream: (destination) => ipcRenderer.invoke('obs:start-stream', destination),
-    stopStream: () => ipcRenderer.invoke('obs:stop-stream'),
-    startRecord: () => ipcRenderer.invoke('obs:start-record'),
-    stopRecord: () => ipcRenderer.invoke('obs:stop-record'),
-    updateCintillo: (cintillo) => ipcRenderer.invoke('obs:update-cintillo', cintillo),
-    onEvent: (cb) => {
-      const handler = (e, data) => cb(data);
-      ipcRenderer.on('obs-event', handler);
-      return () => ipcRenderer.removeListener('obs-event', handler);
-    },
-  },
 
   // Motor de Medios Nativo v2
   nativeEngine: {

@@ -16,24 +16,29 @@
 // composición esperando al codificador.
 // ============================================================================
 
-let supportPromise = null;
+import { getProgramProfile, DEFAULT_PROGRAM_PROFILE_ID } from './programProfiles.mjs';
 
-// Sonda de capacidad: una sola vez por sesión de renderer, cacheada.
-// Devuelve { supported, hardware } — hardware=true si la configuración
-// con 'prefer-hardware' es soportada.
-export function probeProgramEncoderSupport() {
-  if (supportPromise) return supportPromise;
-  supportPromise = (async () => {
+const supportPromises = new Map();
+
+// Sonda de capacidad: cacheada POR PERFIL (v3.0.0). Devuelve
+// { supported, hardware } — hardware=true si la configuración con
+// 'prefer-hardware' es soportada. Usa codec/dimensiones/bitrate del
+// perfil pedido (default: 1080p con los valores históricos).
+export function probeProgramEncoderSupport(profileId = DEFAULT_PROGRAM_PROFILE_ID) {
+  const profile = getProgramProfile(profileId);
+  const key = profile.id;
+  if (supportPromises.has(key)) return supportPromises.get(key);
+  const promise = (async () => {
     try {
       if (typeof VideoEncoder === 'undefined' || typeof VideoFrame === 'undefined') {
         return { supported: false, hardware: false };
       }
       const base = {
-        codec: 'avc1.640028', // H.264 High @ 4.0
-        width: 1920,
-        height: 1080,
-        bitrate: 4_500_000,
-        framerate: 30,
+        codec: profile.avcCodec,
+        width: profile.width,
+        height: profile.height,
+        bitrate: profile.masterBitrateBps,
+        framerate: profile.fps || 30,
         latencyMode: 'realtime',
         avc: { format: 'annexb' },
       };
@@ -46,10 +51,21 @@ export function probeProgramEncoderSupport() {
       return { supported: false, hardware: false };
     }
   })();
-  return supportPromise;
+  supportPromises.set(key, promise);
+  return promise;
 }
 
-export function createProgramEncoderPump({ onChunk, onError, width = 1920, height = 1080, fps = 30, bitrate = 4_500_000 } = {}) {
+export function createProgramEncoderPump({ onChunk, onError, profile = null, width, height, fps, bitrate } = {}) {
+  // v3.0.0: con perfil, codec/dimensiones/bitrate salen de él; sin
+  // perfil se conservan los valores históricos (1920×1080, 4_500_000).
+  const resolvedProfile = profile ? getProgramProfile(profile.id || profile) : null;
+  const encWidth = width ?? resolvedProfile?.width ?? 1920;
+  const encHeight = height ?? resolvedProfile?.height ?? 1080;
+  const encFps = fps ?? resolvedProfile?.fps ?? 30;
+  const encBitrate = bitrate ?? (resolvedProfile ? resolvedProfile.masterBitrateBps : 4_500_000);
+  const encCodec = resolvedProfile?.avcCodec || 'avc1.640028';
+  const profileId = resolvedProfile?.id || DEFAULT_PROGRAM_PROFILE_ID;
+  width = encWidth; height = encHeight; fps = encFps; bitrate = encBitrate;
   let encoder = null;
   let running = false;
   let startTs = 0;
@@ -59,7 +75,7 @@ export function createProgramEncoderPump({ onChunk, onError, width = 1920, heigh
   const gopFrames = fps * 2; // GOP de 2 s, como la ruta histórica (g=60)
 
   async function start() {
-    const support = await probeProgramEncoderSupport();
+    const support = await probeProgramEncoderSupport(profileId);
     if (!support.supported) return false;
     try {
       encoder = new VideoEncoder({
@@ -75,7 +91,7 @@ export function createProgramEncoderPump({ onChunk, onError, width = 1920, heigh
         },
       });
       encoder.configure({
-        codec: 'avc1.640028',
+        codec: encCodec,
         width,
         height,
         bitrate,

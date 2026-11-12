@@ -27,21 +27,56 @@
 export const MAX_SIMULTANEOUS_1080P_USB = 2;
 
 export const USB_OPEN_TIERS = {
+  '2160p': { width: { ideal: 3840, min: 1920 }, height: { ideal: 2160, min: 1080 }, frameRate: { ideal: 30, min: 15 } },
+  '1440p': { width: { ideal: 2560, min: 1280 }, height: { ideal: 1440, min: 720 }, frameRate: { ideal: 30, min: 15 } },
   '1080p': { width: { ideal: 1920, min: 320 }, height: { ideal: 1080, min: 240 }, frameRate: { ideal: 30, min: 15 } },
   '720p': { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
   '480p': { width: { ideal: 854 }, height: { ideal: 480 }, frameRate: { ideal: 30 } },
 };
 
 export function nextUsbTierDown(tier) {
+  if (tier === '2160p') return '1440p';
+  if (tier === '1440p') return '1080p';
   if (tier === '1080p') return '720p';
   if (tier === '720p') return '480p';
   return '480p';
 }
 
+// Presupuesto de bus en equivalentes 1080p (v3.0.0): el bus admite el
+// equivalente a 2 cámaras 1080p (presupuesto 2). Costes por formato
+// negociado: 2160p = 2, 1440p = 1.5, 1080p = 1, 720p o menos = 0
+// (válvula de alivio: siempre cabe).
+export const USB_BUS_BUDGET = MAX_SIMULTANEOUS_1080P_USB;
+
+export function usbTierCost(tier) {
+  if (tier === '2160p') return 2;
+  if (tier === '1440p') return 1.5;
+  if (tier === '1080p') return 1;
+  return 0;
+}
+
+export function usbFormatCost(format) {
+  const h = format?.height || 0;
+  if (h >= 2000) return 2;
+  if (h >= 1300) return 1.5;
+  if (h >= 1000) return 1;
+  return 0;
+}
+
 // liveFormats: formatos YA negociados por las cámaras vivas
 // ({ width, height } de getSettings() de sus pistas). Sin medición de
 // rendimiento: es el estado declarado por las pistas existentes.
-export function decideUsbOpenTier(liveFormats = []) {
-  const at1080 = (liveFormats || []).filter(f => (f?.height || 0) >= 1000).length;
-  return at1080 >= MAX_SIMULTANEOUS_1080P_USB ? '720p' : '1080p';
+// requestedTier: escalón pedido (perfil de programa para la cámara
+// principal; '1080p' por defecto = comportamiento histórico exacto).
+// Mientras el coste del candidato supere el presupuesto restante Y el
+// candidato sea superior a 720p, baja un escalón; 720p se concede
+// siempre.
+export function decideUsbOpenTier(liveFormats = [], requestedTier = '1080p') {
+  const used = (liveFormats || []).reduce((acc, f) => acc + usbFormatCost(f), 0);
+  const remaining = USB_BUS_BUDGET - used;
+  let candidate = USB_OPEN_TIERS[requestedTier] ? requestedTier : '1080p';
+  while (candidate !== '720p' && candidate !== '480p' && usbTierCost(candidate) > remaining) {
+    candidate = nextUsbTierDown(candidate);
+  }
+  return candidate;
 }

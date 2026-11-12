@@ -1,48 +1,68 @@
 'use strict';
 // ============================================================================
-// NÚCLEO EN VIVO v2.0.0 — grafo único de programa (Raíz A, reemplazo).
+// Motor PodcastStudio — núcleo de programa v3 (el disco es la fuente de
+// verdad).
 //
-// Antes (v1.6.x): el canvas se codificaba en el renderer con MediaRecorder
-// (VP8), OTRA vez con un segundo MediaRecorder dedicado para grabar, y
-// cada destino de streaming y la grabación transcodificaban ese WebM a
-// H.264 con libx264 en procesos separados: hasta CUATRO codificaciones
-// por software del mismo programa compitiendo por la misma CPU.
+// v2.0.0 repartía el flujo FLV EN MEMORIA a consumidores FFmpeg
+// alimentados por stdin: la grabación se enganchaba a un FFmpeg con
+// `-map 0:v:0` (no opcional) contra un tubo aún vacío y moría con EINVAL
+// en vivo. La v3 cambia la costura, no el grafo:
 //
-// Ahora: captura → composición → UNA codificación → reparto con copia.
+//   captura → composición → UNA codificación → archivo maestro en disco
+//     → los destinos leen del archivo tras superar su compuerta
+//     → la grabación son RANGOS de ese archivo y se deriva file→file
+//
 //   - Modo 'webcodecs' (primario): el renderer codifica el programa UNA
-//     vez en H.264 con WebCodecs (hardware cuando la plataforma lo
-//     ofrece) y envía el flujo elemental + el audio mezclado (WebM/Opus).
-//     Este proceso solo MEZCLA: vídeo -c copy, audio → AAC una vez.
-//   - Modo 'webm' (respaldo declarado): el renderer envía el WebM de
-//     siempre y este proceso lo transcodifica UNA vez con el codificador
-//     de la sonda de sesión (h264_mf primero; electron/stream-encoder.js).
-//   En ambos modos la salida es UN flujo FLV (H.264+AAC) que se reparte
-//   con -c copy: un worker por destino RTMPS y un consumidor para la
-//   grabación máster. Ningún consumidor vuelve a codificar vídeo.
+//     vez en H.264 con WebCodecs y este proceso solo MEZCLA
+//     (vídeo -c copy, audio → AAC una vez).
+//   - Modo 'webm' (respaldo declarado): UNA transcodificación con el
+//     codificador de la sonda de sesión (electron/stream-encoder.js),
+//     con el bitrate del perfil de programa activo.
+//   En ambos modos la salida FLV va al archivo maestro de sesión
+//   (electron/master-file.js); ningún consumidor se engancha a un tubo
+//   vacío ni vuelve a codificar vídeo salvo el destino cuya salida es
+//   menor que el máster, que escala con mapeos SIEMPRE opcionales.
 // ============================================================================
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createMasterFileWriter, createMasterFileReader, validateMasterFile, FlvGateScanner } = require('./master-file');
 
 const RECONNECT_DELAYS_MS = [5000, 10000, 20000, 40000, 60000];
 const QUEUE_CAP_BYTES = 32 * 1024 * 1024;
 const STARTUP_TIMEOUT_MS = 20000;
 const ROLLING_CAP_BYTES = 6 * 1024 * 1024;
+const FRAME_LOG_INTERVAL_MS = 5000;
+const DERIVATION_TIMEOUT_MS = 120000;
+
+const DEFAULT_PROFILE = {
+  id: '1080p',
+  width: 1920,
+  height: 1080,
+  masterBitrateBps: 10000000,
+  streamWidth: 1920,
+  streamHeight: 1080,
+  streamBitrateBps: 6000000,
+};
 
 // ----------------------------------------------------------------------------
-// FlvJoinBuffer: permite que un consumidor se una al flujo «tarde» (un
-// destino que reconecta, la grabación que arranca durante el vivo) sin
-// recibir el historial completo ni un flujo indecodificable.
-// Conserva: (a) la cabecera FLV, (b) las etiquetas de secuencia AVC/AAC
-// re-selladas al timestamp del último keyframe, y (c) el flujo desde el
-// último keyframe. El consumidor recibe (a)+(b)+(c): decodificable desde
-// el primer byte y con el reloj empezando en ese keyframe.
+// FlvJoinBuffer: permite que un consumidor se una al flujo «tarde» sin
+// recibir el historial completo ni un flujo indecodificable. Conserva:
+// (a) la cabecera FLV, (b) las etiquetas de secuencia AVC/AAC re-selladas
+// al timestamp del último keyframe, y (c) el flujo desde el último
+// keyframe. En la v3 la unión real la hace el lector del archivo maestro
+// (mismo principio, sobre disco); esta clase se conserva como utilidad
+// del núcleo y por compatibilidad con las pruebas de la Parte 1.
 // ----------------------------------------------------------------------------
 class FlvJoinBuffer {
   constructor() {
     this.pending = Buffer.alloc(0);
-    this.headerBytes = null; // 'FLV' + versión/flags + tamaño + PreviousTagSize0
-    this.seqTags = []; // registros completos (cabecera de etiqueta + datos + prevTagSize)
+    this.headerBytes = null;
+    this.seqTags = [];
     this.gotVideoSeq = false;
     this.gotAudioSeq = false;
-    this.rolling = null; // Buffer desde el inicio del último tag keyframe
+    this.rolling = null;
     this.rollingParts = [];
     this.rollingBytes = 0;
     this.lastKeyframeTs = 0;
@@ -53,8 +73,6 @@ class FlvJoinBuffer {
     return this.gotVideoSeq && this.sawKeyframe;
   }
 
-  // El grafo renace (nuevo proceso de programa): la unión anterior ya no
-  // describe este flujo (los relojes vuelven a cero) y se descarta.
   reset() {
     this.pending = Buffer.alloc(0);
     this.headerBytes = null;
@@ -78,7 +96,6 @@ class FlvJoinBuffer {
       if (!this.headerBytes) {
         if (this.pending.length < 13) return;
         if (this.pending.toString('ascii', 0, 3) !== 'FLV') {
-          // Flujo corrupto: no hay unión posible; se descarta lo recibido.
           this.pending = Buffer.alloc(0);
           return;
         }
@@ -87,8 +104,6 @@ class FlvJoinBuffer {
         continue;
       }
       if (this.pending.length < 11) return;
-      // FLV: byte 0 = tipo, bytes 1-3 = tamaño de datos (el timestamp va
-      // en 4-7; leer el tamaño desde 4 desalinea todo el flujo).
       const dataSize = this.pending.readUIntBE(1, 3);
       const total = 11 + dataSize + 4;
       if (this.pending.length < total) return;
@@ -111,7 +126,6 @@ class FlvJoinBuffer {
         return;
       }
       if (codecId === 7 && packetType === 1 && frameType === 1) {
-        // Keyframe: el flujo de unión rueda desde aquí.
         this.sawKeyframe = true;
         this.lastKeyframeTs = ts;
         this.rollingParts = [record];
@@ -132,8 +146,6 @@ class FlvJoinBuffer {
       this.rollingParts.push(record);
       this.rollingBytes += record.length;
       if (this.rollingBytes > ROLLING_CAP_BYTES) {
-        // Sin keyframe nuevo en 6 MB: se suelta el rodante hasta el
-        // próximo keyframe (la unión espera en vez de crecer sin fin).
         this.sawKeyframe = false;
         this.rollingParts = [];
         this.rollingBytes = 0;
@@ -148,8 +160,6 @@ class FlvJoinBuffer {
     return out;
   }
 
-  // Bytes con los que un consumidor nuevo se une AHORA, o null si el
-  // flujo aún no tiene secuencia de vídeo + keyframe.
   snapshot() {
     if (!this.ready()) return null;
     const parts = [this.headerBytes];
@@ -159,9 +169,18 @@ class FlvJoinBuffer {
   }
 }
 
+function fmtKbps(bps) {
+  return `${Math.max(1, Math.round(Number(bps || 0) / 1000))}k`;
+}
+
+function sleepMs(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 // ----------------------------------------------------------------------------
 // createProgramCore(deps) — dueño del grafo: proceso codificador/mezclador
-// único, buffer de unión y consumidores con copia (destinos + grabación).
+// único que escribe el archivo maestro, lectores por destino y grabación
+// por rangos sobre ese archivo.
 // deps: {
 //   spawnImpl, ffmpegPath,
 //   sessionEncoder: { getEncoder(), noteEncoderFailure(enc) },
@@ -171,41 +190,144 @@ class FlvJoinBuffer {
 //   onTelemetry({ fps, bitrate, droppedFrames }),
 //   onRecordingStderr(text),
 //   onRecordingFailed(message),
+//   sessionsDir, selfTestDir,
+//   onSelfTestResult(result), onSelfTestFlowNeeded(),
 // }
 // ----------------------------------------------------------------------------
 function createProgramCore(deps) {
   const {
     ffmpegPath,
-    sessionEncoder,
-    classifyError,
     onDestinationStatus,
     onTelemetry,
     onRecordingStderr,
     onRecordingFailed,
+    onSelfTestResult,
+    onSelfTestFlowNeeded,
   } = deps;
-  // Valores por defecto defensivos: el contrato preferido es spawnImpl +
-  // log (así los pasa main.js), pero el núcleo no debe romperse si quien
-  // lo instancia (una prueba, otro anfitrión) ofrece logger en su lugar.
   const spawnImpl = typeof deps.spawnImpl === 'function'
     ? deps.spawnImpl
     : require('node:child_process').spawn;
   const log = typeof deps.log === 'function'
     ? deps.log
     : (deps.logger && typeof deps.logger.log === 'function' ? (...a) => deps.logger.log(...a) : () => {});
+  const classifyError = typeof deps.classifyError === 'function' ? deps.classifyError : () => 'unknown';
+  const sessionEncoder = deps.sessionEncoder && typeof deps.sessionEncoder.getEncoder === 'function'
+    ? deps.sessionEncoder
+    : { getEncoder: async () => 'libx264', noteEncoderFailure: () => {} };
 
+  const sessionsDir = deps.sessionsDir || path.join(os.tmpdir(), 'podcastudio-v3', 'sessions');
+  const selfTestDir = deps.selfTestDir || path.join(os.tmpdir(), 'podcastudio-v3', 'selftest');
+  for (const dir of [sessionsDir, selfTestDir]) {
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+  }
+
+  let profile = { ...DEFAULT_PROFILE };
   let mode = null; // 'webm' | 'webcodecs'
   let encoderProc = null;
   let encoderLabel = null;
   let encoderStarting = null;
   let encoderStderrRing = [];
   let encoderIntentionalStop = false;
+  let encoderLastFrameLogAt = 0;
   let preModeAudioChunks = [];
   const joinBuffer = new FlvJoinBuffer();
   const destinations = new Map(); // id -> entry
-  let recording = null; // { proc, partialPath, paused, bytesWritten, writeQueue, queuedBytes, stderrRing, intentionalStop, closed, failure }
+  let sessionActive = false;
   let lastTelemetryAt = 0;
   let lastDroppedFrames = 0;
-  let sessionActive = false;
+
+  // --- archivo maestro de sesión -----------------------------------------
+  let sessionWriter = null;
+  let sessionFilePath = null;
+  const sessionWritersByFile = new Map(); // filePath -> writer
+  const allSessionFiles = [];
+  const protectedFiles = new Set(); // archivos en uso por una derivación en curso
+
+  // --- grabación por rangos ----------------------------------------------
+  let recording = null;
+
+  // --- autoprueba ----------------------------------------------------------
+  let selfTest = null;
+  let lastSelfTestVerdict = null;
+
+  function closeWriterOnce(writer) {
+    if (!writer) return Promise.resolve();
+    if (!writer.__psClosePromise) {
+      writer.__psClosePromise = Promise.resolve(writer.closeSegment()).catch(() => {});
+    }
+    return writer.__psClosePromise;
+  }
+
+  function fileIsReferenced(file) {
+    if (!file) return false;
+    if (file === sessionFilePath) return true;
+    if (protectedFiles.has(file)) return true;
+    if (selfTest && selfTest.filePath === file) return true;
+    if (recording && recording.ranges.some((r) => r.file === file)) return true;
+    for (const entry of destinations.values()) {
+      if (entry.readerFile === file) return true;
+    }
+    return false;
+  }
+
+  // Punto 10 del diseño v3: los archivos de sesión sin referencias se
+  // borran al arrancar la siguiente sesión y en shutdown (best effort).
+  function cleanupUnreferencedSessionFiles() {
+    for (const file of [...allSessionFiles]) {
+      if (fileIsReferenced(file)) continue;
+      try { fs.unlinkSync(file); } catch (e) {}
+      const idx = allSessionFiles.indexOf(file);
+      if (idx >= 0) allSessionFiles.splice(idx, 1);
+      sessionWritersByFile.delete(file);
+    }
+  }
+
+  function createSessionWriter() {
+    let filePath;
+    let adoptSelfTest = false;
+    if (selfTest && selfTest.active && selfTest.pendingSessionFile && !selfTest.writer) {
+      filePath = selfTest.filePath;
+      adoptSelfTest = true;
+    } else {
+      filePath = path.join(sessionsDir, `master-${Date.now()}.flv`);
+    }
+    cleanupUnreferencedSessionFiles();
+    const writer = createMasterFileWriter({ filePath, log });
+    sessionWriter = writer;
+    sessionFilePath = filePath;
+    sessionWritersByFile.set(filePath, writer);
+    if (!allSessionFiles.includes(filePath)) allSessionFiles.push(filePath);
+    if (adoptSelfTest) {
+      selfTest.writer = writer;
+      selfTest.isSessionFile = true;
+      selfTest.pendingSessionFile = false;
+    }
+    log(`Núcleo v3: archivo maestro de sesión abierto → ${filePath}`);
+    // Los lectores vivos siguen la rotación al archivo nuevo.
+    for (const entry of destinations.values()) {
+      if (entry.reader && entry.proc && !entry.intentionalStop && entry.readerFile && entry.readerFile !== filePath) {
+        try { entry.reader.followTo(filePath); entry.readerFile = filePath; } catch (e) {}
+      }
+    }
+    if (selfTest && selfTest.reader) {
+      try { selfTest.reader.followTo(filePath); } catch (e) {}
+    }
+    // Una grabación pendiente abre su rango en el primer keyframe de
+    // este archivo nuevo.
+    if (recording && recording.pendingOpen && !recording.openRange) {
+      recording.pendingForFile = filePath;
+      recording.pendingMode = 'first';
+    }
+    return writer;
+  }
+
+  function detachSessionWriter() {
+    const writer = sessionWriter;
+    sessionWriter = null;
+    sessionFilePath = null;
+    if (writer) closeWriterOnce(writer);
+    return writer;
+  }
 
   // --- utilidades de escritura con backpressure (patrón v1.5.0) ---------
   function enqueueWrite(consumer, buf) {
@@ -233,6 +355,22 @@ function createProgramCore(deps) {
     });
   }
 
+  // stderr observable (v3): TODAS las líneas de un proceso pasan por
+  // log(...) con prefijo identificativo, excepto las de progreso
+  // `frame=...`, que se vuelcan como máximo 1 cada 5 s por proceso.
+  function logProcessLines(owner, prefix, text) {
+    for (const rawLine of String(text).split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line) continue;
+      if (/^frame=/.test(line) || /\bframe=\s*\d+/.test(line) && /fps=/.test(line)) {
+        const now = Date.now();
+        if (now - (owner._lastFrameLogAt || 0) < FRAME_LOG_INTERVAL_MS) continue;
+        owner._lastFrameLogAt = now;
+      }
+      log(`${prefix}: ${line}`);
+    }
+  }
+
   // --- proceso codificador/mezclador único -------------------------------
   function encoderArgs() {
     if (mode === 'webcodecs') {
@@ -252,6 +390,7 @@ function createProgramCore(deps) {
     }
     const threads = 4;
     const { buildStreamEncoderArgs } = require('./stream-encoder');
+    const masterRate = fmtKbps(profile.masterBitrateBps);
     return {
       args: [
         '-probesize', '8M',
@@ -259,8 +398,8 @@ function createProgramCore(deps) {
         '-fflags', '+discardcorrupt+nobuffer',
         '-f', 'webm', '-i', 'pipe:0',
         ...buildStreamEncoderArgs(encoderLabel, threads),
-        '-maxrate', '5000k',
-        '-bufsize', '5000k',
+        '-maxrate', masterRate,
+        '-bufsize', masterRate,
         '-pix_fmt', 'yuv420p',
         '-g', '60',
         '-keyint_min', '30',
@@ -297,6 +436,7 @@ function createProgramCore(deps) {
         log(`Núcleo v2: no se pudo lanzar el proceso de programa: ${e.message}`);
         return false;
       }
+      createSessionWriter();
       encoderProc = proc;
       log(`Núcleo v2: proceso de programa en marcha (modo ${mode}, codificador ${encoderLabel}).`);
       proc.stdout.on('data', (chunk) => fanout(chunk));
@@ -308,6 +448,7 @@ function createProgramCore(deps) {
             if (encoderStderrRing.length > 40) encoderStderrRing.shift();
           }
         }
+        logProcessLines({ get _lastFrameLogAt() { return encoderLastFrameLogAt; }, set _lastFrameLogAt(v) { encoderLastFrameLogAt = v; } }, 'Núcleo v3: codificador', text);
         parseEncoderTelemetry(text);
       });
       proc.once('error', (err) => {
@@ -345,35 +486,50 @@ function createProgramCore(deps) {
     }
   }
 
+  // Cierra el rango abierto de la grabación en el último tag completo de
+  // su archivo. Devuelve true si había rango abierto.
+  function freezeRecordingRange() {
+    if (!recording || !recording.openRange) return false;
+    const range = recording.openRange;
+    const writer = sessionWritersByFile.get(range.file);
+    const end = writer ? writer.lastCompleteTagEnd() : range.startOffset;
+    range.endOffset = Math.max(range.startOffset, end);
+    recording.openRange = null;
+    return true;
+  }
+
   function handleEncoderDown(code) {
     joinBuffer.reset();
+    detachSessionWriter();
     const tail = encoderStderrRing.join('\n');
     const kind = classifyError(tail);
     log(`Núcleo v2: el proceso de programa se cerró (código ${code}, tipo ${kind}).`);
     const hadRecording = !!recording;
-    if (hadRecording && recording) {
-      recording.failure = recording.failure || `El proceso de programa se cerró durante la grabación (código ${code}).`;
-      const failed = recording;
-      recording = null;
-      try { failed.proc?.stdin?.destroy(); failed.proc?.kill('SIGINT'); } catch (e) {}
-      if (onRecordingFailed) onRecordingFailed(failed.failure);
+    if (recording && !recording.failure) {
+      // Grabación activa al caer el codificador: el rango se congela y
+      // la derivación posterior usa lo que haya en el archivo maestro.
+      freezeRecordingRange();
+      recording.pendingOpen = false;
+      recording.failure = `El proceso de programa se cerró durante la grabación (código ${code}).`;
+      if (onRecordingFailed) onRecordingFailed(recording.failure);
     }
     if (!sessionActive && destinations.size === 0 && !hadRecording) return;
-    // Volteo de codificador (solo modo webm): si el arranque/encode murió
-    // por el codificador, la sesión aprende el otro y el grafo renace con él.
     if (mode === 'webm' && kind === 'encoder' && encoderLabel) {
       sessionEncoder.noteEncoderFailure(encoderLabel);
     }
-    // El grafo renace si queda sesión; los destinos se re-enganchan solos
-    // (cada uno respawnea y se une en el siguiente keyframe).
+    // Los destinos vivos conservan su proceso: su lector hará followTo
+    // al archivo nuevo cuando el grafo renazca. Los caídos o en arranque
+    // se re-enganchan con un lector nuevo sobre el archivo vigente.
     for (const entry of destinations.values()) {
-      if (!entry.intentionalStop) scheduleDestinationReconnect(entry, true);
+      if (entry.intentionalStop) continue;
+      if (!(entry.proc && entry.connected)) scheduleDestinationReconnect(entry, true);
     }
     if (destinations.size > 0) ensureEncoder();
   }
 
   function stopEncoder() {
     joinBuffer.reset();
+    detachSessionWriter();
     if (!encoderProc) return;
     encoderIntentionalStop = true;
     const proc = encoderProc;
@@ -387,64 +543,132 @@ function createProgramCore(deps) {
     if (destinations.size === 0 && !recording) stopEncoder();
   }
 
-  // --- reparto -------------------------------------------------------------
+  // --- reparto: la salida del codificador va SOLO al disco ---------------
   function fanout(chunk) {
     joinBuffer.push(chunk);
-    for (const entry of destinations.values()) {
-      if (!entry.proc || entry.needsRestart) continue;
-      feedConsumer(entry, chunk);
+    // La salida del codificador va SOLO al archivo maestro de sesión.
+    // (El tee de autoprueba sobre una sesión viva no copia estos chunks
+    // tal cual —empezaría a mitad de etiqueta y el temporal no sería un
+    // FLV válido—: lee del propio archivo maestro con su lector, que se
+    // une en un keyframe con el prefijo re-sellado; ver runSelfTest.)
+    if (sessionWriter) {
+      try { sessionWriter.write(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)); } catch (e) {}
+      if (selfTest && selfTest.active && selfTest.writer === sessionWriter && !selfTest.firstByteAt) {
+        selfTest.firstByteAt = Date.now();
+      }
     }
-    if (recording && recording.proc && !recording.paused && !recording.needsRestart) {
-      feedConsumer(recording, chunk);
-    }
+    tryOpenRecordingRange();
   }
 
-  function feedConsumer(consumer, chunk) {
-    if (!consumer.joined) {
-      const snap = joinBuffer.snapshot();
-      if (!snap) return; // aún no hay keyframe: el consumidor espera en el buffer
-      consumer.joined = true;
-      enqueueWrite(consumer, snap);
-      return;
+  // Abre el rango pendiente de la grabación si su keyframe ya existe en
+  // el scanner del archivo que le toca.
+  function tryOpenRecordingRange() {
+    if (!recording || !recording.pendingOpen || recording.openRange || recording.failure) return;
+    if (recording.paused) return;
+    const file = recording.pendingForFile || sessionFilePath;
+    if (!file) return;
+    const writer = sessionWritersByFile.get(file);
+    if (!writer) return;
+    const keyframes = writer.scanner.keyframes;
+    if (!keyframes.length) return;
+    let kf = null;
+    if (recording.pendingMode === 'latest') {
+      kf = keyframes[keyframes.length - 1];
+    } else if (recording.pendingMode === 'first') {
+      kf = keyframes[0];
+    } else { // 'next': primer keyframe en o tras el offset marcado
+      kf = keyframes.find((k) => k.offset >= (recording.pendingSince || 0)) || null;
+      // Si el archivo rotó mientras se esperaba, manda su primer keyframe.
+      if (!kf && file !== sessionFilePath) kf = null;
     }
-    if (consumer.queuedBytes > QUEUE_CAP_BYTES) {
-      consumer.needsRestart = true;
-      log(`Núcleo v2: consumidor ${consumer.name || 'grabación'} superó la cola de 32 MB; se reinicia.`);
-      try { consumer.proc?.kill('SIGINT'); } catch (e) {}
-      return;
-    }
-    enqueueWrite(consumer, chunk);
+    if (!kf) return;
+    const range = { file, startOffset: kf.offset, endOffset: null };
+    recording.ranges.push(range);
+    recording.openRange = range;
+    recording.pendingOpen = false;
   }
 
-  // --- destinos (workers de copia) ------------------------------------------
-  function destinationArgs(entry) {
+  // --- destinos -------------------------------------------------------------
+  function destinationIsCopy() {
+    return profile.streamWidth === profile.width && profile.streamHeight === profile.height;
+  }
+
+  async function destinationArgs(entry) {
+    if (destinationIsCopy()) {
+      return [
+        '-fflags', '+discardcorrupt+nobuffer',
+        '-f', 'flv', '-i', 'pipe:0',
+        '-c', 'copy',
+        '-flvflags', 'no_duration_filesize',
+        '-rtmp_buffer', '1000',
+        '-rtmp_live', 'live',
+        '-rw_timeout', '30000000',
+        '-f', 'flv', entry.url,
+      ];
+    }
+    // Salida menor que el máster: escalado con mapeos SIEMPRE opcionales
+    // y el codificador de la sesión sondeada.
+    const encoder = await sessionEncoder.getEncoder();
+    const { buildStreamEncoderArgs } = require('./stream-encoder');
+    const outRate = fmtKbps(profile.streamBitrateBps);
     return [
       '-fflags', '+discardcorrupt+nobuffer',
       '-f', 'flv', '-i', 'pipe:0',
-      '-c', 'copy',
-      '-flvflags', 'no_duration_filesize',
-      '-rtmp_buffer', '1000',
-      '-rtmp_live', 'live',
-      '-rw_timeout', '30000000',
+      '-map', '0:v:0?',
+      '-map', '0:a:0?',
+      '-vf', `scale=${profile.streamWidth}:${profile.streamHeight}:flags=bicubic`,
+      ...buildStreamEncoderArgs(encoder, 4),
+      '-maxrate', outRate,
+      '-bufsize', outRate,
+      '-c:a', 'copy',
       '-f', 'flv', entry.url,
     ];
   }
 
-  function spawnDestination(entry) {
+  // Fase de compuerta + arranque del proceso de un destino. El FFmpeg
+  // del destino SOLO se lanza cuando el lector supera la compuerta del
+  // archivo maestro vigente (nunca contra un tubo vacío).
+  async function spawnDestination(entry) {
+    if (entry.startupTimer) { clearTimeout(entry.startupTimer); entry.startupTimer = null; }
+    try { entry.reader?.stop(); } catch (e) {}
+    entry.reader = null;
+    entry.readerFile = null;
+    try { entry.proc?.stdin?.destroy(); entry.proc?.kill('SIGINT'); } catch (e) {}
+    entry.connected = false;
+    entry.closed = false;
+    entry.needsRestart = false;
+    entry.writeQueue = Promise.resolve();
+    entry.queuedBytes = 0;
+    entry.bytesWritten = 0;
+    entry.writeError = null;
+    entry.stderrRing = [];
+
+    // --- compuerta sobre el archivo de sesión vigente ---
+    const gateDeadline = Date.now() + STARTUP_TIMEOUT_MS;
+    let gateOk = false;
+    while (!entry.intentionalStop && Date.now() < gateDeadline) {
+      const file = sessionFilePath;
+      if (!file) { await sleepMs(100); continue; }
+      if (!entry.reader || entry.readerFile !== file) {
+        try { entry.reader?.stop(); } catch (e) {}
+        entry.reader = createMasterFileReader({ filePath: file, log });
+        entry.readerFile = file;
+      }
+      const remaining = gateDeadline - Date.now();
+      gateOk = await entry.reader.waitGate(Math.min(remaining, 1000));
+      if (gateOk) break;
+    }
+    if (entry.intentionalStop) return { success: false, error: 'Destino detenido antes de conectar.', kind: 'unknown' };
+    if (!gateOk) {
+      const error = 'Tiempo agotado (20 s) esperando flujo de programa válido en el archivo maestro (compuerta sin superar).';
+      return { success: false, error, kind: classifyError(error) };
+    }
+
+    const args = await destinationArgs(entry);
     return new Promise((resolveStartup) => {
-      if (entry.startupTimer) { clearTimeout(entry.startupTimer); entry.startupTimer = null; }
-      try { entry.proc?.stdin?.destroy(); entry.proc?.kill('SIGINT'); } catch (e) {}
-      entry.connected = false;
-      entry.closed = false;
-      entry.joined = false;
-      entry.needsRestart = false;
-      entry.writeQueue = Promise.resolve();
-      entry.queuedBytes = 0;
-      entry.bytesWritten = 0;
-      entry.stderrRing = [];
       let proc;
       try {
-        proc = spawnImpl(ffmpegPath, destinationArgs(entry), { stdio: ['pipe', 'ignore', 'pipe'] });
+        proc = spawnImpl(ffmpegPath, args, { stdio: ['pipe', 'ignore', 'pipe'] });
       } catch (error) {
         resolveStartup({ success: false, error: error.message, kind: classifyError(error.message) });
         return;
@@ -455,7 +679,10 @@ function createProgramCore(deps) {
         if (startupSettled) return;
         startupSettled = true;
         if (entry.startupTimer) { clearTimeout(entry.startupTimer); entry.startupTimer = null; }
-        if (!result.success) { try { proc.kill('SIGINT'); } catch (e) {} }
+        if (!result.success) {
+          try { entry.reader?.stop(); } catch (e) {}
+          try { proc.kill('SIGINT'); } catch (e) {}
+        }
         resolveStartup(result);
       };
       proc.stderr.on('data', (data) => {
@@ -467,6 +694,7 @@ function createProgramCore(deps) {
             if (entry.stderrRing.length > 40) entry.stderrRing.shift();
           }
         }
+        logProcessLines(entry, entry.name, message);
         if (!entry.connected) {
           const fatal = message.match(/connection refused|connection timed out|network is unreachable|could not write header|error opening output|server error|authorization failed|access denied|invalid stream key|handshake failed|tls[^\r\n]*(?:error|fail)|failed to resolve|no route to host|input\/output error|permission denied/i);
           if (fatal) {
@@ -474,7 +702,7 @@ function createProgramCore(deps) {
             return;
           }
         }
-        const frameMatch = message.match(/frame=\s*(\d+)/);
+        const frameMatch = message.match(/(?:frame=\s*\d+|size=\s*[\d.]+\s*(?:kB|KiB|MB|MiB)\s+time=)/);
         if (frameMatch && !entry.connected) {
           entry.connected = true;
           entry.everConnected = true;
@@ -517,17 +745,26 @@ function createProgramCore(deps) {
           try { proc.kill('SIGINT'); } catch (e) {}
         }
       }, STARTUP_TIMEOUT_MS);
-      // Si el grafo ya fluye, este worker puede unirse desde ya; si no,
-      // fanout() lo alimentará cuando llegue el primer keyframe.
-      if (joinBuffer.ready()) {
-        // Nada que hacer: feedConsumer lo unirá con el próximo chunk.
-      }
+      // El lector alimenta el stdin del destino desde el archivo, con su
+      // cola con backpressure y el tope histórico de 32 MB.
+      const feed = (chunk) => {
+        if (entry.proc !== proc) return Promise.resolve();
+        if (entry.queuedBytes > QUEUE_CAP_BYTES) {
+          entry.needsRestart = true;
+          log(`Núcleo v2: consumidor ${entry.name || 'grabación'} superó la cola de 32 MB; se reinicia.`);
+          try { proc.kill('SIGINT'); } catch (e) {}
+          return Promise.resolve();
+        }
+        return enqueueWrite(entry, chunk);
+      };
+      try { entry.reader.start(feed, { fromLatestKeyframe: true }); } catch (e) {}
     });
   }
 
   function handleDestinationDown(entry, reason) {
     if (entry.intentionalStop || !sessionActive) return;
     entry.connected = false;
+    try { entry.reader?.stop(); } catch (e) {}
     const tail = entry.stderrRing.slice(-8).join('\n');
     const kind = classifyError(`${reason}\n${tail}`);
     log(`${entry.name}: CAÍDO. ${reason}`);
@@ -569,10 +806,11 @@ function createProgramCore(deps) {
       url: target.url,
       target,
       proc: null,
+      reader: null,
+      readerFile: null,
       connected: false,
       everConnected: false,
       closed: false,
-      joined: false,
       needsRestart: false,
       writeQueue: Promise.resolve(),
       queuedBytes: 0,
@@ -583,11 +821,13 @@ function createProgramCore(deps) {
       reconnectTimer: null,
       startupTimer: null,
       intentionalStop: false,
+      _lastFrameLogAt: 0,
     };
     destinations.set(entry.id, entry);
     const result = await spawnDestination(entry);
     if (!result.success) {
       entry.intentionalStop = true;
+      try { entry.reader?.stop(); } catch (e) {}
       try { entry.proc?.stdin?.destroy(); entry.proc?.kill('SIGINT'); } catch (e) {}
       destinations.delete(entry.id);
       return { success: false, error: result.error, kind: result.kind, entry };
@@ -599,6 +839,7 @@ function createProgramCore(deps) {
     entry.intentionalStop = true;
     if (entry.reconnectTimer) { clearTimeout(entry.reconnectTimer); entry.reconnectTimer = null; }
     if (entry.startupTimer) { clearTimeout(entry.startupTimer); entry.startupTimer = null; }
+    try { entry.reader?.stop(); } catch (e) {}
     try { entry.proc?.stdin?.destroy(); entry.proc?.kill('SIGINT'); } catch (e) {}
   }
 
@@ -615,131 +856,338 @@ function createProgramCore(deps) {
     maybeStopEncoder();
   }
 
-  // --- grabación (consumidor de copia + blackdetect en la misma pasada) -----
-  function recordingArgs(partialPath) {
-    return [
-      '-fflags', '+discardcorrupt+nobuffer',
-      '-f', 'flv', '-i', 'pipe:0',
-      '-map', '0:v:0',
-      '-map', '0:a?',
-      '-c', 'copy',
-      '-movflags', '+faststart',
-      '-y', partialPath,
-      // Segunda salida del MISMO proceso: detección de negro muestreada
-      // (decodifica, no codifica) — misma disciplina que la v1.5.1.
-      '-map', '0:v:0',
-      '-vf', 'fps=2,blackdetect=d=0.5:pix_th=0.10',
-      '-an',
-      '-f', 'null',
-      '-',
-    ];
-  }
-
+  // --- grabación = rangos del archivo maestro ------------------------------
+  // No hay ningún FFmpeg de grabación en vivo: designar la grabación es
+  // abrir rangos [inicio, fin) sobre el archivo maestro, y detenerla es
+  // materializar esos rangos en segmentos y derivar el MP4 file→file.
   async function attachRecording({ partialPath }) {
     if (recording) return { success: false, error: 'Ya hay una grabación en curso en el núcleo.' };
     await ensureEncoder();
-    let proc;
-    try {
-      proc = spawnImpl(ffmpegPath, recordingArgs(partialPath), { stdio: ['pipe', 'ignore', 'pipe'] });
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
     recording = {
       name: 'grabación',
-      proc,
       partialPath,
+      ranges: [],
+      openRange: null,
+      pendingOpen: true,
+      pendingForFile: null,
+      pendingMode: 'next',
+      pendingSince: 0,
       paused: false,
-      joined: false,
-      needsRestart: false,
-      writeQueue: Promise.resolve(),
-      queuedBytes: 0,
-      bytesWritten: 0,
-      writeError: null,
-      stderrRing: [],
-      intentionalStop: false,
-      closed: false,
       failure: null,
+      writeError: null,
+      closed: false,
+      segmentsDir: null,
     };
-    const attachedRecording = recording;
-    proc.stderr.on('data', (data) => {
-      const text = data.toString();
-      if (onRecordingStderr) onRecordingStderr(text);
-      for (const line of text.split(/\r?\n/)) {
-        if (line.trim()) {
-          attachedRecording.stderrRing.push(line.trim());
-          if (attachedRecording.stderrRing.length > 40) attachedRecording.stderrRing.shift();
-        }
+    if (sessionWriter && sessionFilePath) {
+      const keyframes = sessionWriter.scanner.keyframes;
+      if (keyframes.length) {
+        // Rango en el último keyframe conocido de la sesión en curso.
+        const kf = keyframes[keyframes.length - 1];
+        const range = { file: sessionFilePath, startOffset: kf.offset, endOffset: null };
+        recording.ranges.push(range);
+        recording.openRange = range;
+        recording.pendingOpen = false;
+      } else {
+        recording.pendingForFile = sessionFilePath;
+        recording.pendingMode = 'next';
+        recording.pendingSince = sessionWriter.scanner.lastTagEndOffset;
       }
-    });
-    proc.once('error', (err) => {
-      if (recording && recording.proc === proc && !recording.intentionalStop) {
-        recording.failure = recording.failure || err.message;
-      }
-    });
-    proc.once('close', (code) => {
-      if (recording && recording.proc === proc) {
-        recording.closed = true;
-        recording.closeCode = code;
-      }
-    });
-    log(`Núcleo v2: grabación máster enganchada al flujo (copia sin recodificar) → ${partialPath}`);
+    }
+    // Sin writer todavía: pendingForFile queda null y el rango abrirá en
+    // el primer keyframe del próximo archivo de sesión.
+    log(`Núcleo v3: grabación designada como rangos del archivo maestro → ${partialPath}`);
     return { success: true };
   }
 
   function setRecordingPaused(paused) {
-    if (recording) recording.paused = !!paused;
+    if (!recording) return;
+    if (paused) {
+      freezeRecordingRange();
+      recording.paused = true;
+      recording.pendingOpen = false;
+    } else {
+      recording.paused = false;
+      if (!recording.failure) {
+        recording.pendingOpen = true;
+        recording.pendingMode = 'next';
+        recording.pendingForFile = sessionFilePath;
+        const writer = sessionFilePath ? sessionWritersByFile.get(sessionFilePath) : null;
+        recording.pendingSince = writer ? writer.scanner.lastTagEndOffset : 0;
+        tryOpenRecordingRange();
+      }
+    }
+  }
+
+  function recordingBytesWritten(rec) {
+    let total = 0;
+    for (const range of rec.ranges) {
+      if (range.endOffset !== null && range.endOffset !== undefined) {
+        total += Math.max(0, range.endOffset - range.startOffset);
+      } else {
+        const writer = sessionWritersByFile.get(range.file);
+        const upto = writer ? writer.bytesWritten() : range.startOffset;
+        total += Math.max(0, upto - range.startOffset);
+      }
+    }
+    return total;
   }
 
   function getRecordingState() {
     if (!recording) return null;
     return {
-      bytesWritten: recording.bytesWritten || 0,
+      bytesWritten: recordingBytesWritten(recording),
       failure: recording.failure,
       writeError: recording.writeError,
       closed: recording.closed,
     };
   }
 
-  // Cierre de la grabación: deja de alimentarla, vacía la cola, cierra
-  // stdin y espera el cierre del proceso (con los mismos tiempos que el
-  // stop-recording clásico: 60 s y, si no cierra, kill + 5 s).
-  function stopRecording() {
+  // Materializa un rango en un segmento FLV temporal: prefijo (cabecera
+  // + secuencias re-selladas al timestamp del primer keyframe del rango)
+  // + bytes del archivo maestro en [startOffset, endOffset).
+  function writeSegmentFile(range, segmentPath) {
+    return new Promise((resolve, reject) => {
+      const writer = sessionWritersByFile.get(range.file);
+      let scanner = writer ? writer.scanner : null;
+      if (!scanner) {
+        scanner = new FlvGateScanner();
+        try { scanner.push(fs.readFileSync(range.file)); } catch (e) { reject(e); return; }
+      }
+      const kf = scanner.keyframes.find((k) => k.offset === range.startOffset) || scanner.keyframes.find((k) => k.offset >= range.startOffset);
+      if (!kf) { reject(new Error('El rango de grabación no empieza en un keyframe conocido.')); return; }
+      const prefix = scanner.buildPrefix(kf.ts);
+      const out = fs.createWriteStream(segmentPath, { flags: 'w' });
+      out.on('error', reject);
+      out.write(prefix, () => {
+        const src = fs.createReadStream(range.file, { start: range.startOffset, end: range.endOffset - 1 });
+        src.on('error', reject);
+        src.on('end', () => out.end(() => resolve()));
+        src.pipe(out, { end: false });
+      });
+    });
+  }
+
+  // Derivación file→file con UN FFmpeg: copia al MP4 parcial y, en el
+  // MISMO proceso, la verificación de negro muestreada como segunda
+  // salida (la disciplina de la pasada única, ahora sobre archivos).
+  function runDerivation(inputArgs, partialPath) {
     return new Promise((resolve) => {
-      if (!recording) { resolve({ code: null, error: 'No hay grabación en el núcleo.' }); return; }
-      const rec = recording;
-      recording = null;
-      rec.intentionalStop = true;
+      const args = [
+        ...inputArgs,
+        '-map', '0:v:0',
+        '-map', '0:a?',
+        '-c', 'copy',
+        '-movflags', '+faststart',
+        '-y', partialPath,
+        '-map', '0:v:0',
+        '-vf', 'fps=2,blackdetect=d=0.5:pix_th=0.10',
+        '-an',
+        '-f', 'null',
+        '-',
+      ];
+      let proc;
+      try {
+        proc = spawnImpl(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+      } catch (e) {
+        resolve({ code: -1, error: e.message });
+        return;
+      }
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try { proc.kill('SIGKILL'); } catch (e) {}
+        resolve({ code: -1, timedOut: true, error: 'La derivación de la grabación superó los 120 s permitidos.' });
+      }, DERIVATION_TIMEOUT_MS);
       const finish = (result) => {
-        maybeStopEncoder();
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         resolve(result);
       };
-      (async () => {
-        try { await rec.writeQueue; } catch (e) {}
-        if (rec.closed) { finish({ code: rec.closeCode ?? 0 }); return; }
-        let forced = null;
-        const hardTimeout = setTimeout(() => {
-          try { rec.proc?.kill('SIGKILL'); } catch (e) {}
-          forced = setTimeout(() => finish({ code: rec.closeCode ?? -1, timedOut: true, error: 'FFmpeg no cerró el archivo de grabación dentro del tiempo permitido.' }), 5000);
-        }, 60000);
-        rec.proc.once('close', (code) => {
-          clearTimeout(hardTimeout);
-          if (forced) clearTimeout(forced);
-          finish({ code: code ?? rec.closeCode ?? 0 });
-        });
-        try {
-          if (rec.proc?.stdin && !rec.proc.stdin.destroyed) rec.proc.stdin.end();
-        } catch (e) {}
-      })();
+      proc.stderr.on('data', (data) => {
+        const text = data.toString();
+        if (onRecordingStderr) onRecordingStderr(text);
+        for (const line of text.split(/\r?\n/)) {
+          if (line.trim()) log(`Grabación: ${line.trim()}`);
+        }
+      });
+      proc.once('error', (err) => finish({ code: -1, error: err.message }));
+      proc.once('close', (code) => finish({ code: code ?? -1 }));
     });
+  }
+
+  async function stopRecording() {
+    if (!recording) return { code: null, error: 'No hay grabación en el núcleo.' };
+    const rec = recording;
+    recording = null;
+    // Se cierra el rango abierto de `rec` explícitamente en su archivo.
+    if (rec.openRange) {
+      const writer = sessionWritersByFile.get(rec.openRange.file);
+      const end = writer ? writer.lastCompleteTagEnd() : rec.openRange.startOffset;
+      rec.openRange.endOffset = Math.max(rec.openRange.startOffset, end);
+      rec.openRange = null;
+    }
+    rec.closed = true;
+    const finish = (result) => {
+      for (const range of rec.ranges) protectedFiles.delete(range.file);
+      if (rec.segmentsDir) { try { fs.rmSync(rec.segmentsDir, { recursive: true, force: true }); } catch (e) {} }
+      maybeStopEncoder();
+      return result;
+    };
+    const usableRanges = rec.ranges.filter((r) => (r.endOffset ?? 0) > r.startOffset);
+    if (!usableRanges.length) {
+      return finish({ code: -1, error: rec.failure || 'La grabación no capturó ningún rango completo del archivo maestro.' });
+    }
+    // Los archivos de los rangos quedan protegidos durante la derivación
+    // y sus bytes deben estar en disco antes de copiar cada rango.
+    for (const range of usableRanges) {
+      protectedFiles.add(range.file);
+      const writer = sessionWritersByFile.get(range.file);
+      if (writer) { try { await writer.flush(); } catch (e) {} }
+    }
+    const epoch = Date.now();
+    const segmentsDir = path.join(sessionsDir, `segments-${epoch}`);
+    rec.segmentsDir = segmentsDir;
+    try { fs.mkdirSync(segmentsDir, { recursive: true }); } catch (e) {}
+    const segmentPaths = [];
+    try {
+      for (let i = 0; i < usableRanges.length; i += 1) {
+        const segmentPath = path.join(segmentsDir, `seg-${i}.flv`);
+        await writeSegmentFile(usableRanges[i], segmentPath);
+        segmentPaths.push(segmentPath);
+      }
+    } catch (e) {
+      return finish({ code: -1, error: `No se pudieron materializar los rangos de la grabación: ${e.message}` });
+    }
+    let inputArgs;
+    if (segmentPaths.length === 1) {
+      inputArgs = ['-fflags', '+discardcorrupt+nobuffer', '-i', segmentPaths[0]];
+    } else {
+      const listPath = path.join(segmentsDir, 'lista.txt');
+      const listBody = segmentPaths.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join('\n');
+      try { fs.writeFileSync(listPath, listBody, 'utf8'); } catch (e) {
+        return finish({ code: -1, error: `No se pudo escribir la lista de concatenación: ${e.message}` });
+      }
+      inputArgs = ['-fflags', '+discardcorrupt+nobuffer', '-f', 'concat', '-safe', '0', '-i', listPath];
+    }
+    log(`Núcleo v3: derivación de la grabación desde ${segmentPaths.length} segmento(s) del archivo maestro → ${rec.partialPath}`);
+    const result = await runDerivation(inputArgs, rec.partialPath);
+    return finish(result);
   }
 
   function detachRecording() {
     if (!recording) return;
     const rec = recording;
     recording = null;
-    rec.intentionalStop = true;
-    try { rec.proc?.stdin?.destroy(); rec.proc?.kill('SIGINT'); } catch (e) {}
+    if (rec.segmentsDir) { try { fs.rmSync(rec.segmentsDir, { recursive: true, force: true }); } catch (e) {} }
     maybeStopEncoder();
+  }
+
+  // --- perfil de programa ---------------------------------------------------
+  function setProgramProfile(next) {
+    if (!next || typeof next !== 'object') return { ...profile };
+    const num = (v, fallback) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fallback);
+    profile = {
+      id: typeof next.id === 'string' && next.id ? next.id : profile.id,
+      width: num(next.width, profile.width),
+      height: num(next.height, profile.height),
+      masterBitrateBps: num(next.masterBitrateBps, profile.masterBitrateBps),
+      streamWidth: num(next.streamWidth, profile.streamWidth),
+      streamHeight: num(next.streamHeight, profile.streamHeight),
+      streamBitrateBps: num(next.streamBitrateBps, profile.streamBitrateBps),
+    };
+    log(`Núcleo v3: perfil de programa activo: ${profile.id} (máster ${profile.width}x${profile.height} a ${fmtKbps(profile.masterBitrateBps)}, salida ${profile.streamWidth}x${profile.streamHeight} a ${fmtKbps(profile.streamBitrateBps)}).`);
+    return { ...profile };
+  }
+
+  // --- autoprueba del Motor PodcastStudio -----------------------------------
+  async function runSelfTest({ durationMs = 3000 } = {}) {
+    if (selfTest && selfTest.active && selfTest.promise) return selfTest.promise;
+    const run = (async () => {
+      const startedAt = Date.now();
+      const st = {
+        active: true,
+        startedAt,
+        firstByteAt: null,
+        flowNeededCalled: false,
+        writer: null,
+        filePath: path.join(selfTestDir, `selftest-${startedAt}.flv`),
+        isSessionFile: false,
+        pendingSessionFile: false,
+        promise: null,
+      };
+      selfTest = st;
+      if (sessionWriter) {
+        // Sesión en curso: el archivo temporal es un tee byte-exacto del
+        // tramo del archivo maestro que cubre la prueba, leído con el
+        // lector de la casa (unión en keyframe con prefijo re-sellado).
+        st.writer = createMasterFileWriter({ filePath: st.filePath, log });
+        st.reader = createMasterFileReader({ filePath: sessionFilePath, log });
+        st.reader.start((chunk) => st.writer.write(chunk), { fromLatestKeyframe: true });
+      } else {
+        // Sin sesión: el temporal SERÁ el archivo de la próxima sesión
+        // mientras dure la prueba.
+        st.pendingSessionFile = true;
+      }
+      log('Núcleo v3: autoprueba del Motor PodcastStudio en marcha.');
+      let timedOutNoFlow = false;
+      for (;;) {
+        const bytes = st.writer ? st.writer.bytesWritten() : 0;
+        if (bytes > 0 && !st.firstByteAt) st.firstByteAt = Date.now();
+        if (st.firstByteAt && Date.now() - st.firstByteAt >= durationMs) break;
+        if (!st.firstByteAt && Date.now() - startedAt >= 1500 && !st.flowNeededCalled && !encoderProc) {
+          st.flowNeededCalled = true;
+          log('Núcleo v3: autoprueba sin flujo a los 1,5 s; se pide al renderer que arranque el flujo.');
+          if (onSelfTestFlowNeeded) { try { onSelfTestFlowNeeded(); } catch (e) {} }
+        }
+        if (!st.firstByteAt && Date.now() - startedAt >= 15000) { timedOutNoFlow = true; break; }
+        if (st.firstByteAt && Date.now() - startedAt >= 15000 + durationMs) break;
+        await sleepMs(100);
+      }
+      const hadFlow = !!st.firstByteAt;
+      // Cierre del temporal con fsync antes de validar.
+      if (st.reader) { try { st.reader.stop(); } catch (e) {} }
+      if (st.isSessionFile) {
+        // El temporal ES el archivo de sesión: se detiene el codificador
+        // si nada más lo usa y el archivo queda para validar.
+        if (destinations.size === 0 && !recording) stopEncoder();
+        if (st.writer) await closeWriterOnce(st.writer);
+      } else if (st.writer) {
+        await closeWriterOnce(st.writer);
+      }
+      st.active = false;
+      let verdict;
+      if (!hadFlow || !fs.existsSync(st.filePath)) {
+        verdict = {
+          ok: false, codec: null, width: null, height: null, fpsNominal: null,
+          fpsMeasured: null, durationSec: 0, videoTags: 0, keyframes: 0, bytes: 0,
+          error: 'sin flujo del renderer: no llegó ningún byte del flujo de programa durante la autoprueba.',
+          stderrTail: '',
+        };
+      } else {
+        verdict = await validateMasterFile({ filePath: st.filePath, ffmpegPath, spawnImpl });
+        if (timedOutNoFlow) verdict = { ...verdict, ok: false, error: verdict.error || 'sin flujo del renderer' };
+      }
+      verdict = {
+        ...verdict,
+        mode,
+        encoderLabel,
+        file: st.filePath,
+        at: new Date().toISOString(),
+      };
+      lastSelfTestVerdict = verdict;
+      selfTest = null;
+      log(`Núcleo v3: autoprueba terminada: ${verdict.ok ? 'OK' : 'FALLO'} (${verdict.codec || 'sin códec'}, ${verdict.width || '?'}x${verdict.height || '?'}, ${verdict.bytes} bytes).`);
+      if (onSelfTestResult) { try { onSelfTestResult(verdict); } catch (e) {} }
+      return verdict;
+    })();
+    if (selfTest) selfTest.promise = run;
+    return run;
+  }
+
+  function getSelfTestState() {
+    return lastSelfTestVerdict;
   }
 
   // --- entradas del flujo -----------------------------------------------------
@@ -747,8 +1195,6 @@ function createProgramCore(deps) {
     sessionActive = !!active;
   }
 
-  // Escritura directa a la entrada del proceso de programa, con su propia
-  // cola (las entradas no pasan por el reparto: van ANTES de él).
   const intakeQueues = new Map(); // proc -> {queue, queued}
   function writeIntake(proc, buf, fdIndex = 0) {
     if (!proc) return;
@@ -764,8 +1210,6 @@ function createProgramCore(deps) {
   function writeVideoChunk(buf) {
     if (!buf || buf.length === 0) return;
     if (mode === 'webm') {
-      // Simétrico al cambio webcodecs → webm: un chunk H.264 significa
-      // que el renderer está en modo WebCodecs; el grafo se reinicia.
       log('Núcleo v2: cambio de modo webm → webcodecs; el grafo se reinicia.');
       stopEncoder();
       mode = 'webcodecs';
@@ -792,8 +1236,6 @@ function createProgramCore(deps) {
     ensureEncoder().then((ok) => { if (ok && encoderProc) writeIntake(encoderProc, buf, 3); });
   }
 
-  // Sustituye la escritura webm improvisada: la entrada webm también usa
-  // la cola de intake.
   function writeWebm(buf) {
     if (!buf || buf.length === 0) return;
     if (mode === 'webcodecs') {
@@ -805,15 +1247,16 @@ function createProgramCore(deps) {
     ensureEncoder().then((ok) => { if (ok && encoderProc) writeIntake(encoderProc, buf, 0); });
   }
 
-  // Espera a que el flujo tenga cabecera + keyframe (unión posible).
+  // Espera a que el writer de sesión actual supere la compuerta del
+  // archivo maestro (sondeo de 100 ms).
   function waitForFlow(timeoutMs = 4000) {
     return new Promise((resolve) => {
-      if (joinBuffer.ready()) { resolve(true); return; }
       const started = Date.now();
       const timer = setInterval(() => {
-        if (joinBuffer.ready()) { clearInterval(timer); resolve(true); }
+        if (sessionWriter && sessionWriter.gatePassed()) { clearInterval(timer); resolve(true); }
         else if (Date.now() - started >= timeoutMs) { clearInterval(timer); resolve(false); }
       }, 100);
+      if (sessionWriter && sessionWriter.gatePassed()) { clearInterval(timer); resolve(true); }
     });
   }
 
@@ -823,7 +1266,10 @@ function createProgramCore(deps) {
       encoderLabel,
       destinations: destinations.size,
       recording: !!recording,
-      flowReady: joinBuffer.ready(),
+      flowReady: sessionWriter ? sessionWriter.gatePassed() : joinBuffer.ready(),
+      sessionFile: sessionFilePath,
+      programProfile: { ...profile },
+      selfTest: lastSelfTestVerdict,
     };
   }
 
@@ -832,8 +1278,15 @@ function createProgramCore(deps) {
     for (const entry of destinations.values()) destroyDestination(entry);
     destinations.clear();
     detachRecording();
+    if (selfTest && selfTest.writer && !selfTest.isSessionFile) closeWriterOnce(selfTest.writer);
+    selfTest = null;
     stopEncoder();
     mode = null;
+    // Borrado best effort de los archivos de sesión ya sin referencias
+    // (el de la sesión que se cierra se libera al vaciar su cola).
+    const closing = sessionWritersByFile.get(sessionFilePath);
+    setTimeout(() => cleanupUnreferencedSessionFiles(), 250);
+    void closing;
   }
 
   return {
@@ -850,6 +1303,9 @@ function createProgramCore(deps) {
     stopRecording,
     detachRecording,
     maybeStopEncoder,
+    setProgramProfile,
+    runSelfTest,
+    getSelfTestState,
     getState,
     shutdown,
   };

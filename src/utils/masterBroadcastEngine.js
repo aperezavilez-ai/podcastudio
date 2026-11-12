@@ -13,6 +13,25 @@ import { applyLutOverlay, buildCanvasFilter, drawVignette } from './videoLook.js
 
 let canvas = null;
 let ctx = null;
+// Tamaño de programa configurable (v3.0.0): default histórico 1920×1080.
+let programWidth = 1920;
+let programHeight = 1080;
+
+export function setProgramSize(width, height) {
+  const w = Number(width) || 1920;
+  const h = Number(height) || 1080;
+  programWidth = w;
+  programHeight = h;
+  if (canvas && (canvas.width !== w || canvas.height !== h)) {
+    // Reasignar canvas.width/height limpia el lienzo: el contenido se recompone en el siguiente tick de renderFrame.
+    canvas.width = w;
+    canvas.height = h;
+  }
+}
+
+export function getProgramSize() {
+  return { width: programWidth, height: programHeight };
+}
 let animFrameId = null;
 let renderWorker = null; // Nuevo Web Worker para renderizado sin throttling
 let mediaRecorder = null;
@@ -919,8 +938,8 @@ function drawLiveSubtitle(text, style = {}) {
   const trimmed = text.trim();
   if (!trimmed) return;
 
-  const width = 1920;
-  const height = 1080;
+  const width = programWidth;
+  const height = programHeight;
 
   ctx.save();
   ctx.font = 'bold 30px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
@@ -1109,8 +1128,8 @@ function renderFrame() {
   // fijo encarecía cada fotograma 1080p; drawCameraCover sube a 'high'
   // solo para fuentes de 720p o más.
   ctx.imageSmoothingQuality = 'medium';
-  const width = 1920;
-  const height = 1080;
+  const width = programWidth;
+  const height = programHeight;
 
   if (currentState.chromaKeyActive && virtualBgImage && virtualBgImage.complete && virtualBgImage.naturalWidth > 0) {
     ctx.drawImage(virtualBgImage, 0, 0, width, height);
@@ -2356,8 +2375,8 @@ function cleanupVisibilityHandler() {
 export function ensureMasterCanvas() {
   if (!canvas) {
     canvas = document.createElement('canvas');
-    canvas.width = 1920;
-    canvas.height = 1080;
+    canvas.width = programWidth;
+    canvas.height = programHeight;
     ctx = canvas.getContext('2d', { alpha: false });
     if (ctx) {
       ctx.imageSmoothingEnabled = true;

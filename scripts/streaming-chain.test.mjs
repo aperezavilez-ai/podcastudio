@@ -24,6 +24,29 @@
 //   · el listener RTMP local con el FFmpeg del sistema se conserva como
 //     prueba de transporte (abajo), igual que antes.
 // ============================================================================
+// NOTA DE REESCRITURA v3.0.0 (el disco es la fuente de verdad).
+//
+// La v3 cambia la costura del núcleo, no su grafo: la salida FLV del
+// proceso único ya NO se reparte en memoria a consumidores alimentados
+// por stdin (así murió la v2 en vivo: una grabación enganchada con
+// `-map 0:v:0` no opcional a un tubo vacío → EINVAL). Cambios en este
+// archivo, solo donde la reescritura invalida la aserción:
+//   · «reparto con copia»: sigue en program-core.js (los destinos leen
+//     con copia), pero la UNIÓN y la compuerta viven ahora en
+//     electron/master-file.js (FlvGateScanner + lector que se une en el
+//     último keyframe del ARCHIVO). FlvJoinBuffer sigue existiendo en
+//     program-core.js con la misma semántica (Parte 1 de
+//     program-core.test.mjs), así que su aserción se conserva y se le
+//     SUMAN las del archivo maestro.
+//   · «grabación»: ya no es un consumidor en vivo del núcleo; son
+//     RANGOS del archivo maestro que al detener se derivan file→file.
+//     El blackdetect ya no corre en la pasada en vivo: vive en la
+//     derivación file→file dentro del núcleo (misma pasada única de
+//     derivación: copia al MP4 + blackdetect como segunda salida).
+// Las aserciones D-cadena (clasificador) NO se tocan, y tampoco las de
+// backoff, tope de cola, telemetría medida, sonda de codificador ni la
+// prueba de transporte RTMP local.
+// ============================================================================
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -40,6 +63,7 @@ const { classifyStreamError, STREAM_ERROR_USER_MESSAGES } = require('../electron
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const mainSource = fs.readFileSync(path.join(repoRoot, 'electron', 'main.js'), 'utf8');
 const coreSource = fs.readFileSync(path.join(repoRoot, 'electron', 'program-core.js'), 'utf8');
+const masterSource = fs.readFileSync(path.join(repoRoot, 'electron', 'master-file.js'), 'utf8');
 const appSource = fs.readFileSync(path.join(repoRoot, 'src', 'App.jsx'), 'utf8');
 const engineSource = fs.readFileSync(path.join(repoRoot, 'src', 'utils', 'masterBroadcastEngine.js'), 'utf8');
 
@@ -75,6 +99,12 @@ test('v2-cadena: main ya no transcodifica por destino; el reparto vive en el nú
   assert.ok(mainSource.includes('programCore.addDestination'), 'los destinos se registran en el núcleo');
   assert.ok(coreSource.includes("'-c', 'copy'"), 'los destinos reciben copia del flujo codificado');
   assert.ok(coreSource.includes('FlvJoinBuffer'), 'la unión tardía usa el buffer de keyframes del núcleo');
+  // v3.0.0: el reparto ya no es en memoria — el núcleo escribe el archivo
+  // maestro y cada destino lee de él tras la compuerta.
+  assert.ok(coreSource.includes('createMasterFileWriter'), 'el núcleo escribe la salida al archivo maestro');
+  assert.ok(coreSource.includes('createMasterFileReader'), 'cada destino lee del archivo maestro con su lector');
+  assert.ok(masterSource.includes('FlvGateScanner'), 'la compuerta de unión vive en el archivo maestro');
+  assert.ok(masterSource.includes('GATE_MIN_BYTES'), 'la compuerta exige un mínimo de bytes en disco');
 });
 
 test('v2-cadena: el respaldo con transcodificación es UNO y usa la sesión sondeada', () => {
@@ -102,11 +132,16 @@ test('v2-cadena: el renderer decide el flujo una vez y el motor no crea MediaRec
   assert.ok(engineSource.includes('setProgramFrameTap'), 'el motor expone el tap de fotogramas para la bomba');
 });
 
-test('v2-cadena: la grabación es un consumidor del núcleo, no un segundo pipeline', () => {
-  assert.ok(mainSource.includes('programCore.attachRecording'), 'main engancha la grabación al núcleo');
+test('v3-cadena: la grabación son rangos del archivo maestro y el blackdetect vive en la derivación file→file', () => {
+  assert.ok(mainSource.includes('programCore.attachRecording'), 'main designa la grabación en el núcleo');
   assert.ok(!appSource.includes('startRecordingRecorder('), 'fuera el grabador dedicado del renderer');
   assert.ok(!engineSource.includes('startRecordingRecorder'), 'fuera el grabador dedicado del motor');
-  assert.ok(coreSource.includes('blackdetect'), 'la verificación sigue en la misma pasada de grabación');
+  // v3.0.0: no hay FFmpeg de grabación en vivo alimentado por un tubo: la
+  // designación abre rangos sobre el archivo maestro y la derivación al
+  // detener es file→file, con el blackdetect en ESA pasada única.
+  assert.ok(coreSource.includes('rangos del archivo maestro'), 'la grabación se define como rangos del archivo maestro');
+  assert.ok(coreSource.includes('blackdetect'), 'la verificación de negro corre en la derivación file→file, en la misma pasada que la copia al MP4');
+  assert.ok(coreSource.includes("'-f', 'concat'"), 'varios rangos se derivan con el demuxer concat sobre segmentos del archivo maestro');
 });
 
 test('RTMP local: el FFmpeg del sistema acepta y vuelca un flujo publicado', { timeout: 60000 }, async (t) => {

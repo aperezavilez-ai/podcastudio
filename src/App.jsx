@@ -42,10 +42,11 @@ import {
   setVoiceMonitor, syncStudioAudio, getCameraSnapshots,
   startNativeEngineBroadcast, stopNativeEngineBroadcast,
   getActiveInitHeader,
-  setProgramFrameTap, switchEngineToWebmChunks,
+  setProgramFrameTap, switchEngineToWebmChunks, setProgramSize,
   registerCameraVideoElement, getCameraFrameHealth,
 } from './utils/masterBroadcastEngine.js';
 import { probeProgramEncoderSupport, createProgramEncoderPump } from './utils/programEncoder.js';
+import { PROGRAM_PROFILE_IDS, DEFAULT_PROGRAM_PROFILE_ID, getProgramProfile, isUplinkCapped } from './utils/programProfiles.mjs';
 import { USB_OPEN_TIERS, nextUsbTierDown, decideUsbOpenTier } from './utils/usbBudget.mjs';
 import { logger } from './utils/logger.js';
 import { version as APP_VERSION } from '../package.json';
@@ -72,7 +73,7 @@ import SoundboardQuickPad from './components/SoundboardQuickPad.jsx';
 import MultiGuestRoomModal from './components/MultiGuestRoomModal.jsx';
 import { useAutoSpeakerCintillo } from './hooks/useAutoSpeakerCintillo.js';
 
-// Componentes y Configuración de Fase P4.3 & P4.4 (Instant Replay & Salida LAN Program / OBS Feed)
+// Componentes y Configuración de Fase P4.3 & P4.4 (Instant Replay & Salida LAN Program)
 import { useInstantReplay } from './hooks/useInstantReplay.js';
 import InstantReplayControl from './components/InstantReplayControl.jsx';
 import LanProgramOutputModal from './components/LanProgramOutputModal.jsx';
@@ -1049,121 +1050,98 @@ function PodcastStudioApp() {
   showCustomRef.current = showCustom;
 
   // ==========================================================================
-  // MOTOR OBS — Plan B, hito de prueba de vida (v2.1.0). Sección separada y
-  // aditiva: OBS Studio hace de motor (vía obs-websocket, electron/obs-
-  // bridge.js) y esta UI solo lo gobierna y muestra SU estado. Nada de aquí
-  // toca el motor interno ni sus estados (isStreaming/isRecording son del
-  // motor interno; el estado OBS vive en obsStatus).
+  // MOTOR PODCASTUDIO — v3.0.0: motor propio. El núcleo del proceso
+  // principal escribe el programa a un archivo maestro y los
+  // consumidores leen de ahí. Aquí viven el perfil de programa elegido
+  // (persistido) y la autoprueba del motor.
   // ==========================================================================
-  const [obsConfig, setObsConfig] = useState(() => {
+  const [programProfileId, setProgramProfileId] = useState(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem('podcastudio_obs_bridge_v1') || 'null');
-      if (saved) return { host: saved.host || '127.0.0.1', port: saved.port || 4455, password: saved.password || '' };
+      const saved = localStorage.getItem('podcastudio_program_profile');
+      if (saved && PROGRAM_PROFILE_IDS.includes(saved)) return saved;
     } catch (e) {}
-    return { host: '127.0.0.1', port: 4455, password: '' };
+    return DEFAULT_PROGRAM_PROFILE_ID;
   });
-  useEffect(() => { localStorage.setItem('podcastudio_obs_bridge_v1', JSON.stringify(obsConfig)); }, [obsConfig]);
-  const [obsStatus, setObsStatus] = useState({ connected: false });
-  const [obsBusy, setObsBusy] = useState(false);
-  const [obsNotes, setObsNotes] = useState([]);
-  const [obsLastFile, setObsLastFile] = useState('');
+  const programProfile = getProgramProfile(programProfileId);
+  const [selfTest, setSelfTest] = useState(null);
+  const [selfTestBusy, setSelfTestBusy] = useState(false);
+  const selfTestFlowRef = useRef(false);
+  // El arranque/parada del flujo de programa viven más abajo (junto al
+  // núcleo v2); estas refs los puentean para las suscripciones de aquí.
+  const programFlowStarterRef = useRef(null);
+  const programFlowStopperRef = useRef(null);
+  const programProfileFirstApplyRef = useRef(true);
 
-  // Cintillo resuelto para el overlay de OBS: MISMA resolución que recibe el
-  // motor interno (tag/text/subtitle del hook, color del panel o del estilo).
-  const obsCintillo = cintillo ? {
-    active: Boolean(cintillosVisible && cintillo.active),
-    tag: cintillo.tag || 'TEMA',
-    text: cintillo.text || topic,
-    subtitle: cintillo.subtitle || '',
-    color: cintillo.color || getCintilloStyle(cintilloStyle)?.colors?.primary || '#e8612a',
-  } : { active: false, tag: 'TEMA', text: topic || '', subtitle: '', color: '#e8612a' };
-  const obsCintilloKey = JSON.stringify(obsCintillo);
-
-  const obsRefreshStatus = useCallback(async () => {
+  // Al montar y al cambiar el perfil: anunciarlo al núcleo, fijar el
+  // tamaño real del canvas máster y, si el flujo de programa está
+  // activo, reiniciarlo para que la bomba nazca con el perfil nuevo.
+  useEffect(() => {
+    try { localStorage.setItem('podcastudio_program_profile', programProfileId); } catch (e) {}
     try {
-      const res = await window.api?.obs?.getStatus();
-      if (res?.success) setObsStatus(res.status);
+      window.api?.setProgramProfile?.({
+        id: programProfile.id,
+        width: programProfile.width,
+        height: programProfile.height,
+        masterBitrateBps: programProfile.masterBitrateBps,
+        streamWidth: programProfile.streamWidth,
+        streamHeight: programProfile.streamHeight,
+        streamBitrateBps: programProfile.streamBitrateBps,
+      });
     } catch (e) {}
-  }, []);
-
-  useEffect(() => {
-    const off = window.api?.obs?.onEvent((event) => {
-      if (event?.eventType === 'RecordStateChanged' || event?.eventType === 'StreamStateChanged' || event?.eventType === 'CurrentProgramSceneChanged' || event?.eventType === '__obsDisconnected') {
-        if (event.eventType === '__obsDisconnected') setObsStatus({ connected: false });
-        obsRefreshStatus();
-      }
-    });
-    return () => { if (typeof off === 'function') off(); };
-  }, [obsRefreshStatus]);
-
-  // Al cambiar el cintillo en la app, el overlay de OBS se regenera y su
-  // fuente de navegador se refresca (solo si el puente está conectado).
-  useEffect(() => {
-    if (!obsStatus?.connected) return;
-    window.api?.obs?.updateCintillo(obsCintillo).catch(() => {});
+    try { setProgramSize(programProfile.width, programProfile.height); } catch (e) {}
+    if (programProfileFirstApplyRef.current) {
+      programProfileFirstApplyRef.current = false;
+      return;
+    }
+    if (isStreamingRef.current || isRecordingRef.current || selfTestFlowRef.current) {
+      try { programFlowStopperRef.current?.(); } catch (e) {}
+      programFlowStarterRef.current?.().catch(() => {});
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [obsCintilloKey, obsStatus?.connected]);
+  }, [programProfileId]);
 
-  const obsRun = async (fn, okMessage) => {
-    setObsBusy(true);
+  const handleRunSelfTest = async () => {
+    setSelfTestBusy(true);
     try {
-      const res = await fn();
-      if (res?.success === false) {
-        showToast(res.userMessage || res.error || 'OBS devolvió un error.', 'error', 7000);
-        return res;
-      }
-      if (res?.status) setObsStatus(res.status);
-      if (okMessage) showToast(okMessage, 'success');
-      return res;
+      const verdict = await window.api?.runProgramSelfTest?.();
+      if (verdict) setSelfTest(verdict);
+      else setSelfTest({ ok: false, error: 'El motor no respondió a la autoprueba (¿sin Electron?).', at: new Date().toISOString() });
     } catch (e) {
-      showToast(`Motor OBS: ${e.message || 'error inesperado'}`, 'error', 7000);
-      return null;
+      setSelfTest({ ok: false, error: e?.message || 'Error inesperado en la autoprueba.', at: new Date().toISOString() });
     } finally {
-      setObsBusy(false);
+      setSelfTestBusy(false);
     }
   };
 
-  const handleObsConnect = () => obsRun(async () => {
-    const res = await window.api.obs.connect(obsConfig);
-    if (res?.success) setObsNotes([]);
-    return res;
-  }, 'Conectado a OBS: PodcastStudio ya lo gobierna.');
-  const handleObsDisconnect = () => obsRun(() => window.api.obs.disconnect(), 'Desconectado de OBS.');
-  const handleObsProvision = () => obsRun(async () => {
-    // LISTA de cámaras que la app conoce (hasta 12 ranuras): el puente
-    // itera los descriptores; sin campos cam1/cam2.
-    const cameras = Object.entries(cameraMeta || {})
-      .map(([slot, meta]) => ({ slot: Number(slot), deviceId: meta?.deviceId || null, label: meta?.label || '', type: meta?.type || '' }))
-      .filter((c) => Number.isInteger(c.slot) && c.type !== 'remote' && c.type !== 'wifi')
-      .sort((a, b) => a.slot - b.slot);
-    const res = await window.api.obs.provision({ cameras, cintillo: obsCintillo });
-    if (res?.success && res.result) {
-      setObsStatus(res.result.status || obsStatus);
-      setObsNotes([...(res.result.created || []).map((t) => `Creado: ${t}`), ...(res.result.notes || [])]);
-    }
-    return res;
-  }, 'Escenas de OBS preparadas: revisa la escena de programa en OBS.');
-  const handleObsStartStream = () => obsRun(async () => {
-    let dest = null;
-    try {
-      dest = buildStreamDestinations(streamConfigs).find((d) => d.id === 'facebook') || null;
-    } catch (e) {
-      showToast(e.message, 'error', 7000);
-      return { success: false };
-    }
-    if (!dest) {
-      showToast('Activa el destino de Facebook con su clave (panel de Transmisión) para emitir con OBS.', 'warning', 7000);
-      return { success: false };
-    }
-    return window.api.obs.startStream(dest);
-  }, 'OBS está transmitiendo a Facebook.');
-  const handleObsStopStream = () => obsRun(() => window.api.obs.stopStream(), 'Transmisión de OBS detenida.');
-  const handleObsStartRecord = () => obsRun(() => window.api.obs.startRecord(), 'OBS está grabando.');
-  const handleObsStopRecord = () => obsRun(async () => {
-    const res = await window.api.obs.stopRecord();
-    if (res?.success && res.outputPath) setObsLastFile(res.outputPath);
-    return res;
-  }, 'Grabación de OBS detenida: revisa el archivo generado.');
+  // Veredicto de autoprueba empujado por el proceso principal.
+  useEffect(() => {
+    const off = window.api?.onProgramSelfTestResult?.((verdict) => {
+      if (verdict) setSelfTest(verdict);
+      if (selfTestFlowRef.current && !isStreamingRef.current && !isRecordingRef.current) {
+        try { programFlowStopperRef.current?.(); } catch (e) {}
+        selfTestFlowRef.current = false;
+      }
+    });
+    return () => { if (typeof off === 'function') off(); };
+  }, []);
+
+  // El proceso principal pide arrancar el flujo de programa para poder
+  // medirlo: si ya hay streaming/grabación, el flujo ya corre y no se
+  // toca nada; si no, se arranca por el camino habitual y se marca la
+  // ref para detener SOLO ese flujo al llegar el veredicto.
+  useEffect(() => {
+    const off = window.api?.onProgramSelfTestRequest?.(async () => {
+      if (isStreamingRef.current || isRecordingRef.current) return;
+      if (selfTestFlowRef.current) return;
+      selfTestFlowRef.current = true;
+      try {
+        await programFlowStarterRef.current?.();
+      } catch (e) {
+        selfTestFlowRef.current = false;
+      }
+    });
+    return () => { if (typeof off === 'function') off(); };
+  }, []);
 
   // Notificar a Electron que la UI está 100% montada (señal enviada desde main.jsx para evitar duplicación)
   // Esta señal ya fue enviada desde main.jsx con requestAnimationFrame. No duplicar.
@@ -1618,7 +1596,7 @@ function PodcastStudioApp() {
   const instantReplay = useInstantReplay();
   const [showInstantReplayControl, setShowInstantReplayControl] = useState(false);
 
-  // SALIDA LAN PROGRAM & VIRTUAL FEED OBS / VMIX (Fase P4.4)
+  // SALIDA LAN PROGRAM & VIRTUAL FEED (Fase P4.4)
   const [showLanProgramModal, setShowLanProgramModal] = useState(false);
   const [lanProgramUrl, setLanProgramUrl] = useState('');
 
@@ -1663,7 +1641,7 @@ function PodcastStudioApp() {
     }
   }, [isElectronMaster]);
 
-  // Emisión continua de fotogramas PGM al servidor HTTP/WS para clientes OBS/vMix e iPad en LAN y Cloud (Ultra Baja Latencia)
+  // Emisión continua de fotogramas PGM al servidor HTTP/WS para clientes externos e iPad en LAN y Cloud (Ultra Baja Latencia)
   useEffect(() => {
     if (!isElectronMaster) return;
     let timer = null;
@@ -1704,7 +1682,7 @@ function PodcastStudioApp() {
           }
           const lowLatencyDataUrl = previewCanvas.toDataURL('image/jpeg', 0.72);
 
-          // 1. Enviar a clientes WebSocket LAN (iPad / OBS en red local) si están conectados
+          // 1. Enviar a clientes WebSocket LAN (iPad en red local) si están conectados
           if (hasLanFeed && window.api?.sendProgramFeedFrame) {
             window.api.sendProgramFeedFrame(lowLatencyDataUrl);
           }
@@ -2870,7 +2848,7 @@ function PodcastStudioApp() {
     if (!window.api) return 'web';
     if (programFlowRef.current.mode) return programFlowRef.current.mode;
     try {
-      const support = await probeProgramEncoderSupport();
+      const support = await probeProgramEncoderSupport(programProfileId);
       return support.supported ? 'webcodecs' : 'webm';
     } catch {
       return 'webm';
@@ -2881,6 +2859,7 @@ function PodcastStudioApp() {
   // masterStream ya creado por el motor en modo 'external'.
   const startWebcodecsFlow = async (masterStream) => {
     const pump = createProgramEncoderPump({
+      profile: programProfile,
       onChunk: (buf) => { try { window.api?.sendProgramVideoChunk?.(buf); } catch {} },
       onError: (err) => {
         logger.error('[Núcleo v2] La bomba WebCodecs falló en vivo; volteando a WebM:', err);
@@ -2921,6 +2900,50 @@ function PodcastStudioApp() {
     } catch {}
     programFlowRef.current = { mode: null, pump: null, audioRecorder: null };
   };
+
+  // Arranque del flujo de programa desde el estado vigente (mismo
+  // camino que usa handleStream/handleRecord ~línea del flujo): decide
+  // el modo, arranca el compositor y, en WebCodecs, la bomba con el
+  // perfil activo. Lo usan el reinicio por cambio de perfil y la
+  // autoprueba pedida por el proceso principal.
+  const startProgramFlowFromCurrentState = async () => {
+    const flowMode = await decideProgramFlowMode();
+    const masterStream = startBroadcastEngine({
+      activeCam,
+      pvwCam,
+      pipCam,
+      camSlots,
+      cameraCrops,
+      cameraBadges,
+      layoutMode,
+      chromaKeyActive,
+      virtualBg,
+      logoBase64,
+      logoConfig,
+      cintillosVisible,
+      cintillo,
+      topic,
+      voiceEffect,
+      voiceTarget,
+      getCamStream,
+      localStream,
+      remoteCams,
+      camStreamsMap,
+      camMuted,
+    }, handleMasterChunk, { chunkSource: flowMode === 'webcodecs' ? 'external' : 'mediarecorder' });
+    if (flowMode === 'webcodecs' && masterStream && !programFlowRef.current.pump) {
+      const flowOk = await startWebcodecsFlow(masterStream);
+      if (!flowOk) {
+        switchEngineToWebmChunks();
+        programFlowRef.current.mode = 'webm';
+      }
+    } else if (flowMode === 'webm') {
+      programFlowRef.current.mode = 'webm';
+    }
+    return masterStream;
+  };
+  programFlowStarterRef.current = startProgramFlowFromCurrentState;
+  programFlowStopperRef.current = stopProgramFlow;
 
   // WebCodecs murió a mitad de sesión: se apaga la bomba y el motor crea
   // su MediaRecorder WebM sobre el mismo masterStream (sin reiniciar la
@@ -3659,13 +3682,13 @@ function PodcastStudioApp() {
         const st = s.getVideoTracks()[0]?.getSettings?.() || {};
         return { width: st.width || 0, height: st.height || 0 };
       });
-    const openTier = decideUsbOpenTier(liveFormats);
+    const openTier = decideUsbOpenTier(liveFormats, slot === 0 ? programProfileId : '1080p');
     try {
       stream = await openProvenUsbStream(deviceId, getUserMediaWithTimeout, openTier);
     } catch (err) {
       lastError = err;
     }
-    if (stream && openTier !== '1080p') {
+    if (stream && openTier === '720p') {
       showToast(`CAM ${slot + 1} abrió en 720p por presupuesto de bus USB (máximo 2 cámaras a 1080p a la vez). No es un fallo de la cámara: al liberar una 1080p, la próxima apertura vuelve a ser 1080p.`, 'info', 8000);
     }
 
@@ -6481,98 +6504,60 @@ function PodcastStudioApp() {
                        </span>
                      </button>
 
-                     {/* MOTOR OBS — PRUEBA DE VIDA (Plan B, v2.1.0). Sección
-                         separada: OBS es el motor y aquí solo se le gobierna;
-                         el estado mostrado es el que reporta OBS, no el del
-                         motor interno. */}
+                     {/* MOTOR PODCASTUDIO (v3.0.0): motor propio — perfil
+                         de programa, lectura real del canvas y autoprueba. */}
                      <div className="mt-3 border border-purple-500/40 rounded-lg bg-[#14101d] p-3">
                        <div className="flex items-center justify-between">
                          <span className="flex items-center gap-2 text-xs font-black text-purple-200">
-                           <Monitor size={14} className="text-purple-400" /> Motor OBS (prueba de vida)
+                           <Monitor size={14} className="text-purple-400" /> Motor PodcastStudio
                          </span>
-                         <span className={`flex items-center gap-1.5 text-[10px] font-bold ${obsStatus?.connected ? 'text-green-400' : 'text-gray-500'}`}>
-                           <span className={`w-2 h-2 rounded-full ${obsStatus?.connected ? 'bg-green-500 shadow-[0_0_6px_#22c55e]' : 'bg-gray-600'}`} />
-                           {obsStatus?.connected ? `Conectado · OBS ${obsStatus.obsVersion || ''}` : 'Sin conexión'}
+                         <span className="text-[10px] font-bold text-gray-400">
+                           Programa: {programProfile.width}×{programProfile.height}
                          </span>
                        </div>
 
-                       <div className="grid grid-cols-[1fr_76px] gap-2 mt-2.5">
-                         <input
-                           value={obsConfig.host}
-                           onChange={(e) => setObsConfig((c) => ({ ...c, host: e.target.value }))}
-                           placeholder="127.0.0.1"
-                           className="bg-[#0d0d12] border border-[#2c2c38] rounded px-2 py-1.5 text-xs text-gray-100 outline-none focus:border-purple-500"
-                           title="Host del servidor WebSocket de OBS"
-                         />
-                         <input
-                           value={obsConfig.port}
-                           onChange={(e) => setObsConfig((c) => ({ ...c, port: Number(e.target.value) || 4455 }))}
-                           placeholder="4455"
-                           inputMode="numeric"
-                           className="bg-[#0d0d12] border border-[#2c2c38] rounded px-2 py-1.5 text-xs text-gray-100 outline-none focus:border-purple-500"
-                           title="Puerto del servidor WebSocket de OBS"
-                         />
-                       </div>
-                       <input
-                         type="password"
-                         value={obsConfig.password}
-                         onChange={(e) => setObsConfig((c) => ({ ...c, password: e.target.value }))}
-                         placeholder="Contraseña del servidor WebSocket de OBS"
-                         className="w-full mt-2 bg-[#0d0d12] border border-[#2c2c38] rounded px-2 py-1.5 text-xs text-gray-100 outline-none focus:border-purple-500"
-                       />
-
-                       {obsStatus?.connected && (
-                         <div className="mt-2 text-[11px] leading-relaxed text-gray-300 bg-[#0d0d12] border border-[#26262f] rounded px-2 py-1.5">
-                           <div>Escena de programa: <b className="text-white">{obsStatus.currentScene || '—'}</b></div>
-                           <div>
-                             {obsStatus.recording?.active
-                               ? <span className="text-red-400 font-bold">● GRABANDO{obsStatus.recording?.durationMs != null ? ` · ${Math.floor(obsStatus.recording.durationMs / 60000)}:${String(Math.floor((obsStatus.recording.durationMs % 60000) / 1000)).padStart(2, '0')}` : ''}</span>
-                               : 'Grabación: detenida'}
-                             {' · '}
-                             {obsStatus.streaming?.active
-                               ? <span className="text-red-400 font-bold">● EN VIVO{obsStatus.streaming?.durationMs != null ? ` · ${Math.floor(obsStatus.streaming.durationMs / 60000)}:${String(Math.floor((obsStatus.streaming.durationMs % 60000) / 1000)).padStart(2, '0')}` : ''}</span>
-                               : 'Transmisión: detenida'}
-                           </div>
-                           {(obsLastFile || obsStatus.lastRecordPath) && (
-                             <div className="break-all text-gray-400">Último archivo de OBS: <span className="text-gray-200">{obsLastFile || obsStatus.lastRecordPath}</span></div>
-                           )}
-                           {!obsLastFile && obsStatus.recordDirectory && (
-                             <div className="break-all text-gray-400">Carpeta de grabaciones de OBS: <span className="text-gray-200">{obsStatus.recordDirectory}</span></div>
-                           )}
+                       <div className="mt-2.5">
+                         <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Perfil de programa</div>
+                         <div className="grid grid-cols-3 gap-2 mt-1.5">
+                           {PROGRAM_PROFILE_IDS.map((id) => {
+                             const prof = getProgramProfile(id);
+                             return (
+                               <button key={id} type="button" onClick={() => setProgramProfileId(id)} className={`py-1.5 rounded font-bold text-[11px] cursor-pointer ${programProfileId === id ? 'bg-purple-700 text-white' : 'bg-[#23232e] hover:bg-[#2c2c3a] text-gray-200'}`}>
+                                 {prof.label}
+                               </button>
+                             );
+                           })}
                          </div>
-                       )}
-
-                       <div className="grid grid-cols-2 gap-2 mt-2.5">
-                         {!obsStatus?.connected ? (
-                           <button type="button" disabled={obsBusy} onClick={handleObsConnect} className="col-span-2 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">
-                             {obsBusy ? 'Conectando…' : 'Conectar con OBS'}
-                           </button>
-                         ) : (
-                           <>
-                             <button type="button" disabled={obsBusy} onClick={handleObsProvision} className="py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Preparar escenas</button>
-                             <button type="button" disabled={obsBusy} onClick={handleObsDisconnect} className="py-2 bg-[#23232e] hover:bg-[#2c2c3a] disabled:opacity-50 rounded font-bold text-xs text-gray-200 cursor-pointer">Desconectar</button>
-                             {obsStatus.streaming?.active ? (
-                               <button type="button" disabled={obsBusy} onClick={handleObsStopStream} className="py-2 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Detener transmisión</button>
-                             ) : (
-                               <button type="button" disabled={obsBusy} onClick={handleObsStartStream} className="py-2 bg-red-700 hover:bg-red-600 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Transmitir (Facebook)</button>
-                             )}
-                             {obsStatus.recording?.active ? (
-                               <button type="button" disabled={obsBusy} onClick={handleObsStopRecord} className="py-2 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Detener grabación</button>
-                             ) : (
-                               <button type="button" disabled={obsBusy} onClick={handleObsStartRecord} className="py-2 bg-[#23232e] hover:bg-[#2c2c3a] disabled:opacity-50 rounded font-bold text-xs text-gray-100 cursor-pointer">Grabar</button>
-                             )}
-                           </>
+                         {isUplinkCapped(programProfile) && (
+                           <p className="mt-2 text-[11px] font-semibold text-amber-300">
+                             Grabas en {programProfile.label} · transmites en 1080p
+                           </p>
                          )}
                        </div>
 
-                       {obsNotes.length > 0 && (
-                         <ul className="mt-2 text-[10.5px] leading-snug text-purple-200/80 list-disc pl-4 space-y-0.5">
-                           {obsNotes.map((note, i) => <li key={i}>{note}</li>)}
-                         </ul>
-                       )}
-                       <p className="mt-2 text-[10px] leading-snug text-gray-500">
-                         OBS debe estar abierto con su servidor WebSocket activo (Herramientas → Ajustes del servidor WebSocket). Este motor no sustituye todavía al interno: es la prueba de vida del Plan B.
-                       </p>
+                       <div className="mt-3 border-t border-[#2a2438] pt-2.5">
+                         <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Autoprueba del motor</div>
+                         <button type="button" disabled={selfTestBusy} onClick={handleRunSelfTest} className="w-full mt-1.5 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">
+                           {selfTestBusy ? 'Ejecutando autoprueba…' : 'Ejecutar autoprueba'}
+                         </button>
+                         {!selfTest ? (
+                           <p className="mt-2 text-[11px] text-gray-500">Sin autoprueba todavía en esta sesión</p>
+                         ) : selfTest.ok ? (
+                           <div className="mt-2 text-[11px] leading-relaxed text-green-300 bg-[#0d1a12] border border-green-900/60 rounded px-2 py-1.5">
+                             <div>Modo: <b className="text-green-100">{selfTest.mode || '—'}</b></div>
+                             <div>Codificador real: <b className="text-green-100">{selfTest.encoderLabel || selfTest.codec || '—'}</b></div>
+                             <div>Resolución medida: <b className="text-green-100">{selfTest.width || '—'}×{selfTest.height || '—'}</b></div>
+                             <div>fps medidos: <b className="text-green-100">{selfTest.fpsMeasured != null ? Number(selfTest.fpsMeasured).toFixed(1) : '—'}</b>{selfTest.fpsNominal ? ` (nominal ${selfTest.fpsNominal})` : ''}</div>
+                           </div>
+                         ) : (
+                           <div className="mt-2 text-[11px] leading-relaxed text-red-300 bg-[#1a0d0d] border border-red-900/60 rounded px-2 py-1.5">
+                             <div className="font-bold">{selfTest.error || 'La autoprueba falló.'}</div>
+                             {selfTest.stderrTail && (
+                               <pre className="mt-1 whitespace-pre-wrap break-all text-[10px] text-red-200/80">{String(selfTest.stderrTail).split('\n').slice(-6).join('\n')}</pre>
+                             )}
+                           </div>
+                         )}
+                       </div>
                      </div>
                    </div>
                 )}
@@ -7140,7 +7125,7 @@ function PodcastStudioApp() {
             </div>
 
             <div className="mx-5 mt-4 rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
-              <b>Salida Master:</b> esta ventana envía el Programa compuesto de PodcastStudio por RTMPS. En Facebook selecciona <b>Software de streaming</b>; la opción <b>Cámara web</b> sólo enumera dispositivos físicos de Windows. Para usarla como webcam, enruta la URL LAN Master a OBS/vMix y activa su cámara virtual.
+              <b>Salida Master:</b> esta ventana envía el Programa compuesto de PodcastStudio por RTMPS. En Facebook selecciona <b>Software de streaming</b>; la opción <b>Cámara web</b> sólo enumera dispositivos físicos de Windows. Para usarla como webcam, enruta la URL LAN Master a un software de cámara virtual y actívala.
             </div>
 
             <div className="flex px-5 gap-2 pt-3 bg-[#0f1115] border-b border-[#2a2b30]">
