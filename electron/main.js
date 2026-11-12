@@ -2942,6 +2942,7 @@ function streamFailureFields(kind) {
 // a cada consumidor en el último keyframe con etiquetas re-selladas.
 // ============================================================================
 const { createProgramCore } = require('./program-core');
+const { createNativeEngine } = require('./native-engine');
 
 // Sesión de codificador de streaming (v1.7.0, Raíz A): la sonda corre
 // perezosa al arrancar el primer destino y su resultado queda cacheado
@@ -3012,6 +3013,105 @@ const programCore = createProgramCore({
   onSelfTestResult: (v) => { appendStreamLog('Autoprueba del Motor PodcastStudio: ' + (v.ok ? `OK — modo ${v.mode}, codificador ${v.encoderLabel}, ${v.width}×${v.height} a ${v.fpsMeasured} fps medidos` : `FALLO — ${v.error || 'sin detalle'}`)); if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('program-selftest-result', v); },
   onSelfTestFlowNeeded: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('program-selftest-request', {}); },
 });
+
+// ============================================================================
+// MOTOR NATIVO HOSPEDADO (Hito 2, v3.1.0): la app gobierna la tubería de
+// GStreamer de electron/native-engine.js (vista previa nativa, grabación
+// y transmisión LOCAL de prueba). Su estado viaja al renderer por el
+// evento 'native-engine-state' y sus órdenes por los IPC de abajo.
+// ============================================================================
+const nativeEngineHost = createNativeEngine({
+  ffmpegPath,
+  log: (line) => appendStreamLog(line),
+  onState: (state) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('native-engine-state', state); },
+});
+
+// ----------------------------------------------------------------------------
+// COLISIÓN IPC del Hito 2 (verificada y resuelta aquí, sin tocar bridge.js):
+// electron/media-engine/bridge.js ya registró al arrancar (setupNativeEngineIPC)
+// handlers ipcMain para 'native-engine:start' y 'native-engine:stop' con el
+// payload LEGADO { destinations, config } del media-engine histórico, y
+// también 'native-engine:write-frame', 'native-engine:write-audio' y
+// 'native-engine:status', guardados por su bandera interna de «corriendo».
+// Electron no admite dos handlers para el mismo canal, así que registrar
+// los canales del Hito 2 sin más rompería el arranque o el legado.
+//
+// Resolución: se retiran SOLO los cinco handlers que bridge.js registró y
+// se re-registran aquí como ENRUTADORES equivalentes:
+//   - 'native-engine:start': si el payload trae `session` (string no
+//     vacío) es una sesión del Hito 2 y va al anfitrión GStreamer; si no,
+//     es el payload legado y va a electron/media-engine (index.js), tal
+//     cual lo hacía bridge.js.
+//   - write-frame / write-audio / status delegan en media-engine/index
+//     con la bandera local legacyMediaEngineRunning, que reproduce la
+//     semántica de la bandera interna de bridge.js (solo escribe si el
+//     motor legado está corriendo, y start/stop legados la actualizan).
+//   - 'native-engine:stop': si el anfitrión del Hito 2 no está «apagado»
+//     se detiene él; si está apagado, la parada es la legada.
+//   - 'native-engine:get-state' (nuevo): estado del anfitrión del Hito 2.
+// bridge.js NO se modifica: su setup queda sustituido por esta
+// re-registración equivalente más el enrutador, y por eso los
+// removeHandler de abajo van en try/catch (si bridge.js no llegó a
+// registrar, no pasa nada).
+// ----------------------------------------------------------------------------
+const legacyMediaEngine = require('./media-engine');
+let legacyMediaEngineRunning = false;
+for (const canalLegado of ['native-engine:start', 'native-engine:stop', 'native-engine:write-frame', 'native-engine:write-audio', 'native-engine:status']) {
+  try { ipcMain.removeHandler(canalLegado); } catch (e) {}
+}
+ipcMain.handle('native-engine:start', async (_event, payload) => {
+  try {
+    if (payload && typeof payload.session === 'string' && payload.session) {
+      const outDir = payload.outDir || path.join(app.getPath('userData'), 'motor-nativo');
+      return await nativeEngineHost.start({ ...payload, outDir });
+    }
+    const result = legacyMediaEngine.start(payload || {});
+    legacyMediaEngineRunning = !!result.success;
+    return result;
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+ipcMain.handle('native-engine:stop', async () => {
+  try {
+    if (nativeEngineHost.getState().phase !== 'apagado') {
+      await nativeEngineHost.stop();
+      return { success: true };
+    }
+    const result = legacyMediaEngine.stop();
+    legacyMediaEngineRunning = false;
+    return result;
+  } catch (e) {
+    legacyMediaEngineRunning = false;
+    return { success: false, error: e.message };
+  }
+});
+ipcMain.handle('native-engine:write-frame', async (_event, buffer) => {
+  try {
+    if (!legacyMediaEngineRunning) return false;
+    const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+    return legacyMediaEngine.writeFrame(buf);
+  } catch (e) {
+    return false;
+  }
+});
+ipcMain.handle('native-engine:write-audio', async (_event, buffer) => {
+  try {
+    if (!legacyMediaEngineRunning) return false;
+    const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+    return legacyMediaEngine.writeAudio(buf);
+  } catch (e) {
+    return false;
+  }
+});
+ipcMain.handle('native-engine:status', async () => {
+  try {
+    return legacyMediaEngine.getStatus();
+  } catch (e) {
+    return { running: false, connected: false, error: e.message };
+  }
+});
+ipcMain.handle('native-engine:get-state', async () => nativeEngineHost.getState());
 
 ipcMain.handle('start-streaming', async (_event, payload = {}) => {
   const targets = typeof payload === 'string'

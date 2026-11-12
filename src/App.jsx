@@ -1066,6 +1066,42 @@ function PodcastStudioApp() {
   const [selfTest, setSelfTest] = useState(null);
   const [selfTestBusy, setSelfTestBusy] = useState(false);
   const selfTestFlowRef = useRef(false);
+
+  // ==========================================================================
+  // MOTOR NATIVO (Hito 2, v3.1.0): estado del motor GStreamer hospedado en
+  // el proceso principal (electron/native-engine.js). Llega por el puente
+  // window.electronAPI.nativeEngine (preload.js) y por su evento de estado.
+  // ==========================================================================
+  const [nativeEngineState, setNativeEngineState] = useState(null);
+  useEffect(() => {
+    const bridge = window.electronAPI?.nativeEngine;
+    if (!bridge) return undefined;
+    let cancelado = false;
+    try { bridge.getState().then((s) => { if (!cancelado && s) setNativeEngineState(s); }).catch(() => {}); } catch (e) {}
+    let off = null;
+    try { off = bridge.onState?.((s) => setNativeEngineState(s)); } catch (e) {}
+    return () => { cancelado = true; try { if (typeof off === 'function') off(); } catch (e) {} };
+  }, []);
+  const handleNativeEngineStart = async (session) => {
+    try {
+      // outDir va undefined A PROPÓSITO: la carpeta de grabaciones del
+      // proyecto la resuelve el proceso principal (getProjectsRootDir en
+      // main.js) y NO está expuesta al renderer; al ir undefined aplica
+      // el defecto del anfitrión (userData/motor-nativo).
+      await window.electronAPI?.nativeEngine?.start({ session, outDir: undefined });
+    } catch (e) {}
+  };
+  const handleNativeEngineStop = async () => {
+    try { await window.electronAPI?.nativeEngine?.stop(); } catch (e) {}
+  };
+  const nePhase = nativeEngineState?.phase || 'apagado';
+  const formatMotorBytes = (n) => {
+    const v = Number(n) || 0;
+    if (v < 1024) return `${v} B`;
+    if (v < 1024 * 1024) return `${(v / 1024).toFixed(1)} KB`;
+    return `${(v / (1024 * 1024)).toFixed(2)} MB`;
+  };
+  const formatMotorDur = (s) => (s == null ? '—' : `${Number(s).toFixed(1)}s`);
   // El arranque/parada del flujo de programa viven más abajo (junto al
   // núcleo v2); estas refs los puentean para las suscripciones de aquí.
   const programFlowStarterRef = useRef(null);
@@ -6579,6 +6615,61 @@ function PodcastStudioApp() {
                            </div>
                          )}
                        </div>
+                     </div>
+
+                     {/* MOTOR NATIVO (Hito 2, v3.1.0): la app gobierna la
+                         tubería GStreamer fuera de la ventana: vista
+                         previa nativa, grabación y transmisión local. */}
+                     <div className="mt-3 border border-cyan-500/40 rounded-lg bg-[#0d1618] p-3">
+                       <div className="flex items-center justify-between">
+                         <span className="flex items-center gap-2 text-xs font-black text-cyan-200">
+                           <Monitor size={14} className="text-cyan-400" /> Motor Nativo
+                         </span>
+                         <span className="text-[10px] font-bold text-cyan-300/80">Hito 2 · v3.1.0</span>
+                       </div>
+                       <div className="mt-2 text-[11px] leading-relaxed text-gray-300 space-y-0.5">
+                         <div>Fase: <b className="text-cyan-100">{nativeEngineState?.phase || '—'}</b></div>
+                         <div>Cámara: <b className="text-cyan-100">{nativeEngineState?.cameraName || '—'}</b></div>
+                         <div>Formato negociado: <b className="text-cyan-100">{nativeEngineState?.caps ? `${nativeEngineState.caps.width}×${nativeEngineState.caps.height} @ ${nativeEngineState.caps.framerate ?? '—'} fps${nativeEngineState.caps.format ? ` (${nativeEngineState.caps.format})` : ''}` : '—'}</b></div>
+                         <div>Codificador: <b className="text-cyan-100">{nativeEngineState?.encoder || '—'}{nativeEngineState?.presetUsed ? ` · preset: ${nativeEngineState.presetUsed}` : ''}</b></div>
+                         {nativeEngineState?.lastError && (
+                           <div className="text-red-300">{nativeEngineState.lastError}</div>
+                         )}
+                       </div>
+                       <div className="mt-2.5 space-y-1.5">
+                         <button type="button" disabled={['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'validando'].includes(nePhase)} onClick={() => handleNativeEngineStart('preview')} className="w-full py-2 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Vista previa</button>
+                         <button type="button" disabled={['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'validando'].includes(nePhase)} onClick={() => handleNativeEngineStart('record')} className="w-full py-2 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Grabar</button>
+                         <button type="button" disabled={['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'validando'].includes(nePhase)} onClick={() => handleNativeEngineStart('recordStream')} className="w-full py-2 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Grabar + Transmitir (prueba local)</button>
+                         <p className="text-[10px] leading-snug text-amber-300/90">Transmisión LOCAL de prueba (rtmp://127.0.0.1:1935/live/prueba): el destino real se conecta en el hito siguiente.</p>
+                         <button type="button" disabled={['apagado', 'validando'].includes(nePhase)} onClick={handleNativeEngineStop} className="w-full py-2 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Detener</button>
+                       </div>
+                       {nePhase === 'grabando-transmitiendo' && (
+                         <div className="mt-2 text-[11px] text-cyan-200">Bytes recibidos del stream: <b>{formatMotorBytes(nativeEngineState?.streamBytes)}</b></div>
+                       )}
+                       {nativeEngineState?.validation && (
+                         nativeEngineState.validation.valid ? (
+                           <div className="mt-2 text-[11px] leading-relaxed text-green-300 bg-[#0d1a12] border border-green-900/60 rounded px-2 py-1.5">
+                             <div>✅ Grabación VÁLIDA — {formatMotorDur(nativeEngineState.validation.durationSec)} · {nativeEngineState.validation.width || '—'}×{nativeEngineState.validation.height || '—'} · {formatMotorBytes(nativeEngineState.validation.bytes)}</div>
+                             {nativeEngineState.outFile && (<div className="break-all text-green-200/80">{nativeEngineState.outFile}</div>)}
+                           </div>
+                         ) : (
+                           <div className="mt-2 text-[11px] leading-relaxed text-red-300 bg-[#1a0d0d] border border-red-900/60 rounded px-2 py-1.5">
+                             <div>❌ Grabación NO válida{nativeEngineState.validation.error ? ` — ${nativeEngineState.validation.error}` : ''}</div>
+                             {nativeEngineState.outFile && (<div className="break-all text-red-200/80">{nativeEngineState.outFile}</div>)}
+                           </div>
+                         )
+                       )}
+                       {nativeEngineState?.streamValidation && (
+                         nativeEngineState.streamValidation.valid ? (
+                           <div className="mt-2 text-[11px] leading-relaxed text-green-300 bg-[#0d1a12] border border-green-900/60 rounded px-2 py-1.5">
+                             <div>✅ Stream local VÁLIDO — {formatMotorDur(nativeEngineState.streamValidation.durationSec)} · {nativeEngineState.streamValidation.width || '—'}×{nativeEngineState.streamValidation.height || '—'} · {formatMotorBytes(nativeEngineState.streamValidation.bytes)}</div>
+                           </div>
+                         ) : (
+                           <div className="mt-2 text-[11px] leading-relaxed text-red-300 bg-[#1a0d0d] border border-red-900/60 rounded px-2 py-1.5">
+                             <div>❌ Stream local NO válido{nativeEngineState.streamValidation.error ? ` — ${nativeEngineState.streamValidation.error}` : ''}</div>
+                           </div>
+                         )
+                       )}
                      </div>
                    </div>
                 )}

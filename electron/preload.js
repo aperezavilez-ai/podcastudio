@@ -131,3 +131,15 @@ contextBridge.exposeInMainWorld('api', {
     getStatus: () => ipcRenderer.invoke('native-engine:status'),
   }
 });
+
+// Motor Nativo hospedado (Hito 2, v3.1.0): puente NUEVO e independiente del
+// bloque 'api' de arriba (que no se toca). Vive bajo window.electronAPI
+// para no chocar con el nativeEngine legado de window.api.
+contextBridge.exposeInMainWorld('electronAPI', {
+  nativeEngine: {
+    getState: () => ipcRenderer.invoke('native-engine:get-state'),
+    start: (payload) => ipcRenderer.invoke('native-engine:start', payload),
+    stop: () => ipcRenderer.invoke('native-engine:stop'),
+    onState: (cb) => { const h = (_e, s) => cb(s); ipcRenderer.on('native-engine-state', h); return () => ipcRenderer.removeListener('native-engine-state', h); },
+  },
+});

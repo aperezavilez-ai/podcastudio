@@ -1,6 +1,6 @@
 {
   "name": "podcaststudio",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
@@ -10,7 +10,8 @@
     "test:remote-cameras": "node --test scripts/remote-camera-slots.test.mjs",
     "test:recording": "node --test scripts/recording-pipeline.integration.test.mjs",
     "test:stream-config": "node --test scripts/stream-destinations.test.mjs",
-    "build:app": "vite build && electron-builder --win"
+    "build:app": "vite build && electron-builder --win",
+    "test:native-engine": "node --test scripts/native-engine.test.mjs"
   },
   "dependencies": {
     "@mux/mux-node": "^15.5.0",
