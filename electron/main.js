@@ -3100,6 +3100,14 @@ ipcMain.on('program-audio-chunk', (event, chunkBuffer) => {
   if (buf && buf.length) programCore.writeAudioChunk(buf);
 });
 
+// v3.0.1: el renderer anuncia el modo EFECTIVO del flujo de programa y
+// queda en el registro. Sin esta línea, un flujo que no entrega bytes
+// no deja rastro de qué camino tomó la ventana (así fue indiagnosticable
+// el «sin flujo del renderer» de la v3.0.0 hasta leer el código).
+ipcMain.on('program-flow-mode', (event, mode) => {
+  appendStreamLog(`Núcleo v3: flujo de programa en modo ${mode || 'desconocido'} (anunciado por el renderer).`);
+});
+
 // Pausa de grabación del núcleo: el reparto deja de alimentar al
 // consumidor de grabación (equivalente a la pausa real del MediaRecorder
 // dedicado que esto reemplaza); el directo no se toca.

@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('api', {
   sendProgramVideoChunk: (chunk) => ipcRenderer.send('program-video-chunk', chunk),
   sendProgramAudioChunk: (chunk) => ipcRenderer.send('program-audio-chunk', chunk),
   setProgramProfile: (profile) => ipcRenderer.invoke('set-program-profile', profile),
+  setProgramFlowMode: (mode) => ipcRenderer.send('program-flow-mode', String(mode || '')),
   runProgramSelfTest: () => ipcRenderer.invoke('run-program-selftest'),
   onProgramSelfTestResult: (cb) => { const h = (_e, v) => cb(v); ipcRenderer.on('program-selftest-result', h); return () => ipcRenderer.removeListener('program-selftest-result', h); },
   onProgramSelfTestRequest: (cb) => { const h = () => cb(); ipcRenderer.on('program-selftest-request', h); return () => ipcRenderer.removeListener('program-selftest-request', h); },

@@ -170,3 +170,22 @@ test('RTMP local: el FFmpeg del sistema acepta y vuelca un flujo publicado', { t
   assert.ok(fs.existsSync(outFile) && fs.statSync(outFile).size > 5000, 'el oyente recibió el flujo');
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+
+test('v3.0.1-cadena: la ventana entrega fragmentos al núcleo con cualquier consumidor (sin la compuerta de solo-streaming)', () => {
+  // La compuerta original dejaba a la autoprueba y a la grabación sin
+  // transmitir con CERO bytes (en vivo, 2026-11-12: tres autoprueba en
+  // FALLO «sin flujo del renderer», y la grabación v2.0.0 con la FLV sin
+  // flujos). No debe volver a existir.
+  assert.ok(
+    !appSource.includes('(isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk'),
+    'la compuerta de solo-streaming no debe existir en handleMasterChunk',
+  );
+  assert.ok(
+    appSource.includes('isRecordingRef.current || selfTestFlowRef.current) && window.api?.sendStreamChunk'),
+    'el reenvío debe cubrir grabación y autoprueba además de streaming',
+  );
+  assert.ok(
+    appSource.includes('setProgramFlowMode'),
+    'el renderer anuncia el modo efectivo del flujo al proceso principal (v3.0.1)',
+  );
+});

@@ -2855,6 +2855,14 @@ function PodcastStudioApp() {
     }
   };
 
+  // v3.0.1: el modo EFECTIVO del flujo (tras el posible volteo a WebM)
+  // se anuncia al proceso principal para que quede en streaming.log.
+  // Hasta la v3.0.0 el modo solo vivía en la consola del renderer y un
+  // flujo que no entregaba bytes era indiagnosticable desde el registro.
+  const notifyProgramFlowMode = (mode) => {
+    try { window.api?.setProgramFlowMode?.(mode || 'desconocido'); } catch {}
+  };
+
   // Arranca la bomba WebCodecs + el grabador solo-audio sobre el
   // masterStream ya creado por el motor en modo 'external'.
   const startWebcodecsFlow = async (masterStream) => {
@@ -2940,6 +2948,7 @@ function PodcastStudioApp() {
     } else if (flowMode === 'webm') {
       programFlowRef.current.mode = 'webm';
     }
+    notifyProgramFlowMode(programFlowRef.current.mode || flowMode);
     return masterStream;
   };
   programFlowStarterRef.current = startProgramFlowFromCurrentState;
@@ -2959,7 +2968,17 @@ function PodcastStudioApp() {
   };
 
   const handleMasterChunk = (buffer) => {
-    if ((isStreamingRef.current || isStreamStartingRef.current) && window.api?.sendStreamChunk) {
+    // v3.0.1 — LA COMPUERTA QUE MATÓ EL FLUJO EN VIVO: hasta la v3.0.0
+    // esto solo reenviaba fragmentos si había streaming activo. Fuera de
+    // streaming (la autoprueba, y GRABAR SIN transmitir) la ventana
+    // descartaba TODOS los fragmentos WebM: el núcleo recibía 0 bytes
+    // (veredicto de autoprueba «sin flujo del renderer» en los tres
+    // arranques del 2026-11-12) y la grabación de la v2.0.0 murió con la
+    // FLV sin flujos por la misma causa. La regla correcta: los
+    // fragmentos van al núcleo siempre que exista UN consumidor real
+    // (streaming, grabación o autoprueba); en previsualización pura la
+    // compuerta sigue cerrada y el núcleo no transcodifica en vacío.
+    if ((isStreamingRef.current || isStreamStartingRef.current || isRecordingRef.current || selfTestFlowRef.current) && window.api?.sendStreamChunk) {
       window.api.sendStreamChunk(buffer);
     }
     // v2.0.0: con Electron la grabación ya NO recibe chunks por aquí: es
@@ -3057,6 +3076,7 @@ function PodcastStudioApp() {
         } else if (flowMode === 'webm') {
           programFlowRef.current.mode = 'webm';
         }
+        notifyProgramFlowMode(programFlowRef.current.mode || flowMode);
 
         // Compuerta de primer fotograma (v1.5.0, Frente B): no se graba hasta
         // que el programa presente un fotograma REAL de cámara (fotograma
@@ -3407,6 +3427,7 @@ function PodcastStudioApp() {
       } else if (flowMode === 'webm') {
         programFlowRef.current.mode = 'webm';
       }
+      notifyProgramFlowMode(programFlowRef.current.mode || flowMode);
 
       if (window.api) {
         isStreamStartingRef.current = true;

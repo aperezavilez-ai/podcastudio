@@ -43,9 +43,21 @@ export function probeProgramEncoderSupport(profileId = DEFAULT_PROGRAM_PROFILE_I
         avc: { format: 'annexb' },
       };
       const hw = await VideoEncoder.isConfigSupported({ ...base, hardwareAcceleration: 'prefer-hardware' });
-      if (hw && hw.supported) return { supported: true, hardware: true };
+      if (hw && hw.supported) return { supported: true, hardware: true, bitrate: base.bitrate };
       const sw = await VideoEncoder.isConfigSupported({ ...base, hardwareAcceleration: 'prefer-software' });
-      if (sw && sw.supported) return { supported: true, hardware: false };
+      if (sw && sw.supported) return { supported: true, hardware: false, bitrate: base.bitrate };
+      // v3.0.1: peldaño de bitrate. Si el códec se rechaza al bitrate
+      // del perfil (10 Mbps en 1080p), reintentar a 6 Mbps antes de
+      // declarar WebCodecs imposible y caer al WebM por software: hay
+      // controladores que aceptan el códec pero no el bitrate alto.
+      // Se devuelve el bitrate GANADOR y la bomba configura con él.
+      if (base.bitrate > 6_000_000) {
+        const lower = { ...base, bitrate: 6_000_000 };
+        const hw2 = await VideoEncoder.isConfigSupported({ ...lower, hardwareAcceleration: 'prefer-hardware' });
+        if (hw2 && hw2.supported) return { supported: true, hardware: true, bitrate: 6_000_000 };
+        const sw2 = await VideoEncoder.isConfigSupported({ ...lower, hardwareAcceleration: 'prefer-software' });
+        if (sw2 && sw2.supported) return { supported: true, hardware: false, bitrate: 6_000_000 };
+      }
       return { supported: false, hardware: false };
     } catch (e) {
       return { supported: false, hardware: false };
@@ -94,7 +106,7 @@ export function createProgramEncoderPump({ onChunk, onError, profile = null, wid
         codec: encCodec,
         width,
         height,
-        bitrate,
+        bitrate: support.bitrate || bitrate,
         framerate: fps,
         latencyMode: 'realtime',
         hardwareAcceleration: support.hardware ? 'prefer-hardware' : 'prefer-software',
