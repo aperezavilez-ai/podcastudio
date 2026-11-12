@@ -117,6 +117,27 @@ contextBridge.exposeInMainWorld('api', {
   sendProgramFeedFrame: (frameData) => ipcRenderer.send('program-feed-frame', frameData),
   sendCamThumbnails: (thumbnails) => ipcRenderer.send('cam-thumbnails', thumbnails),
 
+  // Motor OBS (Plan B, v2.1.0): OBS Studio como motor gobernado por
+  // PodcastStudio vía obs-websocket. namespace `obs:` en main; el motor
+  // interno no se ve afectado por estos puentes.
+  obs: {
+    connect: (cfg) => ipcRenderer.invoke('obs:connect', cfg),
+    disconnect: () => ipcRenderer.invoke('obs:disconnect'),
+    getStatus: () => ipcRenderer.invoke('obs:get-status'),
+    provision: (payload) => ipcRenderer.invoke('obs:provision', payload),
+    setProgramScene: (name) => ipcRenderer.invoke('obs:set-program-scene', name),
+    startStream: (destination) => ipcRenderer.invoke('obs:start-stream', destination),
+    stopStream: () => ipcRenderer.invoke('obs:stop-stream'),
+    startRecord: () => ipcRenderer.invoke('obs:start-record'),
+    stopRecord: () => ipcRenderer.invoke('obs:stop-record'),
+    updateCintillo: (cintillo) => ipcRenderer.invoke('obs:update-cintillo', cintillo),
+    onEvent: (cb) => {
+      const handler = (e, data) => cb(data);
+      ipcRenderer.on('obs-event', handler);
+      return () => ipcRenderer.removeListener('obs-event', handler);
+    },
+  },
+
   // Motor de Medios Nativo v2
   nativeEngine: {
     start: (opts) => ipcRenderer.invoke('native-engine:start', opts),

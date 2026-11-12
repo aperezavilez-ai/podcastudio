@@ -3105,3 +3105,143 @@ ipcMain.handle('stop-streaming', async () => {
   }
   return { success: true };
 });
+
+// ===========================================================================
+// MOTOR OBS — Plan B, hito de prueba de vida (v2.1.0). OBS Studio es el
+// motor (captura/codificación/grabación/transmisión) y PodcastStudio la
+// superficie de control, vía obs-websocket 5.x (electron/obs-bridge.js).
+// Bloque 100% aditivo: ningún handler del motor interno cambia; el puente
+// solo actúa cuando la UI invoca los IPC `obs:*` desde la sección
+// «Motor OBS (prueba de vida)» del panel de Transmisión.
+// ===========================================================================
+const { createObsBridge } = require('./obs-bridge');
+
+const obsBridge = createObsBridge({
+  log: (line) => appendStreamLog(line),
+  cintilloFilePath: path.join(app.getPath('userData'), 'cintillo-bridge.html'),
+});
+
+obsBridge.onEvent((event) => {
+  if (event.eventType === 'RecordStateChanged' || event.eventType === 'StreamStateChanged') {
+    appendStreamLog(`OBS ${event.eventType}: ${JSON.stringify(event.eventData || {})}`);
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('obs-event', event);
+  }
+});
+
+// Error del puente -> respuesta IPC con el mensaje técnico (en español en
+// el propio puente) y, cuando el clasificador compartido reconoce la
+// clase (auth/network/...), su kind + mensaje accionable, igual que en el
+// resto de la app.
+function obsFailure(err) {
+  const message = err?.message || String(err || 'Error desconocido');
+  const kind = classifyStreamError(message);
+  return {
+    success: false,
+    error: message,
+    ...(kind && kind !== 'unknown' ? streamFailureFields(kind) : {}),
+    ...(err?.code ? { code: err.code } : {}),
+  };
+}
+
+ipcMain.handle('obs:connect', async (_event, cfg = {}) => {
+  try {
+    const status = await obsBridge.connect({
+      host: String(cfg.host || '127.0.0.1').trim() || '127.0.0.1',
+      port: Number(cfg.port) || 4455,
+      password: String(cfg.password || ''),
+    });
+    appendStreamLog(`OBS: conectado (OBS ${status.obsVersion || '?'}, obs-websocket ${status.obsWebSocketVersion || '?'}).`);
+    return { success: true, status };
+  } catch (err) {
+    appendStreamLog(`OBS: fallo de conexión: ${err.message}`);
+    return obsFailure(err);
+  }
+});
+
+ipcMain.handle('obs:disconnect', async () => {
+  await obsBridge.disconnect();
+  return { success: true, status: { connected: false } };
+});
+
+ipcMain.handle('obs:get-status', async () => {
+  try {
+    return { success: true, status: await obsBridge.getStatus() };
+  } catch (err) {
+    return obsFailure(err);
+  }
+});
+
+ipcMain.handle('obs:provision', async (_event, payload = {}) => {
+  try {
+    const result = await obsBridge.provision({
+      cameras: Array.isArray(payload.cameras) ? payload.cameras : [],
+      cintillo: payload.cintillo || null,
+    });
+    appendStreamLog(`OBS: escenas preparadas (escena «${result.sceneName}», creados ${result.created.length}, reutilizados ${result.reused.length}).`);
+    return { success: true, result };
+  } catch (err) {
+    appendStreamLog(`OBS: fallo al preparar escenas: ${err.message}`);
+    return obsFailure(err);
+  }
+});
+
+ipcMain.handle('obs:set-program-scene', async (_event, name) => {
+  try {
+    return { success: true, status: await obsBridge.setProgramScene(String(name || '')) };
+  } catch (err) {
+    return obsFailure(err);
+  }
+});
+
+ipcMain.handle('obs:start-stream', async (_event, destination = {}) => {
+  try {
+    const status = await obsBridge.startStream(destination);
+    appendStreamLog('OBS: transmisión iniciada por PodcastStudio.');
+    return { success: true, status };
+  } catch (err) {
+    appendStreamLog(`OBS: fallo al iniciar transmisión: ${err.message}`);
+    return obsFailure(err);
+  }
+});
+
+ipcMain.handle('obs:stop-stream', async () => {
+  try {
+    const status = await obsBridge.stopStream();
+    appendStreamLog('OBS: transmisión detenida por PodcastStudio.');
+    return { success: true, status };
+  } catch (err) {
+    return obsFailure(err);
+  }
+});
+
+ipcMain.handle('obs:start-record', async () => {
+  try {
+    const status = await obsBridge.startRecord();
+    appendStreamLog('OBS: grabación iniciada por PodcastStudio.');
+    return { success: true, status };
+  } catch (err) {
+    appendStreamLog(`OBS: fallo al iniciar grabación: ${err.message}`);
+    return obsFailure(err);
+  }
+});
+
+ipcMain.handle('obs:stop-record', async () => {
+  try {
+    const result = await obsBridge.stopRecord();
+    appendStreamLog(`OBS: grabación detenida. Archivo: ${result.outputPath || '(ruta no reportada)'}`);
+    return { success: true, outputPath: result.outputPath, status: result.status };
+  } catch (err) {
+    appendStreamLog(`OBS: fallo al detener grabación: ${err.message}`);
+    return obsFailure(err);
+  }
+});
+
+ipcMain.handle('obs:update-cintillo', async (_event, cintillo) => {
+  try {
+    return { success: true, ...(await obsBridge.updateCintillo(cintillo || null)) };
+  } catch (err) {
+    return obsFailure(err);
+  }
+});

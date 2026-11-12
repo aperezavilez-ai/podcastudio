@@ -1048,6 +1048,123 @@ function PodcastStudioApp() {
   });
   showCustomRef.current = showCustom;
 
+  // ==========================================================================
+  // MOTOR OBS — Plan B, hito de prueba de vida (v2.1.0). Sección separada y
+  // aditiva: OBS Studio hace de motor (vía obs-websocket, electron/obs-
+  // bridge.js) y esta UI solo lo gobierna y muestra SU estado. Nada de aquí
+  // toca el motor interno ni sus estados (isStreaming/isRecording son del
+  // motor interno; el estado OBS vive en obsStatus).
+  // ==========================================================================
+  const [obsConfig, setObsConfig] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('podcastudio_obs_bridge_v1') || 'null');
+      if (saved) return { host: saved.host || '127.0.0.1', port: saved.port || 4455, password: saved.password || '' };
+    } catch (e) {}
+    return { host: '127.0.0.1', port: 4455, password: '' };
+  });
+  useEffect(() => { localStorage.setItem('podcastudio_obs_bridge_v1', JSON.stringify(obsConfig)); }, [obsConfig]);
+  const [obsStatus, setObsStatus] = useState({ connected: false });
+  const [obsBusy, setObsBusy] = useState(false);
+  const [obsNotes, setObsNotes] = useState([]);
+  const [obsLastFile, setObsLastFile] = useState('');
+
+  // Cintillo resuelto para el overlay de OBS: MISMA resolución que recibe el
+  // motor interno (tag/text/subtitle del hook, color del panel o del estilo).
+  const obsCintillo = cintillo ? {
+    active: Boolean(cintillosVisible && cintillo.active),
+    tag: cintillo.tag || 'TEMA',
+    text: cintillo.text || topic,
+    subtitle: cintillo.subtitle || '',
+    color: cintillo.color || getCintilloStyle(cintilloStyle)?.colors?.primary || '#e8612a',
+  } : { active: false, tag: 'TEMA', text: topic || '', subtitle: '', color: '#e8612a' };
+  const obsCintilloKey = JSON.stringify(obsCintillo);
+
+  const obsRefreshStatus = useCallback(async () => {
+    try {
+      const res = await window.api?.obs?.getStatus();
+      if (res?.success) setObsStatus(res.status);
+    } catch (e) {}
+  }, []);
+
+  useEffect(() => {
+    const off = window.api?.obs?.onEvent((event) => {
+      if (event?.eventType === 'RecordStateChanged' || event?.eventType === 'StreamStateChanged' || event?.eventType === 'CurrentProgramSceneChanged' || event?.eventType === '__obsDisconnected') {
+        if (event.eventType === '__obsDisconnected') setObsStatus({ connected: false });
+        obsRefreshStatus();
+      }
+    });
+    return () => { if (typeof off === 'function') off(); };
+  }, [obsRefreshStatus]);
+
+  // Al cambiar el cintillo en la app, el overlay de OBS se regenera y su
+  // fuente de navegador se refresca (solo si el puente está conectado).
+  useEffect(() => {
+    if (!obsStatus?.connected) return;
+    window.api?.obs?.updateCintillo(obsCintillo).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obsCintilloKey, obsStatus?.connected]);
+
+  const obsRun = async (fn, okMessage) => {
+    setObsBusy(true);
+    try {
+      const res = await fn();
+      if (res?.success === false) {
+        showToast(res.userMessage || res.error || 'OBS devolvió un error.', 'error', 7000);
+        return res;
+      }
+      if (res?.status) setObsStatus(res.status);
+      if (okMessage) showToast(okMessage, 'success');
+      return res;
+    } catch (e) {
+      showToast(`Motor OBS: ${e.message || 'error inesperado'}`, 'error', 7000);
+      return null;
+    } finally {
+      setObsBusy(false);
+    }
+  };
+
+  const handleObsConnect = () => obsRun(async () => {
+    const res = await window.api.obs.connect(obsConfig);
+    if (res?.success) setObsNotes([]);
+    return res;
+  }, 'Conectado a OBS: PodcastStudio ya lo gobierna.');
+  const handleObsDisconnect = () => obsRun(() => window.api.obs.disconnect(), 'Desconectado de OBS.');
+  const handleObsProvision = () => obsRun(async () => {
+    // LISTA de cámaras que la app conoce (hasta 12 ranuras): el puente
+    // itera los descriptores; sin campos cam1/cam2.
+    const cameras = Object.entries(cameraMeta || {})
+      .map(([slot, meta]) => ({ slot: Number(slot), deviceId: meta?.deviceId || null, label: meta?.label || '', type: meta?.type || '' }))
+      .filter((c) => Number.isInteger(c.slot) && c.type !== 'remote' && c.type !== 'wifi')
+      .sort((a, b) => a.slot - b.slot);
+    const res = await window.api.obs.provision({ cameras, cintillo: obsCintillo });
+    if (res?.success && res.result) {
+      setObsStatus(res.result.status || obsStatus);
+      setObsNotes([...(res.result.created || []).map((t) => `Creado: ${t}`), ...(res.result.notes || [])]);
+    }
+    return res;
+  }, 'Escenas de OBS preparadas: revisa la escena de programa en OBS.');
+  const handleObsStartStream = () => obsRun(async () => {
+    let dest = null;
+    try {
+      dest = buildStreamDestinations(streamConfigs).find((d) => d.id === 'facebook') || null;
+    } catch (e) {
+      showToast(e.message, 'error', 7000);
+      return { success: false };
+    }
+    if (!dest) {
+      showToast('Activa el destino de Facebook con su clave (panel de Transmisión) para emitir con OBS.', 'warning', 7000);
+      return { success: false };
+    }
+    return window.api.obs.startStream(dest);
+  }, 'OBS está transmitiendo a Facebook.');
+  const handleObsStopStream = () => obsRun(() => window.api.obs.stopStream(), 'Transmisión de OBS detenida.');
+  const handleObsStartRecord = () => obsRun(() => window.api.obs.startRecord(), 'OBS está grabando.');
+  const handleObsStopRecord = () => obsRun(async () => {
+    const res = await window.api.obs.stopRecord();
+    if (res?.success && res.outputPath) setObsLastFile(res.outputPath);
+    return res;
+  }, 'Grabación de OBS detenida: revisa el archivo generado.');
+
   // Notificar a Electron que la UI está 100% montada (señal enviada desde main.jsx para evitar duplicación)
   // Esta señal ya fue enviada desde main.jsx con requestAnimationFrame. No duplicar.
 
@@ -6363,6 +6480,100 @@ function PodcastStudioApp() {
                          {camSlots.filter(s => slotStreams[s - 1] || cameraMeta[s - 1]).length} Activas
                        </span>
                      </button>
+
+                     {/* MOTOR OBS — PRUEBA DE VIDA (Plan B, v2.1.0). Sección
+                         separada: OBS es el motor y aquí solo se le gobierna;
+                         el estado mostrado es el que reporta OBS, no el del
+                         motor interno. */}
+                     <div className="mt-3 border border-purple-500/40 rounded-lg bg-[#14101d] p-3">
+                       <div className="flex items-center justify-between">
+                         <span className="flex items-center gap-2 text-xs font-black text-purple-200">
+                           <Monitor size={14} className="text-purple-400" /> Motor OBS (prueba de vida)
+                         </span>
+                         <span className={`flex items-center gap-1.5 text-[10px] font-bold ${obsStatus?.connected ? 'text-green-400' : 'text-gray-500'}`}>
+                           <span className={`w-2 h-2 rounded-full ${obsStatus?.connected ? 'bg-green-500 shadow-[0_0_6px_#22c55e]' : 'bg-gray-600'}`} />
+                           {obsStatus?.connected ? `Conectado · OBS ${obsStatus.obsVersion || ''}` : 'Sin conexión'}
+                         </span>
+                       </div>
+
+                       <div className="grid grid-cols-[1fr_76px] gap-2 mt-2.5">
+                         <input
+                           value={obsConfig.host}
+                           onChange={(e) => setObsConfig((c) => ({ ...c, host: e.target.value }))}
+                           placeholder="127.0.0.1"
+                           className="bg-[#0d0d12] border border-[#2c2c38] rounded px-2 py-1.5 text-xs text-gray-100 outline-none focus:border-purple-500"
+                           title="Host del servidor WebSocket de OBS"
+                         />
+                         <input
+                           value={obsConfig.port}
+                           onChange={(e) => setObsConfig((c) => ({ ...c, port: Number(e.target.value) || 4455 }))}
+                           placeholder="4455"
+                           inputMode="numeric"
+                           className="bg-[#0d0d12] border border-[#2c2c38] rounded px-2 py-1.5 text-xs text-gray-100 outline-none focus:border-purple-500"
+                           title="Puerto del servidor WebSocket de OBS"
+                         />
+                       </div>
+                       <input
+                         type="password"
+                         value={obsConfig.password}
+                         onChange={(e) => setObsConfig((c) => ({ ...c, password: e.target.value }))}
+                         placeholder="Contraseña del servidor WebSocket de OBS"
+                         className="w-full mt-2 bg-[#0d0d12] border border-[#2c2c38] rounded px-2 py-1.5 text-xs text-gray-100 outline-none focus:border-purple-500"
+                       />
+
+                       {obsStatus?.connected && (
+                         <div className="mt-2 text-[11px] leading-relaxed text-gray-300 bg-[#0d0d12] border border-[#26262f] rounded px-2 py-1.5">
+                           <div>Escena de programa: <b className="text-white">{obsStatus.currentScene || '—'}</b></div>
+                           <div>
+                             {obsStatus.recording?.active
+                               ? <span className="text-red-400 font-bold">● GRABANDO{obsStatus.recording?.durationMs != null ? ` · ${Math.floor(obsStatus.recording.durationMs / 60000)}:${String(Math.floor((obsStatus.recording.durationMs % 60000) / 1000)).padStart(2, '0')}` : ''}</span>
+                               : 'Grabación: detenida'}
+                             {' · '}
+                             {obsStatus.streaming?.active
+                               ? <span className="text-red-400 font-bold">● EN VIVO{obsStatus.streaming?.durationMs != null ? ` · ${Math.floor(obsStatus.streaming.durationMs / 60000)}:${String(Math.floor((obsStatus.streaming.durationMs % 60000) / 1000)).padStart(2, '0')}` : ''}</span>
+                               : 'Transmisión: detenida'}
+                           </div>
+                           {(obsLastFile || obsStatus.lastRecordPath) && (
+                             <div className="break-all text-gray-400">Último archivo de OBS: <span className="text-gray-200">{obsLastFile || obsStatus.lastRecordPath}</span></div>
+                           )}
+                           {!obsLastFile && obsStatus.recordDirectory && (
+                             <div className="break-all text-gray-400">Carpeta de grabaciones de OBS: <span className="text-gray-200">{obsStatus.recordDirectory}</span></div>
+                           )}
+                         </div>
+                       )}
+
+                       <div className="grid grid-cols-2 gap-2 mt-2.5">
+                         {!obsStatus?.connected ? (
+                           <button type="button" disabled={obsBusy} onClick={handleObsConnect} className="col-span-2 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">
+                             {obsBusy ? 'Conectando…' : 'Conectar con OBS'}
+                           </button>
+                         ) : (
+                           <>
+                             <button type="button" disabled={obsBusy} onClick={handleObsProvision} className="py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Preparar escenas</button>
+                             <button type="button" disabled={obsBusy} onClick={handleObsDisconnect} className="py-2 bg-[#23232e] hover:bg-[#2c2c3a] disabled:opacity-50 rounded font-bold text-xs text-gray-200 cursor-pointer">Desconectar</button>
+                             {obsStatus.streaming?.active ? (
+                               <button type="button" disabled={obsBusy} onClick={handleObsStopStream} className="py-2 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Detener transmisión</button>
+                             ) : (
+                               <button type="button" disabled={obsBusy} onClick={handleObsStartStream} className="py-2 bg-red-700 hover:bg-red-600 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Transmitir (Facebook)</button>
+                             )}
+                             {obsStatus.recording?.active ? (
+                               <button type="button" disabled={obsBusy} onClick={handleObsStopRecord} className="py-2 bg-red-800 hover:bg-red-700 disabled:opacity-50 rounded font-bold text-xs text-white cursor-pointer">Detener grabación</button>
+                             ) : (
+                               <button type="button" disabled={obsBusy} onClick={handleObsStartRecord} className="py-2 bg-[#23232e] hover:bg-[#2c2c3a] disabled:opacity-50 rounded font-bold text-xs text-gray-100 cursor-pointer">Grabar</button>
+                             )}
+                           </>
+                         )}
+                       </div>
+
+                       {obsNotes.length > 0 && (
+                         <ul className="mt-2 text-[10.5px] leading-snug text-purple-200/80 list-disc pl-4 space-y-0.5">
+                           {obsNotes.map((note, i) => <li key={i}>{note}</li>)}
+                         </ul>
+                       )}
+                       <p className="mt-2 text-[10px] leading-snug text-gray-500">
+                         OBS debe estar abierto con su servidor WebSocket activo (Herramientas → Ajustes del servidor WebSocket). Este motor no sustituye todavía al interno: es la prueba de vida del Plan B.
+                       </p>
+                     </div>
                    </div>
                 )}
               </div>
