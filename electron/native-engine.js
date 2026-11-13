@@ -367,6 +367,76 @@ function chooseAudioDevice(dispositivosAudio, nombreCamara) {
 }
 
 // ----------------------------------------------------------------------------
+// Direccionamiento de UNA fuente mfvideosrc (v3.3.0): lógica ÚNICA para el
+// constructor de la sesión, el constructor multicámara y la vista previa
+// independiente. La forma PRINCIPAL es device-index (la posición del
+// dispositivo en la enumeración MediaFoundation: la que la Prueba B del
+// Hito 1 usó para abrir la Steren). device-path queda SOLO como respaldo
+// cuando el dispositivo no trae índice MF válido, o cuando el anfitrión
+// fuerza el modo (opts.addressingMode) en su reintento declarado — y ese
+// modo forzado se aplica a TODAS las fuentes de la sesión.
+// ----------------------------------------------------------------------------
+function resolverDireccionFuente(deviceIndex, devicePath, modoForzado) {
+  const indiceValido = Number.isInteger(deviceIndex) && deviceIndex >= 0;
+  let addressingMode;
+  if (modoForzado === 'device-path' && devicePath) addressingMode = 'device-path';
+  else if (modoForzado === 'device-index' && indiceValido) addressingMode = 'device-index';
+  else if (indiceValido) addressingMode = 'device-index';
+  else if (devicePath) addressingMode = 'device-path';
+  else addressingMode = 'device-index'; // sin índice ni ruta: el 0 por defecto del Hito 1
+  return {
+    addressingMode,
+    indiceValido,
+    // usedDeviceIndexFallback (nombre heredado): true cuando el
+    // lanzamiento NO usa el índice MF parseado del dispositivo elegido.
+    usedDeviceIndexFallback: !(indiceValido && addressingMode === 'device-index'),
+    token: addressingMode === 'device-path'
+      ? `device-path=${devicePath}`
+      : `device-index=${indiceValido ? deviceIndex : 0}`,
+  };
+}
+
+function textoCaps(caps) {
+  const c = caps || { width: 1920, height: 1080, framerate: 30 };
+  const fps = c.framerate != null ? Math.round(c.framerate) : 30;
+  return `video/x-raw,width=${c.width},height=${c.height},framerate=${fps}/1`;
+}
+
+// ----------------------------------------------------------------------------
+// buildPreviewArgs(opts) PURO (v3.3.0, pata B): tokens de la VISTA PREVIA
+// INDEPENDIENTE — un gst-launch aparte que abre la MISMA cámara de
+// programa cuando NO hay sesión de grabación/transmisión: es la vista
+// previa FUERA de sesión (si puede vivir lo decide la sonda del
+// anfitrión, no esta función). Nunca se lanza en paralelo a una sesión:
+// la compuerta del 2026-11-13 demostró que el driver Media Foundation
+// no sirve a dos lectores de la misma cámara.
+//   Sin texto: la forma probada (mfvideosrc → caps → d3d11upload →
+//   d3d11convert → d3d11videosink sync=false).
+//   Con texto (teleprompter, pata C): cadena de MEMORIA DE SISTEMA
+//   (mfvideosrc → caps → videoconvert → textoverlay → d3d11videosink
+//   sync=false); textoverlay centrado arriba, «Sans Bold 44», SIN fondo
+//   sombreado (regla de Luis: solo el texto limpio sobre la imagen; el
+//   shaded-background de textoverlay es false por defecto y aquí se
+//   declara explícito para que nadie lo encienda en silencio).
+// ----------------------------------------------------------------------------
+function buildPreviewArgs(opts) {
+  const o = opts || {};
+  const caps = o.caps || { width: 1920, height: 1080, framerate: 30 };
+  const direccion = resolverDireccionFuente(o.deviceIndex, o.devicePath, o.addressingMode);
+  const capsTexto = textoCaps(caps);
+  const texto = typeof o.texto === 'string' && o.texto ? o.texto : null;
+  let tokens;
+  if (!texto) {
+    tokens = ['mfvideosrc', direccion.token, '!', capsTexto, '!', 'd3d11upload', '!', 'd3d11convert', '!', 'd3d11videosink', 'sync=false'];
+  } else {
+    tokens = ['mfvideosrc', direccion.token, '!', capsTexto, '!', 'videoconvert', '!', 'textoverlay', `text=${texto}`, 'halignment=center', 'valignment=top', 'font-desc=Sans Bold 44', 'shaded-background=false', '!', 'd3d11videosink', 'sync=false'];
+  }
+  tokens.addressingMode = direccion.addressingMode;
+  tokens.usedDeviceIndexFallback = direccion.usedDeviceIndexFallback;
+  return tokens;
+}
+
+// ----------------------------------------------------------------------------
 // buildPipelineArgs(opts) PURO: devuelve el array de tokens para
 // spawn(gstLaunch, tokens) SIN '-e' (el cierre elegante llega en un hito
 // posterior; el MP4 fragmentado hace válido el cierre forzado, probado en
@@ -383,7 +453,19 @@ function chooseAudioDevice(dispositivosAudio, nombreCamara) {
 function buildPipelineArgs(opts) {
   const o = opts || {};
   const session = o.session || 'preview';
-  const caps = o.caps || { width: 1920, height: 1080, framerate: 30 };
+  // v3.3.0 — MULTICÁMARA: con opts.sources (array de {deviceIndex,
+  // devicePath, caps}) el lienzo, el codificador, el bitrate y el tope
+  // de stream se derivan de los caps de la fuente de PROGRAMA
+  // (sources[programIndex], defecto 0), como hoy del caps único. Sin
+  // sources, la lista se deriva de los opts actuales y la salida es
+  // IDÉNTICA a la histórica (compatibilidad total: la suite vigente no
+  // pasa sources y sus expectativas no cambian).
+  const fuentes = Array.isArray(o.sources) && o.sources.length > 0 ? o.sources : null;
+  const programIndex = fuentes
+    ? (Number.isInteger(o.programIndex) && o.programIndex >= 0 && o.programIndex < fuentes.length ? o.programIndex : 0)
+    : 0;
+  const fuentePrograma = fuentes ? (fuentes[programIndex] || {}) : null;
+  const caps = (fuentePrograma && fuentePrograma.caps) || o.caps || { width: 1920, height: 1080, framerate: 30 };
   const fps = caps.framerate != null ? Math.round(caps.framerate) : 30;
   const capsElegido = `video/x-raw,width=${caps.width},height=${caps.height},framerate=${fps}/1`;
   const conPreset = o.withPreset !== false;
@@ -413,29 +495,27 @@ function buildPipelineArgs(opts) {
 
   const tokens = [];
   tokens.push('mfvideosrc');
-  // v3.2.3 — direccionamiento de la cámara. La forma PRINCIPAL es
-  // device-index (la posición del dispositivo en la enumeración
-  // MediaFoundation): es la que la Prueba B del Hito 1 usó para abrir la
-  // Steren y grabar/transmitir válido. La apertura por device-path
-  // NUNCA se probó en vivo y murió en las dos corridas de la compuerta
-  // smoke de la v3.2.2 con «Couldn't create capture object»
+  // v3.2.3 — direccionamiento de la cámara (lógica única en
+  // resolverDireccionFuente): la forma PRINCIPAL es device-index (la
+  // posición del dispositivo en la enumeración MediaFoundation): es la
+  // que la Prueba B del Hito 1 usó para abrir la Steren y
+  // grabar/transmitir válido. La apertura por device-path NUNCA se
+  // probó en vivo y murió en las dos corridas de la compuerta smoke de
+  // la v3.2.2 con «Couldn't create capture object»
   // (gst_mf_video_src_start): device-path queda SOLO como respaldo
   // cuando el dispositivo no trae índice MF válido, o cuando el
   // anfitrión lo fuerza (opts.addressingMode) en su reintento declarado.
-  const indiceValido = Number.isInteger(o.deviceIndex) && o.deviceIndex >= 0;
-  let addressingMode;
-  if (o.addressingMode === 'device-path' && o.devicePath) addressingMode = 'device-path';
-  else if (o.addressingMode === 'device-index' && indiceValido) addressingMode = 'device-index';
-  else if (indiceValido) addressingMode = 'device-index';
-  else if (o.devicePath) addressingMode = 'device-path';
-  else addressingMode = 'device-index'; // sin índice ni ruta: el 0 por defecto del Hito 1
-  // usedDeviceIndexFallback (nombre heredado): true cuando el
-  // lanzamiento NO usa el índice MF parseado del dispositivo elegido
-  // (respaldo por device-path o índice 0 por defecto sin parsear).
-  const usedDeviceIndexFallback = !(indiceValido && addressingMode === 'device-index');
-  tokens.push(addressingMode === 'device-path'
-    ? `device-path=${o.devicePath}`
-    : `device-index=${indiceValido ? o.deviceIndex : 0}`);
+  // v3.3.0: en multicámara el direccionamiento de la PRIMERA cadena es
+  // el de la fuente de programa, y el modo forzado vigente se aplica a
+  // TODAS las fuentes (cada PiP resuelve el suyo con la misma regla).
+  const direccionPrograma = resolverDireccionFuente(
+    fuentePrograma ? fuentePrograma.deviceIndex : o.deviceIndex,
+    fuentePrograma ? fuentePrograma.devicePath : o.devicePath,
+    o.addressingMode,
+  );
+  const addressingMode = direccionPrograma.addressingMode;
+  const usedDeviceIndexFallback = direccionPrograma.usedDeviceIndexFallback;
+  tokens.push(direccionPrograma.token);
   // v3.2.1 — forma PROBADA del Hito 1 B: del compositor al tee de
   // programa SOLO hay una queue. El d3d11convert + caps forzado
   // (memory:D3D11Memory, NV12, colorimetry=bt709) que el Hito 2 metió
@@ -444,10 +524,65 @@ function buildPipelineArgs(opts) {
   // vivo de la v3.2.0): fuera. El codificador se alimenta del tee con
   // los caps que el propio compositor negocia, como en la tubería que
   // grabó y transmitió de verdad.
-  tokens.push('!', capsElegido, '!', 'd3d11upload', '!', 'd3d11convert', '!', 'd3d11compositor', 'name=mix', 'mix.', '!', 'queue', '!', 'tee', 'name=tprog');
+  tokens.push('!', capsElegido, '!', 'd3d11upload', '!', 'd3d11convert', '!', 'd3d11compositor', 'name=mix');
+  // v3.3.0 — LAYOUT ESTÁTICO multicámara (solo con sources explícitas;
+  // sin sources no se emite NINGÚN token nuevo y la tubería es la de
+  // siempre): lienzo = caps de programa. Orden de pads: la fuente de
+  // programa PRIMERO (sink_0, pantalla completa) y las PiP después, en
+  // el orden de la lista, como sink_1, sink_2, … Las propiedades de
+  // cada pad van como tokens sink_N::prop=valor TRAS el token del
+  // compositor (la sintaxis de gst-launch para propiedades de pad).
+  // Cada PiP: ancho = round(W*0.25), alto según SU relación de aspecto,
+  // margen = round(W*0.02), esquina inferior derecha apiladas hacia
+  // arriba (el ypos se acumula desde abajo: margen + altos + márgenes).
+  let ordenPads = null;
+  if (fuentes) {
+    ordenPads = [{ indiceFuente: programIndex, pad: 0 }];
+    fuentes.forEach((f, i) => { if (i !== programIndex) ordenPads.push({ indiceFuente: i, pad: ordenPads.length }); });
+    const W = caps.width; const H = caps.height;
+    const margen = Math.round(W * 0.02);
+    let acumuladoDesdeAbajo = margen;
+    for (const entrada of ordenPads) {
+      const sufijo = `sink_${entrada.pad}::`;
+      if (entrada.pad === 0) {
+        tokens.push(`${sufijo}xpos=0`, `${sufijo}ypos=0`, `${sufijo}width=${W}`, `${sufijo}height=${H}`);
+      } else {
+        const capsPip = fuentes[entrada.indiceFuente].caps || caps;
+        const anchoPip = Math.round(W * 0.25);
+        const altoPip = capsPip.width > 0 && capsPip.height > 0
+          ? Math.round(anchoPip * capsPip.height / capsPip.width)
+          : Math.round(anchoPip * H / W);
+        const xposPip = W - anchoPip - margen;
+        const yposPip = H - acumuladoDesdeAbajo - altoPip;
+        acumuladoDesdeAbajo += altoPip + margen;
+        tokens.push(`${sufijo}xpos=${xposPip}`, `${sufijo}ypos=${yposPip}`, `${sufijo}width=${anchoPip}`, `${sufijo}height=${altoPip}`);
+      }
+    }
+  }
+  tokens.push('mix.', '!', 'queue', '!', 'tee', 'name=tprog');
 
-  // Rama de vista previa: SIEMPRE (ventana nativa fuera de la app).
-  tokens.push('tprog.', '!', 'queue', '!', 'd3d11videosink', 'sync=false');
+  // v3.3.0 — cadenas de las fuentes PiP: cada una captura, sube a D3D11,
+  // convierte y enlaza con el compositor vía «mix.» (cada enlace pide el
+  // siguiente pad libre EN ORDEN: programa primero = sink_0, luego las
+  // PiP en el orden de ordenPads = los sink_N de las props de arriba).
+  if (fuentes && ordenPads) {
+    for (const entrada of ordenPads.slice(1)) {
+      const f = fuentes[entrada.indiceFuente] || {};
+      const direccionPip = resolverDireccionFuente(f.deviceIndex, f.devicePath, o.addressingMode);
+      tokens.push('mfvideosrc', direccionPip.token, '!', textoCaps(f.caps || caps), '!', 'd3d11upload', '!', 'd3d11convert', '!', 'mix.');
+    }
+  }
+
+  // Rama de vista previa de la sesión: SIEMPRE (ventana nativa fuera
+  // de la app) — es la vista previa DURANTE la sesión. El constructor
+  // conserva la opción omitPreviewBranch (probada como función pura),
+  // pero el anfitrión ya NO la usa desde la corrección tras la
+  // compuerta del 2026-11-13: ninguna sesión nace sin su rama
+  // integrada, porque el proceso de vista previa independiente nunca
+  // convive con una sesión (dos lectores MF mataban la grabación).
+  if (!o.omitPreviewBranch) {
+    tokens.push('tprog.', '!', 'queue', '!', 'd3d11videosink', 'sync=false');
+  }
 
   if (session === 'record') {
     tokens.push('tprog.', '!', 'queue', '!', o.encoder, ...props, '!', 'h264parse', '!', 'mp4mux', 'fragment-duration=2000', 'name=mp4', '!', 'filesink', `location=${outFileFwd}`);
@@ -555,6 +690,31 @@ function createNativeEngine(deps) {
     // ('device-index' | 'device-path' | null sin sesión): el estado
     // dice la verdad sobre cómo se está abriendo la fuente.
     addressingMode: null,
+    // v3.3.0 — multicámara: nombres de las fuentes que entraron DE
+    // VERDAD en la sesión (en orden de layout) y el índice de la de
+    // programa DENTRO de esa lista.
+    sourceNames: [],
+    programIndex: 0,
+    // v3.3.0 — sonda de concurrencia, REDEFINIDA tras la compuerta del
+    // 2026-11-13: null = aún sin veredicto en este arranque del
+    // anfitrión; true/false = la vista previa independiente puede
+    // vivir (o no) FUERA de sesión — es la vista previa cuando no hay
+    // grabación/transmisión —. NUNCA significa convivencia con una
+    // sesión: la primera compuerta de la v3.3.0 demostró que dos
+    // lectores Media Foundation de la misma cámara matan la sesión de
+    // grabación a los ~2 s («Failed to read sample» del lector MF);
+    // por eso ningún arranque de grabación/transmisión lanza ni
+    // mantiene vivo el proceso independiente, y en sesión la vista
+    // previa es la rama integrada de siempre. El veredicto lo fija la
+    // primera sesión de VISTA PREVIA y persiste entre sesiones.
+    concurrentPreview: null,
+    // v3.3.0 — teleprompter sobre la vista previa: true solo mientras
+    // el previewProc vivo lleva el texto puesto por setPreviewText.
+    previewTextActive: false,
+    // v3.3.0 — nota declarada del teleprompter: la fija el no-op de
+    // setPreviewText durante una sesión de grabación/transmisión (el
+    // texto sobre la vista previa es solo fuera de sesión).
+    previewTextNote: null,
     lastError: null,
     logTail: [],
     gstInstalled: null,
@@ -571,6 +731,23 @@ function createNativeEngine(deps) {
   let reintentoSinPresetHecho = false;
   let reintentoDireccionHecho = false;
   let gstCloseWaiters = [];
+  // v3.3.0 — vista previa independiente (pata B): proceso aparte que
+  // abre la cámara de programa FUERA de sesión (nunca en paralelo a
+  // una sesión de grabación/transmisión: corrección tras la compuerta
+  // del 2026-11-13). previewActual describe el lanzamiento vigente
+  // { proc, startedAt, texto, muerto, intencional, stderr,
+  // redSeguridadHecha }; probeDone marca que la sonda ya dio su
+  // veredicto en ESTE arranque del anfitrión (la sonda NO se repite
+  // entre sesiones y solo corre en sesiones de vista previa).
+  let previewProc = null;
+  let previewActual = null;
+  let previewContexto = null; // { tools, device, caps, addressingMode }
+  let probeDone = false;
+  // v3.3.0 — la declaración del no-op de setPreviewText en sesión se
+  // registra UNA vez por sesión de grabación/transmisión (la app
+  // sondea el tramo cada 600 ms: sin esta bandera el registro se
+  // inundaría con la misma declaración).
+  let noOpTextoEnSesionDeclarado = false;
 
   function emitir() {
     try { onState({ ...state, logTail: [...state.logTail] }); } catch (e) {}
@@ -638,6 +815,128 @@ function createNativeEngine(deps) {
       try { spawnImpl('taskkill', ['/PID', String(proc.pid), '/T', '/F'], { stdio: 'ignore' }); } catch (e) {}
     } else {
       try { proc.kill('SIGKILL'); } catch (e) {}
+    }
+  }
+
+  // v3.3.0 — ¿Hay una sesión activa a efectos de la vista previa? La
+  // sesión de GStreamer (gstProc) o la sesión 'preview' servida por el
+  // propio previewProc (sonda que hace de sesión). OJO: con una sesión
+  // de grabación/transmisión esto devuelve true por gstProc, pero
+  // setPreviewText intercepta ese caso ANTES (no-op declarado): el
+  // texto solo se pone sobre el previewProc fuera de sesión.
+  function sesionActivaParaPreview() {
+    if (gstProc) return true;
+    return state.session === 'preview' && ['vista-previa', 'encendiendo'].includes(state.phase);
+  }
+
+  // Lanza (o relanza) el proceso de vista previa independiente con el
+  // texto dado ('' = sin texto). Sin reintentos en bucle: la ÚNICA red
+  // automática es la de setPreviewText (un relanzamiento con texto que
+  // muere en <1500 ms se relanza SIN texto una vez, declarado).
+  function lanzarPreview(texto) {
+    if (!previewContexto) return null;
+    const args = buildPreviewArgs({
+      deviceIndex: previewContexto.device ? previewContexto.device.deviceIndex : null,
+      devicePath: previewContexto.device ? previewContexto.device.devicePath : null,
+      addressingMode: previewContexto.addressingMode || undefined,
+      caps: previewContexto.caps,
+      texto: texto || undefined,
+    });
+    let proc;
+    try {
+      proc = spawnImpl(previewContexto.tools.launch, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) {
+      log(`No se pudo lanzar la vista previa independiente: ${e.message}`);
+      return null;
+    }
+    const info = {
+      proc, startedAt: Date.now(), texto: texto || '',
+      muerto: false, intencional: false, stderr: '', redSeguridadHecha: false,
+    };
+    previewActual = info;
+    previewProc = proc;
+    if (proc.stderr) {
+      proc.stderr.on('data', (chunk) => {
+        const t = chunk.toString();
+        info.stderr += t;
+        for (const cruda of t.split(/\r?\n/)) {
+          const linea = cruda.trim();
+          if (linea) log(`Vista previa independiente: ${linea}`);
+        }
+      });
+    }
+    proc.once('error', (e) => {
+      info.muerto = true;
+      if (previewActual === info) previewProc = null;
+      log(`Error del proceso de vista previa independiente: ${e.message}`);
+    });
+    proc.once('close', () => {
+      info.muerto = true;
+      if (previewActual !== info) return; // un reemplazo ya tomó el relevo
+      previewProc = null;
+      if (info.intencional) return;
+      // Red de seguridad del texto (pata C): el relanzamiento CON texto
+      // murió en <1500 ms → se relanza SIN texto UNA vez, declarado, y
+      // previewTextActive pasa a false. Sin bucles: el relanzamiento
+      // sin texto ya no lleva texto y no puede rearmar la red.
+      if (info.texto && state.concurrentPreview === true && sesionActivaParaPreview()) {
+        const transcurrido = Date.now() - info.startedAt;
+        if (transcurrido < 1500 && !info.redSeguridadHecha) {
+          info.redSeguridadHecha = true;
+          log(`La vista previa con texto murió en ${transcurrido} ms (<1500): se relanza SIN texto una vez y el texto queda desactivado (declarado).`);
+          fijar({ previewTextActive: false });
+          lanzarPreview('');
+          return;
+        }
+        fijar({ previewTextActive: false });
+        log('La vista previa independiente se cerró; el texto del teleprompter ya no está sobre la imagen (declarado).');
+        return;
+      }
+      log('La vista previa independiente se cerró sin orden de parada (declarado).');
+    });
+    log(`Vista previa independiente lanzada${info.texto ? ' con el texto del teleprompter' : ' sin texto'}.`);
+    return info;
+  }
+
+  // Mata el previewProc vigente marcándolo intencional (sus cierres no
+  // disparan la red de seguridad ni ensucian el registro).
+  function matarPreview() {
+    if (previewActual) previewActual.intencional = true;
+    if (previewProc) {
+      matarProceso(previewProc);
+      previewProc = null;
+    }
+  }
+
+  // Espera de la sonda: hasta ms, saliendo en cuanto el proceso muere.
+  async function esperarSondaPreview(info, ms) {
+    const inicio = Date.now();
+    while (Date.now() - inicio < ms && info && !info.muerto) await sleepMs(100);
+    return !!info && !info.muerto;
+  }
+
+  // v3.3.0 (corrección tras la compuerta) — garantía de UN SOLO lector
+  // de la cámara: antes de lanzar la tubería de una sesión de
+  // grabación/transmisión, si quedara un proceso de vista previa
+  // independiente (vivo o con el cierre aún en vuelo tras un stop),
+  // se mata y se ESPERA su salida completa — su evento 'close': la
+  // cámara queda liberada de verdad — con un tope de 5 s (el mismo
+  // patrón declarado que stop() usa con gstProc). La confirmación
+  // queda en el registro ANTES de la línea «Tubería:» de la sesión.
+  async function asegurarCamaraSinPreviewIndependiente() {
+    const info = previewActual;
+    if (!info) return;
+    if (!info.muerto) {
+      matarPreview();
+      const inicio = Date.now();
+      while (!info.muerto && Date.now() - inicio < 5000) await sleepMs(50);
+    }
+    if (previewActual === info) previewActual = null;
+    if (state.previewTextActive) fijar({ previewTextActive: false });
+    if (info.muerto) {
+      log('Vista previa independiente: detenida y con su salida confirmada ANTES de lanzar la sesión — la cámara queda con un solo lector (corrección tras la compuerta: dos lectores Media Foundation mataban la grabación a los ~2 s).');
+    } else {
+      log('Vista previa independiente: no se confirmó su salida en 5 s tras la orden de parada; se suelta su referencia y la sesión arranca sin ella (declarado).');
     }
   }
 
@@ -744,7 +1043,12 @@ function createNativeEngine(deps) {
         return;
       }
       const ultimas = state.logTail.slice(-4).join(' | ');
-      fijar({ phase: 'error', lastError: `GStreamer se cerró sin orden de parada (código ${code != null ? code : 'desconocido'}).${ultimas ? ` Últimas líneas: ${ultimas}` : ''}` });
+      // v3.3.0: la sesión murió; si quedara un resto de vista previa
+      // independiente, también se detiene (en sesión no debe existir
+      // ninguno desde la corrección tras la compuerta: defensa
+      // declarada, normalmente es un no-op).
+      matarPreview();
+      fijar({ phase: 'error', previewTextActive: false, lastError: `GStreamer se cerró sin orden de parada (código ${code != null ? code : 'desconocido'}).${ultimas ? ` Últimas líneas: ${ultimas}` : ''}` });
       log(`GStreamer se cerró sin orden de parada (código ${code != null ? code : 'desconocido'}).`);
     });
     return true;
@@ -771,6 +1075,14 @@ function createNativeEngine(deps) {
       // Hito 3: destinos reales de la sesión (vacío en la prueba local).
       streamUrls: contexto.streamUrls || [],
       outFile: contexto.outFile,
+      // v3.3.0: la sesión multicámara ÍNTEGRA viaja en el contexto para
+      // que los DOS reintentos declarados (dirección y preset) la
+      // reconstruyan entera, con su layout y su rama de preview
+      // integrada (siempre presente desde la corrección tras la
+      // compuerta).
+      sources: contexto.sources || undefined,
+      programIndex: contexto.programIndex || 0,
+      omitPreviewBranch: !!contexto.omitPreviewBranch,
     };
   }
 
@@ -801,6 +1113,13 @@ function createNativeEngine(deps) {
     if (typeof arg1 === 'string') { session = arg1; opts = arg2 || {}; }
     else { opts = arg1 || {}; session = opts.session; }
     const cameraName = opts.cameraName || null;
+    // v3.3.0 — multicámara: sources = NOMBRES de cámara en orden de
+    // layout (la de programa va en programIndex, defecto 0); sin
+    // sources manda el camino de siempre (cameraName / por defecto).
+    const sourcesPedidas = Array.isArray(opts.sources)
+      ? opts.sources.filter((x) => typeof x === 'string' && x.trim()).map((x) => x.trim())
+      : [];
+    const programIndexPedido = Number.isInteger(opts.programIndex) && opts.programIndex >= 0 ? opts.programIndex : 0;
     const outDir = opts.outDir || path.join(os.tmpdir(), 'podcastudio-motor-nativo');
     // Hito 3: destinos reales (URLs completas ya compuestas; NUNCA se
     // escriben en el registro — solo cuántos son) y base del nombre del
@@ -821,12 +1140,17 @@ function createNativeEngine(deps) {
     intentionalStop = false;
     reintentoSinPresetHecho = false;
     reintentoDireccionHecho = false;
+    noOpTextoEnSesionDeclarado = false;
     fijar({
       phase: 'encendiendo', session, cameraName, caps: null, encoder: null,
       presetUsed: null, outFile: null, streamFile: null, validation: null,
       streamValidation: null, streamBytes: 0, lastError: null, logTail: [],
       audioDevice: { name: null, matched: false }, streamCount: streamUrls.length,
       addressingMode: null,
+      // v3.3.0: la sesión nueva nace sin fuentes confirmadas ni texto;
+      // concurrentPreview NO se toca: es el veredicto de la sonda de
+      // este arranque y persiste entre sesiones.
+      sourceNames: [], programIndex: 0, previewTextActive: false, previewTextNote: null,
     });
     if (streamUrls.length > 0) {
       log(`Destinos de transmisión reales: ${streamUrls.length} (las URL no se escriben en el registro: llevan la clave de transmisión).`);
@@ -853,14 +1177,76 @@ function createNativeEngine(deps) {
       log('gst-device-monitor-1.0 no encontró ninguna cámara Video/Source.');
       return { success: false, error: 'gst-device-monitor-1.0 no encontró ninguna cámara Video/Source.' };
     }
-    const device = chooseDevice(dispositivos, cameraName);
-    if (cameraName && device && device.name && !device.name.toLowerCase().includes(String(cameraName).toLowerCase())) {
-      log(`No se encontró la cámara pedida «${cameraName}»; se usa la primera enumerada: «${device.name}» (declarado).`);
+    // v3.3.0 — resolución nombre→dispositivo para multicámara: se
+    // prefiere la entrada Media Foundation (clase «Source/Video») CON
+    // deviceIndex cuyo nombre coincida (comparación laxa vigente); en
+    // su defecto, una coincidencia con devicePath. Una entrada sin
+    // índice MF ni ruta NO resuelve (abriría la cámara equivocada por
+    // el índice 0 por defecto): vale más omitirla y declararlo.
+    const resolverPorNombre = (nombre) => {
+      const buscado = String(nombre).toLowerCase();
+      const coincidencias = dispositivos.filter((dd) => dd.name && dd.name.toLowerCase().includes(buscado));
+      if (coincidencias.length === 0) return null;
+      return coincidencias.find((dd) => dd.class === 'Source/Video' && Number.isInteger(dd.deviceIndex) && dd.deviceIndex >= 0)
+        || coincidencias.find((dd) => dd.devicePath)
+        || null;
+    };
+    let device;
+    let resolucionFuentes = null; // { resolverPorNombre, indiceProgramaPedido }
+    if (sourcesPedidas.length > 0) {
+      const indiceProgramaPedido = programIndexPedido < sourcesPedidas.length ? programIndexPedido : 0;
+      if (indiceProgramaPedido !== programIndexPedido) {
+        log(`programIndex ${programIndexPedido} fuera de rango para ${sourcesPedidas.length} fuentes: se usa 0 (declarado).`);
+      }
+      const nombrePrograma = sourcesPedidas[indiceProgramaPedido];
+      device = resolverPorNombre(nombrePrograma);
+      if (!device) {
+        // La de PROGRAMA sin resolver SÍ tumba la sesión (como hoy con
+        // una cámara inutilizable): sin programa no hay señal.
+        fijar({ phase: 'error', lastError: `No se encontró la cámara de programa «${nombrePrograma}» entre las enumeradas por Media Foundation.` });
+        log(`No se encontró la cámara de programa «${nombrePrograma}»: la sesión no arranca (declarado).`);
+        return { success: false, error: `No se encontró la cámara de programa «${nombrePrograma}» entre las enumeradas por Media Foundation.` };
+      }
+      log(`Cámara de programa «${nombrePrograma}»: coincide la entrada «${device.name}» (${device.class === 'Source/Video' ? 'Media Foundation' : device.class || 'sin clase'}, device-index=${Number.isInteger(device.deviceIndex) ? device.deviceIndex : 'sin índice'}).`);
+      resolucionFuentes = { indiceProgramaPedido };
+    } else {
+      device = chooseDevice(dispositivos, cameraName);
+      if (cameraName && device && device.name && !device.name.toLowerCase().includes(String(cameraName).toLowerCase())) {
+        log(`No se encontró la cámara pedida «${cameraName}»; se usa la primera enumerada: «${device.name}» (declarado).`);
+      }
     }
     const caps = chooseCapsForDevice(device);
     if (!caps) {
       fijar({ phase: 'error', lastError: `La cámara «${device.name || ''}» no declaró ningún caps usable.` });
       return { success: false, error: `La cámara «${device.name || ''}» no declaró ningún caps usable.` };
+    }
+    // v3.3.0 — lista de fuentes PARA EL CONSTRUCTOR, en el orden de
+    // layout pedido y SOLO con las que resolvieron: cada PiP que no
+    // resuelve (o sin caps utilizables) se OMITE y se declara — nunca
+    // tumba la sesión —; cada coincidencia también queda en el
+    // registro. indiceProgramaBuilder es la posición de la de programa
+    // DENTRO de la lista que de verdad entra.
+    let fuentesBuilder = null;
+    let indiceProgramaBuilder = 0;
+    if (resolucionFuentes) {
+      fuentesBuilder = [];
+      const nombresQueEntran = [];
+      sourcesPedidas.forEach((nombre, i) => {
+        const esPrograma = i === resolucionFuentes.indiceProgramaPedido;
+        const dispFuente = esPrograma ? device : resolverPorNombre(nombre);
+        const capsFuente = esPrograma ? caps : (dispFuente ? chooseCapsForDevice(dispFuente) : null);
+        if (!dispFuente || !capsFuente) {
+          log(`Fuente PiP «${nombre}» OMITIDA: ${!dispFuente ? 'no resolvió contra la enumeración (sin entrada Media Foundation con device-index ni device-path coincidente)' : 'la entrada coincidente no declaró caps utilizables'} (declarado; la sesión continúa sin ella).`);
+          return;
+        }
+        if (!esPrograma) {
+          log(`Fuente «${nombre}»: coincide la entrada «${dispFuente.name}» (${dispFuente.class === 'Source/Video' ? 'Media Foundation' : dispFuente.class || 'sin clase'}, device-index=${Number.isInteger(dispFuente.deviceIndex) ? dispFuente.deviceIndex : 'sin índice'}) — entra como PiP.`);
+        }
+        if (esPrograma) indiceProgramaBuilder = fuentesBuilder.length;
+        fuentesBuilder.push({ deviceIndex: Number.isInteger(dispFuente.deviceIndex) ? dispFuente.deviceIndex : null, devicePath: dispFuente.devicePath || null, caps: capsFuente });
+        nombresQueEntran.push(dispFuente.name || nombre);
+      });
+      fijar({ sourceNames: nombresQueEntran, programIndex: indiceProgramaBuilder });
     }
     const bajoElPiso = caps.width < 1920 || caps.height < 1080;
     log(`Cámara «${device.name || ''}»: formato negociado ${caps.width}x${caps.height} a ${caps.framerate != null ? caps.framerate : '?'} fps (${caps.format || 'formato sin declarar'})${bajoElPiso ? ' — por debajo del piso 1080 del producto (declarado)' : ''}.`);
@@ -942,10 +1328,22 @@ function createNativeEngine(deps) {
     contexto = {
       tools, session, device, caps, encoder, withPreset, withAudio, outFile, streamFile,
       streamUrls, audioDeviceId,
+      // v3.3.0: fuentes multicámara que entraron de verdad (null = la
+      // sesión de una sola cámara de siempre). omitPreviewBranch queda
+      // SIEMPRE en false desde la corrección tras la compuerta: la
+      // sesión nace con su rama de preview integrada; el campo sigue
+      // existiendo porque contextoParaBuilder lo pasa al constructor
+      // (cuya opción pura conserva su prueba).
+      sources: fuentesBuilder,
+      programIndex: indiceProgramaBuilder,
+      omitPreviewBranch: false,
       // v3.2.3: modo de apertura del intento vigente; lo fija el paso 7
       // desde los tokens construidos y el reintento puede intercambiarlo.
       addressingMode: null,
     };
+    // v3.3.0 — contexto de la vista previa independiente: la cámara de
+    // PROGRAMA, con el modo de apertura que resulte de la construcción.
+    previewContexto = { tools, device, caps, addressingMode: null };
     fijar({ audioDevice: audioDeviceInfo });
 
     // 6) Oyente RTMP local (solo la prueba local): ANTES de lanzar GStreamer.
@@ -974,6 +1372,72 @@ function createNativeEngine(deps) {
       encoder, presetUsed, outFile, streamFile,
     });
 
+    // 6-bis) v3.3.0 — VISTA PREVIA INDEPENDIENTE Y SONDA, con la
+    // semántica CORREGIDA tras la compuerta del 2026-11-13. La primera
+    // versión hacía vivir el proceso independiente EN PARALELO a la
+    // sesión de grabación y la compuerta lo cazó: record,
+    // recordStream y multicam morían a los ~2 s con «Failed to read
+    // sample» (gstmfsourcereader) porque el driver Media Foundation
+    // de la Steren NO sirve a dos lectores de la misma cámara. La
+    // sonda original había medido la convivencia contra la sesión de
+    // vista previa (un solo lector): midió mal. Semántica corregida:
+    //  - La sesión de VISTA PREVIA ('preview') ES el proceso
+    //    independiente (como nació la pata B): su primer arranque hace
+    //    de sonda y fija el veredicto — concurrentPreview pasa a
+    //    significar «la vista previa independiente puede vivir FUERA
+    //    de sesión» —. Si el proceso muere al nacer, el veredicto es
+    //    false y la sesión de vista previa cae a la tubería integrada
+    //    de siempre (paso 7).
+    //  - Las sesiones que LEEN la cámara para grabar/transmitir
+    //    (record, recordStream, stream y la multicámara) NUNCA lanzan
+    //    ni mantienen vivo el proceso independiente: si al llegar
+    //    aquí quedara uno (vivo o con el cierre aún en vuelo tras un
+    //    stop), asegurarCamaraSinPreviewIndependiente lo detiene y
+    //    ESPERA su salida completa ANTES del paso 7, y la sesión nace
+    //    con su rama de preview integrada (la forma probada de la
+    //    v3.2.3). Esas sesiones ya no corren sonda: el veredicto solo
+    //    cambia en sesiones de vista previa.
+    const tokensPrevios = buildPipelineArgs(contextoParaBuilder());
+    previewContexto.addressingMode = tokensPrevios.addressingMode;
+    if (session === 'preview') {
+      if (!probeDone) {
+        const infoSonda = lanzarPreview('');
+        if (!infoSonda) {
+          probeDone = true;
+          fijar({ concurrentPreview: false });
+          log('Sonda de la vista previa: no se pudo lanzar el proceso independiente; concurrentPreview=false (declarado) y la vista previa usa la tubería integrada.');
+        } else {
+          const vive = await esperarSondaPreview(infoSonda, 3000);
+          probeDone = true;
+          if (vive) {
+            fijar({ concurrentPreview: true });
+            log('Sonda de la vista previa: el proceso independiente VIVE fuera de sesión — concurrentPreview=true (declarado); ese proceso ES la sesión de vista previa.');
+            contexto.addressingMode = tokensPrevios.addressingMode;
+            fijar({ addressingMode: tokensPrevios.addressingMode, phase: 'vista-previa' });
+            return { success: true };
+          }
+          const firmaSonda = infoSonda.stderr.includes("Couldn't create capture object");
+          fijar({ concurrentPreview: false });
+          log(`Sonda de la vista previa: el proceso independiente murió${firmaSonda ? ' con la firma «Couldn\'t create capture object»' : ''}; concurrentPreview=false (declarado) y se lanza la vista previa integrada normal.`);
+          if (previewActual === infoSonda) { previewActual = null; previewProc = null; }
+        }
+      } else if (state.concurrentPreview === true) {
+        // Veredicto conocido: la sesión de vista previa ES el proceso
+        // independiente (sin repetir la sonda ni su espera).
+        const infoPrevia = lanzarPreview('');
+        if (infoPrevia) {
+          contexto.addressingMode = tokensPrevios.addressingMode;
+          fijar({ addressingMode: tokensPrevios.addressingMode, phase: 'vista-previa' });
+          return { success: true };
+        }
+        log('No se pudo relanzar la vista previa independiente para la sesión preview; se usa la sesión integrada (declarado).');
+      }
+      // Veredicto false (recién medido o persistente): se cae al
+      // paso 7 con la tubería de vista previa integrada de siempre.
+    } else {
+      await asegurarCamaraSinPreviewIndependiente();
+    }
+
     // 7) Lanzamiento de la tubería.
     const tokens = buildPipelineArgs(contextoParaBuilder());
     contexto.addressingMode = tokens.addressingMode;
@@ -983,14 +1447,58 @@ function createNativeEngine(deps) {
     fijar({ addressingMode: tokens.addressingMode });
     log(`Tubería: ${tokens.join(' ')}`);
     const lanzado = lanzarGst(tokens);
-    if (!lanzado) return { success: false, error: state.lastError || 'No se pudo lanzar GStreamer.' };
+    if (!lanzado) { matarPreview(); return { success: false, error: state.lastError || 'No se pudo lanzar GStreamer.' }; }
 
     fijar({ phase: session === 'preview' ? 'vista-previa' : session === 'record' ? 'grabando' : session === 'stream' ? 'transmitiendo' : 'grabando-transmitiendo' });
     return { success: true };
   }
 
+  // v3.3.0 — setPreviewText(texto) (pata C, lado anfitrión): pone el
+  // tramo visible del teleprompter SOBRE la vista previa independiente
+  // relanzando SOLO previewProc con el texto recibido. Solo actúa
+  // FUERA de sesión de grabación/transmisión, con
+  // concurrentPreview===true y previewProc vivo sirviendo la sesión de
+  // vista previa; sin concurrencia devuelve { success:false } SIN
+  // tocar nada. DURANTE una sesión de grabación/transmisión es un
+  // NO-OP declarado (corrección tras la compuerta: el proceso
+  // independiente no convive con la sesión; la vista previa de la
+  // sesión es la rama integrada y el teleprompter sigue en la ventana
+  // como hasta hoy): se anota en el estado (previewTextNote) y en el
+  // registro UNA vez por sesión, y la sesión no se entera. Si el
+  // relanzamiento con texto muere en <1500 ms, el cierre del proceso
+  // aplica la red declarada de lanzarPreview: relanza sin texto una
+  // vez y previewTextActive queda en false.
+  function setPreviewText(texto) {
+    const tramo = typeof texto === 'string' ? texto : '';
+    const enSesionDeGrabacion = !!gstProc && ['record', 'recordStream', 'stream'].includes(state.session);
+    if (enSesionDeGrabacion) {
+      if (!noOpTextoEnSesionDeclarado) {
+        noOpTextoEnSesionDeclarado = true;
+        log('Texto del teleprompter durante la sesión: NO-OP declarado — la vista previa independiente no convive con la grabación/transmisión (corrección tras la compuerta); el texto sigue en la ventana como hasta hoy y la sesión no se toca.');
+      }
+      const NOTA_NOOP = 'En sesión de grabación/transmisión el texto va por la ventana (la de siempre): la vista previa con texto es solo fuera de sesión (no-op declarado).';
+      if (state.previewTextActive || state.previewTextNote !== NOTA_NOOP) {
+        fijar({ previewTextActive: false, previewTextNote: NOTA_NOOP });
+      }
+      return { success: false, error: 'Durante la grabación/transmisión no hay vista previa independiente: el texto sobre ella es solo fuera de sesión (no-op declarado; la sesión no se tocó).' };
+    }
+    if (state.concurrentPreview !== true || !previewActual || previewActual.muerto || !previewProc || !sesionActivaParaPreview()) {
+      return { success: false, error: 'Sin vista previa independiente viva (concurrencia no confirmada o sin sesión activa): no se toca nada.' };
+    }
+    matarPreview();
+    const info = lanzarPreview(tramo);
+    if (!info) return { success: false, error: 'No se pudo relanzar la vista previa independiente con el texto.' };
+    fijar({ previewTextActive: !!tramo, previewTextNote: null });
+    log(`Texto del teleprompter ${tramo ? 'puesto sobre' : 'retirado de'} la vista previa independiente (solo se relanzó previewProc; la sesión no se tocó).`);
+    return { success: true };
+  }
+
   async function stop() {
     intentionalStop = true;
+    // v3.3.0: stop() mata la sesión Y su vista previa independiente
+    // (incluida la sesión 'preview' servida por el propio previewProc).
+    matarPreview();
+    fijar({ previewTextActive: false, previewTextNote: null });
     if (streamInterval) { clearInterval(streamInterval); streamInterval = null; }
     const sesionPrevia = state.session;
     const eraGrabacion = sesionPrevia === 'record' || sesionPrevia === 'recordStream';
@@ -1037,7 +1545,7 @@ function createNativeEngine(deps) {
     return { success: true };
   }
 
-  return { start, stop, getState };
+  return { start, stop, getState, setPreviewText };
 }
 
 module.exports = {
@@ -1047,6 +1555,7 @@ module.exports = {
   chooseCaps,
   chooseDevice,
   buildPipelineArgs,
+  buildPreviewArgs,
   locateGstTools,
   parseFfmpegInfo,
   encoderProps,

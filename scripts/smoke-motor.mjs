@@ -172,9 +172,82 @@ async function main() {
     console.log(`SMOKE carpeta temporal de grabación: ${outDir}`);
     await sesionDePrueba('preview', 'vista-previa', false, outDir);
     await sesionDePrueba('record', 'grabando', true, outDir);
+    // CONCURRENCIA (v3.3.0, informativo — NUNCA toca todoOk, por eso NO
+    // pasa por registrar()): el veredicto lo fijó la sonda del paso
+    // preview (la única sesión que la corre) y se lee justo tras el
+    // paso record. Significado CORREGIDO tras la primera compuerta de
+    // la v3.3.0: «la vista previa independiente puede vivir FUERA de
+    // sesión» — NUNCA en paralelo a una sesión de grabación (dos
+    // lectores Media Foundation de la misma cámara mataron record,
+    // recordStream y multicam a los ~2 s en esa compuerta). Este
+    // script no lanza la vista previa por su cuenta (verificado: solo
+    // conduce sesiones del motor con start/stop); el motor garantiza
+    // que record/recordStream/multicam corren sin el proceso
+    // independiente vivo.
+    const concurrencia = engine.getState()?.concurrentPreview;
+    if (concurrencia === true) {
+      console.log('SMOKE concurrencia: OK — la vista previa independiente (fuera de sesión) vive: es la vista previa entre sesiones (concurrentPreview=true)');
+    } else if (concurrencia === false) {
+      console.log('SMOKE concurrencia: INFO — la sonda dio concurrentPreview=false (declarado, no bloquea): la vista previa es la tubería integrada');
+    } else {
+      console.log('SMOKE concurrencia: INFO — veredicto no disponible (concurrentPreview=null)');
+    }
     // recordStream SIN streamUrls: la prueba local interna del motor
     // (oyente RTMP en 127.0.0.1:1935 y FLV recibido en la carpeta).
     await sesionDePrueba('recordStream', 'grabando-transmitiendo', true, outDir);
+    // MULTICAM (v3.3.0, bloquea SOLO si aplica): con el motor ya libre
+    // tras recordStream, se re-enumera y, si hay ≥2 cámaras Media
+    // Foundation (deviceIndex entero ≥ 0), se graba una sesión record
+    // con las dos primeras como sources y máster VALIDADO. Con <2 (o si
+    // la enumeración falla) es SKIP declarado y NO toca todoOk.
+    let nombresMulti = [];
+    let errorEnumeracionMulti = null;
+    try {
+      const rMulti = await ejecutar(tools.monitor, ['Video/Source'], 15000);
+      if (rMulti.error) {
+        errorEnumeracionMulti = rMulti.error;
+      } else {
+        const dispositivosMulti = parseDeviceMonitorOutput(rMulti.stdout || '');
+        for (const dispMulti of dispositivosMulti) {
+          if (Number.isInteger(dispMulti?.deviceIndex) && dispMulti.deviceIndex >= 0 && dispMulti.name && !nombresMulti.includes(dispMulti.name)) {
+            nombresMulti.push(dispMulti.name);
+          }
+        }
+      }
+    } catch (eMulti) {
+      errorEnumeracionMulti = eMulti?.message || String(eMulti);
+    }
+    if (errorEnumeracionMulti) {
+      console.log(`SMOKE multicam: SKIP — la enumeración para multicámara falló (${errorEnumeracionMulti}); se trata como menos de 2 cámaras Media Foundation enumerada(s)`);
+    } else if (nombresMulti.length < 2) {
+      console.log(`SMOKE multicam: SKIP — solo ${nombresMulti.length} cámara(s) Media Foundation enumerada(s)`);
+    } else {
+      const nombreMulti1 = nombresMulti[0];
+      const nombreMulti2 = nombresMulti[1];
+      const outDirMulti = path.join(outDir, 'multicam');
+      try { fs.mkdirSync(outDirMulti, { recursive: true }); } catch (e) {}
+      const resMulti = await engine.start({ session: 'record', sources: [nombreMulti1, nombreMulti2], programIndex: 0, outDir: outDirMulti });
+      if (!resMulti?.success) {
+        registrar('multicam', false, `start() no tuvo éxito con sources=[«${nombreMulti1}», «${nombreMulti2}»] (programIndex 0): ${resMulti?.error || 'sin detalle del motor'}.`);
+        try { await engine.stop(); } catch (e) {}
+      } else {
+        const stMulti = await esperarFase('grabando', 20000);
+        if (!stMulti || stMulti.phase !== 'grabando') {
+          registrar('multicam', false, `con sources=[«${nombreMulti1}», «${nombreMulti2}»] no llegó la fase «grabando» en 20 s (fase: ${stMulti?.phase || '—'}; error del motor: ${stMulti?.lastError || '—'}).`);
+          try { await engine.stop(); } catch (e) {}
+        } else {
+          await sleep(6000);
+          await engine.stop();
+          const finMulti = engine.getState();
+          const vMulti = finMulti?.validation;
+          if (vMulti?.valid === true) {
+            registrar('multicam', true, `sesión record de 6 s con sources=[«${nombreMulti1}», «${nombreMulti2}»] (programIndex 0) y máster VÁLIDO (${vMulti.durationSec} s, ${vMulti.width}x${vMulti.height}, ${vMulti.bytes} bytes).`);
+          } else {
+            registrar('multicam', false, `con sources=[«${nombreMulti1}», «${nombreMulti2}»] (programIndex 0) tras la parada el máster NO superó la validación (valid: ${vMulti?.valid}; error: ${finMulti?.lastError || vMulti?.error || '—'}).`);
+          }
+        }
+      }
+    }
   }
 }
 

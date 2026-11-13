@@ -111,7 +111,10 @@ test('gobernador: recuperar el foco (marca a 0) reanuda AL INSTANTE, sin esperar
 // ---------------------------------------------------------------------------
 
 test('gobernador: los ticks del Worker y el rAF de respaldo pasan por governedRenderFrame', () => {
-  assert.match(engineSource, /renderWorker\.onmessage = \(\) => \{ if \(isCanvasRenderLoopActive\) governedRenderFrame\(\) \};/);
+  // Build diagnóstica post-v3.2.4: el handler del Worker suma además el
+  // contador de SOLO LECTURA del instrumento ventana-diag; la invariante
+  // (todo tick pasa por governedRenderFrame) no cambia.
+  assert.match(engineSource, /renderWorker\.onmessage = \(\) => \{ diagTicksReceived \+= 1; if \(isCanvasRenderLoopActive\) governedRenderFrame\(\) \};/);
   const fallback = engineSource.slice(engineSource.indexOf('function fallbackRafLoop'));
   assert.ok(fallback.slice(0, 400).includes('governedRenderFrame()'), 'el fallback rAF también está gobernado');
 });
@@ -147,10 +150,18 @@ test('teleprompter: el bucle AVANZA el reloj (+=) y proyecta ambas superficies d
   assert.ok(animate.includes('projectTeleprompterOverlay()'), 'el bucle proyecta el overlay desde el reloj');
 });
 
-test('teleprompter: si el usuario mueve la caja del panel a mano, su posición se escribe al reloj', () => {
+test('teleprompter: la caja del panel es INDEPENDIENTE del reloj (puerto seguro, build diagnóstica post-v3.2.4)', () => {
+  // La v3.2.4 acoplaba la caja al reloj único (resincronización panel →
+  // reloj) y en vivo el recuadro dejó de desplazarse. La build
+  // diagnóstica lo DESACOPLA a propósito: el bucle compartido ya no lee
+  // ni escribe la caja, y el panel se desplaza con su mecanismo simple
+  // propio (rAF + acumulador + scrollTop), como en la v3.2.0.
   const i = appSource.indexOf('const animate = (time) =>');
   const animate = appSource.slice(i, i + 3500);
-  assert.ok(animate.includes('teleprompterYRef.current = panel.scrollTop'), 'resincronización panel → reloj');
+  assert.ok(!animate.includes('teleprompterYRef.current = panel.scrollTop'), 'fuera la resincronización panel → reloj');
+  assert.ok(!animate.includes('panelPrompterScrollRef.current = panel.scrollTop'), 'fuera la escritura del reloj sobre la caja');
+  assert.ok(appSource.includes('rightPrompterScrollPos.current += speed'), 'el panel avanza su propio acumulador');
+  assert.ok(appSource.includes('panel.scrollTop = target'), 'el panel aplica su propio scrollTop');
 });
 
 test('teleprompter: la proyección del overlay usa la altura real de la franja y topa en -alturaTexto', () => {

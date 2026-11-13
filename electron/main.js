@@ -24,6 +24,7 @@ const { setupNativeEngineIPC } = require('./media-engine/bridge');
 const { computeExportSignature, siblingSuffixFor } = require('./export-signature');
 const { buildExportArgs, probeExportEncoder, filtroParaFormato } = require('./export-args');
 const { classifyStreamError, STREAM_ERROR_USER_MESSAGES } = require('./stream-error');
+const { formatDiagLine, createPingAggregator } = require('./ventana-diag-core');
 const { createStreamEncoderSession } = require('./stream-encoder');
 const exportEncodeSignatures = new Map(); // firma de encode -> ruta ya codificada (dedupe FB/YT)
 
@@ -325,6 +326,14 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
     cleanupAndExit();
+  });
+
+  // Instrumento de diagnóstico de ventana: eventos de foco/visibilidad de
+  // la BrowserWindow al log (prefijo [foco]); ver startVentanaDiag().
+  ['blur', 'focus', 'hide', 'show', 'minimize', 'restore'].forEach((ev) => {
+    try {
+      mainWindow.on(ev, () => appendVentanaDiag('foco', `ventana ${ev}`));
+    } catch (e) {}
   });
 
   if (process.env.NODE_ENV === 'development') {
@@ -1518,6 +1527,8 @@ if (!gotTheLock) {
         callback({ responseHeaders });
       });
     } catch (e) {}
+    // Instrumento de diagnóstico de ventana: el log nace con la app.
+    try { startVentanaDiag(); } catch (e) {}
     createWindow();
     setImmediate(() => {
       startMediaServer();
@@ -2870,6 +2881,79 @@ function appendStreamLog(line) {
   } catch (e) {}
 }
 
+// ============================================================================
+// INSTRUMENTO DE DIAGNÓSTICO DE VENTANA (build diagnóstica post-v3.2.4; NO
+// es una release ni un arreglo). La v3.2.4 no quitó en vivo ni la traba al
+// cambiar de ventana ni el fallo del teleprompter: a partir de aquí manda la
+// MEDICIÓN en la máquina de Luis. Este instrumento escribe
+// userData/logs/ventana-diag.log siguiendo el mismo patrón que
+// appendStreamLog (appendFileSync línea a línea: cada línea queda en disco
+// en el acto, también si la app se cuelga justo después):
+//   [main]     latido del proceso principal cada 500 ms — si el latido
+//              sigue y los pings no, se colgó SOLO el renderer; si el
+//              latido también se detiene, se colgó todo el proceso.
+//   [ping]     agregado 1 Hz: retraso máximo de llegada de los pings del
+//              renderer en el último segundo (ritmo esperado 500 ms).
+//   [foco]     blur/focus/hide/show/minimize/restore de la ventana y
+//              visibilitychange del renderer, con marca de tiempo.
+//   [muestra]  foto del renderer cada 5 s (la manda él por IPC): ticks y
+//              composiciones del motor de ventana, modo del gobernador,
+//              cámaras activas, grabando/transmitiendo.
+//   [prompter] estado real del teleprompter (la manda el renderer).
+// El instrumento NO cambia ningún comportamiento: ni gobernadores nuevos
+// ni toques al overlay; solo observa y anota.
+// ============================================================================
+const DIAG_PING_PREFIXES = new Set(['foco', 'muestra', 'prompter']);
+let ventanaDiagStarted = false;
+let ventanaDiagHeartbeat = null;
+let ventanaDiagPingFlush = null;
+let ventanaDiagLatidoN = 0;
+const ventanaDiagPings = createPingAggregator(500);
+
+function ventanaDiagPath() {
+  return path.join(app.getPath('userData'), 'logs', 'ventana-diag.log');
+}
+
+function appendVentanaDiag(prefix, text) {
+  try {
+    const logPath = ventanaDiagPath();
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.appendFileSync(logPath, `${formatDiagLine(new Date().toISOString(), prefix, text)}\n`);
+  } catch (e) {}
+}
+
+function startVentanaDiag() {
+  if (ventanaDiagStarted) return;
+  ventanaDiagStarted = true;
+  appendVentanaDiag('main', `=== ventana-diag INICIO version=${app.getVersion()} fecha=${new Date().toISOString()} plataforma=${process.platform} ruta=${ventanaDiagPath()} ===`);
+  ventanaDiagHeartbeat = setInterval(() => {
+    ventanaDiagLatidoN += 1;
+    appendVentanaDiag('main', `latido n=${ventanaDiagLatidoN}`);
+  }, 500);
+  ventanaDiagPingFlush = setInterval(() => {
+    const s = ventanaDiagPings.flush();
+    appendVentanaDiag('ping', `retrasoMaxUltimoSegundo=${s.maxDelayMs == null ? 'sin-datos' : `${s.maxDelayMs}ms`} pingsUltimoSegundo=${s.pings}`);
+  }, 1000);
+  ipcMain.on('ventana-diag-ping', () => {
+    ventanaDiagPings.push(Date.now());
+  });
+  ipcMain.on('ventana-diag-event', (event, payload) => {
+    try {
+      if (!payload || !DIAG_PING_PREFIXES.has(payload.prefix)) return;
+      appendVentanaDiag(payload.prefix, String(payload.text || ''));
+    } catch (e) {}
+  });
+}
+
+function stopVentanaDiag() {
+  if (!ventanaDiagStarted) return;
+  ventanaDiagStarted = false;
+  if (ventanaDiagHeartbeat) { clearInterval(ventanaDiagHeartbeat); ventanaDiagHeartbeat = null; }
+  if (ventanaDiagPingFlush) { clearInterval(ventanaDiagPingFlush); ventanaDiagPingFlush = null; }
+  appendVentanaDiag('main', '=== ventana-diag CIERRE LIMPIO ===');
+}
+app.on('before-quit', () => { try { stopVentanaDiag(); } catch (e) {} });
+
 function redactStreamUrl(text, destUrl) {
   let out = String(text || '');
   try {
@@ -3107,6 +3191,13 @@ ipcMain.handle('native-engine:status', async () => {
   }
 });
 ipcMain.handle('native-engine:get-state', async () => nativeEngineHost.getState());
+ipcMain.handle('native-engine:set-preview-text', async (_event, payload) => {
+  try {
+    return await nativeEngineHost.setPreviewText(String(payload?.text ?? ''));
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
 
 ipcMain.handle('start-streaming', async (_event, payload = {}) => {
   const targets = typeof payload === 'string'

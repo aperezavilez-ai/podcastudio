@@ -44,6 +44,7 @@ const {
   chooseCapsForDevice,
   chooseDevice,
   buildPipelineArgs,
+  buildPreviewArgs,
   locateGstTools,
   chooseEncoder,
   capsParaStream,
@@ -800,7 +801,10 @@ test('Hito 3 · tubería: con audioDevice, wasapi2src lleva el token device= ady
 function prepararMotorHito3(dir, fixtureAudio, logs) {
   escribirHerramientaStub(dir, 'gst-launch-1.0', `#!/usr/bin/env node
 const fs = require('node:fs');
-if (process.env.PS_HITO3_ARGV_FILE) { try { fs.writeFileSync(process.env.PS_HITO3_ARGV_FILE, process.argv.slice(2).join('\\n')); } catch (e) {} }
+// v3.3.0: el argv que esta prueba vigila es el de la SESIÓN (con
+// compositor); la vista previa independiente de la sonda, que el
+// anfitrión lanza antes, no debe sobrescribirlo.
+if (process.env.PS_HITO3_ARGV_FILE && process.argv.slice(2).includes('d3d11compositor')) { try { fs.writeFileSync(process.env.PS_HITO3_ARGV_FILE, process.argv.slice(2).join('\\n')); } catch (e) {} }
 process.stderr.write('Setting pipeline to PAUSED ...\\n');
 for (const a of process.argv.slice(2)) {
   if (a.startsWith('location=') && a.endsWith('.mp4')) {
@@ -922,6 +926,13 @@ function prepararMotorReintento(dir) {
 const fs = require('node:fs');
 const path = require('node:path');
 const dir = process.env.PS_V323_DIR || '';
+// v3.3.0: la vista previa independiente (la sonda que el anfitrión lanza
+// antes de la sesión) NO es un lanzamiento de sesión: duerme como un
+// proceso sano y NO entra en la contabilidad que esta prueba vigila
+// (lanzamientos.txt / argv-<n>.txt cuentan SOLO sesiones, como antes).
+if (!process.argv.slice(2).includes('d3d11compositor')) {
+  setInterval(() => {}, 1000);
+} else {
 let n = 0;
 try { n = parseInt(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), 10) || 0; } catch (e) {}
 n += 1;
@@ -942,6 +953,7 @@ for (const a of process.argv.slice(2)) {
   }
 }
 setInterval(() => {}, 1000);
+}
 `);
   escribirHerramientaStub(dir, 'gst-inspect-1.0', `#!/usr/bin/env node
 process.exit(0);
@@ -1040,5 +1052,596 @@ test('v3.2.3 · anfitrión: una muerte temprana con OTRA firma no dispara el rei
     try { await engine.stop(); } catch (e) {}
     delete process.env.PS_V323_DIR;
     delete process.env.PS_V323_FIRMA;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// (viii) v3.3.0 — Multicámara (A), sonda de concurrencia + vista previa
+// independiente (B) y setPreviewText (C-anfitrión). El arnés de la pata
+// B/C es nuevo: su stub de gst-launch distingue los lanzamientos por su
+// FORMA (con d3d11compositor = sesión; sin compositor = vista previa
+// independiente) y los gobiernan dos interruptores de entorno:
+//   PS_V330_PREVIEW='muere-captura' → la vista previa INDEPENDIENTE
+//       muere al nacer con la firma «Couldn't create capture object»
+//       (la sonda de la sesión de vista previa da
+//       concurrentPreview=false y la vista previa cae a la integrada);
+//   PS_V330_TEXTO='muere' → todo lanzamiento con textoverlay muere al
+//       nacer (para probar la red de seguridad de setPreviewText).
+// Cada lanzamiento deja su argv en argv-<n>.txt y el contador en
+// lanzamientos.txt, dentro de PS_V330_DIR. Lo demás duerme como el stub
+// bueno y crea el MP4 de los location=*.mp4.
+//
+// CORRECCIÓN TRAS LA COMPUERTA (2026-11-13): la primera versión de las
+// patas B/C hacía vivir la vista previa independiente EN PARALELO a la
+// sesión de grabación, y la compuerta en la máquina real lo cazó
+// (record/recordStream/multicam muertos a los ~2 s: dos lectores MF de
+// la misma cámara). Las pruebas de sonda y de setPreviewText de esta
+// sección se REESCRIBIERON a la semántica corregida: la sonda corre en
+// la sesión de VISTA PREVIA (concurrentPreview = «la independiente
+// puede vivir FUERA de sesión»), las sesiones de grabación nacen con
+// su rama integrada y sin proceso en paralelo, y setPreviewText actúa
+// sobre la vista previa fuera de sesión (en sesión es no-op
+// declarado). Las expectativas viejas que codificaban la convivencia
+// quedaron sustituidas — no relajadas — por las nuevas.
+// ---------------------------------------------------------------------------
+const CAPS_EASY_720 = { raw: 'video/x-raw, format=NV12, width=1280, height=720, framerate=30/1', format: 'NV12', width: 1280, height: 720, framerate: 30 };
+const CAPS_43_768 = { raw: 'video/x-raw, format=NV12, width=1024, height=768, framerate=30/1', format: 'NV12', width: 1024, height: 768, framerate: 30 };
+
+function propsDePad(tokens, pad) {
+  const prefijo = `sink_${pad}::`;
+  const salida = {};
+  for (const t of tokens) {
+    if (typeof t === 'string' && t.startsWith(prefijo)) {
+      const [clave, valor] = t.slice(prefijo.length).split('=');
+      salida[clave] = Number(valor);
+    }
+  }
+  return salida;
+}
+
+test('v3.3.0 · tubería multicámara: 2 fuentes — programa a pantalla completa en sink_0 y PiP con la geometría del plan', () => {
+  const tokens = buildPipelineArgs({
+    session: 'record',
+    sources: [
+      { deviceIndex: 0, devicePath: 'ruta-steren', caps: CAPS_1080 },
+      { deviceIndex: 1, devicePath: 'ruta-easy', caps: CAPS_EASY_720 },
+    ],
+    programIndex: 0,
+    encoder: 'nvh264enc', withPreset: true, withAudio: false,
+    outFile: 'C:\\x\\multi.mp4',
+  });
+  // Dos fuentes = dos mfvideosrc; la PRIMERA cadena es la de programa.
+  assert.equal(tokens.filter((t) => t === 'mfvideosrc').length, 2);
+  assert.equal(tokens[0], 'mfvideosrc');
+  assert.equal(tokens[1], 'device-index=0');
+  // Lienzo 1920x1080: sink_0 completo; PiP: ancho round(1920*.25)=480,
+  // alto por SU aspecto (480*720/1280=270), margen round(1920*.02)=38,
+  // x=1920-480-38=1402, y=1080-38-270=772 (acumulado desde abajo).
+  assert.deepEqual(propsDePad(tokens, 0), { xpos: 0, ypos: 0, width: 1920, height: 1080 });
+  assert.deepEqual(propsDePad(tokens, 1), { xpos: 1402, ypos: 772, width: 480, height: 270 });
+  // Las props van TRAS el token del compositor.
+  const iMix = tokens.indexOf('name=mix');
+  assert.ok(tokens.indexOf('sink_0::xpos=0') > iMix);
+  assert.ok(tokens.indexOf('sink_1::xpos=1402') > iMix);
+  // La cadena PiP: su índice, su caps y su enlace «mix.».
+  const iPip = tokens.lastIndexOf('mfvideosrc');
+  assert.equal(tokens[iPip + 1], 'device-index=1');
+  assert.ok(tokens.slice(iPip).includes('video/x-raw,width=1280,height=720,framerate=30/1'));
+  assert.equal(tokens[iPip + 9], 'mix.');
+  // El resto de la sesión se deriva de PROGRAMA (bitrate de 1080).
+  assert.ok(tokens.join(' ').includes('bitrate=12000'));
+});
+
+test('v3.3.0 · tubería multicámara: 3 fuentes — las PiP se apilan hacia arriba desde la esquina inferior derecha', () => {
+  const tokens = buildPipelineArgs({
+    session: 'record',
+    sources: [
+      { deviceIndex: 0, devicePath: 'ruta-steren', caps: CAPS_1080 },
+      { deviceIndex: 1, devicePath: 'ruta-easy', caps: CAPS_EASY_720 },
+      { deviceIndex: 2, devicePath: 'ruta-43', caps: CAPS_43_768 },
+    ],
+    programIndex: 0,
+    encoder: 'nvh264enc', withPreset: true, withAudio: false,
+    outFile: 'C:\\x\\multi3.mp4',
+  });
+  assert.equal(tokens.filter((t) => t === 'mfvideosrc').length, 3);
+  assert.deepEqual(propsDePad(tokens, 0), { xpos: 0, ypos: 0, width: 1920, height: 1080 });
+  assert.deepEqual(propsDePad(tokens, 1), { xpos: 1402, ypos: 772, width: 480, height: 270 });
+  // Segunda PiP (4:3): alto = 480*768/1024 = 360; y acumulado desde
+  // abajo = 1080 - 38 - 270 - 38 - 360 = 374.
+  assert.deepEqual(propsDePad(tokens, 2), { xpos: 1402, ypos: 374, width: 480, height: 360 });
+});
+
+test('v3.3.0 · tubería multicámara: la de programa manda aunque no sea la primera de la lista (programIndex)', () => {
+  const tokens = buildPipelineArgs({
+    session: 'record',
+    sources: [
+      { deviceIndex: 1, devicePath: 'ruta-easy', caps: CAPS_EASY_720 },
+      { deviceIndex: 0, devicePath: 'ruta-steren', caps: CAPS_1080 },
+    ],
+    programIndex: 1,
+    encoder: 'nvh264enc', withPreset: true, withAudio: false,
+    outFile: 'C:\\x\\multi.mp4',
+  });
+  // La primera cadena construida es la de PROGRAMA (device-index=0) y
+  // el lienzo es SU caps (1920x1080), no el de la primera de la lista.
+  assert.equal(tokens[1], 'device-index=0');
+  assert.deepEqual(propsDePad(tokens, 0), { xpos: 0, ypos: 0, width: 1920, height: 1080 });
+  assert.deepEqual(propsDePad(tokens, 1), { xpos: 1402, ypos: 772, width: 480, height: 270 });
+  const iPip = tokens.lastIndexOf('mfvideosrc');
+  assert.equal(tokens[iPip + 1], 'device-index=1');
+});
+
+test('v3.3.0 · tubería: omitPreviewBranch retira SOLO la rama integrada de vista previa', () => {
+  const tokens = buildPipelineArgs({
+    session: 'record', deviceIndex: 0, devicePath: 'ruta', caps: CAPS_1080,
+    encoder: 'nvh264enc', withPreset: true, withAudio: false,
+    outFile: 'C:\\x\\sin.mp4', omitPreviewBranch: true,
+  });
+  assert.ok(!tokens.includes('d3d11videosink'));
+  assert.ok(tokens.includes('mp4mux'), 'la grabación sigue intacta');
+  const conRama = argsDe('record');
+  assert.ok(conRama.includes('d3d11videosink'), 'sin omitPreviewBranch la rama sigue, como siempre');
+});
+
+test('v3.3.0 · buildPreviewArgs: sin texto es la forma probada; con texto, textoverlay limpio por memoria de sistema', () => {
+  const sinTexto = buildPreviewArgs({ deviceIndex: 0, devicePath: 'ruta-steren', caps: CAPS_1080 });
+  assert.deepEqual([...sinTexto], [
+    'mfvideosrc', 'device-index=0', '!',
+    'video/x-raw,width=1920,height=1080,framerate=30/1', '!',
+    'd3d11upload', '!', 'd3d11convert', '!', 'd3d11videosink', 'sync=false',
+  ]);
+  assert.equal(sinTexto.addressingMode, 'device-index');
+  const conTexto = buildPreviewArgs({ deviceIndex: 0, devicePath: 'ruta-steren', caps: CAPS_1080, texto: 'Línea uno del guion' });
+  assert.deepEqual([...conTexto], [
+    'mfvideosrc', 'device-index=0', '!',
+    'video/x-raw,width=1920,height=1080,framerate=30/1', '!',
+    'videoconvert', '!', 'textoverlay', 'text=Línea uno del guion',
+    'halignment=center', 'valignment=top', 'font-desc=Sans Bold 44', 'shaded-background=false',
+    '!', 'd3d11videosink', 'sync=false',
+  ]);
+  assert.ok(!conTexto.includes('d3d11upload'), 'con texto la cadena va por memoria de sistema, sin subida D3D11 previa');
+  // El direccionamiento por device-path (respaldo) también se expresa.
+  const porRuta = buildPreviewArgs({ deviceIndex: null, devicePath: 'ruta-x', caps: CAPS_1080 });
+  assert.equal(porRuta[1], 'device-path=ruta-x');
+  assert.equal(porRuta.addressingMode, 'device-path');
+});
+
+function prepararMotorV330(dir) {
+  escribirHerramientaStub(dir, 'gst-launch-1.0', `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const dir = process.env.PS_V330_DIR || '';
+const argv = process.argv.slice(2);
+let n = 0;
+try { n = parseInt(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), 10) || 0; } catch (e) {}
+n += 1;
+try { fs.writeFileSync(path.join(dir, 'lanzamientos.txt'), String(n)); } catch (e) {}
+try { fs.writeFileSync(path.join(dir, 'argv-' + n + '.txt'), argv.join('\\n')); } catch (e) {}
+const esSesion = argv.includes('d3d11compositor');
+if (!esSesion && process.env.PS_V330_PREVIEW === 'muere-captura') {
+  process.stderr.write("ERROR mfvideosrc gstmfvideosrc.cpp:288:gst_mf_video_src_start:<mfvideosrc0> Couldn't create capture object\\n");
+  process.exit(1);
+}
+if (argv.includes('textoverlay') && process.env.PS_V330_TEXTO === 'muere') {
+  process.stderr.write('ERROR textoverlay de mentira: muere al nacer\\n');
+  process.exit(1);
+}
+process.stderr.write('Setting pipeline to PAUSED ...\\n');
+for (const a of argv) {
+  if (a.startsWith('location=') && a.endsWith('.mp4')) {
+    try { fs.writeFileSync(a.slice('location='.length), Buffer.alloc(4096, 7)); } catch (e) {}
+  }
+}
+setInterval(() => {}, 1000);
+`);
+  escribirHerramientaStub(dir, 'gst-inspect-1.0', `#!/usr/bin/env node
+process.exit(0);
+`);
+  const fixtureEscapado = JSON.stringify(FIXTURE_MONITOR_REAL);
+  escribirHerramientaStub(dir, 'gst-device-monitor-1.0', `#!/usr/bin/env node
+process.stdout.write(${fixtureEscapado});
+`);
+  const ffmpegStub = escribirHerramientaStub(dir, 'ffmpeg-stub', `#!/usr/bin/env node
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+const i = args.indexOf('-i');
+const archivo = i >= 0 ? args[i + 1] : null;
+if (archivo) {
+  process.stderr.write('  Duration: 00:01:00.03, start: 0.000000, bitrate: 12000 kb/s\\n');
+  process.stderr.write('  Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 30 fps\\n');
+}
+process.exit(0);
+`);
+  const logs = [];
+  const engine = createNativeEngine({
+    ffmpegPath: ffmpegStub,
+    log: (l) => logs.push(l),
+    onState: () => {},
+    env: { ...process.env, PODCASTUDIO_GST_BIN: dir, PATH: process.env.PATH || '' },
+    platform: process.platform,
+    fsExists: (p) => fs.existsSync(p),
+    spawnImpl: crearSpawnParaStubs(dir, spawn),
+  });
+  return { engine, logs };
+}
+
+async function esperarV330(condicion, ms = 15000) {
+  const inicio = Date.now();
+  while (Date.now() - inicio < ms) {
+    if (condicion()) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return condicion();
+}
+
+// Los stubs son procesos Node que tardan en arrancar y escribir su
+// argv-<n>.txt: leer los archivos en el mismo tick que start() es una
+// carrera real (vista al probar en la suite completa, con la CPU
+// compartida). Se sondea hasta que el contenido esperado aparece.
+function leerArgvV330(dir, n) {
+  const ruta = path.join(dir, `argv-${n}.txt`);
+  return fs.existsSync(ruta) ? fs.readFileSync(ruta, 'utf8') : '';
+}
+
+// Los lanzamientos se identifican por CONTENIDO, no por número: el
+// contador argv-<n> lo asigna cada stub al ARRANCAR, y el arranque de
+// un proceso Node tiene jitter (bajo carga, segundos): la sesión puede
+// terminar numerada DESPUÉS que un relanzamiento posterior del preview.
+// (Carrera real, cazada al probar: argv-2 era el texto y argv-3 la
+// sesión.) Contenido: con d3d11compositor = sesión; con textoverlay =
+// preview con texto; preview a secas = el resto con d3d11videosink.
+function contenidosArgvV330(dir) {
+  return fs.readdirSync(dir)
+    .filter((f) => /^argv-\d+\.txt$/.test(f))
+    .sort()
+    .map((f) => fs.readFileSync(path.join(dir, f), 'utf8'));
+}
+const esArgvSesion = (c) => c.includes('d3d11compositor');
+const esArgvPreviewConTexto = (c) => c.includes('textoverlay');
+const esArgvPreviewSinTexto = (c) => c.includes('d3d11videosink') && !c.includes('d3d11compositor') && !c.includes('textoverlay');
+
+test('v3.3.0 · anfitrión multicámara: resuelve nombres contra MF, la PiP que no resuelve se OMITE declarada y no tumba la sesión', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v330-multi-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  // Corrección tras la compuerta: el arranque de GRABACIÓN ya no corre
+  // sonda ni lanza la vista previa independiente (antes este arranque
+  // fijaba PS_V330_PREVIEW='muere-captura' para que la sonda muriera
+  // rápido y la sesión fuera integrada; ya no hace falta: la sesión de
+  // grabación nunca toca el proceso independiente).
+  const { engine, logs } = prepararMotorV330(dir);
+  try {
+    const r1 = await engine.start({
+      session: 'record', outDir,
+      sources: ['Steren COM-126', 'EasyCamera', 'Cámara Que No Existe'],
+      programIndex: 0,
+    });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    const st = engine.getState();
+    assert.equal(st.phase, 'grabando');
+    // Solo entraron las dos que resolvieron, en orden de layout.
+    assert.deepEqual(st.sourceNames, ['Steren COM-126', 'EasyCamera']);
+    assert.equal(st.programIndex, 0);
+    const textoLogs = logs.join('\n');
+    assert.ok(textoLogs.includes('Cámara Que No Existe') && textoLogs.includes('OMITIDA'), textoLogs.slice(0, 600));
+    assert.ok(textoLogs.includes('entra como PiP'), textoLogs.slice(0, 600));
+    // La sesión (la que lleva compositor; la otra fue la sonda) lleva
+    // DOS mfvideosrc y las props del layout para las dos fuentes.
+    await esperarV330(() => contenidosArgvV330(dir).some((c) => esArgvSesion(c) && c.includes('sink_1::')));
+    const argvSesion = contenidosArgvV330(dir).find((c) => esArgvSesion(c)) || '';
+    assert.equal(argvSesion.split('\n').filter((l) => l === 'mfvideosrc').length, 2, argvSesion.slice(0, 300));
+    assert.ok(argvSesion.includes('sink_1::xpos=1402'), argvSesion.slice(0, 400));
+    assert.ok(argvSesion.includes('device-index=1'), 'la PiP EasyCamera entra por su índice MF (1)');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+    assert.equal(engine.getState().validation.valid, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+    delete process.env.PS_V330_PREVIEW;
+  }
+});
+
+test('v3.3.0 · anfitrión multicámara: si la de PROGRAMA no resuelve, la sesión no arranca (error declarado)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v330-prog-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine } = prepararMotorV330(dir);
+  try {
+    const r = await engine.start({ session: 'record', outDir, sources: ['Cámara Que No Existe', 'EasyCamera'], programIndex: 0 });
+    assert.equal(r.success, false);
+    assert.ok(r.error.includes('Cámara Que No Existe'), r.error);
+    assert.equal(engine.getState().phase, 'error');
+    assert.ok(!fs.existsSync(path.join(dir, 'lanzamientos.txt')), 'no debió lanzarse ninguna tubería');
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});
+
+// Corrección tras la compuerta: la sonda corre SOLO en la sesión de
+// vista previa. Antes esta prueba arrancaba 'record' y esperaba que la
+// sonda viviera en paralelo a la grabación (la semántica que la
+// compuerta reprobó); ahora la sonda nace y muere dentro del arranque
+// de 'preview' y la grabación queda fuera de su alcance.
+test('v3.3.0 · sonda en la vista previa: si el proceso independiente muere con la firma de captura, concurrentPreview=false y la vista previa cae a la tubería integrada', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v330-sonda-no-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  process.env.PS_V330_PREVIEW = 'muere-captura';
+  const { engine, logs } = prepararMotorV330(dir);
+  try {
+    const r1 = await engine.start('preview', { outDir });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    const st = engine.getState();
+    assert.equal(st.concurrentPreview, false);
+    assert.equal(st.phase, 'vista-previa');
+    assert.ok(logs.join('\n').includes('concurrentPreview=false'), logs.join(' | ').slice(0, 500));
+    // Dos lanzamientos: la sonda (proceso independiente, sin
+    // compositor) y la vista previa INTEGRADA (con compositor y su
+    // d3d11videosink), la de siempre.
+    await esperarV330(() => contenidosArgvV330(dir).length >= 2);
+    const argvSonda = contenidosArgvV330(dir).find((c) => esArgvPreviewSinTexto(c)) || '';
+    assert.ok(argvSonda.includes('d3d11videosink'), argvSonda.slice(0, 200));
+    const argvIntegrada = contenidosArgvV330(dir).find((c) => esArgvSesion(c)) || '';
+    assert.ok(argvIntegrada.includes('d3d11videosink'), argvIntegrada.slice(0, 300));
+    // Sin concurrencia, setPreviewText no toca nada.
+    const rTexto = engine.setPreviewText('Texto que no debe ir a ningún lado');
+    assert.equal(rTexto.success, false);
+    assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), '2', 'setPreviewText sin concurrencia no relanza nada');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+    delete process.env.PS_V330_PREVIEW;
+  }
+});
+
+// Corrección tras la compuerta: antes esta prueba exigía que la sesión
+// de grabación naciera SIN d3d11videosink y con el proceso
+// independiente vivo en paralelo (omitPreviewBranch) — exactamente lo
+// que mató la grabación real a los ~2 s —. La expectativa corregida es
+// la contraria: el proceso independiente ES la sesión de vista previa,
+// y la grabación posterior nace CON su rama integrada y sin ningún
+// proceso en paralelo.
+test('v3.3.0 · sonda en la vista previa: si el proceso independiente vive, concurrentPreview=true y ÉL es la sesión de vista previa; la grabación posterior nace con su rama integrada', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v330-sonda-si-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine, logs } = prepararMotorV330(dir);
+  try {
+    const r1 = await engine.start('preview', { outDir });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    let st = engine.getState();
+    assert.equal(st.concurrentPreview, true);
+    assert.equal(st.phase, 'vista-previa');
+    assert.ok(logs.join('\n').includes('concurrentPreview=true'), logs.join(' | ').slice(0, 500));
+    // Un solo lanzamiento: la sonda ES la sesión de vista previa (la
+    // forma probada de buildPreviewArgs, sin compositor).
+    await esperarV330(() => contenidosArgvV330(dir).length >= 1);
+    const argvPrevia = contenidosArgvV330(dir).find((c) => esArgvPreviewSinTexto(c)) || '';
+    assert.ok(argvPrevia.includes('d3d11upload') && argvPrevia.includes('d3d11videosink'), argvPrevia.slice(0, 200));
+    assert.equal(contenidosArgvV330(dir).filter((c) => esArgvSesion(c)).length, 0, 'la vista previa no lanzó ninguna tubería de sesión');
+    const rStop1 = await engine.stop();
+    assert.equal(rStop1.success, true);
+    // La grabación: NINGÚN lanzamiento de vista previa nuevo y la
+    // sesión CON su d3d11videosink (su vista previa durante la sesión
+    // es la rama integrada, la forma probada de la v3.2.3).
+    const r2 = await engine.start('record', { outDir });
+    assert.equal(r2.success, true, JSON.stringify(r2));
+    st = engine.getState();
+    assert.equal(st.phase, 'grabando');
+    assert.equal(st.concurrentPreview, true, 'el veredicto persiste: la independiente puede vivir FUERA de sesión');
+    await esperarV330(() => contenidosArgvV330(dir).length >= 2);
+    assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), '2', 'vista previa + sesión: ningún lanzamiento más');
+    const argvSesion = contenidosArgvV330(dir).find((c) => esArgvSesion(c)) || '';
+    assert.ok(argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama de preview integrada');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+    assert.equal(engine.getState().validation.valid, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});
+
+// Corrección tras la compuerta: setPreviewText actúa sobre la sesión
+// de VISTA PREVIA (fuera de sesión de grabación); antes esta prueba lo
+// ejercía durante un 'record', con el proceso independiente conviviendo
+// con la grabación — la convivencia reprobada —.
+test('v3.3.0 · setPreviewText sobre la vista previa: relanza SOLO el proceso independiente y, si el texto muere en <1500 ms, su red relanza sin texto una vez', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v330-texto-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine, logs } = prepararMotorV330(dir);
+  try {
+    const r1 = await engine.start('preview', { outDir });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    assert.equal(engine.getState().concurrentPreview, true);
+    assert.equal(engine.getState().phase, 'vista-previa');
+    // A partir de aquí, todo lanzamiento con textoverlay muere al nacer.
+    process.env.PS_V330_TEXTO = 'muere';
+    const rTexto = engine.setPreviewText('Tramo visible del teleprompter');
+    assert.equal(rTexto.success, true, JSON.stringify(rTexto));
+    // El relanzamiento CON texto (solo preview: sin compositor).
+    const huboTexto = await esperarV330(() => contenidosArgvV330(dir).some((c) => esArgvPreviewConTexto(c)));
+    assert.ok(huboTexto, 'debió existir el relanzamiento con textoverlay');
+    const argvTexto = contenidosArgvV330(dir).find((c) => esArgvPreviewConTexto(c)) || '';
+    assert.ok(argvTexto.includes('text=Tramo visible del teleprompter'), argvTexto.slice(0, 300));
+    // La red de seguridad: aparece un SEGUNDO preview sin texto (el
+    // primero fue la sonda/sesión), y previewTextActive queda en
+    // false, declarado en el registro.
+    const huboRed = await esperarV330(() => contenidosArgvV330(dir).filter((c) => esArgvPreviewSinTexto(c)).length >= 2
+      && engine.getState().previewTextActive === false);
+    assert.ok(huboRed, 'la red debió relanzar el preview sin texto y desactivar previewTextActive');
+    assert.ok(logs.join('\n').includes('se relanza SIN texto una vez'), logs.join(' | ').slice(0, 600));
+    // La sesión de vista previa siguió, intacta: ningún lanzamiento
+    // con compositor en todo el ejercicio, y 3 lanzamientos en total
+    // (vista previa + texto + red sin texto).
+    assert.equal(engine.getState().phase, 'vista-previa');
+    assert.equal(contenidosArgvV330(dir).filter((c) => esArgvSesion(c)).length, 0);
+    assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), '3');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+    delete process.env.PS_V330_TEXTO;
+  }
+});
+
+test('v3.3.0 · setPreviewText sobre la vista previa: con el proceso sano, el texto queda activo y no hay relanzamiento extra', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v330-texto-ok-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine } = prepararMotorV330(dir);
+  try {
+    const r1 = await engine.start('preview', { outDir });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    const rTexto = engine.setPreviewText('Primera línea del guion');
+    assert.equal(rTexto.success, true, JSON.stringify(rTexto));
+    assert.equal(engine.getState().previewTextActive, true);
+    const huboTexto = await esperarV330(() => contenidosArgvV330(dir).some((c) => esArgvPreviewConTexto(c)));
+    assert.ok(huboTexto);
+    // Margen de sobra sobre los 1500 ms de la red: no debe aparecer un
+    // tercer lanzamiento ni caerse el texto.
+    await new Promise((r) => setTimeout(r, 1800));
+    assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), '2');
+    assert.equal(engine.getState().previewTextActive, true);
+    assert.equal(engine.getState().phase, 'vista-previa');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});
+
+// (i) Corrección tras la compuerta — la regresión exacta del smoke
+// real: el primer arranque de la v3.3.0 fue un 'record' con la sonda
+// viviendo en paralelo, y la sesión murió a los ~2 s. Aquí el primer
+// arranque ES un record: no debe existir ningún lanzamiento con la
+// forma de la vista previa independiente, ni sonda, ni veredicto.
+test('v3.3.0 · un solo lector (i): el primer arranque de grabación NO lanza vista previa independiente ni sonda, y la sesión lleva su rama integrada', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v330-unsolo-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine } = prepararMotorV330(dir);
+  try {
+    const r1 = await engine.start('record', { outDir });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    const st = engine.getState();
+    assert.equal(st.phase, 'grabando');
+    // Sin sesión de vista previa previa no hay veredicto: la sonda
+    // SOLO corre en sesiones de vista previa (corrección).
+    assert.equal(st.concurrentPreview, null);
+    // UN solo lanzamiento: la sesión. Nada de proceso independiente.
+    await esperarV330(() => contenidosArgvV330(dir).length >= 1);
+    assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), '1');
+    const argvSesion = contenidosArgvV330(dir).find((c) => esArgvSesion(c)) || '';
+    assert.ok(argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama de preview integrada');
+    assert.equal(contenidosArgvV330(dir).filter((c) => esArgvPreviewSinTexto(c)).length, 0, 'ningún lanzamiento tiene la forma de la vista previa independiente');
+    assert.equal(contenidosArgvV330(dir).filter((c) => esArgvPreviewConTexto(c)).length, 0);
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+    assert.equal(engine.getState().validation.valid, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});
+
+// (i) Corrección tras la compuerta — el ORDEN: si una vista previa
+// independiente acaba de cerrarse (su 'close' aún en vuelo tras el
+// stop), el arranque de grabación la detiene y ESPERA su salida ANTES
+// de lanzar la tubería de la sesión: la confirmación queda en el
+// registro antes que la línea «Tubería:» y no hay relanzamiento.
+test('v3.3.0 · un solo lector (i): tras una vista previa, la grabación confirma la salida del proceso independiente ANTES de lanzar la tubería', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v330-orden-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine, logs } = prepararMotorV330(dir);
+  try {
+    const r1 = await engine.start('preview', { outDir });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    assert.equal(engine.getState().concurrentPreview, true);
+    const rStop1 = await engine.stop();
+    assert.equal(rStop1.success, true);
+    // Sin pausa: la grabación arranca con el cierre de la vista
+    // previa recién ordenado; el motor debe esperar su salida antes
+    // de la tubería (un solo lector de la cámara).
+    const r2 = await engine.start('record', { outDir });
+    assert.equal(r2.success, true, JSON.stringify(r2));
+    assert.equal(engine.getState().phase, 'grabando');
+    const textoLogs = logs.join('\n');
+    const iConfirma = textoLogs.indexOf('salida confirmada ANTES de lanzar la sesión');
+    const iTuberia = textoLogs.lastIndexOf('Tubería:');
+    assert.ok(iConfirma >= 0, 'debió quedar la confirmación declarada de la salida');
+    assert.ok(iTuberia > iConfirma, 'la confirmación precede a la tubería de la sesión');
+    await esperarV330(() => contenidosArgvV330(dir).length >= 2);
+    assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), '2', 'vista previa + sesión: la grabación no relanzó la vista previa');
+    const argvSesion = contenidosArgvV330(dir).find((c) => esArgvSesion(c)) || '';
+    assert.ok(argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama de preview integrada');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+    assert.equal(engine.getState().validation.valid, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});
+
+// (ii) Corrección tras la compuerta: durante una grabación,
+// setPreviewText es un NO-OP declarado — queda la nota en el estado,
+// la declaración se registra una sola vez por sesión, no se lanza
+// ningún proceso y la sesión sigue grabando intacta.
+test('v3.3.0 · un solo lector (ii): setPreviewText durante una grabación es un no-op declarado en el estado y no toca la sesión', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v330-noop-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine, logs } = prepararMotorV330(dir);
+  try {
+    // Veredicto true ganado FUERA de sesión (la vista previa), como
+    // en la app real antes de grabar.
+    const r0 = await engine.start('preview', { outDir });
+    assert.equal(r0.success, true, JSON.stringify(r0));
+    assert.equal(engine.getState().concurrentPreview, true);
+    const rStop0 = await engine.stop();
+    assert.equal(rStop0.success, true);
+    const r1 = await engine.start('record', { outDir });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    assert.equal(engine.getState().phase, 'grabando');
+    await esperarV330(() => contenidosArgvV330(dir).length >= 2);
+    const lanzamientosAntes = fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8');
+    const rTexto = engine.setPreviewText('Texto que NO debe convivir con la grabación');
+    assert.equal(rTexto.success, false);
+    assert.ok(rTexto.error.includes('fuera de sesión'), rTexto.error);
+    const st = engine.getState();
+    assert.equal(st.previewTextActive, false);
+    assert.ok(st.previewTextNote && st.previewTextNote.includes('fuera de sesión'), 'la nota declarada queda en el estado');
+    // La sesión sigue grabando, intacta, y no se lanzó nada más.
+    assert.equal(engine.getState().phase, 'grabando');
+    assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), lanzamientosAntes, 'el no-op no relanza ningún proceso');
+    // La declaración se registra UNA vez aunque la app sondee de nuevo.
+    const rTexto2 = engine.setPreviewText('Otro tramo más');
+    assert.equal(rTexto2.success, false);
+    const declaraciones = logs.join('\n').split('NO-OP declarado').length - 1;
+    assert.equal(declaraciones, 1, 'la declaración del no-op se registra una sola vez por sesión');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
   }
 });

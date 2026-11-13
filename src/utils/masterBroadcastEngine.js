@@ -288,6 +288,12 @@ export function compositionTickDecision({ now, lastRenderAt, mode }) {
 let rendererPageVisible = true;
 let rendererWindowFocused = true;
 let lastGovernedRenderAt = 0;
+// Instrumento de diagnóstico de ventana (build diagnóstica post-v3.2.4):
+// contadores de SOLO LECTURA para la muestra de 5 s del log ventana-diag —
+// ticks que llegaron (Worker o rAF de respaldo) frente a composiciones que
+// el gobernador dejó pasar de verdad. No alimentan ninguna decisión.
+let diagTicksReceived = 0;
+let diagCompositionsRun = 0;
 let focusGovernorInstalled = false;
 
 function isCanvasOutputActive() {
@@ -308,6 +314,15 @@ export function getCompositionGovernorState() {
     focused: rendererWindowFocused,
     mode: currentCompositionMode(),
     lastRenderAt: lastGovernedRenderAt,
+  };
+}
+
+// Instrumento de diagnóstico de ventana: foto de los contadores de arriba
+// para que el renderer los vuelque al log cada 5 s (ventana-diag).
+export function getRenderDiagStats() {
+  return {
+    ticksReceived: diagTicksReceived,
+    compositionsRun: diagCompositionsRun,
   };
 }
 
@@ -339,6 +354,7 @@ function governedRenderFrame() {
   const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   if (!compositionTickDecision({ now, lastRenderAt: lastGovernedRenderAt, mode: currentCompositionMode() })) return;
   lastGovernedRenderAt = now;
+  diagCompositionsRun += 1; // instrumento ventana-diag: la composición pasó la compuerta
   try { renderFrame(); } catch (e) {}
 }
 
@@ -346,15 +362,47 @@ function fallbackRafLoop() {
   if (animFrameId) return;
   const loop = () => {
     if (!isCanvasRenderLoopActive) return;
+    diagTicksReceived += 1; // instrumento ventana-diag: tick del rAF de respaldo
     governedRenderFrame();
     animFrameId = requestAnimationFrame(loop);
   };
   animFrameId = requestAnimationFrame(loop);
 }
 
+// --- Dieta de ventana en modo motor (v3.3.0, D1) ---------------------------
+// Mapa de evidencia (App.jsx + este archivo): el bucle de composición por
+// canvas NO nace solo de los caminos heredados. También lo arranca el
+// MONITOR siempre encendido: el efecto de sincronización de App.jsx llama
+// updateBroadcastState() al montar y ante cualquier cambio de estado, y
+// updateBroadcastState() -> ensureMasterCanvas() -> startRenderLoop()
+// (Worker posteando ticks a 30/s) aunque nadie grabe ni transmita por la
+// cadena heredada; syncVideoStreams() solo lo apaga cuando no queda
+// ningún <video> consumidor, y con cámaras conectadas siempre hay. Ese
+// monitor es separable: en «modo motor» (GStreamer presente y sin ISO,
+// lo decide App) la ventana ya no compone — el programa se ve en los
+// <video> directos y en la ventana nativa de vista previa — así que el
+// Worker queda EN REPOSO. La dieta SOLO bloquea el arranque cuando no
+// hay salida de canvas en curso: si la cadena heredada arranca (sin
+// GStreamer, o con ISO), startBroadcastEngine() marca la salida activa
+// y vuelve a llamar a startRenderLoop() tras hacerlo (ver abajo), con
+// lo que el bucle heredado corre EXACTAMENTE como hoy.
+let nativeWindowDietActive = false;
+
+export function setNativeWindowDiet(active) {
+  nativeWindowDietActive = !!active;
+  if (nativeWindowDietActive && !isCanvasOutputActive()) stopRenderLoop();
+}
+
+export function isNativeWindowDietActive() {
+  return nativeWindowDietActive;
+}
+
 // Bucle único idempotente: si ya está activo no hace nada (no re-postea
 // 'start' al Worker, así que tampoco se crea ningún intervalo extra).
 export function startRenderLoop() {
+  // v3.3.0 D1: con la dieta activa y sin salida de canvas, el Worker no
+  // se arranca (ni se crea): la ventana no compone en modo motor.
+  if (nativeWindowDietActive && !isCanvasOutputActive()) return;
   if (isCanvasRenderLoopActive) return;
   isCanvasRenderLoopActive = true;
   installCompositionFocusGovernor();
@@ -363,7 +411,7 @@ export function startRenderLoop() {
       const blob = new Blob([RENDER_WORKER_SOURCE], { type: 'application/javascript' });
       const url = URL.createObjectURL(blob);
       renderWorker = new Worker(url);
-      renderWorker.onmessage = () => { if (isCanvasRenderLoopActive) governedRenderFrame() };
+      renderWorker.onmessage = () => { diagTicksReceived += 1; if (isCanvasRenderLoopActive) governedRenderFrame() };
       renderWorker.onerror = () => {
         console.warn('Render worker failed, falling back to RAF');
         try { URL.revokeObjectURL(url); } catch(e){}
@@ -2255,12 +2303,20 @@ export function startBroadcastEngine(initialState, onChunk, { chunkSource = 'med
     // WebCodecs de App (una sola, con hardware si la plataforma lo da).
     mediaRecorder = null;
     isBroadcastEngineActive = true;
+    // v3.3.0 D1: la salida de canvas YA está activa: si la dieta de
+    // ventana bloqueó el startRenderLoop() de ensureMasterCanvas()
+    // (que corre antes de esta marca), aquí se arranca el bucle —
+    // la cadena heredada compone exactamente como siempre.
+    startRenderLoop();
     return masterStream;
   }
 
   createMasterMediaRecorder();
 
   isBroadcastEngineActive = true;
+  // v3.3.0 D1: ídem — con la salida activa, el bucle heredado arranca
+  // aunque la dieta de ventana esté puesta (sin GStreamer o con ISO).
+  startRenderLoop();
   return masterStream;
 }
 

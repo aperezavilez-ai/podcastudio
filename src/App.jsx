@@ -44,6 +44,8 @@ import {
   getActiveInitHeader,
   setProgramFrameTap, switchEngineToWebmChunks, setProgramSize,
   registerCameraVideoElement, getCameraFrameHealth,
+  getCompositionGovernorState, getRenderDiagStats,
+  setNativeWindowDiet,
 } from './utils/masterBroadcastEngine.js';
 import { probeProgramEncoderSupport, createProgramEncoderPump } from './utils/programEncoder.js';
 import { PROGRAM_PROFILE_IDS, DEFAULT_PROGRAM_PROFILE_ID, getProgramProfile, isUplinkCapped } from './utils/programProfiles.mjs';
@@ -1139,6 +1141,11 @@ function PodcastStudioApp() {
   const [nativeStreamError, setNativeStreamError] = useState('');
   const nativeGstAvailable = nativeEngineState?.gstInstalled === true;
   const nativeGstUnavailable = nativeEngineState?.gstInstalled === false;
+  // v3.3.0: «modo motor» — la condición vigente que ya elige la cadena
+  // nativa en los botones: GStreamer presente y sin grabación ISO (con
+  // ISO manda la cadena heredada). Gobierna la dieta de la ventana (D1),
+  // la banda de estado del programa (D3) y el monitor de programa.
+  const enModoMotor = nativeGstAvailable && !isoRecordingEnabled;
 
   // Espera a que el motor confirme la fase «apagado» (su parada valida
   // el máster antes de publicar el estado final).
@@ -1293,6 +1300,39 @@ function PodcastStudioApp() {
     return pend;
   };
 
+  // v3.3.0 (A-renderer): fuentes LOCALES para el motor multicámara —
+  // etiquetas de las cámaras locales conectadas en orden de ranura
+  // (camSlots), con la de programa (activeCam) PRIMERO y máximo 3. La
+  // etiqueta sale del track vivo o del nombre guardado por ranura
+  // (cameraMeta). Las ranuras REMOTAS quedan fuera: su cameraMeta lleva
+  // type 'remote' y sus streams del transporte cloud traen mobileId —
+  // el motor nativo solo abre cámaras físicas locales. Declarado: los
+  // manejadores pasan sources SOLO con 2+ fuentes; con una sola cámara
+  // no se pasa sources y manda el camino de una cámara ya probado por
+  // la compuerta smoke (cameraName / elección por defecto del motor).
+  const componerFuentesLocalesNativas = () => {
+    const idsOrdenados = [];
+    const activa = activeCamRef.current;
+    if (activa) idsOrdenados.push(activa);
+    (camSlotsRef.current || []).forEach((id) => { if (!idsOrdenados.includes(id)) idsOrdenados.push(id); });
+    const fuentes = [];
+    for (const id of idsOrdenados) {
+      if (fuentes.length >= 3) break;
+      const slotIdx = id - 1;
+      const meta = cameraMetaRef.current?.[slotIdx] || {};
+      if (meta?.type === 'remote') continue;
+      const stream = slotStreamsRef.current?.[slotIdx] || (slotIdx === 0 ? localStreamRef.current : null);
+      if (!stream || stream.mobileId) continue;
+      const vTrack = (stream.getVideoTracks?.() || []).find((t) => t.readyState === 'live')
+        || (stream.getVideoTracks?.() || [])[0];
+      if (!vTrack || vTrack.readyState === 'ended') continue;
+      const etiqueta = String(vTrack.label || meta?.label || meta?.videoInfo?.label || '').trim();
+      if (!etiqueta || fuentes.includes(etiqueta)) continue;
+      fuentes.push(etiqueta);
+    }
+    return fuentes;
+  };
+
   const iniciarGrabacionNativa = async () => {
     const bridge = window.electronAPI?.nativeEngine;
     if (!bridge) return;
@@ -1322,9 +1362,13 @@ function PodcastStudioApp() {
           try { await bridge.stop(); } catch (e) {}
           await esperarMotorApagado();
         }
+        // v3.3.0 (A): con 2+ cámaras locales, el motor compone programa
+        // + PiP(s) desde sources (la de programa primero, programIndex 0).
+        const fuentesNativas = componerFuentesLocalesNativas();
+        const optsFuentes = fuentesNativas.length > 1 ? { sources: fuentesNativas, programIndex: 0 } : {};
         res = subiendo
-          ? await bridge.start({ session: 'recordStream', projectName: topic || 'Proyecto_General', streamUrls: nativeStreamUrlsRef.current })
-          : await bridge.start({ session: 'record', projectName: topic || 'Proyecto_General' });
+          ? await bridge.start({ session: 'recordStream', projectName: topic || 'Proyecto_General', streamUrls: nativeStreamUrlsRef.current, ...optsFuentes })
+          : await bridge.start({ session: 'record', projectName: topic || 'Proyecto_General', ...optsFuentes });
       } catch (e) { res = { success: false, error: e?.message || String(e) }; }
       if (!res?.success) {
         if (subiendo) {
@@ -1441,10 +1485,14 @@ function PodcastStudioApp() {
           try { await bridge.stop(); } catch (e) {}
           await esperarMotorApagado();
         }
+        // v3.3.0 (A): mismas fuentes locales que en la grabación —
+        // programa primero (programIndex 0), solo con 2+ cámaras.
+        const fuentesNativas = componerFuentesLocalesNativas();
         res = await bridge.start({
           session: conGrabacion ? 'recordStream' : 'stream',
           projectName: topic || 'Proyecto_General',
           streamUrls: urls,
+          ...(fuentesNativas.length > 1 ? { sources: fuentesNativas, programIndex: 0 } : {}),
         });
       } catch (e) { res = { success: false, error: e?.message || String(e) }; }
       if (!res?.success) {
@@ -1566,6 +1614,195 @@ function PodcastStudioApp() {
       showToast(`La grabación se detuvo: ${st.lastError || 'el motor nativo se detuvo sin aviso.'}`, 'error', 8000);
     }
   }, [nativeEngineState]);
+
+  // ==========================================================================
+  // v3.3.0 — DIETA DE LA VENTANA (D1/D2) Y TELEPROMPTER SOBRE LA VISTA
+  // PREVIA NATIVA (C-renderer). El instrumento ventana-diag no se toca.
+  // ==========================================================================
+
+  // D1: en modo motor, el bucle de composición por canvas NO se arranca
+  // (Worker en reposo). Mapa de evidencia en masterBroadcastEngine.js
+  // (setNativeWindowDiet): el bucle también lo arrancaba el monitor
+  // siempre encendido vía updateBroadcastState -> ensureMasterCanvas ->
+  // startRenderLoop, sin grabar ni transmitir por la cadena heredada.
+  // Al salir del modo motor (sin GStreamer, o con ISO) la dieta se
+  // levanta y los caminos heredados componen exactamente como hoy.
+  useEffect(() => {
+    try { setNativeWindowDiet(enModoMotor); } catch (e) {}
+  }, [enModoMotor]);
+
+  // D2: liberación con foto fija. Al confirmarse una sesión nativa
+  // (fases de marcha), cada cámara LOCAL de la ventana cuyo nombre
+  // coincide con nativeEngineState.sourceNames deja de decodificarse en
+  // la ventana: se guarda UNA foto de su <video>, se detienen TODOS los
+  // tracks de su stream y el stream sale del mapa de la ventana; el
+  // mosaico muestra la foto + el rótulo «En el motor nativo». Al volver
+  // la fase a apagado/error, cada cámara liberada se readquiere por el
+  // camino de adquisición existente (handleUsbConnect / getUserMedia).
+  const [nativeReleasedPhotos, setNativeReleasedPhotos] = useState({});
+  const nativeReleasedCamsRef = useRef({});
+
+  useEffect(() => {
+    const st = nativeEngineState;
+    if (!st) return undefined;
+    const phase = st.phase;
+    const FASES_MARCHA_NATIVAS = ['vista-previa', 'grabando', 'transmitiendo', 'grabando-transmitiendo'];
+
+    const readquirirLiberadas = () => {
+      const entradas = Object.entries(nativeReleasedCamsRef.current);
+      if (!entradas.length) return;
+      nativeReleasedCamsRef.current = {};
+      setNativeReleasedPhotos({});
+      for (const [slotKey, info] of entradas) {
+        const slotIdx = Number(slotKey);
+        if (info?.deviceId && info?.type !== 'remote') {
+          // Camino de adquisición EXISTENTE: cola USB + getUserMedia
+          // probado (handleUsbConnect -> openProvenUsbStream).
+          try { const p = handleUsbConnect(info.deviceId, slotIdx, info.label); if (p?.catch) p.catch(() => {}); } catch (e) {}
+        } else {
+          // Sin deviceId guardado: reapertura directa con el
+          // getUserMedia con timeout existente (respaldo declarado).
+          getUserMediaWithTimeout({ video: true, audio: false }).then((stream) => {
+            if (!stream) return;
+            slotStreamsRef.current = { ...slotStreamsRef.current, [slotIdx]: stream };
+            setSlotStreams((prev) => ({ ...prev, [slotIdx]: stream }));
+            if (slotIdx === 0) { localStreamRef.current = stream; setLocalStream(stream); }
+          }).catch(() => {});
+        }
+      }
+    };
+
+    if (FASES_MARCHA_NATIVAS.includes(phase) && Array.isArray(st.sourceNames) && st.sourceNames.length > 0) {
+      let cancelado = false;
+      (async () => {
+        for (const nombreCrudo of st.sourceNames) {
+          if (cancelado) return;
+          const nombre = String(nombreCrudo || '').trim().toLowerCase();
+          if (!nombre) continue;
+          for (const camId of (camSlotsRef.current || [])) {
+            const slotIdx = camId - 1;
+            if (nativeReleasedCamsRef.current[slotIdx]) continue;
+            const meta = cameraMetaRef.current?.[slotIdx] || {};
+            // SOLO ranuras locales: una ranura remota lleva type
+            // 'remote' en su meta (handleAssignRemoteStream) o mobileId
+            // en su stream (transporte cloud); los ids remotos viven en
+            // remoteCams / meta.deviceId 'remote_…', nunca como etiqueta
+            // física en sourceNames, y aun así la guarda los excluye.
+            if (meta?.type === 'remote') continue;
+            const stream = slotStreamsRef.current?.[slotIdx] || (slotIdx === 0 ? localStreamRef.current : null);
+            if (!stream || stream.mobileId) continue;
+            // Coincidencia laxa como la regla de audio del motor:
+            // includes en ambos sentidos, sin distinguir mayúsculas.
+            const candidatas = [(stream.getVideoTracks?.() || [])[0]?.label, meta?.label, meta?.videoInfo?.label]
+              .filter(Boolean).map((s) => String(s).trim().toLowerCase());
+            const coincide = candidatas.some((c) => c && (nombre.includes(c) || c.includes(nombre)));
+            if (!coincide) continue;
+            // Foto fija: del <video> que ya muestra este stream en la
+            // ventana; si ninguno está listo, de un <video> desechable
+            // alimentado con el mismo stream. Si la foto no se puede
+            // capturar, se libera igual (declarado): el mosaico muestra
+            // el rótulo «En el motor nativo» sin foto.
+            let dataUrl = null;
+            try {
+              let videoEl = null;
+              document.querySelectorAll('video').forEach((v) => { if (!videoEl && v.srcObject === stream && v.videoWidth > 0) videoEl = v; });
+              let desechable = null;
+              if (!videoEl) {
+                desechable = document.createElement('video');
+                desechable.muted = true;
+                desechable.playsInline = true;
+                desechable.srcObject = stream;
+                await new Promise((res) => { const t = setTimeout(res, 1200); desechable.onloadeddata = () => { clearTimeout(t); res(); }; desechable.play().catch(() => {}); });
+                if (desechable.videoWidth > 0) videoEl = desechable;
+              }
+              if (videoEl) {
+                const c = document.createElement('canvas');
+                c.width = videoEl.videoWidth;
+                c.height = videoEl.videoHeight;
+                const cx = c.getContext('2d');
+                if (cx) { cx.drawImage(videoEl, 0, 0, c.width, c.height); dataUrl = c.toDataURL('image/jpeg', 0.7); }
+              }
+              if (desechable) { try { desechable.srcObject = null; } catch (e) {} }
+            } catch (e) { dataUrl = null; }
+            if (cancelado) return;
+            nativeReleasedCamsRef.current = {
+              ...nativeReleasedCamsRef.current,
+              [slotIdx]: { camId, deviceId: meta?.deviceId || null, label: meta?.label || nombreCrudo, type: meta?.type || null },
+            };
+            setNativeReleasedPhotos((prev) => ({ ...prev, [slotIdx]: dataUrl }));
+            try { stream.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} }); } catch (e) {}
+            const sinLiberada = { ...slotStreamsRef.current };
+            delete sinLiberada[slotIdx];
+            slotStreamsRef.current = sinLiberada;
+            setSlotStreams((prev) => { const next = { ...prev }; delete next[slotIdx]; return next; });
+            if (slotIdx === 0) { localStreamRef.current = null; setLocalStream(null); }
+            break; // un nombre de sourceNames -> una sola ranura
+          }
+        }
+      })();
+      return () => { cancelado = true; };
+    }
+
+    if ((phase === 'apagado' || phase === 'error') && Object.keys(nativeReleasedCamsRef.current).length > 0) {
+      if (nativeBusyRef.current) {
+        // Transición ordenada en curso (p. ej. subida a recordStream o
+        // los Detener de los botones): el apagado intermedio NO es el
+        // fin de la sesión. Se reevalúa en 1,2 s con la fase real: si
+        // el motor volvió a marcha, no se readquiere nada.
+        const t = setTimeout(() => {
+          const ph = nativeStateRef.current?.phase;
+          if ((ph === 'apagado' || ph === 'error') && !nativeBusyRef.current) readquirirLiberadas();
+        }, 1200);
+        return () => clearTimeout(t);
+      }
+      readquirirLiberadas();
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nativeEngineState]);
+
+  // C-renderer: teleprompter SOLO sobre la vista previa nativa
+  // independiente, y SOLO fuera de sesión de grabación/transmisión
+  // (corrección v3.3.0 tras la compuerta: el proceso independiente no
+  // convive con la sesión — dos lectores MF mataban la grabación —;
+  // en sesión la vista previa del motor es su rama integrada y el
+  // teleprompter es el de la ventana, como siempre). Hace falta la
+  // concurrencia del motor (concurrentPreview === true) y que la fase
+  // NO sea de grabación/transmisión: este sondeo se detiene en esas
+  // fases (el motor, además, trata cualquier llamada en sesión como
+  // no-op declarado). Se envía el tramo visible (~6 líneas desde la
+  // línea estimada por el reloj único teleprompterYRef y el tamaño de
+  // letra) SOLO cuando el tramo cambia; al pausar/detener, al perderse
+  // la concurrencia o al entrar en sesión se envía '' una vez. Guarda
+  // opcional del puente, como el resto del archivo: si setPreviewText
+  // no existe (build parcial), no se rompe.
+  const previewTextLastSentRef = useRef(null);
+  useEffect(() => {
+    const bridge = window.electronAPI?.nativeEngine;
+    const concurrente = nativeEngineState?.concurrentPreview === true;
+    const enSesionGrabacion = ['grabando', 'grabando-transmitiendo', 'transmitiendo'].includes(nativeEngineState?.phase);
+    if (!concurrente || enSesionGrabacion || !isTeleprompterPlaying || typeof bridge?.setPreviewText !== 'function') {
+      if (previewTextLastSentRef.current) {
+        try { bridge?.setPreviewText?.(''); } catch (e) {}
+        previewTextLastSentRef.current = '';
+      }
+      return undefined;
+    }
+    const enviarTramoSiCambio = () => {
+      const lineas = (teleprompterText || '').split('\n');
+      const idx = Math.max(0, Math.round((teleprompterYRef.current || 0) / ((teleprompterFontSize || 36) * 1.4)));
+      const tramo = lineas.slice(idx, idx + 6).join('\n').trim();
+      if (tramo === previewTextLastSentRef.current) return;
+      previewTextLastSentRef.current = tramo;
+      try { const r = bridge.setPreviewText(tramo); if (r?.catch) r.catch(() => {}); } catch (e) {}
+    };
+    enviarTramoSiCambio();
+    // El reloj del teleprompter avanza fuera de React: se sondea el
+    // tramo (mismo patrón de sondeo que MasterProgramMonitor) y solo
+    // se llama al motor cuando el tramo cambia de verdad.
+    const timer = setInterval(enviarTramoSiCambio, 600);
+    return () => clearInterval(timer);
+  }, [nativeEngineState?.concurrentPreview, nativeEngineState?.phase, isTeleprompterPlaying, teleprompterText, teleprompterFontSize]);
 
   const handleNativeEngineStart = async (session) => {
     try {
@@ -2760,19 +2997,11 @@ function PodcastStudioApp() {
         // ya en el punto del guion que le corresponde.
         projectTeleprompterOverlay();
 
-        // Proyección 2 — la caja de lectura del PANEL: scrollTop =
-        // desplazamiento. Si el usuario la movió a mano (su scrollTop ya
-        // no coincide con el último aplicado), su posición manda y se
-        // escribe de vuelta al reloj: las dos superficies no se desfasen.
-        const panel = rightPrompterScrollRef.current;
-        if (panel) {
-          if (Math.abs(panel.scrollTop - panelPrompterScrollRef.current) > 2) {
-            teleprompterYRef.current = panel.scrollTop;
-          }
-          const target = Math.floor(teleprompterYRef.current);
-          if (target !== panel.scrollTop) panel.scrollTop = target;
-          panelPrompterScrollRef.current = panel.scrollTop;
-        }
+        // La caja de lectura del PANEL ya NO se proyecta desde este
+        // reloj: en la build diagnóstica post-v3.2.4 recupera su
+        // desplazamiento simple e independiente (puerto seguro, ver el
+        // efecto «PUERTO SEGURO» más abajo). Este bucle solo avanza el
+        // reloj y proyecta el overlay sobre el programa.
         animationFrameId = requestAnimationFrame(animate);
       }
     };
@@ -2792,6 +3021,137 @@ function PodcastStudioApp() {
   useEffect(() => {
     if (showFloatingPrompter) projectTeleprompterOverlay();
   }, [showFloatingPrompter, teleprompterText]);
+
+  // ==========================================================================
+  // PUERTO SEGURO DEL RECUADRO (build diagnóstica post-v3.2.4): la caja de
+  // lectura del panel lateral vuelve a desplazarse con su mecanismo simple
+  // e INDEPENDIENTE — su propio rAF y su propio acumulador fraccional
+  // (rightPrompterScrollPos, el de la v1.7.0) aplicando scrollTop — sin
+  // depender del reloj compartido ni de que el overlay exista. Al pulsar
+  // INICIAR en el panel, el texto del recuadro se mueve sí o sí, como
+  // cuando Luis lo vio «Leyendo» en la v3.2.0. Si el usuario arrastró la
+  // caja a mano estando en pausa, el bucle siembra desde esa posición al
+  // arrancar. El overlay sobre el programa queda como está (proyección
+  // del reloj único, solo instrumentada abajo): ningún arreglo nuevo.
+  // ==========================================================================
+  useEffect(() => {
+    if (!isTeleprompterPlaying) return undefined;
+    let rafId;
+    let last = null;
+    const step = (t) => {
+      const panel = rightPrompterScrollRef.current;
+      if (panel) {
+        if (last == null) {
+          last = t;
+          rightPrompterScrollPos.current = panel.scrollTop || 0;
+        }
+        const delta = Math.min(33, Math.max(1, t - last));
+        last = t;
+        const speed = (teleprompterSpeed || 3) * 1.8;
+        rightPrompterScrollPos.current += speed * (delta / 16.666);
+        const max = Math.max(0, panel.scrollHeight - panel.clientHeight);
+        if (rightPrompterScrollPos.current > max) rightPrompterScrollPos.current = max;
+        if (rightPrompterScrollPos.current < 0) rightPrompterScrollPos.current = 0;
+        const target = Math.floor(rightPrompterScrollPos.current);
+        if (target !== panel.scrollTop) panel.scrollTop = target;
+      } else {
+        last = t;
+      }
+      rafId = requestAnimationFrame(step);
+    };
+    rafId = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(rafId);
+  }, [isTeleprompterPlaying, teleprompterSpeed]);
+
+  // ==========================================================================
+  // INSTRUMENTO DE DIAGNÓSTICO DE VENTANA (build diagnóstica post-v3.2.4):
+  // el renderer alimenta userData/logs/ventana-diag.log vía el proceso
+  // principal (window.api.diagPing / diagEvent). Solo observa y anota:
+  // ningún cambio visual ni de comportamiento sale de aquí.
+  // ==========================================================================
+  const ventanaDiagSend = (prefix, text) => {
+    try { window.api?.diagEvent?.(prefix, text); } catch (e) {}
+  };
+  const ventanaDiagValoresRef = useRef({ camaras: 0, grabando: false, transmitiendo: false });
+  useEffect(() => {
+    ventanaDiagValoresRef.current = {
+      camaras: camSlots.filter((s) => slotStreams[s - 1] || cameraMeta[s - 1]).length,
+      grabando: !!isRecording,
+      transmitiendo: !!isStreaming,
+    };
+  }, [camSlots, slotStreams, cameraMeta, isRecording, isStreaming]);
+
+  // Latido del renderer (ping cada 500 ms), visibilitychange y muestra
+  // del estado de composición cada 5 s.
+  useEffect(() => {
+    if (!window.api?.diagPing && !window.api?.diagEvent) return undefined;
+    let prevTicks = 0;
+    let prevComps = 0;
+    try {
+      const s0 = getRenderDiagStats();
+      prevTicks = s0.ticksReceived;
+      prevComps = s0.compositionsRun;
+    } catch (e) {}
+    const pingId = setInterval(() => {
+      try { window.api?.diagPing?.(performance.now()); } catch (e) {}
+    }, 500);
+    const onVis = () => {
+      ventanaDiagSend('foco', `renderer visibilitychange estado=${document.visibilityState} hidden=${document.hidden}`);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    const muestraId = setInterval(() => {
+      try {
+        const s = getRenderDiagStats();
+        const g = getCompositionGovernorState();
+        const v = ventanaDiagValoresRef.current || {};
+        const dTicks = s.ticksReceived - prevTicks;
+        const dComps = s.compositionsRun - prevComps;
+        prevTicks = s.ticksReceived;
+        prevComps = s.compositionsRun;
+        const haceMs = g.lastRenderAt > 0 ? Math.round(performance.now() - g.lastRenderAt) : 'nunca';
+        ventanaDiagSend('muestra', `ticks5s=${dTicks} composiciones5s=${dComps} modoGobernador=${g.mode} visible=${g.visible} enfocado=${g.focused} ultimoRenderHaceMs=${haceMs} camarasActivas=${v.camaras ?? '?'} grabando=${!!v.grabando} transmitiendo=${!!v.transmitiendo}`);
+      } catch (e) {}
+    }, 5000);
+    return () => {
+      clearInterval(pingId);
+      clearInterval(muestraId);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // [prompter] cambios del HUD y de INICIAR/PAUSAR con el estado resultante
+  // (la primera línea de cada efecto es el estado al montar la app).
+  useEffect(() => {
+    ventanaDiagSend('prompter', `HUD=${showFloatingPrompter ? 'ON' : 'OFF'} reproduciendo=${isTeleprompterPlaying}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFloatingPrompter]);
+  useEffect(() => {
+    ventanaDiagSend('prompter', `${isTeleprompterPlaying ? 'INICIAR' : 'PAUSAR'} -> reproduciendo=${isTeleprompterPlaying} hud=${showFloatingPrompter ? 'ON' : 'OFF'} y=${Math.round(teleprompterYRef.current)}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTeleprompterPlaying]);
+
+  // [prompter] una vez por segundo mientras reproduce: los valores REALES
+  // del overlay (o su ausencia) y del recuadro del panel.
+  useEffect(() => {
+    if (!isTeleprompterPlaying) return undefined;
+    const id = setInterval(() => {
+      try {
+        const panel = rightPrompterScrollRef.current;
+        const panelTxt = panel ? `panelScrollTop=${Math.round(panel.scrollTop)}` : 'panelScrollTop=sin-panel';
+        const el = teleprompterTextRef.current;
+        if (!el || !el.parentElement) {
+          ventanaDiagSend('prompter', `overlay AUSENTE hud=${showFloatingPrompter ? 'ON' : 'OFF'} y=${Math.round(teleprompterYRef.current)} ${panelTxt}`);
+          return;
+        }
+        const stripH = el.parentElement.clientHeight || 0;
+        const textH = el.scrollHeight || el.offsetHeight || 0;
+        const yCalc = Math.max(-textH, stripH - teleprompterYRef.current);
+        ventanaDiagSend('prompter', `y=${Math.round(teleprompterYRef.current)} franjaPx=${stripH} textoPx=${textH} translateYCalculado=${yCalc.toFixed(1)} transformAplicado="${el.style.transform || ''}" ${panelTxt}`);
+      } catch (e) {}
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isTeleprompterPlaying, showFloatingPrompter]);
 
   const handlePlayTeleprompter = () => {
     // v3.2.4: «el guion ya terminó» se mide contra el recorrido real de
@@ -5239,8 +5599,12 @@ function PodcastStudioApp() {
           );
         })}
         {/* PGM real: canvas maestro encima cuando ya presentó fotogramas;
-            si no, quedan visibles los VideoTile directos de arriba. */}
-        <MasterProgramMonitor />
+            si no, quedan visibles los VideoTile directos de arriba.
+            v3.3.0 D1/D3: en modo motor el canvas no compone (dieta), así
+            que el monitor de canvas no se monta: el programa se ve en
+            los VideoTile directos y en la ventana nativa de vista
+            previa; la banda de estado del motor va bajo el programa. */}
+        {!enModoMotor && <MasterProgramMonitor />}
       </div>
     );
   };
@@ -5796,6 +6160,36 @@ function PodcastStudioApp() {
           </div>
         </div>
 
+        {/* v3.3.0 D3: banda de estado del motor SOLO en modo motor —
+            la verdad del motor (fase, cámara(s), formato, apertura y
+            concurrencia) junto al programa, sin salir al panel. */}
+        {enModoMotor && (
+          <div className="flex items-center gap-3 flex-wrap px-3 py-1.5 bg-cyan-950/40 border-t border-cyan-800/40 text-[11px] text-cyan-100 shrink-0">
+            <span className="font-black uppercase tracking-wider text-cyan-300">Motor nativo</span>
+            <span>Fase: <b>{nePhase}</b></span>
+            <span>Cámara(s): <b>{(nativeEngineState?.sourceNames && nativeEngineState.sourceNames.length > 0) ? nativeEngineState.sourceNames.join(' + ') : (nativeEngineState?.cameraName || '—')}</b></span>
+            <span>Formato: <b>{nativeEngineState?.caps ? `${nativeEngineState.caps.width}×${nativeEngineState.caps.height} @ ${nativeEngineState.caps.framerate ?? '—'} fps${nativeEngineState.caps.format ? ` (${nativeEngineState.caps.format})` : ''}` : '—'}</b></span>
+            <span>Apertura: <b>{nativeEngineState?.addressingMode || '—'}</b></span>
+            {nativeEngineState?.concurrentPreview !== null && nativeEngineState?.concurrentPreview !== undefined && (
+              <span>Vista previa independiente (fuera de sesión): <b>{nativeEngineState.concurrentPreview ? 'sí' : 'no'}</b></span>
+            )}
+            <span>Teleprompter: <b>{['grabando', 'grabando-transmitiendo', 'transmitiendo'].includes(nePhase) ? 'el de la ventana (en sesión)' : (nativeEngineState?.concurrentPreview ? 'sobre la vista previa' : 'el de la ventana')}</b></span>
+            <button
+              type="button"
+              onClick={() => {
+                if (['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'transmitiendo', 'validando'].includes(nePhase)) {
+                  showToast('La ventana nativa de vista previa ya está abierta junto al estudio.', 'info', 5000);
+                } else {
+                  handleNativeEngineStart('preview');
+                }
+              }}
+              className="ml-auto px-2.5 py-1 rounded bg-cyan-800 hover:bg-cyan-700 text-white text-[11px] font-bold cursor-pointer"
+            >
+              Ver vista previa
+            </button>
+          </div>
+        )}
+
         {/* BOTTOM MULTI-CAM BAR (CARRUSEL Y GRILLA ENVOLVENTE CON MÁXIMA VISIBILIDAD 100% Y SIN FRANJAS NEGRAS) */}
         <div 
           className="min-h-[148px] max-h-[305px] bg-[#0c0c0e] border-t border-[#222] px-3 py-2 flex items-start gap-2.5 overflow-y-auto overflow-x-hidden shrink-0 [scrollbar-width:thin] flex-wrap"
@@ -5828,7 +6222,20 @@ function PodcastStudioApp() {
                   }}
                   title={dualMonitorMode ? `Seleccionar CAM ${camId} en PREVIEW (PVW) · Clic en CUT para conmutar a PROGRAM` : `Seleccionar CAM ${camId} como Cámara Master`}
                 >
-                   {camStream ? (
+                   {nativeReleasedPhotos[camId - 1] !== undefined ? (
+                     /* v3.3.0 D2: cámara liberada al motor nativo — foto
+                        fija + rótulo mientras la sesión siga activa. Si
+                        la foto no se pudo capturar, el valor es null y
+                        se muestra solo el rótulo (declarado). */
+                     <div className="relative w-full h-full">
+                       {nativeReleasedPhotos[camId - 1] ? (
+                         <img src={nativeReleasedPhotos[camId - 1]} className="w-full h-full object-cover" alt={`CAM ${camId}`} />
+                       ) : null}
+                       <div className="absolute inset-x-0 bottom-7 flex justify-center pointer-events-none">
+                         <span className="px-2 py-0.5 rounded bg-cyan-950/85 border border-cyan-500/50 text-cyan-200 text-[9px] font-black tracking-wider uppercase">En el motor nativo</span>
+                       </div>
+                     </div>
+                   ) : camStream ? (
                      <VideoTile camId={camId} registerWithEngine frozen={!!frozenCams[camId]} stream={camStream} isLocal={camId === 1} muted={camSpeakerMuted[camId] !== false} className="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
                    ) : camThumbnails[camId] ? (
                      <img src={camThumbnails[camId]} className="w-full h-full object-cover" alt={`CAM ${camId}`} />

@@ -58,6 +58,12 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('stream-destination-status', handler);
   },
 
+  // Instrumento de diagnóstico de ventana (build diagnóstica post-v3.2.4):
+  // ping de ritmo del renderer y eventos ya formateados hacia el log
+  // userData/logs/ventana-diag.log del proceso principal. Solo observa.
+  diagPing: (rendererNow) => ipcRenderer.send('ventana-diag-ping', rendererNow),
+  diagEvent: (prefix, text) => ipcRenderer.send('ventana-diag-event', { prefix, text }),
+
   getQrUrl: () => ipcRenderer.invoke('get-qr-url'),
   discoverNetworkCameras: () => ipcRenderer.invoke('discover-network-cameras'),
   scanNetworkCameras: () => ipcRenderer.invoke('scan-network-cameras'),
@@ -140,6 +146,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getState: () => ipcRenderer.invoke('native-engine:get-state'),
     start: (payload) => ipcRenderer.invoke('native-engine:start', payload),
     stop: () => ipcRenderer.invoke('native-engine:stop'),
+    setPreviewText: (text) => ipcRenderer.invoke('native-engine:set-preview-text', { text: String(text ?? '') }),
     onState: (cb) => { const h = (_e, s) => cb(s); ipcRenderer.on('native-engine-state', h); return () => ipcRenderer.removeListener('native-engine-state', h); },
   },
 });
