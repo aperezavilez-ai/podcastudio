@@ -66,7 +66,9 @@ import TallySettingsModal from './components/TallySettingsModal.jsx';
 import { useLiveHighlights } from './hooks/useLiveHighlights.js';
 
 // Componentes y Configuración de Fase P3.2 (Teleprompter Broadcast & Soundboard Pad)
-import BroadcastTeleprompter from './components/BroadcastTeleprompter.jsx';
+// v3.2.1: BroadcastTeleprompter (la ventana flotante) ya no se importa:
+// su uso como ventana sobre el programa quedó desmontado — el HUD es el
+// overlay de solo-texto sobre el monitor. El componente queda en el repo.
 import SoundboardQuickPad from './components/SoundboardQuickPad.jsx';
 
 // Componentes y Configuración de Fase P3.3 (Sala Multi-Invitados & Auto-Cintillo por Voz)
@@ -1073,14 +1075,15 @@ function PodcastStudioApp() {
   // el proceso principal (electron/native-engine.js). Llega por el puente
   // window.electronAPI.nativeEngine (preload.js) y por su evento de estado.
   // ==========================================================================
+  const nativeStateRef = useRef(null);
   const [nativeEngineState, setNativeEngineState] = useState(null);
   useEffect(() => {
     const bridge = window.electronAPI?.nativeEngine;
     if (!bridge) return undefined;
     let cancelado = false;
-    try { bridge.getState().then((s) => { if (!cancelado && s) setNativeEngineState(s); }).catch(() => {}); } catch (e) {}
+    try { bridge.getState().then((s) => { if (!cancelado && s) { nativeStateRef.current = s; setNativeEngineState(s); } }).catch(() => {}); } catch (e) {}
     let off = null;
-    try { off = bridge.onState?.((s) => setNativeEngineState(s)); } catch (e) {}
+    try { off = bridge.onState?.((s) => { nativeStateRef.current = s; setNativeEngineState(s); }); } catch (e) {}
     return () => { cancelado = true; try { if (typeof off === 'function') off(); } catch (e) {} };
   }, []);
 
@@ -1095,6 +1098,15 @@ function PodcastStudioApp() {
   // transmite y viceversa) REINICIAN la tubería: la UI lo declara.
   // ==========================================================================
   const nativeFlagsRef = useRef({ forRecord: false, forStream: false });
+  // v3.2.1: arranque PENDIENTE de confirmación por fase real del motor y
+  // vigilante de muerte no ordenada (ver el sondeo confirmador y el
+  // efecto vigilante más abajo). nativeBusyRef marca las transiciones ORDENADAS
+  // (iniciar/detener desde los botones) para que el vigilante no las
+  // confunda con una muerte del motor.
+  const nativeBusyRef = useRef(false);
+  const nativeStreamPendingRef = useRef(null);
+  const nativeRecordPendingRef = useRef(null);
+  const nativePendingSeqRef = useRef(0);
   const nativeStreamUrlsRef = useRef([]);
   const nativeStreamTargetsRef = useRef([]);
   const [nativeNotice, setNativeNotice] = useState('');
@@ -1138,25 +1150,40 @@ function PodcastStudioApp() {
     setShowExportModal(true);
   };
 
-  const iniciarGrabacionNativa = async () => {
-    const bridge = window.electronAPI?.nativeEngine;
-    if (!bridge) return;
-    const subiendo = nativeFlagsRef.current.forStream;
-    setNativeNotice(subiendo
-      ? 'Reconectando sesión: la grabación se suma a la transmisión (la tubería se reinicia)…'
-      : 'Iniciando grabación con el motor nativo…');
-    let res = null;
-    try {
-      res = subiendo
-        ? await bridge.start({ session: 'recordStream', projectName: topic || 'Proyecto_General', streamUrls: nativeStreamUrlsRef.current })
-        : await bridge.start({ session: 'record', projectName: topic || 'Proyecto_General' });
-    } catch (e) { res = { success: false, error: e?.message || String(e) }; }
-    if (!res?.success) {
-      setNativeNotice('');
-      showToast(res?.error || 'El motor nativo no pudo iniciar la grabación.', 'error', 7000);
-      return;
-    }
-    nativeFlagsRef.current = { ...nativeFlagsRef.current, forRecord: true };
+  // ==========================================================================
+  // v3.2.1 — «AL AIRE» / «GRABANDO» SOLO CON LA VERDAD DEL MOTOR.
+  // El fallo en vivo de la v3.2.0: el clic encendía isStreaming y la app
+  // decía «AL AIRE - EN VIVO» mientras el motor estaba en «Fase: error»
+  // y Facebook no recibía nada. Ahora bridge.start() solo confirma el
+  // LANZAMIENTO del proceso: el arranque queda PENDIENTE y la UI solo se
+  // enciende cuando la fase real del motor (transmitiendo / grabando /
+  // grabando-transmitiendo) se sostiene 2 s (sondeo confirmador). Si la
+  // fase cae a «error» antes, o no llega en 10 s, el arranque se declara
+  // FALLIDO con el lastError del motor. Y un vigilante apaga la UI si el
+  // motor muere a mitad de sesión sin orden de parada.
+  // ==========================================================================
+  const confirmarTransmisionNativa = () => {
+    const pend = nativeStreamPendingRef.current;
+    if (!pend) return;
+    if (pend.checkTimer) clearTimeout(pend.checkTimer);
+    if (pend.timeoutTimer) clearTimeout(pend.timeoutTimer);
+    nativeStreamPendingRef.current = null;
+    isStreamStartingRef.current = false;
+    setIsStreamStarting(false);
+    isStreamingRef.current = true;
+    setIsStreaming(true);
+    setActiveLiveDestinations(nativeStreamTargetsRef.current);
+    setShowStreamModal(false);
+    setNativeNotice('');
+    showToast(`Transmitiendo con el motor nativo a ${nativeStreamTargetsRef.current.length} destino(s).`, 'success');
+  };
+
+  const confirmarGrabacionNativa = () => {
+    const pend = nativeRecordPendingRef.current;
+    if (!pend) return;
+    if (pend.checkTimer) clearTimeout(pend.checkTimer);
+    if (pend.timeoutTimer) clearTimeout(pend.timeoutTimer);
+    nativeRecordPendingRef.current = null;
     isRecordingRef.current = true;
     setIsRecording(true);
     recordingStartTimeRef.current = Date.now();
@@ -1167,12 +1194,148 @@ function PodcastStudioApp() {
     pauseStartRef.current = null;
     setCountdown(null);
     setNativeNotice('');
-    showToast(subiendo ? 'Grabando el máster nativo SIN dejar de transmitir.' : 'Grabando con el motor nativo (cámara principal).', 'success');
+    showToast(pend.conStream ? 'Grabando el máster nativo SIN dejar de transmitir.' : 'Grabando con el motor nativo (cámara principal).', 'success');
+  };
+
+  const declararFalloArranqueNativo = (tipo, mensaje) => {
+    if (tipo === 'stream') {
+      const pend = nativeStreamPendingRef.current;
+      if (pend?.checkTimer) clearTimeout(pend.checkTimer);
+      if (pend?.timeoutTimer) clearTimeout(pend.timeoutTimer);
+      nativeStreamPendingRef.current = null;
+      nativeFlagsRef.current = { ...nativeFlagsRef.current, forStream: false };
+      nativeStreamUrlsRef.current = [];
+      nativeStreamTargetsRef.current = [];
+      isStreamStartingRef.current = false;
+      setIsStreamStarting(false);
+      setNativeNotice('');
+      setNativeStreamError(mensaje);
+      showToast(mensaje, 'error', 8000);
+    } else {
+      const pend = nativeRecordPendingRef.current;
+      if (pend?.checkTimer) clearTimeout(pend.checkTimer);
+      if (pend?.timeoutTimer) clearTimeout(pend.timeoutTimer);
+      nativeRecordPendingRef.current = null;
+      nativeFlagsRef.current = { ...nativeFlagsRef.current, forRecord: false };
+      setNativeNotice('');
+      showToast(mensaje, 'error', 8000);
+    }
+  };
+
+  const cancelarPendientesNativos = () => {
+    for (const ref of [nativeStreamPendingRef, nativeRecordPendingRef]) {
+      const pend = ref.current;
+      if (pend?.checkTimer) clearTimeout(pend.checkTimer);
+      if (pend?.timeoutTimer) clearTimeout(pend.timeoutTimer);
+      ref.current = null;
+    }
+  };
+
+  // Arma el arranque pendiente: sondea la fase REAL del motor (espejo
+  // nativeStateRef) — la primera revisión a los 2 s del lanzamiento (la
+  // fase debe SOSTENERSE, no solo aparecer: el motor de la v3.2.0 moría
+  // al nacer justo tras anunciar su fase) y después cada 500 ms. Si la
+  // fase cae a «error», el arranque se declara fallido con el lastError;
+  // si a los 10 s no se confirmó, también. El sondeo propio hace la
+  // confirmación independiente de cuántos eventos de estado emita el
+  // motor mientras tanto.
+  const armarPendienteNativo = (tipo, fasesOk, conStream = false) => {
+    const token = ++nativePendingSeqRef.current;
+    const pend = { token, fasesOk, conStream, checkTimer: null, timeoutTimer: null };
+    const ref = tipo === 'stream' ? nativeStreamPendingRef : nativeRecordPendingRef;
+    const revisar = () => {
+      if (!ref.current || ref.current.token !== token) return;
+      const faseAhora = nativeStateRef.current?.phase;
+      if (fasesOk.includes(faseAhora)) {
+        if (tipo === 'stream') confirmarTransmisionNativa();
+        else confirmarGrabacionNativa();
+        return;
+      }
+      if (faseAhora === 'error') {
+        declararFalloArranqueNativo(tipo, nativeStateRef.current?.lastError || 'El motor nativo no pudo arrancar.');
+        return;
+      }
+      pend.checkTimer = setTimeout(revisar, 500);
+    };
+    pend.checkTimer = setTimeout(revisar, 2000);
+    pend.timeoutTimer = setTimeout(() => {
+      if (!ref.current || ref.current.token !== token) return;
+      const err = nativeStateRef.current?.lastError;
+      declararFalloArranqueNativo(tipo, err || `El motor nativo no confirmó ${tipo === 'stream' ? 'la transmisión' : 'la grabación'} en 10 segundos.`);
+    }, 10000);
+    ref.current = pend;
+    return pend;
+  };
+
+  const iniciarGrabacionNativa = async () => {
+    const bridge = window.electronAPI?.nativeEngine;
+    if (!bridge) return;
+    if (nativeRecordPendingRef.current) return;
+    const subiendo = nativeFlagsRef.current.forStream;
+    if (subiendo && !isStreamingRef.current) {
+      // La transmisión aún está en arranque pendiente de confirmación
+      // (v3.2.1): no hay sesión confirmada que reiniciar todavía.
+      showToast('La transmisión aún se está conectando: espera a que el motor la confirme para sumarle la grabación.', 'warning', 6000);
+      return;
+    }
+    nativeBusyRef.current = true;
+    try {
+      setNativeNotice(subiendo
+        ? 'Reconectando sesión: la grabación se suma a la transmisión (la tubería se reinicia)…'
+        : 'Iniciando grabación con el motor nativo…');
+      let res = null;
+      try {
+        if (subiendo) {
+          // v3.2.2 — SUBIDA de sesión: el motor rechaza (correctamente)
+          // un start con otra sesión en curso, así que la transmisión
+          // en curso se detiene PRIMERO y la combinada 'recordStream'
+          // la reemplaza: el diseño aprobado del Hito 3 («la transición
+          // REINICIA la tubería»), el mismo orden parar→arrancar que
+          // usan las bajadas. nativeBusyRef sigue en true durante todo
+          // el reinicio: el vigilante no lo confunde con una muerte.
+          try { await bridge.stop(); } catch (e) {}
+          await esperarMotorApagado();
+        }
+        res = subiendo
+          ? await bridge.start({ session: 'recordStream', projectName: topic || 'Proyecto_General', streamUrls: nativeStreamUrlsRef.current })
+          : await bridge.start({ session: 'record', projectName: topic || 'Proyecto_General' });
+      } catch (e) { res = { success: false, error: e?.message || String(e) }; }
+      if (!res?.success) {
+        if (subiendo) {
+          // La sesión anterior YA terminó (la detuvimos para el
+          // reinicio) y la combinada no arrancó: estado honesto — se
+          // apaga también la transmisión en la UI y se declara, sin
+          // restaurar estados falsos ni reintentar en silencio.
+          nativeFlagsRef.current = { forRecord: false, forStream: false };
+          nativeStreamUrlsRef.current = [];
+          nativeStreamTargetsRef.current = [];
+          isStreamingRef.current = false;
+          setIsStreaming(false);
+          setActiveLiveDestinations([]);
+          setNativeNotice('');
+          showToast(`La sesión combinada no arrancó: ${res?.error || 'error del motor nativo'}. La transmisión anterior terminó al intentar sumarle la grabación.`, 'error', 9000);
+          return;
+        }
+        setNativeNotice('');
+        showToast(res?.error || 'El motor nativo no pudo iniciar la grabación.', 'error', 7000);
+        return;
+      }
+      // v3.2.1: el OK de start() es solo el lanzamiento. isRecording se
+      // enciende en confirmarGrabacionNativa() cuando la fase real del
+      // motor lo confirme; si el motor muere al nacer, el arranque se
+      // declara fallido con su lastError (nada de grabación fingida).
+      nativeFlagsRef.current = { ...nativeFlagsRef.current, forRecord: true };
+      armarPendienteNativo('record', ['grabando', 'grabando-transmitiendo'], subiendo);
+    } finally {
+      nativeBusyRef.current = false;
+    }
   };
 
   const detenerGrabacionNativa = async () => {
     const bridge = window.electronAPI?.nativeEngine;
     if (!bridge) return;
+    cancelarPendientesNativos();
+    nativeBusyRef.current = true;
     const seguirTransmitiendo = nativeFlagsRef.current.forStream;
     setIsStoppingRecordingUI(true);
     setNativeNotice('Deteniendo el motor: validando el máster…');
@@ -1210,6 +1373,7 @@ function PodcastStudioApp() {
       recordingStartTimeRef.current = null;
       setIsStoppingRecordingUI(false);
       setNativeNotice('');
+      nativeBusyRef.current = false;
     }
   };
 
@@ -1222,44 +1386,89 @@ function PodcastStudioApp() {
       return;
     }
     const conGrabacion = nativeFlagsRef.current.forRecord;
-    setNativeStreamError('');
-    isStreamStartingRef.current = true;
-    setIsStreamStarting(true);
-    setNativeNotice(conGrabacion
-      ? 'Reconectando sesión: la transmisión se suma a la grabación en curso (la tubería se reinicia)…'
-      : 'Iniciando transmisión con el motor nativo…');
-    let res = null;
-    try {
-      res = await bridge.start({
-        session: conGrabacion ? 'recordStream' : 'stream',
-        projectName: topic || 'Proyecto_General',
-        streamUrls: urls,
-      });
-    } catch (e) { res = { success: false, error: e?.message || String(e) }; }
-    isStreamStartingRef.current = false;
-    setIsStreamStarting(false);
-    if (!res?.success) {
-      // Sin respaldo silencioso a mitad de clic: el error del motor se
-      // muestra EN el modal y el modal queda abierto.
-      setNativeStreamError(res?.error || 'El motor nativo no pudo iniciar la transmisión.');
-      setNativeNotice('');
-      showToast(res?.error || 'El motor nativo no pudo iniciar la transmisión.', 'error', 8000);
+    if (conGrabacion && !isRecordingRef.current) {
+      // La grabación aún está en arranque pendiente de confirmación
+      // (v3.2.1): no hay sesión confirmada que reiniciar todavía. El
+      // error va EN el modal, como el resto de fallos de este flujo.
+      setNativeStreamError('La grabación aún se está iniciando: espera a que el motor la confirme para sumarle la transmisión.');
       return;
     }
-    nativeFlagsRef.current = { ...nativeFlagsRef.current, forStream: true };
-    nativeStreamUrlsRef.current = urls;
-    nativeStreamTargetsRef.current = targets;
-    isStreamingRef.current = true;
-    setIsStreaming(true);
-    setActiveLiveDestinations(targets);
-    setShowStreamModal(false);
-    setNativeNotice('');
-    showToast(`Transmitiendo con el motor nativo a ${targets.length} destino(s).`, 'success');
+    nativeBusyRef.current = true;
+    try {
+      setNativeStreamError('');
+      isStreamStartingRef.current = true;
+      setIsStreamStarting(true);
+      setNativeNotice(conGrabacion
+        ? 'Reconectando sesión: la transmisión se suma a la grabación en curso (la tubería se reinicia)…'
+        : 'Iniciando transmisión con el motor nativo…');
+      let res = null;
+      try {
+        if (conGrabacion) {
+          // v3.2.2 — SUBIDA de sesión: el motor rechaza (correctamente)
+          // un start con otra sesión en curso, así que la grabación en
+          // curso se detiene PRIMERO (la parada cierra y valida su
+          // máster; la combinada graba un máster NUEVO, declarado como
+          // en las demás transiciones) y 'recordStream' la reemplaza.
+          // nativeBusyRef sigue en true durante todo el reinicio: el
+          // vigilante no lo confunde con una muerte del motor, y la UI
+          // de grabación NO se apaga ni parpadea durante el reinicio.
+          try { await bridge.stop(); } catch (e) {}
+          await esperarMotorApagado();
+        }
+        res = await bridge.start({
+          session: conGrabacion ? 'recordStream' : 'stream',
+          projectName: topic || 'Proyecto_General',
+          streamUrls: urls,
+        });
+      } catch (e) { res = { success: false, error: e?.message || String(e) }; }
+      if (!res?.success) {
+        // Sin respaldo silencioso a mitad de clic: el error del motor se
+        // muestra EN el modal y el modal queda abierto.
+        isStreamStartingRef.current = false;
+        setIsStreamStarting(false);
+        if (conGrabacion) {
+          // La grabación anterior YA terminó (la detuvimos para el
+          // reinicio) y la combinada no arrancó: estado honesto — se
+          // apaga también la grabación en la UI y se declara, sin
+          // restaurar estados falsos ni reintentar en silencio.
+          nativeFlagsRef.current = { forRecord: false, forStream: false };
+          isRecordingRef.current = false;
+          setIsRecording(false);
+          setRecordingTime(0);
+          recordingStartTimeRef.current = null;
+          const msgCombinada = `La sesión combinada no arrancó: ${res?.error || 'error del motor nativo'}. La grabación anterior terminó al intentar sumarle la transmisión.`;
+          setNativeStreamError(msgCombinada);
+          setNativeNotice('');
+          showToast(msgCombinada, 'error', 9000);
+          return;
+        }
+        setNativeStreamError(res?.error || 'El motor nativo no pudo iniciar la transmisión.');
+        setNativeNotice('');
+        showToast(res?.error || 'El motor nativo no pudo iniciar la transmisión.', 'error', 8000);
+        return;
+      }
+      // v3.2.1: «AL AIRE» ya NO se enciende con el clic ni con el OK del
+      // lanzamiento: el arranque queda PENDIENTE (isStreamStarting sigue
+      // activo, el modal sigue abierto con el aviso de conexión) hasta
+      // que el efecto confirmador vea la fase real del motor sostenida.
+      // Si el motor muere al nacer — el fallo en vivo de la v3.2.0 — el
+      // arranque se declara fallido con su lastError y la app jamás
+      // muestra «AL AIRE» sin estar transmitiendo.
+      nativeFlagsRef.current = { ...nativeFlagsRef.current, forStream: true };
+      nativeStreamUrlsRef.current = urls;
+      nativeStreamTargetsRef.current = targets;
+      setNativeNotice('Conectando: esperando la confirmación del motor nativo…');
+      armarPendienteNativo('stream', ['transmitiendo', 'grabando-transmitiendo']);
+    } finally {
+      nativeBusyRef.current = false;
+    }
   };
 
   const detenerTransmisionNativa = async () => {
     const bridge = window.electronAPI?.nativeEngine;
     if (!bridge) return;
+    cancelarPendientesNativos();
+    nativeBusyRef.current = true;
     const conGrabacion = nativeFlagsRef.current.forRecord;
     setNativeNotice('Deteniendo la transmisión del motor nativo…');
     try { await bridge.stop(); } catch (e) {}
@@ -1295,7 +1504,42 @@ function PodcastStudioApp() {
       showToast('Transmisión detenida.', 'success');
     }
     if (!nativeFlagsRef.current.forRecord) setNativeNotice('');
+    nativeBusyRef.current = false;
   };
+
+  // ==========================================================================
+  // v3.2.1 — VIGILANTE del motor nativo. La CONFIRMACIÓN de los arranques
+  // vive en armarPendienteNativo (sondeo de la fase real). Este efecto es
+  // la otra mitad: fuera de las transiciones ordenadas (nativeBusyRef),
+  // si la fase cae a «error» o «apagado» con la transmisión o la
+  // grabación nativas encendidas en la UI, el motor murió sin orden de
+  // parada: se apaga la UI y se avisa con el lastError. Nunca más un
+  // «AL AIRE» con temporizador sobre un motor muerto.
+  // ==========================================================================
+  useEffect(() => {
+    const st = nativeEngineState;
+    if (!st) return;
+    const phase = st.phase;
+    if (nativeBusyRef.current) return;
+    if (phase !== 'error' && phase !== 'apagado') return;
+    if (nativeFlagsRef.current.forStream && isStreamingRef.current) {
+      nativeFlagsRef.current = { ...nativeFlagsRef.current, forStream: false };
+      nativeStreamUrlsRef.current = [];
+      nativeStreamTargetsRef.current = [];
+      isStreamingRef.current = false;
+      setIsStreaming(false);
+      setActiveLiveDestinations([]);
+      showToast(`La transmisión se detuvo: ${st.lastError || 'el motor nativo se detuvo sin aviso.'}`, 'error', 8000);
+    }
+    if (nativeFlagsRef.current.forRecord && isRecordingRef.current) {
+      nativeFlagsRef.current = { ...nativeFlagsRef.current, forRecord: false };
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      setRecordingTime(0);
+      recordingStartTimeRef.current = null;
+      showToast(`La grabación se detuvo: ${st.lastError || 'el motor nativo se detuvo sin aviso.'}`, 'error', 8000);
+    }
+  }, [nativeEngineState]);
 
   const handleNativeEngineStart = async (session) => {
     try {
@@ -2474,9 +2718,15 @@ function PodcastStudioApp() {
         const speed = (teleprompterSpeed || 3) * 1.8;
         const moveAmount = speed * (delta / 16.666);
 
-        // Superficie 1: el overlay sobre el programa (transform).
+        // Superficie 1: el overlay sobre el programa (transform). El
+        // offset compartido (teleprompterYRef) avanza SIEMPRE que el
+        // teleprompter reproduce, esté o no montado el overlay: desde
+        // la v3.2.1 el HUD se monta/desmonta con su botón y, si el
+        // offset se congelara al desmontarlo, al volver a mostrarlo el
+        // texto quedaría atrasado frente al recuadro del panel, que
+        // comparte este mismo bucle y este mismo avance.
+        teleprompterYRef.current -= moveAmount;
         if (teleprompterTextRef.current) {
-          teleprompterYRef.current -= moveAmount;
           teleprompterTextRef.current.style.transform = `translate3d(0, ${teleprompterYRef.current.toFixed(2)}px, 0)`;
         }
         // Superficie 2 (v1.7.0, Raíz D): la caja de lectura del PANEL
@@ -5457,13 +5707,29 @@ function PodcastStudioApp() {
                   sincronizado (engineCintillo): monitor, grabación y
                   streaming muestran exactamente lo mismo. */}
 
-              {/* TELEPROMPTER FLUIDO */}
-              {activePanel === 'teleprompter' && (!isRecording || !teleprompterHideInRec) && (
-                  <div className="absolute inset-0 overflow-hidden z-30 pointer-events-none">
-                    <div 
+              {/* TELEPROMPTER HUD SOBRE EL PROGRAMA (v3.2.1): SOLO el texto
+                  en desplazamiento, directamente encima de la cámara
+                  máster. Fondo COMPLETAMENTE transparente: sin ventana,
+                  sin vidrio, sin borde, sin barra ni controles (los
+                  controles viven solo en el panel lateral). Se enciende
+                  con el botón «HUD Cámara» del panel (showFloatingPrompter)
+                  y comparte la ÚNICA fuente de desplazamiento con el
+                  recuadro del panel: el mismo bucle rAF mueve este
+                  transform (teleprompterTextRef) y el scrollTop del
+                  panel — un solo temporizador, sin desfase. Es ayuda de
+                  lectura en pantalla: no se dibuja en el canvas, no se
+                  quema en el máster ni sale en el stream. */}
+              {showFloatingPrompter && (!isRecording || !teleprompterHideInRec) && (
+                  <div className="absolute top-0 left-0 right-0 h-[48%] overflow-hidden z-30 pointer-events-none">
+                    {prompterEyeline && (
+                      <div className="absolute top-1 left-0 right-0 text-center text-[10px] font-extrabold tracking-widest uppercase text-sky-300" style={{ textShadow: '0 1px 6px rgba(0,0,0,0.95)' }}>
+                        ▲ Mirar aquí (lente de cámara)
+                      </div>
+                    )}
+                    <div
                       ref={teleprompterTextRef}
                       className="absolute top-0 w-[90%] left-[5%] text-center font-bold text-white whitespace-pre-wrap leading-relaxed"
-                      style={{ 
+                      style={{
                         textShadow: '2px 2px 6px rgba(0,0,0,0.9)',
                         fontSize: `${teleprompterFontSize}px`,
                         transform: `translateY(100vh)`
@@ -6634,7 +6900,7 @@ function PodcastStudioApp() {
                             ? 'bg-sky-950 text-sky-400 border-sky-500' 
                             : 'bg-[#181a22] text-gray-400 hover:text-white border-[#333]'
                         }`}
-                        title="Proyectar ventana HUD de lectura sobre la toma de cámara"
+                        title="Mostrar el texto del teleprompter directamente sobre la cámara máster (sin ventana: solo el texto)"
                       >
                         <Monitor size={10} /> {showFloatingPrompter ? 'HUD Activo' : 'HUD Cámara'}
                       </button>
@@ -7793,13 +8059,14 @@ function PodcastStudioApp() {
         onSelectPvw={(c) => { setPvwCam(c); updateBroadcastState({ pvwCam: c }); }}
       />
 
-      {/* TELEPROMPTER HUD FLOTANTE BROADCAST (P3.2) */}
-      <BroadcastTeleprompter
-        isOpen={showFloatingPrompter}
-        onClose={() => setShowFloatingPrompter(false)}
-        initialText={teleprompterText}
-        lanUrl={qrCodeUrl}
-      />
+      {/* v3.2.1: la VENTANA flotante del teleprompter (BroadcastTeleprompter,
+          con fondo de vidrio y controles propios) ya NO se monta sobre el
+          programa: por corrección de Luis, el «HUD» es SOLO el texto en
+          desplazamiento directamente sobre la cámara máster (ver el
+          overlay «TELEPROMPTER HUD SOBRE EL PROGRAMA» junto al monitor),
+          y los controles quedan únicamente en el panel lateral. El
+          componente queda en el repo sin montar aquí; el teleprompter
+          para iPad/tablet por LAN lo sirve main.js por su propia ruta. */}
 
 
 

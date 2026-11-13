@@ -154,6 +154,22 @@ test('monitor real: se parsean los 4 dispositivos y las entradas MF traen device
   assert.equal(dispositivos[1].devicePath, null);
 });
 
+test('v3.2.3 · monitor real: el deviceIndex es la posición dentro de la clase MF (Steren MF = 0, EasyCamera MF = 1)', () => {
+  const dispositivos = parseDeviceMonitorOutput(FIXTURE_MONITOR_REAL);
+  const sterenMF = dispositivos.find((d) => d.name === 'Steren COM-126' && d.class === 'Source/Video');
+  const easyMF = dispositivos.find((d) => d.name === 'EasyCamera' && d.class === 'Source/Video');
+  // El monitor imprime la Steren MF antes que la EasyCamera MF: índices
+  // 0 y 1 DENTRO de la clase MediaFoundation. El 0 de la Steren es el
+  // device-index=0 con el que la Prueba B del Hito 1 la abrió con éxito;
+  // con la numeración global anterior la Steren MF quedaba en 2.
+  assert.equal(sterenMF.deviceIndex, 0);
+  assert.equal(easyMF.deviceIndex, 1);
+  // Las entradas KS no son direccionables por índice MF: null.
+  for (const d of dispositivos.filter((x) => x.class === 'Video/Source')) {
+    assert.equal(d.deviceIndex, null);
+  }
+});
+
 test('monitor real: sin nombre se elige la Steren MF; por nombre se prefiere la entrada MF', () => {
   const dispositivos = parseDeviceMonitorOutput(FIXTURE_MONITOR_REAL);
   const porDefecto = chooseDevice(dispositivos, null);
@@ -227,8 +243,10 @@ test('monitor: el parser encuentra ambos dispositivos', () => {
   assert.equal(dispositivos.length, 2);
   assert.equal(dispositivos[0].name, 'EasyCamera');
   assert.equal(dispositivos[1].name, 'Steren COM-126');
-  assert.equal(dispositivos[0].deviceIndex, 0);
-  assert.equal(dispositivos[1].deviceIndex, 1);
+  // v3.2.3: deviceIndex es la posición dentro de la clase MediaFoundation
+  // («Source/Video»); estas entradas son KS («Video/Source»): null.
+  assert.equal(dispositivos[0].deviceIndex, null);
+  assert.equal(dispositivos[1].deviceIndex, null);
   assert.ok(dispositivos[0].caps.length >= 2);
   assert.ok(dispositivos[1].caps.length >= 4);
   assert.ok(String(dispositivos[1].devicePath || '').includes('usb'));
@@ -272,11 +290,15 @@ function argsDe(session, extra = {}) {
   });
 }
 
-test('tubería: preview contiene compositor, sink nativo y bt709, sin rtmp', () => {
+test('tubería: preview contiene compositor y sink nativo, sin rtmp (v3.2.1: sin caps forzado)', () => {
   const unida = argsDe('preview').join(' ');
   assert.ok(unida.includes('d3d11compositor'));
   assert.ok(unida.includes('d3d11videosink'));
-  assert.ok(unida.includes('colorimetry=bt709'));
+  // v3.2.1: el caps forzado del Hito 2 (colorimetry=bt709 con
+  // memory:D3D11Memory entre el compositor y el tee) rompió en vivo el
+  // enlace al codificador; la forma vigente es la probada del Hito 1 B.
+  assert.ok(!unida.includes('colorimetry=bt709'));
+  assert.ok(!unida.includes('memory:D3D11Memory'));
   assert.ok(unida.includes('1920'));
   assert.ok(!unida.includes('rtmpsink'));
   assert.ok(!unida.includes('fragment-duration=2000'));
@@ -287,7 +309,8 @@ test('tubería: record contiene preset=hq, bitrate=12000 y MP4 fragmentado', () 
   const unida = tokens.join(' ');
   assert.ok(unida.includes('d3d11compositor'));
   assert.ok(unida.includes('d3d11videosink'));
-  assert.ok(unida.includes('colorimetry=bt709'));
+  assert.ok(!unida.includes('colorimetry=bt709'));
+  assert.ok(!unida.includes('memory:D3D11Memory'));
   assert.ok(unida.includes('preset=hq'));
   assert.ok(unida.includes('bitrate=12000'));
   assert.ok(unida.includes('fragment-duration=2000'));
@@ -310,12 +333,47 @@ test('tubería: recordStream contiene el tee tras h264parse y el destino local S
   assert.ok(unida.indexOf('h264parse') < unida.indexOf('name=tenc'));
 });
 
-test('tubería: sin device-path se marca el respaldo por device-index', () => {
+test('v3.2.3 · tubería: con índice MF válido la apertura es device-index aunque haya device-path', () => {
+  // argsDe pasa deviceIndex 1 Y devicePath: desde la v3.2.3 manda el
+  // índice (la forma probada del Hito 1 B); la ruta ya no es la principal.
+  const tokens = argsDe('preview');
+  assert.equal(tokens.addressingMode, 'device-index');
+  assert.equal(tokens.usedDeviceIndexFallback, false);
+  assert.ok(tokens.includes('device-index=1'));
+  assert.ok(!tokens.some((t) => t.startsWith('device-path=')));
+});
+
+test('v3.2.3 · tubería: solo índice (sin device-path) abre por ese índice sin marca de respaldo', () => {
   const tokens = buildPipelineArgs({ session: 'preview', deviceIndex: 2, devicePath: null, caps: CAPS_1080, encoder: 'nvh264enc' });
-  assert.equal(tokens.usedDeviceIndexFallback, true);
+  assert.equal(tokens.addressingMode, 'device-index');
+  assert.equal(tokens.usedDeviceIndexFallback, false);
   assert.ok(tokens.join(' ').includes('device-index=2'));
-  const conPath = argsDe('preview');
-  assert.equal(conPath.usedDeviceIndexFallback, false);
+});
+
+test('v3.2.3 · tubería: device-path solo aparece sin índice válido (respaldo) y el respaldo queda marcado', () => {
+  const sinIndice = buildPipelineArgs({ session: 'preview', deviceIndex: null, devicePath: '\\\\?\\usb#vid_0c45#steren', caps: CAPS_1080, encoder: 'nvh264enc' });
+  assert.equal(sinIndice.addressingMode, 'device-path');
+  assert.equal(sinIndice.usedDeviceIndexFallback, true);
+  assert.ok(sinIndice.some((t) => t.startsWith('device-path=')));
+  // Sin índice ni ruta: índice 0 por defecto (la forma del Hito 1 B),
+  // marcado como respaldo porque no es el índice parseado del dispositivo.
+  const sinNada = buildPipelineArgs({ session: 'preview', deviceIndex: null, devicePath: null, caps: CAPS_1080, encoder: 'nvh264enc' });
+  assert.equal(sinNada.addressingMode, 'device-index');
+  assert.equal(sinNada.usedDeviceIndexFallback, true);
+  assert.ok(sinNada.includes('device-index=0'));
+});
+
+test('v3.2.3 · tubería: el modo forzado (reintento) manda sobre el primario solo si el dato existe', () => {
+  const forzadoPath = buildPipelineArgs({ session: 'preview', deviceIndex: 0, devicePath: 'RUTA', caps: CAPS_1080, encoder: 'nvh264enc', addressingMode: 'device-path' });
+  assert.equal(forzadoPath.addressingMode, 'device-path');
+  assert.ok(forzadoPath.includes('device-path=RUTA'));
+  const forzadoIndice = buildPipelineArgs({ session: 'preview', deviceIndex: 3, devicePath: 'RUTA', caps: CAPS_1080, encoder: 'nvh264enc', addressingMode: 'device-index' });
+  assert.equal(forzadoIndice.addressingMode, 'device-index');
+  assert.ok(forzadoIndice.includes('device-index=3'));
+  // Forzar device-path sin ruta no inventa nada: manda la lógica primaria.
+  const forzadoImposible = buildPipelineArgs({ session: 'preview', deviceIndex: 3, devicePath: null, caps: CAPS_1080, encoder: 'nvh264enc', addressingMode: 'device-path' });
+  assert.equal(forzadoImposible.addressingMode, 'device-index');
+  assert.ok(forzadoImposible.includes('device-index=3'));
 });
 
 // ---------------------------------------------------------------------------
@@ -615,6 +673,67 @@ test('Hito 3 · capsParaStream: ≤1080 pasa intacto y >1080 baja a 1920×1080 c
   assert.equal(c4k.framerate, 30);
 });
 
+// ---------------------------------------------------------------------------
+// v3.2.1 — Invariantes de la topología PROBADA (Hito 1 B). El Hito 2 metió
+// un d3d11convert + caps forzado (memory:D3D11Memory, NV12,
+// colorimetry=bt709) entre el compositor y el tee de programa; esa forma
+// nunca corrió en vivo y la v3.2.0 murió al nacer en la máquina de Luis
+// con «could not link queue2 to nvh264enc0». Estos invariantes blindan la
+// forma que sí grabó y transmitió de verdad.
+// ---------------------------------------------------------------------------
+test('v3.2.1 · tubería: entre el compositor y tprog SOLO hay una queue (forma probada del Hito 1 B)', () => {
+  const casos = [
+    ['preview', argsDe('preview')],
+    ['record', argsDe('record')],
+    ['recordStream', argsDe('recordStream', { streamUrls: [URL_FB_PRUEBA] })],
+    ['stream', argsDe('stream', { streamUrls: [URL_FB_PRUEBA] })],
+  ];
+  for (const [session, tokens] of casos) {
+    const i = tokens.indexOf('name=mix');
+    assert.ok(i >= 0, `${session}: falta name=mix`);
+    assert.deepEqual(
+      tokens.slice(i + 1, i + 7),
+      ['mix.', '!', 'queue', '!', 'tee', 'name=tprog'],
+      `${session}: tras el compositor solo puede ir «mix. ! queue ! tee name=tprog» (sin convert ni caps forzado)`,
+    );
+  }
+});
+
+test('v3.2.1 · tubería: el codificador cuelga de tprog vía queue y no existe caps forzado D3D11 en ninguna sesión', () => {
+  const casos = [
+    argsDe('preview'),
+    argsDe('record'),
+    argsDe('recordStream', { streamUrls: [URL_FB_PRUEBA] }),
+    argsDe('recordStream', { caps: CAPS_4K, streamUrls: [URL_FB_PRUEBA] }),
+    argsDe('stream', { caps: CAPS_4K, streamUrls: [URL_FB_PRUEBA] }),
+  ];
+  for (const tokens of casos) {
+    const unida = tokens.join(' ');
+    assert.ok(!unida.includes('memory:D3D11Memory'), 'ningún caps puede fijar memory:D3D11Memory');
+    assert.ok(!unida.includes('colorimetry=bt709'), 'ningún caps puede fijar colorimetry=bt709');
+  }
+  assert.ok(argsDe('record').join(' ').includes('tprog. ! queue ! nvh264enc'), 'record: el codificador se alimenta de tprog vía queue');
+  assert.ok(
+    argsDe('recordStream', { caps: CAPS_4K, streamUrls: [URL_FB_PRUEBA] }).join(' ').includes('tprog. ! queue ! nvh264enc'),
+    'recordStream 4K: la grabación alimenta su codificador desde tprog vía queue',
+  );
+});
+
+test('v3.2.1 · tubería: la bajada >1080 del stream va por memoria de sistema (d3d11download→videoscale→videoconvert, caps NV12 plano)', () => {
+  const tokens = argsDe('recordStream', { caps: CAPS_4K, streamUrls: [URL_FB_PRUEBA] });
+  const i = tokens.indexOf('d3d11download');
+  assert.ok(i >= 0, 'la rama de stream con escala debe bajar a memoria de sistema con d3d11download');
+  assert.deepEqual(
+    tokens.slice(i, i + 6),
+    ['d3d11download', '!', 'videoscale', '!', 'videoconvert', '!'],
+    'la bajada es d3d11download ! videoscale ! videoconvert ! <caps de sistema>',
+  );
+  assert.ok(
+    tokens.includes('video/x-raw,format=NV12,width=1920,height=1080,framerate=30/1'),
+    'el caps de bajada es de memoria de sistema (NV12 plano, sin memory:D3D11Memory)',
+  );
+});
+
 // Fixture SINTÉTICA de «gst-device-monitor-1.0 Audio/Source» con la forma
 // de la salida WASAPI2 real: el micrófono de la Steren trae su device.id.
 const FIXTURE_MONITOR_AUDIO = `
@@ -783,5 +902,143 @@ test('Hito 3 · anfitrión: sin micrófono coincidente, el dispositivo por defec
     await engine.stop();
   } finally {
     try { await engine.stop(); } catch (e) {}
+  }
+});
+
+// ---------------------------------------------------------------------------
+// (vii) v3.2.3 — Reintento declarado de apertura de la cámara. El stub de
+// gst-launch es INESTABLE a propósito: su PRIMER lanzamiento muere
+// enseguida con la firma pedida en PS_V323_FIRMA y los siguientes se
+// comportan como el stub bueno (crean el MP4 y duermen):
+//   'captura' = «Couldn't create capture object», la firma real de
+//               gst_mf_video_src_start en las dos corridas de la
+//               compuerta smoke en la máquina de Luis (v3.2.2);
+//   'otra'    = una firma distinta (no debe disparar el reintento).
+// Cada lanzamiento deja su argv en argv-<n>.txt y el contador en
+// lanzamientos.txt, ambos dentro del directorio dado en PS_V323_DIR.
+// ---------------------------------------------------------------------------
+function prepararMotorReintento(dir) {
+  escribirHerramientaStub(dir, 'gst-launch-1.0', `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const dir = process.env.PS_V323_DIR || '';
+let n = 0;
+try { n = parseInt(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), 10) || 0; } catch (e) {}
+n += 1;
+try { fs.writeFileSync(path.join(dir, 'lanzamientos.txt'), String(n)); } catch (e) {}
+try { fs.writeFileSync(path.join(dir, 'argv-' + n + '.txt'), process.argv.slice(2).join('\\n')); } catch (e) {}
+if (n === 1 && process.env.PS_V323_FIRMA === 'captura') {
+  process.stderr.write("ERROR mfvideosrc gstmfvideosrc.cpp:288:gst_mf_video_src_start:<mfvideosrc0> Couldn't create capture object\\n");
+  process.exit(1);
+}
+if (n === 1 && process.env.PS_V323_FIRMA === 'otra') {
+  process.stderr.write('ERROR del arranque: fallo generico sin la firma de captura\\n');
+  process.exit(1);
+}
+process.stderr.write('Setting pipeline to PAUSED ...\\n');
+for (const a of process.argv.slice(2)) {
+  if (a.startsWith('location=') && a.endsWith('.mp4')) {
+    try { fs.writeFileSync(a.slice('location='.length), Buffer.alloc(4096, 7)); } catch (e) {}
+  }
+}
+setInterval(() => {}, 1000);
+`);
+  escribirHerramientaStub(dir, 'gst-inspect-1.0', `#!/usr/bin/env node
+process.exit(0);
+`);
+  const fixtureEscapado = JSON.stringify(FIXTURE_MONITOR_REAL);
+  escribirHerramientaStub(dir, 'gst-device-monitor-1.0', `#!/usr/bin/env node
+process.stdout.write(${fixtureEscapado});
+`);
+  const ffmpegStub = escribirHerramientaStub(dir, 'ffmpeg-stub', `#!/usr/bin/env node
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+const i = args.indexOf('-i');
+const archivo = i >= 0 ? args[i + 1] : null;
+if (archivo) {
+  process.stderr.write('  Duration: 00:01:00.03, start: 0.000000, bitrate: 12000 kb/s\\n');
+  process.stderr.write('  Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 30 fps\\n');
+}
+process.exit(0);
+`);
+  const logs = [];
+  const engine = createNativeEngine({
+    ffmpegPath: ffmpegStub,
+    log: (l) => logs.push(l),
+    onState: () => {},
+    env: { ...process.env, PODCASTUDIO_GST_BIN: dir, PATH: process.env.PATH || '' },
+    platform: process.platform,
+    fsExists: (p) => fs.existsSync(p),
+    spawnImpl: crearSpawnParaStubs(dir, spawn),
+  });
+  return { engine, logs };
+}
+
+async function esperarV323(condicion, ms = 6000) {
+  const inicio = Date.now();
+  while (Date.now() - inicio < ms) {
+    if (condicion()) return true;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  return condicion();
+}
+
+test('v3.2.3 · anfitrión: si la apertura por índice muere con la firma de captura, reintenta UNA vez por device-path', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v323-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V323_DIR = dir;
+  process.env.PS_V323_FIRMA = 'captura';
+  const { engine, logs } = prepararMotorReintento(dir);
+  try {
+    const r1 = await engine.start('record', { outDir });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    // El primer lanzamiento muere con la firma y el motor relanza solo.
+    const huboSegundo = await esperarV323(() => fs.existsSync(path.join(dir, 'argv-2.txt')));
+    assert.ok(huboSegundo, 'debió existir un segundo lanzamiento (el reintento)');
+    const argv1 = fs.readFileSync(path.join(dir, 'argv-1.txt'), 'utf8');
+    const argv2 = fs.readFileSync(path.join(dir, 'argv-2.txt'), 'utf8');
+    // La fixture real da a la Steren MF índice 0 y device.path: el orden
+    // de modos es índice (principal) → ruta (respaldo del reintento).
+    assert.ok(argv1.includes('device-index=0'), argv1.slice(0, 200));
+    assert.ok(!argv1.includes('device-path='), argv1.slice(0, 200));
+    assert.ok(argv2.includes('device-path='), argv2.slice(0, 200));
+    const st = engine.getState();
+    assert.equal(st.phase, 'grabando');
+    assert.equal(st.addressingMode, 'device-path');
+    assert.ok(logs.join('\n').includes('reintentando con device-path'), logs.join(' | ').slice(0, 500));
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+    assert.equal(engine.getState().validation.valid, true);
+    // Sin tercer lanzamiento: el reintento es único.
+    assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), '2');
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V323_DIR;
+    delete process.env.PS_V323_FIRMA;
+  }
+});
+
+test('v3.2.3 · anfitrión: una muerte temprana con OTRA firma no dispara el reintento de apertura', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v323b-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V323_DIR = dir;
+  process.env.PS_V323_FIRMA = 'otra';
+  const { engine } = prepararMotorReintento(dir);
+  try {
+    const r1 = await engine.start('record', { outDir });
+    assert.equal(r1.success, true, JSON.stringify(r1));
+    const cayo = await esperarV323(() => engine.getState().phase === 'error');
+    assert.ok(cayo, 'la sesión debió caer en error');
+    // Margen para un hipotético segundo lanzamiento que NO debe existir.
+    await new Promise((r) => setTimeout(r, 900));
+    assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), '1');
+    assert.equal(engine.getState().addressingMode, 'device-index');
+    assert.ok(engine.getState().lastError.includes('se cerró sin orden de parada'));
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V323_DIR;
+    delete process.env.PS_V323_FIRMA;
   }
 });

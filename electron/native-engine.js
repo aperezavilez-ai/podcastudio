@@ -162,6 +162,13 @@ function agregarCapsDesdeTexto(lista, texto) {
 // La clase llega como «Video/Source» en las entradas KS/DirectShow y como
 // «Source/Video» (invertida) en las de MediaFoundation — son las que usa
 // mfvideosrc —: se aceptan AMBAS; cualquier otra clase se descarta.
+// v3.2.3 — deviceIndex: para las fuentes de VÍDEO MediaFoundation es su
+// posición (0-based) entre las entradas de SU clase («Source/Video»), en
+// el orden en que el monitor las imprime: ese es el índice que entiende
+// la propiedad device-index de mfvideosrc (la forma probada del Hito 1 B).
+// Antes era la posición global entre TODAS las entradas aceptadas (KS y
+// MF mezcladas), que NO coincide con la enumeración de MediaFoundation.
+// Las entradas que no son MF de vídeo llevan deviceIndex null.
 // ----------------------------------------------------------------------------
 function parseDeviceMonitorOutput(texto, opciones) {
   // Hito 3: con { audio: true } el parser acepta las fuentes de AUDIO
@@ -170,11 +177,12 @@ function parseDeviceMonitorOutput(texto, opciones) {
   // (solo vídeo) y descarta cualquier bloque de audio.
   const esAudio = !!(opciones && opciones.audio);
   const dispositivos = [];
+  let indiceMF = 0;
   const bloques = String(texto || '').split(/Device found:/);
   // El primer trozo es lo anterior al primer «Device found:»: se descarta.
   for (let i = 1; i < bloques.length; i += 1) {
     const lineas = bloques[i].split(/\r?\n/);
-    const disp = { name: null, class: null, caps: [], devicePath: null, deviceId: null, api: null, deviceIndex: dispositivos.length };
+    const disp = { name: null, class: null, caps: [], devicePath: null, deviceId: null, api: null, deviceIndex: null };
     let enCaps = false;
     for (const linea of lineas) {
       const recortada = linea.trim();
@@ -210,7 +218,12 @@ function parseDeviceMonitorOutput(texto, opciones) {
     const clasesAceptadas = esAudio ? ['Audio/Source', 'Source/Audio'] : ['Video/Source', 'Source/Video'];
     if (disp.class && !clasesAceptadas.includes(disp.class)) continue;
     if (!disp.name && disp.caps.length === 0 && !disp.devicePath) continue;
-    disp.deviceIndex = dispositivos.length;
+    // v3.2.3: el índice MF solo lo consumen las entradas aceptadas de la
+    // clase «Source/Video», en el orden en que el monitor las imprime.
+    if (!esAudio && disp.class === 'Source/Video') {
+      disp.deviceIndex = indiceMF;
+      indiceMF += 1;
+    }
     dispositivos.push(disp);
   }
   return dispositivos;
@@ -357,12 +370,15 @@ function chooseAudioDevice(dispositivosAudio, nombreCamara) {
 // buildPipelineArgs(opts) PURO: devuelve el array de tokens para
 // spawn(gstLaunch, tokens) SIN '-e' (el cierre elegante llega en un hito
 // posterior; el MP4 fragmentado hace válido el cierre forzado, probado en
-// el Hito 1). El array lleva además la propiedad usedDeviceIndexFallback
-// para que el llamador pueda loguear esa rebaja declarada.
-// opts: { session, deviceIndex, devicePath, caps, encoder, withPreset,
-//         encoderProps, withAudio, audioSrc, audioDevice, outFile,
-//         streamUrls } — streamUrls: destinos RTMP reales (Hito 3);
-//         audioDevice: identificador WASAPI para wasapi2src device=….
+// el Hito 1). El array lleva además las propiedades addressingMode
+// ('device-index' | 'device-path': el modo con que se abre la cámara) y
+// usedDeviceIndexFallback para que el llamador pueda loguear la verdad.
+// opts: { session, deviceIndex, devicePath, addressingMode, caps,
+//         encoder, withPreset, encoderProps, withAudio, audioSrc,
+//         audioDevice, outFile, streamUrls } — streamUrls: destinos
+//         RTMP reales (Hito 3); audioDevice: identificador WASAPI para
+//         wasapi2src device=…; addressingMode: fuerza el modo de
+//         apertura (lo usa el reintento declarado del anfitrión, v3.2.3).
 // ----------------------------------------------------------------------------
 function buildPipelineArgs(opts) {
   const o = opts || {};
@@ -380,21 +396,55 @@ function buildPipelineArgs(opts) {
   // token argv (spawn por array, sin shell) en su rtmpsink.
   const streamUrls = Array.isArray(o.streamUrls) ? o.streamUrls.filter((u) => typeof u === 'string' && u.trim()) : [];
   // Hito 3 — tope 1080 para los destinos: si el formato negociado
-  // supera 1920×1080, el stream baja a 1080p en GPU con su propio
+  // supera 1920×1080, el stream baja a 1080p con su propio
   // codificador (bitrate del peldaño 1080 de la escalera: 12000).
   const necesitaEscalaStream = caps.width > 1920 || caps.height > 1080;
   const capsStream = capsParaStream(caps);
   const propsStream = Array.isArray(o.encoderProps) ? o.encoderProps : encoderProps(o.encoder, conPreset, capsStream);
-  const capsStreamTexto = `video/x-raw(memory:D3D11Memory),format=NV12,width=${capsStream.width},height=${capsStream.height},framerate=${fps}/1`;
+  // v3.2.1: caps de MEMORIA DE SISTEMA (sin memory:D3D11Memory) para la
+  // rama con escala: la bajada va por d3d11download→videoscale→
+  // videoconvert y el caps plano NV12 es el que todo codificador
+  // acepta. El caps D3D11 forzado anterior compartía el riesgo que
+  // mató el enlace del codificador principal en la v3.2.0.
+  const capsStreamTexto = `video/x-raw,format=NV12,width=${capsStream.width},height=${capsStream.height},framerate=${fps}/1`;
   // Fuente de audio: con el dispositivo WASAPI elegido por coincidencia
   // (regla de audio del Hito 3), el token device=<id> va tras el nombre.
   const fuenteAudio = o.audioDevice ? [audioSrc, `device=${o.audioDevice}`] : [audioSrc];
 
   const tokens = [];
   tokens.push('mfvideosrc');
-  const usedDeviceIndexFallback = !o.devicePath;
-  tokens.push(o.devicePath ? `device-path=${o.devicePath}` : `device-index=${o.deviceIndex != null ? o.deviceIndex : 0}`);
-  tokens.push('!', capsElegido, '!', 'd3d11upload', '!', 'd3d11convert', '!', 'd3d11compositor', 'name=mix', 'mix.', '!', 'queue', '!', 'd3d11convert', '!', 'video/x-raw(memory:D3D11Memory),format=NV12,colorimetry=bt709', '!', 'tee', 'name=tprog');
+  // v3.2.3 — direccionamiento de la cámara. La forma PRINCIPAL es
+  // device-index (la posición del dispositivo en la enumeración
+  // MediaFoundation): es la que la Prueba B del Hito 1 usó para abrir la
+  // Steren y grabar/transmitir válido. La apertura por device-path
+  // NUNCA se probó en vivo y murió en las dos corridas de la compuerta
+  // smoke de la v3.2.2 con «Couldn't create capture object»
+  // (gst_mf_video_src_start): device-path queda SOLO como respaldo
+  // cuando el dispositivo no trae índice MF válido, o cuando el
+  // anfitrión lo fuerza (opts.addressingMode) en su reintento declarado.
+  const indiceValido = Number.isInteger(o.deviceIndex) && o.deviceIndex >= 0;
+  let addressingMode;
+  if (o.addressingMode === 'device-path' && o.devicePath) addressingMode = 'device-path';
+  else if (o.addressingMode === 'device-index' && indiceValido) addressingMode = 'device-index';
+  else if (indiceValido) addressingMode = 'device-index';
+  else if (o.devicePath) addressingMode = 'device-path';
+  else addressingMode = 'device-index'; // sin índice ni ruta: el 0 por defecto del Hito 1
+  // usedDeviceIndexFallback (nombre heredado): true cuando el
+  // lanzamiento NO usa el índice MF parseado del dispositivo elegido
+  // (respaldo por device-path o índice 0 por defecto sin parsear).
+  const usedDeviceIndexFallback = !(indiceValido && addressingMode === 'device-index');
+  tokens.push(addressingMode === 'device-path'
+    ? `device-path=${o.devicePath}`
+    : `device-index=${indiceValido ? o.deviceIndex : 0}`);
+  // v3.2.1 — forma PROBADA del Hito 1 B: del compositor al tee de
+  // programa SOLO hay una queue. El d3d11convert + caps forzado
+  // (memory:D3D11Memory, NV12, colorimetry=bt709) que el Hito 2 metió
+  // en este tramo NUNCA corrió en vivo y rompía el enlace
+  // queue→codificador («could not link queue2 to nvh264enc0», fallo en
+  // vivo de la v3.2.0): fuera. El codificador se alimenta del tee con
+  // los caps que el propio compositor negocia, como en la tubería que
+  // grabó y transmitió de verdad.
+  tokens.push('!', capsElegido, '!', 'd3d11upload', '!', 'd3d11convert', '!', 'd3d11compositor', 'name=mix', 'mix.', '!', 'queue', '!', 'tee', 'name=tprog');
 
   // Rama de vista previa: SIEMPRE (ventana nativa fuera de la app).
   tokens.push('tprog.', '!', 'queue', '!', 'd3d11videosink', 'sync=false');
@@ -419,7 +469,7 @@ function buildPipelineArgs(opts) {
     if (!necesitaEscalaStream) {
       // Formato ≤1080p: UN solo codificador y el tee tras h264parse
       // reparte el mismo H.264 a la grabación y a cada destino (la
-      // forma probada en el Hito 1/2).
+      // forma probada en el Hito 1 B).
       tokens.push('tprog.', '!', 'queue', '!', o.encoder, ...props, '!', 'h264parse', '!', 'tee', 'name=tenc');
       if (graba) tokens.push('tenc.', '!', 'queue', '!', 'mp4mux', 'fragment-duration=2000', 'name=mp4', '!', 'filesink', `location=${outFileFwd}`);
       for (const rama of ramasFlv) {
@@ -427,10 +477,11 @@ function buildPipelineArgs(opts) {
       }
     } else {
       // Formato >1080p: la grabación conserva la resolución completa
-      // con su codificador; el stream nace de tprog con conversión GPU
-      // a 1920×1080 y su PROPIO codificador al bitrate de 1080p.
+      // con su codificador; el stream nace de tprog, baja a 1080p por
+      // memoria de sistema (d3d11download→videoscale→videoconvert,
+      // v3.2.1) y tiene su PROPIO codificador al bitrate de 1080p.
       if (graba) tokens.push('tprog.', '!', 'queue', '!', o.encoder, ...props, '!', 'h264parse', '!', 'mp4mux', 'fragment-duration=2000', 'name=mp4', '!', 'filesink', `location=${outFileFwd}`);
-      tokens.push('tprog.', '!', 'queue', '!', 'd3d11convert', '!', capsStreamTexto, '!', o.encoder, ...propsStream, '!', 'h264parse', '!', 'tee', 'name=tenc');
+      tokens.push('tprog.', '!', 'queue', '!', 'd3d11download', '!', 'videoscale', '!', 'videoconvert', '!', capsStreamTexto, '!', o.encoder, ...propsStream, '!', 'h264parse', '!', 'tee', 'name=tenc');
       for (const rama of ramasFlv) {
         tokens.push('tenc.', '!', 'queue', '!', 'flvmux', `name=${rama.nombre}`, '!', 'rtmpsink', `location=${rama.url}`);
       }
@@ -445,6 +496,7 @@ function buildPipelineArgs(opts) {
   }
 
   tokens.usedDeviceIndexFallback = usedDeviceIndexFallback;
+  tokens.addressingMode = addressingMode;
   return tokens;
 }
 
@@ -499,6 +551,10 @@ function createNativeEngine(deps) {
     // Hito 3: número de destinos RTMP reales de la sesión en curso
     // (las URL NUNCA entran al estado ni al registro: llevan la clave).
     streamCount: 0,
+    // v3.2.3: modo de apertura de la cámara del intento vigente
+    // ('device-index' | 'device-path' | null sin sesión): el estado
+    // dice la verdad sobre cómo se está abriendo la fuente.
+    addressingMode: null,
     lastError: null,
     logTail: [],
     gstInstalled: null,
@@ -511,8 +567,9 @@ function createNativeEngine(deps) {
   let intentionalStop = false;
   let gstStartedAt = 0;
   let stderrAcumulado = '';
-  let contexto = null; // contexto de la sesión para el reintento sin preset
+  let contexto = null; // contexto de la sesión para los reintentos declarados
   let reintentoSinPresetHecho = false;
+  let reintentoDireccionHecho = false;
   let gstCloseWaiters = [];
 
   function emitir() {
@@ -636,6 +693,38 @@ function createNativeEngine(deps) {
       camareros.forEach((fn) => { try { fn(); } catch (err) {} });
       if (intentionalStop) return;
       const transcurrido = Date.now() - gstStartedAt;
+      // v3.2.3 — Reintento declarado de APERTURA: si la fuente muere al
+      // nacer (≤4000 ms: antes de sostenerse en la fase de marcha) con
+      // la firma exacta de MediaFoundation «Couldn't create capture
+      // object» (gst_mf_video_src_start) y existe el modo de apertura
+      // ALTERNO, la sesión se relanza UNA vez con ese modo. Es la red
+      // de seguridad entre las dos formas de direccionar la cámara: la
+      // principal device-index (probada en el Hito 1 B) y el respaldo
+      // device-path. El intercambio queda en el registro y en el estado
+      // (addressingMode). Cada intento nace con su contabilidad limpia
+      // (lanzarGst reinicia el stderr acumulado y la marca de tiempo;
+      // el oyente local y la validación son de la sesión, no del
+      // intento, y no se duplican).
+      const firmaCaptura = stderrAcumulado.includes("Couldn't create capture object");
+      const dispCtx = contexto ? contexto.device : null;
+      const modoVigente = contexto ? contexto.addressingMode : null;
+      const modoAlterno = !dispCtx || reintentoDireccionHecho || !firmaCaptura || transcurrido > 4000
+        ? null
+        : modoVigente === 'device-index' && dispCtx.devicePath
+          ? 'device-path'
+          : modoVigente === 'device-path' && Number.isInteger(dispCtx.deviceIndex) && dispCtx.deviceIndex >= 0
+            ? 'device-index'
+            : null;
+      if (modoAlterno) {
+        reintentoDireccionHecho = true;
+        contexto.addressingMode = modoAlterno;
+        log(`La apertura por ${modoVigente} falló; reintentando con ${modoAlterno}…`);
+        fijar({ addressingMode: modoAlterno });
+        const nuevosTokens = buildPipelineArgs(contextoParaBuilder());
+        log(`Tubería (reintento): ${nuevosTokens.join(' ')}`);
+        lanzarGst(nuevosTokens);
+        return;
+      }
       // Reintento declarado: una sesión con nvh264enc + preset=hq que muere
       // en menos de 2500 ms nombrando al codificador en su stderr se
       // reintenta UNA vez sin preset, y la rebaja queda logueada.
@@ -648,8 +737,8 @@ function createNativeEngine(deps) {
         log('El codificador nvh264enc con preset=hq murió al arrancar; reintento declarado SIN preset (presetUsed pasa a «sin preset (reintento declarado)»).');
         fijar({ presetUsed: 'sin preset (reintento declarado)' });
         const nuevosTokens = buildPipelineArgs(contextoParaBuilder());
-        if (nuevosTokens.usedDeviceIndexFallback) {
-          log('La cámara se selecciona por device-index (no se pudo parsear device-path del monitor).');
+        if (nuevosTokens.addressingMode === 'device-path') {
+          log('La cámara se abre por device-path (respaldo declarado).');
         }
         lanzarGst(nuevosTokens);
         return;
@@ -664,8 +753,13 @@ function createNativeEngine(deps) {
   function contextoParaBuilder() {
     return {
       session: contexto.session,
-      deviceIndex: contexto.device ? contexto.device.deviceIndex : 0,
+      // v3.2.3: el índice pasa TAL CUAL (null si el dispositivo no trae
+      // índice MF): sustituirlo por 0 aquí haría creer al constructor
+      // que el índice usado es el parseado del dispositivo.
+      deviceIndex: contexto.device ? contexto.device.deviceIndex : null,
       devicePath: contexto.device ? contexto.device.devicePath : null,
+      // v3.2.3: modo de apertura vigente (el reintento lo intercambia).
+      addressingMode: contexto.addressingMode || undefined,
       caps: contexto.caps,
       encoder: contexto.encoder,
       withPreset: contexto.withPreset,
@@ -726,11 +820,13 @@ function createNativeEngine(deps) {
 
     intentionalStop = false;
     reintentoSinPresetHecho = false;
+    reintentoDireccionHecho = false;
     fijar({
       phase: 'encendiendo', session, cameraName, caps: null, encoder: null,
       presetUsed: null, outFile: null, streamFile: null, validation: null,
       streamValidation: null, streamBytes: 0, lastError: null, logTail: [],
       audioDevice: { name: null, matched: false }, streamCount: streamUrls.length,
+      addressingMode: null,
     });
     if (streamUrls.length > 0) {
       log(`Destinos de transmisión reales: ${streamUrls.length} (las URL no se escriben en el registro: llevan la clave de transmisión).`);
@@ -768,8 +864,11 @@ function createNativeEngine(deps) {
     }
     const bajoElPiso = caps.width < 1920 || caps.height < 1080;
     log(`Cámara «${device.name || ''}»: formato negociado ${caps.width}x${caps.height} a ${caps.framerate != null ? caps.framerate : '?'} fps (${caps.format || 'formato sin declarar'})${bajoElPiso ? ' — por debajo del piso 1080 del producto (declarado)' : ''}.`);
-    if (!device.devicePath) {
-      log('La cámara se selecciona por device-index (no se pudo parsear device-path del monitor).');
+    // v3.2.3: la apertura principal es por device-index (índice MF);
+    // solo se declara el caso sin índice ni ruta (índice 0 por defecto).
+    // El respaldo por device-path lo declara la construcción (paso 7).
+    if (!(Number.isInteger(device.deviceIndex) && device.deviceIndex >= 0) && !device.devicePath) {
+      log('La cámara no trae índice MF ni device-path en el monitor: se abre con device-index=0 por defecto (declarado).');
     }
 
     // 3) Codificador (la vista previa también lo declara en el panel).
@@ -843,6 +942,9 @@ function createNativeEngine(deps) {
     contexto = {
       tools, session, device, caps, encoder, withPreset, withAudio, outFile, streamFile,
       streamUrls, audioDeviceId,
+      // v3.2.3: modo de apertura del intento vigente; lo fija el paso 7
+      // desde los tokens construidos y el reintento puede intercambiarlo.
+      addressingMode: null,
     };
     fijar({ audioDevice: audioDeviceInfo });
 
@@ -874,9 +976,11 @@ function createNativeEngine(deps) {
 
     // 7) Lanzamiento de la tubería.
     const tokens = buildPipelineArgs(contextoParaBuilder());
-    if (tokens.usedDeviceIndexFallback) {
-      log('Construcción de la sesión: selector por device-index (respaldo declarado).');
+    contexto.addressingMode = tokens.addressingMode;
+    if (tokens.addressingMode === 'device-path') {
+      log('Construcción de la sesión: apertura por device-path (respaldo declarado; la forma principal es device-index y este dispositivo no trae índice MF utilizable).');
     }
+    fijar({ addressingMode: tokens.addressingMode });
     log(`Tubería: ${tokens.join(' ')}`);
     const lanzado = lanzarGst(tokens);
     if (!lanzado) return { success: false, error: state.lastError || 'No se pudo lanzar GStreamer.' };
