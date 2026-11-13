@@ -399,19 +399,19 @@ export default function CameraConnectModal({
     prevOpenRef.current = open;
   }, [open, initialSlot, streams, cameraMeta, getNextAvailableSlot]);
 
-  // Si se cambia a la pestaña de celular/remota y CAM 1 ya está ocupada por USB/webcam, seleccionar automáticamente la siguiente ranura libre (e.g. CAM 2)
+  // Si se cambia a la pestaña de celular/remota y la ranura seleccionada ya está ocupada por cualquier fuente,
+  // seleccionar automáticamente la siguiente ranura libre (ej. si CAM 1 y CAM 2 están ocupadas, asignar CAM 3)
   useEffect(() => {
     if (open && activeTab === 'remote') {
-      const isOccupied = Boolean(streams[targetSlot]) || Boolean(cameraMeta[targetSlot]?.deviceId || cameraMeta[targetSlot]?.url);
-      const isUsb = isOccupied && (cameraMeta[targetSlot]?.type === 'usb' || targetSlot === 0);
-      if (targetSlot === 0 && isUsb) {
-        const nextFree = getNextAvailableSlot(0);
+      const isOccupied = Boolean(streams[targetSlot]) || Boolean(cameraMeta[targetSlot]?.deviceId || cameraMeta[targetSlot]?.url) || Boolean(liberatedSlots?.[targetSlot]);
+      if (isOccupied) {
+        const nextFree = getNextAvailableSlot(targetSlot);
         if (nextFree != null && nextFree !== targetSlot) {
           setTargetSlot(nextFree);
         }
       }
     }
-  }, [open, activeTab, targetSlot, streams, cameraMeta, getNextAvailableSlot]);
+  }, [open, activeTab, targetSlot, streams, cameraMeta, liberatedSlots, getNextAvailableSlot]);
 
   // Actualizar metadatos del slot seleccionado sin resetear targetSlot
   useEffect(() => {
@@ -1913,7 +1913,7 @@ Instrucciones:
                               CAM {targetSlot + 1} está ocupada por {currentMeta?.label || 'otra cámara'}.
                             </div>
                             <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2, lineHeight: 1.35 }}>
-                              Para conectar un invitado o celular adicional, selecciona <strong className="text-white">CAM 2</strong> u otra ranura libre abajo, o activa la auto-asignación inteligente.
+                              Para conectar un invitado o celular adicional, selecciona <strong className="text-white">CAM {nextFreeSlot + 1}</strong> u otra ranura libre abajo, o activa la auto-asignación inteligente.
                             </div>
                           </div>
                         </div>

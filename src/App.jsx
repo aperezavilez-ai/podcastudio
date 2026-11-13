@@ -503,10 +503,20 @@ function PodcastStudioApp() {
   // — en vivo se leyó como «el teleprompter desapareció de la cámara
   // máster». Primera vez en la vida de la app: apagado.
   const [showFloatingPrompter, setShowFloatingPrompter] = useState(() => {
-    try { return localStorage.getItem('podcastudio_teleprompter_hud') === '1'; } catch { return false; }
+    try {
+      const val = localStorage.getItem('podcastudio_teleprompter_hud');
+      const userSetExplicitly = localStorage.getItem('podcastudio_teleprompter_hud_set') === '1';
+      // Si el usuario nunca ha cambiado el HUD manualmente con la v3.3.4+,
+      // arrancamos ON (valor por defecto). Si ya lo apagó explícitamente, OFF.
+      if (!userSetExplicitly) return true;
+      return val !== '0';
+    } catch { return true; }
   });
   useEffect(() => {
-    try { localStorage.setItem('podcastudio_teleprompter_hud', showFloatingPrompter ? '1' : '0'); } catch (e) {}
+    try {
+      localStorage.setItem('podcastudio_teleprompter_hud', showFloatingPrompter ? '1' : '0');
+      localStorage.setItem('podcastudio_teleprompter_hud_set', '1'); // marca que ya hubo interacción explícita
+    } catch (e) {}
   }, [showFloatingPrompter]);
   const [showSoundboardPad, setShowSoundboardPad] = useState(false);
 
@@ -3704,7 +3714,14 @@ function PodcastStudioApp() {
               // otra escritura, ninguna parada de tracks.
               const placedSlot = decision.placedSlot;
               ventanaDiagSend('ranura', `camino=cloud sala ${slotIdx + 1} pedida=CAM ${slotIdx + 1} decision=actualizar (re-emisión, colocación viva) destino=CAM ${placedSlot + 1}`);
-              setSlotStreams(prev => ({ ...prev, [placedSlot]: stream }));
+              setSlotStreams(prev => {
+                const next = { ...prev };
+                for (const [k, s] of Object.entries(next)) {
+                  if (Number(k) !== placedSlot && s === stream) delete next[k];
+                }
+                next[placedSlot] = stream;
+                return next;
+              });
               setRemoteCams(prev => [
                 ...prev.filter(r => r.id !== `cloud_${placedSlot}`),
                 { id: `cloud_${placedSlot}`, stream, name: label || `Celular CAM ${placedSlot + 1}` }
@@ -3719,15 +3736,28 @@ function PodcastStudioApp() {
               logger.log(`[Cloud WebRTC] CAM ${slotIdx + 1} estaba ocupada: el celular se colocó en CAM ${placedSlot + 1} sin desconectar ninguna cámara.`);
               setMobileStatus(`CAM ${slotIdx + 1} estaba ocupada: el celular se conectó en CAM ${placedSlot + 1} sin desconectar ninguna cámara.`);
             }
-            setSlotStreams(prev => ({ ...prev, [placedSlot]: stream }));
+            setSlotStreams(prev => {
+              const next = { ...prev };
+              for (const [k, s] of Object.entries(next)) {
+                if (Number(k) !== placedSlot && s === stream) delete next[k];
+              }
+              next[placedSlot] = stream;
+              return next;
+            });
             setRemoteCams(prev => [
               ...prev.filter(r => r.id !== `cloud_${placedSlot}`),
               { id: `cloud_${placedSlot}`, stream, name: label || `Celular CAM ${placedSlot + 1}` }
             ]);
-            setCameraMeta(prev => ({
-              ...prev,
-              [placedSlot]: { deviceId: `cloud_${placedSlot}`, label: label || `Celular Remoto (CAM ${placedSlot + 1})`, type: 'remote' }
-            }));
+            setCameraMeta(prev => {
+              const next = { ...prev };
+              for (const [k, meta] of Object.entries(next)) {
+                if (Number(k) !== placedSlot && (meta?.deviceId === `cloud_${placedSlot}` || meta?.deviceId === `cloud_${slotIdx}`)) {
+                  delete next[k];
+                }
+              }
+              next[placedSlot] = { deviceId: `cloud_${placedSlot}`, label: label || `Celular Remoto (CAM ${placedSlot + 1})`, type: 'remote' };
+              return next;
+            });
             if (!decisionDespues.reubicada) {
               setMobileStatus(`Celular en vivo conectado en CAM ${placedSlot + 1}`);
             }
@@ -3971,16 +4001,27 @@ function PodcastStudioApp() {
             return [...filtered, { id, stream: stableStream, name: etiquetaCamara, lensLabel: lensLabel || undefined }];
           });
 
-          setSlotStreams(prevStreams => ({ ...prevStreams, [targetSlot]: stableStream }));
-          setCameraMeta(prevMeta => ({
-            ...prevMeta,
-            [targetSlot]: {
+          setSlotStreams(prevStreams => {
+            const next = { ...prevStreams };
+            for (const [k, s] of Object.entries(next)) {
+              if (Number(k) !== targetSlot && s === stableStream) delete next[k];
+            }
+            next[targetSlot] = stableStream;
+            return next;
+          });
+          setCameraMeta(prevMeta => {
+            const next = { ...prevMeta };
+            for (const [k, meta] of Object.entries(next)) {
+              if (Number(k) !== targetSlot && meta?.deviceId === id) delete next[k];
+            }
+            next[targetSlot] = {
               deviceId: id,
               label: etiquetaCamara,
               type: 'mobile',
               lensLabel: lensLabel || undefined
-            }
-          }));
+            };
+            return next;
+          });
         };
 
         const trackListeners = new Map();
@@ -6818,7 +6859,7 @@ function PodcastStudioApp() {
                   <div className="flex items-center gap-0.5 shrink-0 drop-shadow">
                     {/* BOTÓN CONEXIONES (USB / WIFI / QR) */}
                     <button 
-                      onClick={(e) => { e.stopPropagation(); setConnectModalSlot(camId - 1); setShowConnectModal(true); }} 
+                      onClick={(e) => { e.stopPropagation(); handleOpenConnectModal(camId - 1); }} 
                       className="text-gray-300 hover:text-orange-400 hover:bg-black/60 rounded p-1 transition-colors" 
                       title="Configurar Entrada de Video (USB / WiFi IP / QR Celular)"
                     >

@@ -1,19 +1,19 @@
 {
   "testSuite": "PodcastStudio v1.1.8 Forensic Validation (P4.3 & P4.4)",
-  "timestamp": "2026-10-26T17:50:24.965Z",
+  "timestamp": "2026-11-13T21:20:04.364Z",
   "targetVersion": "1.1.8",
   "tests": [
     {
       "name": "package.json versión es exactamente 1.1.8",
       "category": "VERSIONING",
-      "passed": true,
-      "details": "Versión actual: 1.1.8"
+      "passed": false,
+      "details": "Versión actual: 3.3.4"
     },
     {
       "name": "src/App.jsx footer refleja PODCASTUDIO v1.1.8",
       "category": "VERSIONING",
-      "passed": true,
-      "details": "Footer sincronizado"
+      "passed": false,
+      "details": "Footer desactualizado en App.jsx"
     },
     {
       "name": "Regla de versionado estricta: NUNCA usar 1.1.10 (próxima v1.1.9 -> v1.2.1)",
@@ -30,8 +30,8 @@
     {
       "name": "masterBroadcastEngine implementa función drawReplayOverlay con bug broadcast y baliza pulsante",
       "category": "P4.3_INSTANT_REPLAY",
-      "passed": true,
-      "details": "Overlay bug presente con animación de pulso y barra de progreso"
+      "passed": false,
+      "details": "Falta función drawReplayOverlay"
     },
     {
       "name": "masterBroadcastEngine conmuta renderizado a replayVideoElement en pantalla completa",
@@ -108,7 +108,7 @@
   ],
   "summary": {
     "total": 17,
-    "passed": 17,
-    "failed": 0
+    "passed": 14,
+    "failed": 3
   }
 }
