@@ -21,6 +21,7 @@
 // ============================================================================
 
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -521,6 +522,25 @@ function buildPipelineArgs(opts) {
   // Fuente de audio: con el dispositivo WASAPI elegido por coincidencia
   // (regla de audio del Hito 3), el token device=<id> va tras el nombre.
   const fuenteAudio = o.audioDevice ? [audioSrc, `device=${o.audioDevice}`] : [audioSrc];
+  // v3.4.0 — MONITOR VIVO (solo con opts.monitorDir y fuera de la
+  // sesión 'preview'): la sesión alimenta dos familias de JPEG que el
+  // anfitrión sirve por HTTP local a la app —
+  //   · PROGRAMA: rama desde el tee de programa (tprog): la mezcla
+  //     EXACTA que sale al aire, a 640×360 y 10 fps.
+  //   · POR FUENTE: un tee por fuente ANTES del compositor (tsrc<N>,
+  //     N = posición de la fuente en la lista), a 480×270 y 8 fps,
+  //     a su propio archivo rotativo cam-<N+1>-%05d.jpg.
+  // Cada rama baja a memoria de sistema (d3d11download), escala,
+  // limita la cadencia (videorate + caps de framerate) y codifica
+  // JPEG (calidad 70) hacia multifilesink con max-files=3. Ninguna
+  // rama abre ventana ni lee la cámara por segunda vez: cuelgan de
+  // tees de la MISMA tubería. Sin monitorDir la tubería es byte a
+  // byte la de la v3.3.6.
+  const monitorDirFwd = typeof o.monitorDir === 'string' && o.monitorDir.trim()
+    ? o.monitorDir.trim().replace(/\\/g, '/').replace(/\/+$/, '')
+    : null;
+  const conMonitor = !!monitorDirFwd && session !== 'preview';
+  const ramaMonitorJpeg = (ancho, alto, fps, archivo) => ['!', 'queue', '!', 'd3d11download', '!', 'videoscale', '!', 'videorate', '!', `video/x-raw,width=${ancho},height=${alto},framerate=${fps}/1`, '!', 'videoconvert', '!', 'jpegenc', 'quality=70', '!', 'multifilesink', `location=${monitorDirFwd}/${archivo}`, 'max-files=3'];
 
   const tokens = [];
   tokens.push('mfvideosrc');
@@ -553,7 +573,14 @@ function buildPipelineArgs(opts) {
   // vivo de la v3.2.0): fuera. El codificador se alimenta del tee con
   // los caps que el propio compositor negocia, como en la tubería que
   // grabó y transmitió de verdad.
-  tokens.push('!', capsElegido, '!', 'd3d11upload', '!', 'd3d11convert', '!', 'd3d11compositor', 'name=mix');
+  if (conMonitor) {
+    // v3.4.0: la fuente de PROGRAMA pasa por su tee de monitor
+    // (tsrc<programIndex>) ANTES del compositor; la rama que sigue al
+    // compositor es la misma de siempre vía queue.
+    tokens.push('!', capsElegido, '!', 'd3d11upload', '!', 'd3d11convert', '!', 'tee', `name=tsrc${programIndex}`, `tsrc${programIndex}.`, '!', 'queue', '!', 'd3d11compositor', 'name=mix');
+  } else {
+    tokens.push('!', capsElegido, '!', 'd3d11upload', '!', 'd3d11convert', '!', 'd3d11compositor', 'name=mix');
+  }
   // v3.3.0 — LAYOUT ESTÁTICO multicámara (solo con sources explícitas;
   // sin sources no se emite NINGÚN token nuevo y la tubería es la de
   // siempre): lienzo = caps de programa. Orden de pads: la fuente de
@@ -590,6 +617,12 @@ function buildPipelineArgs(opts) {
   }
   tokens.push('mix.', '!', 'queue', '!', 'tee', 'name=tprog');
 
+  // v3.4.0 — rama de monitor de la fuente de PROGRAMA: cuelga de su
+  // tee (ya definido en su cadena) y escribe su JPEG rotativo.
+  if (conMonitor) {
+    tokens.push(`tsrc${programIndex}.`, ...ramaMonitorJpeg(480, 270, 8, `cam-${programIndex + 1}-%05d.jpg`));
+  }
+
   // v3.3.0 — cadenas de las fuentes PiP: cada una captura, sube a D3D11,
   // convierte y enlaza con el compositor vía «mix.» (cada enlace pide el
   // siguiente pad libre EN ORDEN: programa primero = sink_0, luego las
@@ -598,7 +631,16 @@ function buildPipelineArgs(opts) {
     for (const entrada of ordenPads.slice(1)) {
       const f = fuentes[entrada.indiceFuente] || {};
       const direccionPip = resolverDireccionFuente(f.deviceIndex, f.devicePath, o.addressingMode);
-      tokens.push('mfvideosrc', direccionPip.token, '!', textoCaps(f.caps || caps), '!', 'd3d11upload', '!', 'd3d11convert', '!', 'mix.');
+      if (conMonitor) {
+        // v3.4.0: la PiP también pasa por su tee de monitor antes del
+        // compositor (vía queue, como toda rama de tee) y su rama de
+        // monitor escribe el JPEG de SU posición en la lista.
+        const k = entrada.indiceFuente;
+        tokens.push('mfvideosrc', direccionPip.token, '!', textoCaps(f.caps || caps), '!', 'd3d11upload', '!', 'd3d11convert', '!', 'tee', `name=tsrc${k}`, `tsrc${k}.`, '!', 'queue', '!', 'mix.');
+        tokens.push(`tsrc${k}.`, ...ramaMonitorJpeg(480, 270, 8, `cam-${k + 1}-%05d.jpg`));
+      } else {
+        tokens.push('mfvideosrc', direccionPip.token, '!', textoCaps(f.caps || caps), '!', 'd3d11upload', '!', 'd3d11convert', '!', 'mix.');
+      }
     }
   }
 
@@ -610,9 +652,11 @@ function buildPipelineArgs(opts) {
   // real a Facebook del 2026-11-13 se cerró a los ~14 s, el sink
   // erroró («Output window was closed») y la tubería completa murió
   // con él (el rtmpsink a Facebook NO erroró). Sin ventana no hay
-  // nada que cerrar: el monitor durante la sesión es la foto fija
-  // que la app ya muestra en los mosaicos, y la vista previa nativa
-  // con d3d11videosink queda SOLO fuera de sesión (buildPreviewArgs).
+  // nada que cerrar: la vista previa nativa con d3d11videosink queda
+  // SOLO fuera de sesión (buildPreviewArgs). (v3.4.0: el monitor
+  // durante la sesión ya NO es la foto fija de la v3.3.0/v3.3.6: es
+  // el MONITOR VIVO por JPEG/HTTP local — ver ramaMonitorJpeg —; la
+  // rama fakesink se queda EXACTAMENTE como está.)
   // El constructor conserva la opción omitPreviewBranch (probada
   // como función pura), pero el anfitrión ya NO la usa desde la
   // corrección tras la compuerta del 2026-11-13: ninguna sesión nace
@@ -621,6 +665,13 @@ function buildPipelineArgs(opts) {
   // mataban la grabación).
   if (!o.omitPreviewBranch) {
     tokens.push('tprog.', '!', 'queue', '!', 'fakesink', 'sync=false');
+  }
+
+  // v3.4.0 — rama de monitor de PROGRAMA: del tee de programa sale la
+  // mezcla exacta que va al aire convertida a JPEG rotativo
+  // (640×360, 10 fps) que la app muestra VIVA en el monitor máster.
+  if (conMonitor) {
+    tokens.push('tprog.', ...ramaMonitorJpeg(640, 360, 10, 'program-%05d.jpg'));
   }
 
   if (session === 'record') {
@@ -688,6 +739,44 @@ function parseFfmpegInfo(texto) {
 }
 
 function sleepMs(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+// ----------------------------------------------------------------------------
+// v3.4.0 — MONITOR VIVO: un JPEG está COMPLETO si abre con la cabecera
+// FFD8 y cierra con la marca FFD9. multifilesink escribe los archivos
+// de monitor de forma rotativa: el más reciente puede estar A MEDIO
+// ESCRIBIR (sin FFD9 final) y servirlo enseñaría una imagen rota.
+// leerJpegVigenteEn(dir, prefijo) devuelve el buffer del JPEG completo
+// más reciente cuyo nombre empieza por el prefijo (p. ej. «program-» o
+// «cam-2-»), saltando los que estén a medio escribir; null si aún no
+// hay ninguno completo.
+// ----------------------------------------------------------------------------
+function esJpegCompleto(buf) {
+  return !!buf && buf.length >= 4
+    && buf[0] === 0xFF && buf[1] === 0xD8
+    && buf[buf.length - 2] === 0xFF && buf[buf.length - 1] === 0xD9;
+}
+
+function leerJpegVigenteEn(dir, prefijo) {
+  if (!dir || !prefijo) return null;
+  let nombres;
+  try { nombres = fs.readdirSync(dir); } catch (e) { return null; }
+  const candidatos = [];
+  for (const nombre of nombres) {
+    if (!nombre.startsWith(prefijo) || !nombre.endsWith('.jpg')) continue;
+    try {
+      const st = fs.statSync(path.join(dir, nombre));
+      candidatos.push({ nombre, mtimeMs: st.mtimeMs });
+    } catch (e) {}
+  }
+  candidatos.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  for (const c of candidatos) {
+    try {
+      const buf = fs.readFileSync(path.join(dir, c.nombre));
+      if (esJpegCompleto(buf)) return buf;
+    } catch (e) {}
+  }
+  return null;
+}
 
 // ============================================================================
 // createNativeEngine(deps) — anfitrión de sesiones del motor nativo.
@@ -759,6 +848,11 @@ function createNativeEngine(deps) {
     // setPreviewText durante una sesión de grabación/transmisión (el
     // texto sobre la vista previa es solo fuera de sesión).
     previewTextNote: null,
+    // v3.4.0 — MONITOR VIVO: puerto efímero del servidor HTTP local
+    // (SOLO 127.0.0.1) que sirve los JPEG de monitor de la sesión
+    // (/monitor/program.jpg y /monitor/cam-<n>.jpg); null sin sesión
+    // de grabación/transmisión o si el servidor no pudo arrancar.
+    monitorPort: null,
     lastError: null,
     logTail: [],
     gstInstalled: null,
@@ -792,6 +886,14 @@ function createNativeEngine(deps) {
   // sondea el tramo cada 600 ms: sin esta bandera el registro se
   // inundaría con la misma declaración).
   let noOpTextoEnSesionDeclarado = false;
+  // v3.4.0 — MONITOR VIVO: servidor HTTP local y directorio de JPEG de
+  // la sesión vigente. El servidor nace con la primera sesión de
+  // grabación/transmisión y muere al apagarse el motor (stop() o
+  // muerte de la tubería): nunca sobrevive a la sesión que alimenta.
+  let monitorServer = null;
+  let monitorPortActual = null;
+  let monitorDirActual = null;
+  const MONITOR_DIR_NOMBRE = 'podcastudio-monitor-vivo';
 
   function emitir() {
     try { onState({ ...state, logTail: [...state.logTail] }); } catch (e) {}
@@ -984,6 +1086,83 @@ function createNativeEngine(deps) {
     }
   }
 
+  // v3.4.0 — MONITOR VIVO (anfitrión): prepara el directorio de la
+  // sesión (vacío de JPEG viejos: ningún fotograma de una sesión
+  // anterior puede servirse como si fuera el actual) y devuelve su
+  // ruta con barras normales para los tokens de multifilesink.
+  function prepararMonitorSesion() {
+    const dir = path.join(os.tmpdir(), MONITOR_DIR_NOMBRE);
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+    try {
+      for (const nombre of fs.readdirSync(dir)) {
+        if (nombre.endsWith('.jpg')) { try { fs.unlinkSync(path.join(dir, nombre)); } catch (e) {} }
+      }
+    } catch (e) {}
+    monitorDirActual = dir;
+    return dir.replace(/\\/g, '/');
+  }
+
+  // El servidor: SOLO 127.0.0.1, puerto efímero. Sirve el JPEG
+  // completo más reciente de cada ruta; si el archivo más nuevo está
+  // a medio escribir, leerJpegVigenteEn salta al anterior válido; sin
+  // ninguno completo aún, 404 (la app conserva su último fotograma).
+  function asegurarServidorMonitor() {
+    if (monitorServer) return Promise.resolve(monitorPortActual);
+    return new Promise((resolve) => {
+      const srv = http.createServer((req, res) => {
+        try {
+          const ruta = String(req.url || '').split('?')[0];
+          let prefijo = null;
+          if (ruta === '/monitor/program.jpg') prefijo = 'program-';
+          else {
+            const m = ruta.match(/^\/monitor\/cam-(\d{1,2})\.jpg$/);
+            if (m) prefijo = `cam-${Number(m[1])}-`;
+          }
+          const buf = prefijo && monitorDirActual ? leerJpegVigenteEn(monitorDirActual, prefijo) : null;
+          if (!buf) { res.writeHead(404, { 'Cache-Control': 'no-store' }); res.end(); return; }
+          res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': buf.length, 'Cache-Control': 'no-store' });
+          res.end(buf);
+        } catch (e) {
+          try { res.writeHead(500); res.end(); } catch (err) {}
+        }
+      });
+      srv.once('error', (e) => {
+        if (monitorServer === srv) { monitorServer = null; monitorPortActual = null; }
+        log(`Monitor vivo: el servidor HTTP local no pudo arrancar (${e.message}); la app se queda sin monitor en vivo esta sesión (declarado).`);
+        resolve(null);
+      });
+      srv.listen(0, '127.0.0.1', () => {
+        monitorServer = srv;
+        monitorPortActual = srv.address() ? srv.address().port : null;
+        resolve(monitorPortActual);
+      });
+    });
+  }
+
+  // Enciende el monitor de la sesión: directorio limpio + servidor
+  // vivo + puerto publicado en el estado. Devuelve el directorio
+  // (barras normales) para contexto.monitorDir; si el servidor falla,
+  // la sesión sigue SIN monitor y queda declarado (devuelve null).
+  async function encenderMonitor() {
+    const dirFwd = prepararMonitorSesion();
+    const puerto = await asegurarServidorMonitor();
+    if (!puerto) return null;
+    fijar({ monitorPort: puerto });
+    log(`Monitor vivo: sirviendo los JPEG de la sesión en http://127.0.0.1:${puerto}/monitor/ (solo esta máquina).`);
+    return dirFwd;
+  }
+
+  // Apaga el monitor: el servidor muere con el motor (stop() o
+  // muerte de la sesión) y el estado deja de anunciar puerto.
+  function apagarMonitor() {
+    if (monitorServer) {
+      try { monitorServer.close(); } catch (e) {}
+      monitorServer = null;
+    }
+    monitorPortActual = null;
+    if (state.monitorPort !== null) fijar({ monitorPort: null });
+  }
+
   function esperarCierreGst(timeoutMs) {
     if (!gstProc) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1026,6 +1205,7 @@ function createNativeEngine(deps) {
       const camareros = gstCloseWaiters; gstCloseWaiters = [];
       camareros.forEach((fn) => { try { fn(); } catch (err) {} });
       if (!intentionalStop) {
+        apagarMonitor();
         fijar({ phase: 'error', lastError: `Error del proceso GStreamer: ${e.message}` });
       }
     });
@@ -1092,6 +1272,7 @@ function createNativeEngine(deps) {
       // ninguno desde la corrección tras la compuerta: defensa
       // declarada, normalmente es un no-op).
       matarPreview();
+      apagarMonitor();
       fijar({ phase: 'error', previewTextActive: false, lastError: `GStreamer se cerró sin orden de parada (código ${code != null ? code : 'desconocido'}).${ultimas ? ` Últimas líneas: ${ultimas}` : ''}` });
       log(`GStreamer se cerró sin orden de parada (código ${code != null ? code : 'desconocido'}).`);
     });
@@ -1127,6 +1308,9 @@ function createNativeEngine(deps) {
       sources: contexto.sources || undefined,
       programIndex: contexto.programIndex || 0,
       omitPreviewBranch: !!contexto.omitPreviewBranch,
+      // v3.4.0: directorio del monitor vivo de la sesión (undefined =
+      // sin ramas de monitor: la tubería queda como la de la v3.3.6).
+      monitorDir: contexto.monitorDir || undefined,
     };
   }
 
@@ -1432,6 +1616,16 @@ function createNativeEngine(deps) {
     previewContexto = { tools, device, caps, addressingMode: null };
     fijar({ audioDevice: audioDeviceInfo });
 
+    // v3.4.0 — MONITOR VIVO: las sesiones que leen la cámara para
+    // grabar/transmitir encienden el servidor de monitor ANTES de
+    // construir la tubería (los tokens de las ramas JPEG llevan su
+    // directorio); la sesión de vista previa no lo enciende. Si el
+    // servidor no puede arrancar, encenderMonitor devuelve null y la
+    // sesión nace sin monitor (declarado en el registro).
+    if (session !== 'preview') {
+      contexto.monitorDir = await encenderMonitor();
+    }
+
     // 6) Oyente RTMP local (solo la prueba local): ANTES de lanzar GStreamer.
     if (streamFile) {
       if (streamFile) { try { if (fs.existsSync(streamFile)) fs.unlinkSync(streamFile); } catch (e) {} }
@@ -1613,6 +1807,9 @@ function createNativeEngine(deps) {
     }
     listenerProc = null;
 
+    // v3.4.0: el servidor de monitor muere al apagarse el motor.
+    apagarMonitor();
+
     if (eraGrabacion && (state.outFile || state.streamFile)) {
       fijar({ phase: 'validando' });
       // Última lectura de bytes del stream antes de validar.
@@ -1651,6 +1848,8 @@ module.exports = {
   chooseEncoder,
   capsParaStream,
   chooseAudioDevice,
+  esJpegCompleto,
+  leerJpegVigenteEn,
   ENCODER_LADDER,
   RTMP_PRUEBA_URL,
 };

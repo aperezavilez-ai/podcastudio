@@ -30,6 +30,7 @@ import { CINTILLO_POSITION_OPTIONS } from './config/cintilloCameraMap.js';
 import { findAvailableRemoteCameraSlot, resolveRemoteCameraSlot, chooseReconnectCameraSlot, decidirColocacionRemotaCloud, fuentesDeOcupacion, elegirRanuraReadquisicion } from './utils/remoteCameraSlots.mjs';
 import { esEtiquetaLenteNoEstandar } from './utils/remoteCameraLens.mjs';
 import { componerFuentesPrograma } from './utils/nativeProgramSources.mjs';
+import { decidirReintentoReadquisicion, sumarIntentoReadquisicion, marcarReadquisicionAvisada, olvidarIntentosReadquisicion, entradaIntentos, REACQUIRE_INTERVAL_MS, REACQUIRE_MAX_ATTEMPTS } from './utils/reacquirePolicy.mjs';
 import { debeMontarOverlayPrompter, maximoDesplazamientoPrompter, acotarDesplazamientoPrompter } from './utils/teleprompter.mjs';
 import { buildStreamDestinations } from './utils/streamDestinations.mjs';
 import { useCintilloRotation } from './hooks/useCintilloRotation.js';
@@ -296,6 +297,34 @@ const VideoTile = React.forwardRef(({
   );
 });
 
+// v3.4.0 — MONITOR VIVO del motor nativo: un <img> contra el servidor
+// HTTP local del motor (127.0.0.1, puerto en nativeEngineState
+// .monitorPort) que sirve los JPEG que la tubería de sesión escribe
+// (programa y cada fuente). Refresca con marca de tiempo SOLO con la
+// ventana visible — con document.hidden el intervalo no trabaja (la
+// disciplina del gobernador de foco) — y conserva el último fotograma
+// si un refresco falla: nunca parpadea a negro ni a «Sin señal».
+const NativeMonitorImg = React.memo(function NativeMonitorImg({ url, className, alt }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!url) return undefined;
+    const id = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      setTick((t) => t + 1);
+    }, 500);
+    return () => clearInterval(id);
+  }, [url]);
+  if (!url) return null;
+  return (
+    <img
+      src={`${url}${url.includes('?') ? '&' : '?'}t=${tick}`}
+      alt={alt || ''}
+      draggable={false}
+      className={className}
+    />
+  );
+});
+
 // PGM = canvas maestro: cuando el motor ya presentó fotogramas, el monitor de
 // programa muestra el stream del canvas (con escena, overlays y cintillos tal
 // como salen en grabación/streaming, no el <video> crudo). Su estado vive en
@@ -479,7 +508,11 @@ function PodcastStudioApp() {
     prevActiveCamRef.current = activeCam;
   }, [activeCam]);
   const [layoutMode, setLayoutMode] = useState('1'); 
-  const [pipCam, setPipCam] = useState(2); 
+  // v3.4.0 (orden de Luis): la PiP NO nace fijada — «esa la activo yo
+  // cuando la requiero, no debe estar fija». pipCam inicia en null;
+  // solo entra cuando Luis la fija desde la interfaz (o cuando un
+  // espacio de trabajo/layout guardado la declara, como hasta hoy).
+  const [pipCam, setPipCam] = useState(null);
   const [camThumbnails, setCamThumbnails] = useState({}); 
 
   // CONSOLA DE AUDIO BROADCAST PROFESIONAL (P0.4)
@@ -701,6 +734,8 @@ function PodcastStudioApp() {
   const recordingStartPendingTimeRef = useRef(0);
   const activeCamRef = useRef(activeCam);
   useEffect(() => { activeCamRef.current = activeCam; }, [activeCam]);
+  const pipCamRef = useRef(pipCam);
+  useEffect(() => { pipCamRef.current = pipCam; }, [pipCam]);
   const isElectronMaster = typeof window !== 'undefined' && Boolean(window.api);
   const remoteWsRef = useRef(null);
 
@@ -1400,18 +1435,20 @@ function PodcastStudioApp() {
     return pend;
   };
 
-  // v3.3.0 (A-renderer) → v3.3.1 (defecto 4): fuentes LOCALES para el
-  // motor multicámara. La composición vive en la función pura
+  // v3.3.0 (A-renderer) → v3.3.1 (defecto 4) → v3.4.0: fuentes LOCALES
+  // para el motor multicámara. La composición vive en la función pura
   // componerFuentesPrograma (src/utils/nativeProgramSources.mjs): la
   // fuente de PROGRAMA es la cámara con el tally PGM (activeCam, por
-  // defecto CAM 1) y las demás entran como PiP en orden de ranura,
-  // máximo 3. Si la de programa no tiene cámara local elegible, la
-  // composición NO promueve a otra: devuelve programa null y el
+  // defecto CAM 1). Si la de programa no tiene cámara local elegible,
+  // la composición NO promueve a otra: devuelve programa null y el
   // llamador se detiene ANTES de arrancar (prepararFuentesSesionNativa).
-  // Las etiquetas salen del track vivo, del nombre guardado por ranura
-  // o — durante una sesión, cuando la dieta las tiene liberadas — de
-  // la etiqueta guardada por la liberación. Las ranuras REMOTAS quedan
-  // fuera siempre: el motor nativo solo abre cámaras físicas locales.
+  // v3.4.0: la PiP ya NO entra sola (hasta la v3.3.6 entraban TODAS
+  // las demás elegibles en orden de ranura): solo entra la ranura que
+  // Luis haya fijado como PiP (pipCamRef). Y el nombre de cada fuente
+  // sale de las candidatas del emparejador de liberación (etiqueta de
+  // la pista primero), nunca del deviceId/GUID. Las ranuras REMOTAS
+  // quedan fuera siempre: el motor nativo solo abre cámaras físicas
+  // locales.
   const componerFuentesLocalesNativas = () => {
     const releasedLabels = {};
     for (const [slotKey, info] of Object.entries(nativeReleasedCamsRef.current || {})) {
@@ -1420,6 +1457,7 @@ function PodcastStudioApp() {
     return componerFuentesPrograma({
       camSlots: camSlotsRef.current || [],
       programaCamId: activeCamRef.current || 1,
+      pipCamId: pipCamRef.current ?? null,
       cameraMeta: cameraMetaRef.current || {},
       slotStreams: slotStreamsRef.current || {},
       localStream: localStreamRef.current,
@@ -1791,22 +1829,36 @@ function PodcastStudioApp() {
     try { setNativeWindowDiet(enModoMotor); } catch (e) {}
   }, [enModoMotor]);
 
-  // D2: liberación con foto fija. Al confirmarse una sesión nativa
+  // D2: liberación SIN foto (v3.4.0). Al confirmarse una sesión nativa
   // (fases de marcha), cada cámara LOCAL de la ventana cuyo nombre
   // coincide con nativeEngineState.sourceNames deja de decodificarse en
-  // la ventana: se guarda UNA foto de su <video>, se detienen TODOS los
-  // tracks de su stream y el stream sale del mapa de la ventana; el
-  // mosaico muestra la foto + el rótulo «En el motor nativo». Al volver
-  // la fase a apagado/error, cada cámara liberada se readquiere por el
-  // camino de adquisición existente (handleUsbConnect / getUserMedia).
+  // la ventana: se REGISTRA su préstamo, se detienen TODOS los tracks
+  // de su stream y el stream sale del mapa de la ventana. Hasta la
+  // v3.3.6 se capturaba además una FOTO FIJA de su <video>
+  // (drawImage + toDataURL a 1920×1080, con una espera de un <video>
+  // desechable de hasta 1200 ms por cámara): ese coste caía EN PLENA
+  // transición de sesión y es la firma de los hipos de ~1,5 s medidos
+  // el 2026-11-13. Desde la v3.4.0 no hay foto: el mosaico y el máster
+  // muestran el MONITOR VIVO del motor (los JPEG que su tubería sirve
+  // por HTTP local) + el rótulo «En el motor nativo». Al volver la
+  // fase a apagado/error, cada cámara liberada se readquiere por el
+  // camino de adquisición existente (handleUsbConnect / getUserMedia)
+  // — y el VIGILANTE de readquisición (política pura en
+  // src/utils/reacquirePolicy.mjs) reintenta cada 2 s hasta que
+  // vuelva o agote sus 6 intentos declarados: hasta la v3.3.6 el
+  // intento era ÚNICO y el reintento restaurado nunca se redisparaba
+  // (al detener la transmisión, CAM 1 y CAM 3 no volvieron).
   // v3.3.4: mientras una cámara está liberada, su ranura cuenta como
   // OCUPADA y BLOQUEADA para toda colocación remota (el registro
   // nativeReleasedCamsRef alimenta el predicado único de ocupación), y
   // la readquisición devuelve la cámara COMPLETA (stream + meta) a su
   // ranura — o a la primera libre si otra fuente la ocupó — sin pisar
   // jamás la ranura ajena (ver readquirirLiberadas).
-  const [nativeReleasedPhotos, setNativeReleasedPhotos] = useState({});
+  // nativeReleasedTiles es el espejo EN ESTADO del registro de
+  // liberadas (ranura → { label }): es lo que pinta los mosaicos.
+  const [nativeReleasedTiles, setNativeReleasedTiles] = useState({});
   const nativeReleasedCamsRef = useRef({});
+  const reacquireAttemptsRef = useRef({});
 
   useEffect(() => {
     const st = nativeEngineState;
@@ -1815,8 +1867,29 @@ function PodcastStudioApp() {
     const FASES_MARCHA_NATIVAS = ['vista-previa', 'grabando', 'transmitiendo', 'grabando-transmitiendo'];
 
     const readquirirLiberadas = () => {
-      const entradas = Object.entries(nativeReleasedCamsRef.current);
-      if (!entradas.length) return;
+      const todasEntradas = Object.entries(nativeReleasedCamsRef.current);
+      if (!todasEntradas.length) return;
+      // v3.4.0 — VIGILANTE: las cámaras que ya AGOTARON sus intentos
+      // declarados (política pura: decidirReintentoReadquisicion) NO
+      // se procesan en esta pasada: su registro se conserva intacto
+      // — siguen prestadas y su ranura bloqueada — para el próximo
+      // ciclo del motor. Cada cámara procesada cuenta UN intento más
+      // en esta pasada (la contabilidad vive en reacquireAttemptsRef
+      // y el vigilante de abajo la consume cada 2 s).
+      const faseAhora = nativeStateRef.current?.phase;
+      const entradas = [];
+      const retenidas = {};
+      for (const [slotKey, info] of todasEntradas) {
+        const slotIdx = Number(slotKey);
+        const decision = decidirReintentoReadquisicion({
+          fase: faseAhora,
+          intentos: entradaIntentos(reacquireAttemptsRef.current, slotIdx).count,
+          maxIntentos: REACQUIRE_MAX_ATTEMPTS,
+        });
+        if (decision === 'imposible') { retenidas[slotKey] = info; continue; }
+        reacquireAttemptsRef.current = sumarIntentoReadquisicion(reacquireAttemptsRef.current, slotIdx);
+        entradas.push([slotKey, info]);
+      }
       // v3.3.4 — la vuelta de una cámara prestada al motor respeta la
       // ocupación con el predicado ÚNICO (todas las fuentes, vía
       // elegirRanuraReadquisicion):
@@ -1826,8 +1899,9 @@ function PodcastStudioApp() {
       //    guarda bloquea las ranuras liberadas desde esta versión),
       //    se reubica a la primera libre con aviso visible — la
       //    readquisición JAMÁS sobrescribe la ranura ajena;
-      //  - sin ranura libre, el registro de liberada se RESTAURA y la
-      //    cámara reintenta en el próximo apagado, con aviso.
+      //  - sin ranura libre, el registro de liberada se RESTAURA y
+      //    (v3.4.0) el vigilante la reintenta cada 2 s hasta que
+      //    vuelva o agote sus intentos, con aviso.
       // El mapa de trabajo «reservadas» empieza como copia del
       // registro de liberadas y se muta por decisión: al decidir el
       // destino de una cámara se retira SU registro (no se bloquea a
@@ -1836,8 +1910,12 @@ function PodcastStudioApp() {
       // ranura (las aperturas son asíncronas: el mapa de streams aún
       // no refleja la primera cuando se decide la segunda).
       const reservadas = { ...nativeReleasedCamsRef.current };
-      nativeReleasedCamsRef.current = {};
-      setNativeReleasedPhotos({});
+      nativeReleasedCamsRef.current = { ...retenidas };
+      setNativeReleasedTiles((prev) => {
+        const next = {};
+        for (const k of Object.keys(retenidas)) next[k] = prev[k] || { label: retenidas[k]?.label || '' };
+        return next;
+      });
       for (const [slotKey, info] of entradas) {
         const slotIdx = Number(slotKey);
         delete reservadas[slotKey];
@@ -1852,7 +1930,7 @@ function PodcastStudioApp() {
           if (nativeReleasedCamsRef.current[slotIdx]) return; // un ciclo más nuevo ya la registró
           if (slotStreamsRef.current?.[slotIdx] || cameraMetaRef.current?.[slotIdx]?.deviceId) return; // su ranura ya tiene dueña: no resucitar
           nativeReleasedCamsRef.current = { ...nativeReleasedCamsRef.current, [slotIdx]: info };
-          if (info?.photo) setNativeReleasedPhotos((prev) => ({ ...prev, [slotIdx]: info.photo }));
+          setNativeReleasedTiles((prev) => ({ ...prev, [slotIdx]: { label: info?.label || '' } }));
           ventanaDiagSend('ranura', `camino=readquisición-motor camara="${info?.label || ''}" destino=CAM ${slotIdx + 1} decision=sin-retorno motivo="${motivo}"`);
         };
         const destino = elegirRanuraReadquisicion({
@@ -1949,44 +2027,25 @@ function PodcastStudioApp() {
               .filter(Boolean).map((s) => String(s).trim().toLowerCase());
             const coincide = candidatas.some((c) => c && (nombre.includes(c) || c.includes(nombre)));
             if (!coincide) continue;
-            // Foto fija: del <video> que ya muestra este stream en la
-            // ventana; si ninguno está listo, de un <video> desechable
-            // alimentado con el mismo stream. Si la foto no se puede
-            // capturar, se libera igual (declarado): el mosaico muestra
-            // el rótulo «En el motor nativo» sin foto.
-            let dataUrl = null;
-            try {
-              let videoEl = null;
-              document.querySelectorAll('video').forEach((v) => { if (!videoEl && v.srcObject === stream && v.videoWidth > 0) videoEl = v; });
-              let desechable = null;
-              if (!videoEl) {
-                desechable = document.createElement('video');
-                desechable.muted = true;
-                desechable.playsInline = true;
-                desechable.srcObject = stream;
-                await new Promise((res) => { const t = setTimeout(res, 1200); desechable.onloadeddata = () => { clearTimeout(t); res(); }; desechable.play().catch(() => {}); });
-                if (desechable.videoWidth > 0) videoEl = desechable;
-              }
-              if (videoEl) {
-                const c = document.createElement('canvas');
-                c.width = videoEl.videoWidth;
-                c.height = videoEl.videoHeight;
-                const cx = c.getContext('2d');
-                if (cx) { cx.drawImage(videoEl, 0, 0, c.width, c.height); dataUrl = c.toDataURL('image/jpeg', 0.7); }
-              }
-              if (desechable) { try { desechable.srcObject = null; } catch (e) {} }
-            } catch (e) { dataUrl = null; }
+            // v3.4.0 — SIN captura de foto: liberar es registrar el
+            // préstamo, detener los tracks y retirar el stream, sin
+            // más coste. La foto fija de la v3.3.0 (drawImage +
+            // toDataURL a 1920×1080 y, si el <video> no estaba listo,
+            // una espera de un <video> desechable de hasta 1200 ms
+            // por cámara) caía EN PLENA transición de sesión: es la
+            // firma de los hipos de ~1,5 s medidos el 2026-11-13. Ya
+            // no hace falta: en sesión el mosaico muestra el MONITOR
+            // VIVO del motor, no una foto.
             if (cancelado) return;
+            // Un préstamo NUEVO reinicia la contabilidad del
+            // vigilante para esta cámara (ciclo nuevo, intentos
+            // nuevos).
+            reacquireAttemptsRef.current = olvidarIntentosReadquisicion(reacquireAttemptsRef.current, slotIdx);
             nativeReleasedCamsRef.current = {
               ...nativeReleasedCamsRef.current,
-              // v3.3.4: la foto viaja en el propio registro de liberada
-              // (además del estado de fotos que pinta el mosaico): si la
-              // readquisición no puede completarse, el registro se
-              // restaura entero — foto incluida — para reintentar en el
-              // próximo apagado sin perder la identidad de la cámara.
-              [slotIdx]: { camId, deviceId: meta?.deviceId || null, label: meta?.label || nombreCrudo, type: meta?.type || null, photo: dataUrl },
+              [slotIdx]: { camId, deviceId: meta?.deviceId || null, label: meta?.label || nombreCrudo, type: meta?.type || null },
             };
-            setNativeReleasedPhotos((prev) => ({ ...prev, [slotIdx]: dataUrl }));
+            setNativeReleasedTiles((prev) => ({ ...prev, [slotIdx]: { label: meta?.label || nombreCrudo } }));
             try { stream.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} }); } catch (e) {}
             const sinLiberada = { ...slotStreamsRef.current };
             delete sinLiberada[slotIdx];
@@ -2001,18 +2060,60 @@ function PodcastStudioApp() {
     }
 
     if ((phase === 'apagado' || phase === 'error') && Object.keys(nativeReleasedCamsRef.current).length > 0) {
+      let temporizador = null;
       if (nativeBusyRef.current) {
         // Transición ordenada en curso (p. ej. subida a recordStream o
         // los Detener de los botones): el apagado intermedio NO es el
         // fin de la sesión. Se reevalúa en 1,2 s con la fase real: si
         // el motor volvió a marcha, no se readquiere nada.
-        const t = setTimeout(() => {
+        temporizador = setTimeout(() => {
           const ph = nativeStateRef.current?.phase;
           if ((ph === 'apagado' || ph === 'error') && !nativeBusyRef.current) readquirirLiberadas();
         }, 1200);
-        return () => clearTimeout(t);
+      } else {
+        readquirirLiberadas();
       }
-      readquirirLiberadas();
+      // v3.4.0 — VIGILANTE DE READQUISICIÓN: cada 2 s, mientras quede
+      // registro pendiente y el motor siga apagado/error (sin
+      // transición ordenada en curso), la política pura decide por
+      // cámara: 'intentar' re-ejecuta la readquisición; 'imposible'
+      // (6 intentos agotados) avisa UNA vez y el registro queda para
+      // el próximo ciclo del motor, declarado. Hasta la v3.3.6 la
+      // pasada de arriba era la ÚNICA oportunidad: si la apertura
+      // fallaba porque el proceso del motor aún no soltaba el
+      // dispositivo, la cámara no volvía jamás en esa sesión de app.
+      // La contabilidad de las cámaras que vuelven (o se desconectan
+      // a mano: salen del registro) se olvida en la misma pasada.
+      const vigilante = setInterval(() => {
+        if (nativeBusyRef.current) return;
+        const ph = nativeStateRef.current?.phase;
+        const pendientes = Object.keys(nativeReleasedCamsRef.current || {});
+        if (pendientes.length === 0) {
+          reacquireAttemptsRef.current = {};
+          clearInterval(vigilante);
+          return;
+        }
+        let hayQueIntentar = false;
+        for (const slotKey of pendientes) {
+          const slotIdx = Number(slotKey);
+          const entrada = entradaIntentos(reacquireAttemptsRef.current, slotIdx);
+          const decision = decidirReintentoReadquisicion({ fase: ph, intentos: entrada.count, maxIntentos: REACQUIRE_MAX_ATTEMPTS });
+          if (decision === 'intentar') hayQueIntentar = true;
+          if (decision === 'imposible' && !entrada.avisado) {
+            reacquireAttemptsRef.current = marcarReadquisicionAvisada(reacquireAttemptsRef.current, slotIdx);
+            const info = nativeReleasedCamsRef.current[slotIdx];
+            showToast(`«${info?.label || 'Una cámara'}» no pudo volver del motor nativo tras ${REACQUIRE_MAX_ATTEMPTS} intentos. Su ranura sigue reservada y volverá a intentarse en el próximo ciclo del motor.`, 'error', 9000);
+            ventanaDiagSend('ranura', `camino=vigilante-readquisición camara="${info?.label || ''}" destino=CAM ${slotIdx + 1} decision=agotada intentos=${REACQUIRE_MAX_ATTEMPTS}`);
+          }
+        }
+        for (const slotKey of Object.keys(reacquireAttemptsRef.current)) {
+          if (!pendientes.includes(slotKey)) {
+            reacquireAttemptsRef.current = olvidarIntentosReadquisicion(reacquireAttemptsRef.current, Number(slotKey));
+          }
+        }
+        if (hayQueIntentar) readquirirLiberadas();
+      }, REACQUIRE_INTERVAL_MS);
+      return () => { if (temporizador) clearTimeout(temporizador); clearInterval(vigilante); };
     }
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -5518,17 +5619,19 @@ function PodcastStudioApp() {
 
     // 4b. v3.3.4: si la cámara de esta ranura estaba PRESTADA al motor
     // nativo (sin stream en la ventana), la desconexión manual cancela
-    // el préstamo: el registro de liberada y su foto fija se retiran,
-    // la ranura queda libre de verdad y la cámara NO se readquiere al
-    // apagarse el motor. Es la única vía legítima de liberar una
-    // ranura bloqueada (regla de Luis) — sin esto, el registro
-    // sobrevivía a la desconexión y la ranura quedaba bloqueada para
-    // siempre (o la cámara «resucitaba» al volver del motor).
+    // el préstamo: el registro de liberada y su espejo de mosaico se
+    // retiran, la ranura queda libre de verdad y la cámara NO se
+    // readquiere al apagarse el motor. Es la única vía legítima de
+    // liberar una ranura bloqueada (regla de Luis) — sin esto, el
+    // registro sobrevivía a la desconexión y la ranura quedaba
+    // bloqueada para siempre (o la cámara «resucitaba» al volver del
+    // motor). v3.4.0: también se olvida su contabilidad del vigilante.
     if (nativeReleasedCamsRef.current?.[slot]) {
       const sinLiberada = { ...nativeReleasedCamsRef.current };
       delete sinLiberada[slot];
       nativeReleasedCamsRef.current = sinLiberada;
-      setNativeReleasedPhotos(prev => {
+      reacquireAttemptsRef.current = olvidarIntentosReadquisicion(reacquireAttemptsRef.current, slot);
+      setNativeReleasedTiles(prev => {
         const next = { ...prev };
         delete next[slot];
         return next;
@@ -5899,6 +6002,29 @@ function PodcastStudioApp() {
       );
     }
 
+    // v3.4.0 — MONITOR VIVO en los recuadros: con el motor en sesión,
+    // una ranura liberada muestra el JPEG que la tubería sirve por
+    // HTTP local — su propia fuente en su mosaico
+    // (/monitor/cam-<n>.jpg, n = su posición en sourceNames, casada
+    // por la etiqueta como en el emparejador de liberación) y la
+    // mezcla que va al aire en el recuadro de PROGRAMA
+    // (/monitor/program.jpg) — en vez del «Sin señal» y de la foto
+    // fija de la v3.3.0.
+    const nativeMonitorBase = nativeEngineState?.monitorPort ? `http://127.0.0.1:${nativeEngineState.monitorPort}` : null;
+    const monitorCamUrlDeRanura = (slotIdx) => {
+      if (!nativeMonitorBase) return null;
+      const nombres = nativeEngineState?.sourceNames || [];
+      const candidatas = [nativeReleasedTiles[slotIdx]?.label, cameraMeta[slotIdx]?.label]
+        .filter(Boolean).map((s) => String(s).trim().toLowerCase());
+      for (let i = 0; i < nombres.length; i++) {
+        const nombre = String(nombres[i] || '').trim().toLowerCase();
+        if (nombre && candidatas.some((c) => c && (nombre.includes(c) || c.includes(nombre)))) {
+          return `${nativeMonitorBase}/monitor/cam-${i + 1}.jpg`;
+        }
+      }
+      return null;
+    };
+
     const getTileProps = (id) => {
       const idx = camSlots.indexOf(id);
       return {
@@ -6108,6 +6234,21 @@ function PodcastStudioApp() {
           return (
             <div key={`cam-persistent-slot-${id}`} className={tileClass} style={tileStyle} data-pgm-tile={id === effectiveActiveCam ? '1' : undefined}>
               <VideoTile {...getTileProps(id)} className="w-full h-full" />
+              {/* v3.4.0 — si esta ranura está liberada al motor y hay
+                  monitor vivo, su imagen REAL va encima del «Sin
+                  señal»: en el recuadro de programa (el máster), la
+                  mezcla que va al aire; en los demás, la fuente de la
+                  cámara. El overlay del teleprompter (z-45) sigue
+                  montándose sobre esta misma región, por encima. */}
+              {nativeReleasedTiles[id - 1] && nativeMonitorBase ? (
+                id === effectiveActiveCam ? (
+                  <NativeMonitorImg url={`${nativeMonitorBase}/monitor/program.jpg`} className="absolute inset-0 w-full h-full object-cover bg-black z-[5]" alt={`Programa CAM ${id} — monitor vivo del motor nativo`} />
+                ) : (
+                  monitorCamUrlDeRanura(id - 1) ? (
+                    <NativeMonitorImg url={monitorCamUrlDeRanura(id - 1)} className="absolute inset-0 w-full h-full object-cover bg-black z-[5]" alt={`CAM ${id} — monitor vivo del motor nativo`} />
+                  ) : null
+                )
+              ) : null}
             </div>
           );
         })}
@@ -6719,14 +6860,17 @@ function PodcastStudioApp() {
                   }}
                   title={dualMonitorMode ? `Seleccionar CAM ${camId} en PREVIEW (PVW) · Clic en CUT para conmutar a PROGRAM` : `Seleccionar CAM ${camId} como Cámara Master`}
                 >
-                   {nativeReleasedPhotos[camId - 1] !== undefined ? (
-                     /* v3.3.0 D2: cámara liberada al motor nativo — foto
-                        fija + rótulo mientras la sesión siga activa. Si
-                        la foto no se pudo capturar, el valor es null y
-                        se muestra solo el rótulo (declarado). */
+                   {nativeReleasedTiles[camId - 1] ? (
+                     /* v3.4.0: cámara liberada al motor nativo — su
+                        MONITOR VIVO (el JPEG de su fuente que la
+                        tubería sirve por HTTP local) + rótulo mientras
+                        la sesión siga activa. Hasta la v3.3.6 era una
+                        foto fija capturada al liberar; si el monitor
+                        aún no resuelve su URL, queda el fondo con el
+                        rótulo (declarado). */
                      <div className="relative w-full h-full">
-                       {nativeReleasedPhotos[camId - 1] ? (
-                         <img src={nativeReleasedPhotos[camId - 1]} className="w-full h-full object-cover" alt={`CAM ${camId}`} />
+                       {monitorCamUrlDeRanura(camId - 1) ? (
+                         <NativeMonitorImg url={monitorCamUrlDeRanura(camId - 1)} className="absolute inset-0 w-full h-full object-cover" alt={`CAM ${camId}`} />
                        ) : null}
                        <div className="absolute inset-x-0 bottom-7 flex justify-center pointer-events-none">
                          <span className="px-2 py-0.5 rounded bg-cyan-950/85 border border-cyan-500/50 text-cyan-200 text-[9px] font-black tracking-wider uppercase">En el motor nativo</span>

@@ -37,9 +37,22 @@
 // activa: la cadena heredada (sin GStreamer, o ISO) compone igual.
 //
 // (D2) Al confirmarse la sesión nativa, las cámaras locales de
-// sourceNames se liberan con foto fija (tracks detenidos, fuera del
-// mapa de streams) y el mosaico muestra la foto + «En el motor
-// nativo»; al apagarse el motor se readquieren por handleUsbConnect.
+// sourceNames se liberan (tracks detenidos, fuera del mapa de
+// streams) y el mosaico muestra su imagen + «En el motor nativo»; al
+// apagarse el motor se readquieren por handleUsbConnect.
+//
+// v3.4.0 (Área 2): la liberación YA NO captura foto fija — la foto
+// (drawImage + toDataURL a 1920×1080 y la espera de un <video>
+// desechable de hasta 1200 ms por cámara) caía en plena transición
+// de sesión y es la firma de los hipos de ~1,5 s medidos el
+// 2026-11-13; en sesión, el mosaico y el máster muestran el MONITOR
+// VIVO del motor (los JPEG que su tubería sirve por HTTP local). Y
+// la readquisición ganó un VIGILANTE (política pura en
+// src/utils/reacquirePolicy.mjs, probada en
+// scripts/reacquire-policy-v340.test.mjs): reintenta cada 2 s hasta
+// que la cámara vuelva o agote 6 intentos declarados. Las
+// aserciones D2 de la foto se reescriben a la nueva semántica,
+// declaradas aquí como hizo la v3.3.1 con la sección A.
 //
 // (C-renderer) Con concurrentPreview === true y el teleprompter
 // reproduciendo, el tramo visible (~6 líneas desde teleprompterYRef)
@@ -89,10 +102,14 @@ test('v3.3.1 A: el ayudante delega en la función pura con la de programa = tall
   );
 });
 
-test('v3.3.1 A: el ayudante limita a 3 fuentes y etiqueta por track, por ranura o por liberación', () => {
-  assert.ok(fuentesSource.includes('MAX_NATIVE_SOURCES = 3'), 'máximo 3 fuentes');
-  assert.ok(fuentesSource.includes('vTrack.label'), 'etiqueta del track vivo');
+test('v3.4.0 A: las fuentes son programa + SOLO la PiP fijada, y la etiqueta sale de la pista, la ranura o la liberación', () => {
+  // v3.4.0: fuera la PiP automática en orden de ranura (máx. 3) — la
+  // sesión lleva la de programa y, solo si Luis la fijó, su PiP.
+  assert.ok(fuentesSource.includes('pipCamId'), 'la composición recibe la PiP fijada (pipCamId)');
+  assert.ok(ayudante.includes('pipCamId: pipCamRef.current'), 'la app pasa la PiP fijada vigente');
+  assert.ok(fuentesSource.includes('vTrack.label'), 'etiqueta del track vivo (primera candidata)');
   assert.ok(fuentesSource.includes('meta?.label'), 'o el nombre guardado por ranura (cameraMeta)');
+  assert.ok(fuentesSource.includes('elegirEtiquetaFuente'), 'las candidatas pasan por el filtro anti-GUID');
   assert.ok(ayudante.includes('releasedLabels'), 'la app aporta las etiquetas de las cámaras liberadas al motor');
 });
 
@@ -170,10 +187,10 @@ test('v3.3.0 D1: en modo motor el monitor de programa por canvas no se monta', (
 });
 
 // ---------------------------------------------------------------------------
-// D2: liberación con foto fija
+// D2: liberación (v3.4.0: sin foto — monitor vivo; vigilante de vuelta)
 // ---------------------------------------------------------------------------
 
-const liberacion = cuerpo('const [nativeReleasedPhotos, setNativeReleasedPhotos]', '// C-renderer: teleprompter');
+const liberacion = cuerpo('const [nativeReleasedTiles, setNativeReleasedTiles]', '// C-renderer: teleprompter');
 
 test('v3.3.0 D2: la liberación busca las cámaras por nativeEngineState.sourceNames', () => {
   assert.ok(liberacion.includes('st.sourceNames'), 'la liberación itera sourceNames del estado del motor');
@@ -193,10 +210,30 @@ test('v3.3.0 D2: la liberación detiene TODOS los tracks y retira el stream del 
   assert.ok(liberacion.includes('delete next[slotIdx]'), 'el stream sale del estado slotStreams');
 });
 
-test('v3.3.0 D2: la foto sale de un <video> de la ventana o de uno desechable, y sin foto se libera igual', () => {
-  assert.ok(liberacion.includes("document.querySelectorAll('video')"), 'busca el <video> que ya muestra el stream');
-  assert.ok(liberacion.includes("document.createElement('video')"), 'respaldo: <video> desechable con el stream');
-  assert.ok(liberacion.includes('setNativeReleasedPhotos'), 'la foto (o null) se guarda por ranura');
+test('v3.4.0 D2: la liberación YA NO captura foto — fuera drawImage/toDataURL y el <video> desechable del camino', () => {
+  assert.ok(liberacion.includes('// v3.4.0 — SIN captura de foto'), 'la liberación declara la retirada de la foto');
+  // El tramo de CÓDIGO entre el registro del préstamo y la parada de
+  // tracks (los comentarios históricos que nombran la foto quedan
+  // fuera de este corte: se busca desde la línea de código que
+  // reinicia la contabilidad del vigilante, justo antes del registro).
+  const iCodigo = liberacion.indexOf('reacquireAttemptsRef.current = olvidarIntentosReadquisicion(reacquireAttemptsRef.current, slotIdx);');
+  assert.ok(iCodigo >= 0, 'el registro del préstamo reinicia la contabilidad del vigilante');
+  const iTracks = liberacion.indexOf('stream.getTracks().forEach', iCodigo);
+  assert.ok(iTracks > iCodigo, 'tras el registro se detienen los tracks');
+  const camino = liberacion.slice(iCodigo, iTracks);
+  assert.ok(!camino.includes('drawImage'), 'sin drawImage en el camino de liberación');
+  assert.ok(!camino.includes('toDataURL'), 'sin toDataURL en el camino de liberación');
+  assert.ok(!camino.includes("createElement('video')"), 'sin <video> desechable en el camino de liberación');
+  assert.ok(!camino.includes("querySelectorAll('video')"), 'sin búsqueda de <video> en el camino de liberación');
+  assert.ok(liberacion.includes('setNativeReleasedTiles'), 'el espejo de mosaico es nativeReleasedTiles');
+});
+
+test('v3.4.0 D2: el vigilante reintenta la readquisición cada 2 s con la política pura y avisa UNA vez al agotar', () => {
+  assert.ok(liberacion.includes('setInterval'), 'hay un intervalo vigilante');
+  assert.ok(liberacion.includes('REACQUIRE_INTERVAL_MS'), 'el intervalo es el declarado por la política (2 s)');
+  assert.ok(liberacion.includes('decidirReintentoReadquisicion'), 'la decisión la toma la política pura');
+  assert.ok(liberacion.includes('marcarReadquisicionAvisada'), 'el aviso de agotada se marca (una sola vez)');
+  assert.ok(liberacion.includes('REACQUIRE_MAX_ATTEMPTS'), 'el tope es el declarado por la política (6)');
 });
 
 test('v3.3.0 D2 → v3.3.4: al apagarse el motor, las liberadas se readquieren por la adquisición existente, a un destino decidido por ocupación', () => {
@@ -215,8 +252,11 @@ test('v3.3.0 D2 → v3.3.4: al apagarse el motor, las liberadas se readquieren p
   assert.ok(liberacion.includes('nativeBusyRef.current'), 'las transiciones ordenadas no readquieren en el apagado intermedio');
 });
 
-test('v3.3.0 D2: el mosaico muestra la foto y el rótulo «En el motor nativo» de la ranura liberada', () => {
-  assert.ok(appSource.includes('nativeReleasedPhotos[camId - 1] !== undefined'), 'el mosaico consulta la foto por ranura');
+test('v3.4.0 D2: el mosaico y el máster muestran el MONITOR VIVO de la ranura liberada y el rótulo «En el motor nativo»', () => {
+  assert.ok(appSource.includes('nativeReleasedTiles[camId - 1]'), 'el mosaico consulta el espejo de liberadas por ranura');
+  assert.ok(appSource.includes('NativeMonitorImg'), 'los recuadros pintan la imagen del monitor vivo');
+  assert.ok(appSource.includes('monitorPort'), 'la URL sale del puerto del estado del motor');
+  assert.ok(appSource.includes('/monitor/program.jpg'), 'el recuadro de programa muestra la mezcla que va al aire');
   assert.ok(appSource.includes('En el motor nativo'), 'rótulo «En el motor nativo»');
 });
 

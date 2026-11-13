@@ -10,7 +10,8 @@
 //
 // Orden: herramientas → enumeración de cámaras → preview (6 s vivo) →
 // record (6 s + máster VALIDADO) → recordStream local (6 s + máster
-// VALIDADO). Cada paso imprime «SMOKE <paso>: OK|FALLA — <detalle>» y al
+// VALIDADO) → monitor vivo (v3.4.0: /monitor/program.jpg con la sesión
+// viva). Cada paso imprime «SMOKE <paso>: OK|FALLA — <detalle>» y al
 // final «SMOKE RESULTADO: PASA|NO PASA» (código de salida 0/1).
 //
 // REGLA DE PUBLICACIÓN: con la app CERRADA, si este smoke no dice PASA,
@@ -21,6 +22,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 
 const require = createRequire(import.meta.url);
 const {
@@ -134,6 +136,58 @@ async function sesionDePrueba(nombre, faseEsperada, exigeValidacion, outDir) {
   }
 }
 
+// ── Paso NUEVO (v3.4.0): el MONITOR VIVO sirve un JPEG de programa ──────
+// Con una sesión recordStream LOCAL viva, el servidor HTTP del motor
+// (127.0.0.1, puerto efímero en getState().monitorPort) debe responder
+// /monitor/program.jpg con un JPEG completo (>2 KB, cabecera FFD8) en
+// menos de 10 s de sondeo. Sin monitor, en sesión la app no puede
+// mostrar lo que transmite (el fallo en vivo de la v3.3.6: el máster
+// decía SIN SEÑAL): si no responde, la compuerta NO PASA.
+function getBytesMonitor(url) {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, bytes: Buffer.concat(chunks) }));
+    });
+    req.on('error', reject);
+    req.setTimeout(3000, () => req.destroy(new Error('timeout de 3 s')));
+  });
+}
+
+async function pasoMonitorVivo(outDir) {
+  const empezar = await engine.start({ session: 'recordStream', kind: 'local', outDir });
+  if (!empezar?.success) {
+    registrar('monitor', false, `start() recordStream local no tuvo éxito: ${empezar?.error || 'sin detalle del motor'}.`);
+    try { await engine.stop(); } catch (e) {}
+    return;
+  }
+  const stSes = await esperarFase('grabando-transmitiendo', 20000);
+  if (!stSes || stSes.phase !== 'grabando-transmitiendo') {
+    registrar('monitor', false, `la sesión local no llegó a «grabando-transmitiendo» en 20 s (fase: ${stSes?.phase || '—'}; error del motor: ${stSes?.lastError || '—'}).`);
+    try { await engine.stop(); } catch (e) {}
+    return;
+  }
+  const puerto = engine.getState()?.monitorPort;
+  if (!puerto) {
+    registrar('monitor', false, 'el estado de la sesión no expone monitorPort con la sesión viva: el servidor del monitor no nació.');
+    try { await engine.stop(); } catch (e) {}
+    return;
+  }
+  const t0 = Date.now();
+  let ultimo = null;
+  while (Date.now() - t0 < 10000) {
+    ultimo = await getBytesMonitor(`http://127.0.0.1:${puerto}/monitor/program.jpg`).catch((e) => ({ error: e?.message || String(e) }));
+    if (ultimo?.bytes && ultimo.bytes.length > 2048 && ultimo.bytes[0] === 0xff && ultimo.bytes[1] === 0xd8) break;
+    await sleep(500);
+  }
+  const ok = !!(ultimo?.bytes && ultimo.bytes.length > 2048 && ultimo.bytes[0] === 0xff && ultimo.bytes[1] === 0xd8);
+  registrar('monitor', ok, ok
+    ? `JPEG de programa válido (${ultimo.bytes.length} bytes, cabecera FFD8) servido en el puerto ${puerto} tras ${Date.now() - t0} ms de sondeo con la sesión viva.`
+    : `sin JPEG válido en 10 s de sondeo (último intento: ${ultimo?.error || (ultimo?.bytes ? `${ultimo.bytes.length} bytes, estado HTTP ${ultimo.status}` : 'sin respuesta')}).`);
+  try { await engine.stop(); } catch (e) {}
+}
+
 async function main() {
   console.log('SMOKE DEL MOTOR NATIVO — sesiones reales contra la cámara real (la app debe estar CERRADA).');
   let puedeSeguir = true;
@@ -195,6 +249,9 @@ async function main() {
     // recordStream SIN streamUrls: la prueba local interna del motor
     // (oyente RTMP en 127.0.0.1:1935 y FLV recibido en la carpeta).
     await sesionDePrueba('recordStream', 'grabando-transmitiendo', true, outDir);
+    // MONITOR VIVO (v3.4.0, bloquea): tras recordStream, una sesión
+    // local nueva debe servir el JPEG de programa por HTTP local.
+    await pasoMonitorVivo(outDir);
     // MULTICAM (v3.3.0, bloquea SOLO si aplica): con el motor ya libre
     // tras recordStream, se re-enumera y, si hay ≥2 cámaras Media
     // Foundation (deviceIndex entero ≥ 0), se graba una sesión record

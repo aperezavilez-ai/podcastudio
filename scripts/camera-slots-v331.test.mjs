@@ -175,8 +175,8 @@ test('v3.3.1 · defecto 2: ninguna libre → null (nunca la mayor por defecto)',
 // Defecto 4 (a) — la composición sale de la de programa (tally PGM)
 // ---------------------------------------------------------------------------
 
-test('v3.3.1 · defecto 4: sources[0] es la de programa (PGM CAM 1) y las PiP van en orden de ranura', () => {
-  const comp = componerFuentesPrograma({
+test('v3.3.1 · defecto 4 (v3.4.0): sources[0] es la de programa (PGM CAM 1) y la PiP SOLO entra si está fijada', () => {
+  const base = {
     camSlots: [1, 2, 3, 4],
     programaCamId: 1,
     cameraMeta: { 0: { type: 'usb' }, 3: { type: 'usb' } },
@@ -185,15 +185,24 @@ test('v3.3.1 · defecto 4: sources[0] es la de programa (PGM CAM 1) y las PiP va
       3: streamFalso('EasyCamera (04f2:b57e)'),
     },
     localStream: null,
-  });
-  assert.equal(comp.programa.etiqueta, 'Steren COM-126 (09da:2704)');
-  assert.deepEqual(comp.sources, ['Steren COM-126 (09da:2704)', 'EasyCamera (04f2:b57e)']);
+  };
+  // REGLA v3.4.0 (orden de Luis): sin PiP fijada la sesión es SOLO
+  // programa — hasta la v3.3.6 la otra elegible entraba sola.
+  const sinPip = componerFuentesPrograma(base);
+  assert.equal(sinPip.programa.etiqueta, 'Steren COM-126 (09da:2704)');
+  assert.deepEqual(sinPip.sources, ['Steren COM-126 (09da:2704)']);
+  assert.equal(sinPip.pip, null);
+  // Con CAM 4 fijada como PiP, entra como segunda fuente.
+  const conPip = componerFuentesPrograma({ ...base, pipCamId: 4 });
+  assert.deepEqual(conPip.sources, ['Steren COM-126 (09da:2704)', 'EasyCamera (04f2:b57e)']);
+  assert.equal(conPip.pip.camId, 4);
 });
 
-test('v3.3.1 · defecto 4: si el tally PGM está en CAM 4, la de programa es la de CAM 4', () => {
+test('v3.3.1 · defecto 4 (v3.4.0): si el tally PGM está en CAM 4, la de programa es la de CAM 4 y la PiP es la fijada', () => {
   const comp = componerFuentesPrograma({
     camSlots: [1, 2, 3, 4],
     programaCamId: 4,
+    pipCamId: 1,
     cameraMeta: { 0: { type: 'usb' }, 3: { type: 'usb' } },
     slotStreams: {
       0: streamFalso('Steren COM-126 (09da:2704)'),
@@ -202,7 +211,7 @@ test('v3.3.1 · defecto 4: si el tally PGM está en CAM 4, la de programa es la 
     localStream: null,
   });
   assert.equal(comp.sources[0], 'EasyCamera (04f2:b57e)');
-  assert.equal(comp.sources[1], 'Steren COM-126 (09da:2704)', 'la PiP entra en orden de ranura');
+  assert.equal(comp.sources[1], 'Steren COM-126 (09da:2704)', 'la PiP es la fijada por el usuario (CAM 1)');
 });
 
 test('v3.3.1 · defecto 4: PGM en una ranura REMOTA → programa null, sin promover a otra', () => {
@@ -234,10 +243,11 @@ test('v3.3.1 · defecto 4: PGM sin señal (track terminado) → programa null, n
   assert.equal(comp.programa, null);
 });
 
-test('v3.3.1 · defecto 4: la de programa liberada al motor (sin stream en ventana) sigue siendo la de programa', () => {
+test('v3.3.1 · defecto 4 (v3.4.0): la de programa liberada al motor (sin stream en ventana) sigue siendo la de programa', () => {
   const comp = componerFuentesPrograma({
     camSlots: [1, 4],
     programaCamId: 1,
+    pipCamId: 4,
     cameraMeta: { 0: { type: 'usb', deviceId: 'steren' }, 3: { type: 'usb' } },
     slotStreams: { 3: streamFalso('EasyCamera (04f2:b57e)') },
     localStream: null,
@@ -247,8 +257,8 @@ test('v3.3.1 · defecto 4: la de programa liberada al motor (sin stream en venta
   assert.deepEqual(comp.sources, ['Steren COM-126 (09da:2704)', 'EasyCamera (04f2:b57e)']);
 });
 
-test('v3.3.1 · defecto 4: máximo 3 fuentes y sin duplicar etiquetas', () => {
-  const comp = componerFuentesPrograma({
+test('v3.4.0 · fuentes: sin PiP fijada entra SOLO la de programa; con PiP fijada, programa + esa PiP y nada más', () => {
+  const base = {
     camSlots: [1, 2, 3, 4, 5],
     programaCamId: 1,
     cameraMeta: {},
@@ -260,8 +270,54 @@ test('v3.3.1 · defecto 4: máximo 3 fuentes y sin duplicar etiquetas', () => {
       4: streamFalso('Cam E'),
     },
     localStream: null,
+  };
+  assert.deepEqual(componerFuentesPrograma(base).sources, ['Cam A'], 'ninguna PiP automática aunque haya 4 elegibles más');
+  const conPip = componerFuentesPrograma({ ...base, pipCamId: 3 });
+  assert.deepEqual(conPip.sources, ['Cam A', 'Cam C'], 'solo la fijada, no las demás elegibles');
+  // La PiP fijada sobre la MISMA ranura de programa no duplica.
+  assert.deepEqual(componerFuentesPrograma({ ...base, pipCamId: 1 }).sources, ['Cam A']);
+  // La PiP fijada en una ranura REMOTA no entra (fuera del motor).
+  const remota = componerFuentesPrograma({ ...base, pipCamId: 2, cameraMeta: { 1: { type: 'remote' } } });
+  assert.deepEqual(remota.sources, ['Cam A']);
+});
+
+// ---------------------------------------------------------------------------
+// v3.4.0 — identidad por etiqueta de pista (el GUID «25203b73… OMITIDA»)
+// ---------------------------------------------------------------------------
+
+test('v3.4.0 · identidad: el nombre de la fuente sale de la etiqueta de la PISTA, nunca del deviceId/GUID', () => {
+  const comp = componerFuentesPrograma({
+    camSlots: [1, 2],
+    programaCamId: 2,
+    cameraMeta: { 1: { type: 'usb', deviceId: '25203b73-1f2a-439d-a5f6-689e9b16d2cf', label: '25203b73-1f2a-439d-a5f6-689e9b16d2cf' } },
+    slotStreams: { 1: streamFalso('EasyCamera') },
+    localStream: null,
   });
-  assert.deepEqual(comp.sources, ['Cam A', 'Cam B', 'Cam C']);
+  assert.equal(comp.programa.etiqueta, 'EasyCamera', 'gana la etiqueta de la pista sobre el GUID guardado en meta');
+});
+
+test('v3.4.0 · identidad: si TODAS las candidatas son el GUID, la ranura no es elegible (programa null)', () => {
+  const comp = componerFuentesPrograma({
+    camSlots: [1],
+    programaCamId: 1,
+    cameraMeta: { 0: { type: 'usb', deviceId: '25203b73-1f2a-439d-a5f6-689e9b16d2cf', label: '25203b73-1f2a-439d-a5f6-689e9b16d2cf' } },
+    slotStreams: { 0: streamFalso('25203b73-1f2a-439d-a5f6-689e9b16d2cf') },
+    localStream: null,
+  });
+  assert.equal(comp.programa, null);
+  assert.deepEqual(comp.sources, []);
+});
+
+test('v3.4.0 · identidad: la liberada con etiqueta GUID en el registro no entra como nombre', () => {
+  const comp = componerFuentesPrograma({
+    camSlots: [1],
+    programaCamId: 1,
+    cameraMeta: { 0: { type: 'usb', deviceId: '25203b73-1f2a-439d-a5f6-689e9b16d2cf' } },
+    slotStreams: {},
+    localStream: null,
+    releasedLabels: { 0: '25203b73-1f2a-439d-a5f6-689e9b16d2cf' },
+  });
+  assert.equal(comp.programa, null, 'el GUID del registro de liberación no es un nombre de fuente');
 });
 
 // ---------------------------------------------------------------------------
