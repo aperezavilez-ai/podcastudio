@@ -27,7 +27,8 @@ import { bindVideoKeepAlive, getVideoTrackInfo, getVideoTrackResolution } from '
 import { CINTILLO_STYLES, getCintilloStyle } from './config/cintilloStyles.js';
 import { CINTILLO_PRESETS, resolveCintilloText, resolveCintilloSubtitle } from './config/cintilloPresets.js';
 import { CINTILLO_POSITION_OPTIONS } from './config/cintilloCameraMap.js';
-import { findAvailableRemoteCameraSlot, resolveRemoteCameraSlot, chooseReconnectCameraSlot } from './utils/remoteCameraSlots.mjs';
+import { findAvailableRemoteCameraSlot, resolveRemoteCameraSlot, chooseReconnectCameraSlot, decidirColocacionRemotaCloud } from './utils/remoteCameraSlots.mjs';
+import { esEtiquetaLenteNoEstandar } from './utils/remoteCameraLens.mjs';
 import { componerFuentesPrograma } from './utils/nativeProgramSources.mjs';
 import { debeMontarOverlayPrompter, maximoDesplazamientoPrompter, acotarDesplazamientoPrompter } from './utils/teleprompter.mjs';
 import { buildStreamDestinations } from './utils/streamDestinations.mjs';
@@ -126,7 +127,8 @@ const VideoTile = React.forwardRef(({
   isActive = true,
   camId = null,
   registerWithEngine = false,
-  frozen = false
+  frozen = false,
+  objectFit = 'cover'
 }, ref) => {
   const internalRef = useRef(null);
   const videoRef = ref || internalRef;
@@ -237,7 +239,7 @@ const VideoTile = React.forwardRef(({
           muted={isMuted} 
           onLoadedMetadata={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); }}
           onCanPlay={(e) => { if (e.currentTarget.paused) e.currentTarget.play().catch(() => {}); }}
-          className={`w-full h-full object-cover ${chromaKey ? 'relative z-10 mix-blend-screen' : ''}`} 
+          className={`w-full h-full ${objectFit === 'contain' ? 'object-contain' : 'object-cover'} ${chromaKey ? 'relative z-10 mix-blend-screen' : ''}`} 
           style={{...style, filter: chromaKey ? `${style?.filter || ''} contrast(1.5) brightness(1.1)` : style?.filter }} 
         />
       ) : (
@@ -3530,36 +3532,62 @@ function PodcastStudioApp() {
             // v3.3.1 (defecto 1): la sala NO manda sobre la ocupación.
             // Si la ranura de la sala está ocupada por OTRA fuente, el
             // celular se coloca en la primera ranura libre y la
-            // ocupante NO se desconecta (la v3.3.0 pisaba la ranura y,
-            // en CAM 1, hasta detenía los tracks de la cámara local).
-            const ownCloudId = `cloud_${slotIdx}`;
-            const holderMeta = cameraMetaRef.current?.[slotIdx];
-            const holderStream = slotStreamsRef.current?.[slotIdx];
-            const ocupadaPorOtra = Boolean(holderStream && holderStream !== stream && holderMeta?.deviceId !== ownCloudId)
-              || (slotIdx === 0 && Boolean(localStreamRef.current) && localStreamRef.current !== stream && holderMeta?.deviceId !== ownCloudId);
-            let placedSlot = slotIdx;
-            if (ocupadaPorOtra) {
-              placedSlot = findAvailableRemoteCameraSlot({
-                slotsCount: camSlotsRef.current?.length || 12,
-                streams: slotStreamsRef.current,
-                cameraMeta: cameraMetaRef.current,
-                assignedSlots: assignedSlotsRef.current,
-                localStreamActive: Boolean(localStreamRef.current),
-                requestingDeviceId: ownCloudId,
-              });
-              if (placedSlot === null) {
-                logger.warn(`[Cloud WebRTC] Sin ranuras libres para el celular de la sala ${slotIdx + 1}: no se reemplazó ninguna cámara.`);
-                setMobileStatus(`Un celular llegó a CAM ${slotIdx + 1}, pero no hay ranuras libres: no se desconectó ninguna cámara.`);
-                return;
-              }
-              colocacionCloudRef.current[slotIdx] = placedSlot;
-              setMobileStatus(`CAM ${slotIdx + 1} estaba ocupada: el celular se conectó en CAM ${placedSlot + 1} sin desconectar ninguna cámara.`);
+            // ocupante NO se desconecta.
+            //
+            // v3.3.3 (defecto A — el 4º camino): el transporte emite
+            // «streamConnected» en CADA actualización de pistas
+            // (ontrack de video, luego de audio, renegociaciones…),
+            // no una sola vez por conexión. La v3.3.1 decidió la
+            // colocación solo contra la foto de ocupación de CADA
+            // emisión, claveada por la sala: en una re-emisión, si la
+            // ocupante no se veía en los mapas en ese instante, el
+            // handler volvía a «colocar» y pisaba la ranura — por eso
+            // la remota siguió cayendo en CAM 2 en vivo. Ahora TODA
+            // emisión pasa por la guarda única
+            // decidirColocacionRemotaCloud: con colocación viva de
+            // esta sala manda la REUTILIZACIÓN (solo se actualiza el
+            // stream en la ranura ya colocada; jamás se reevalúa la
+            // ocupación ni se escribe en otra ranura, y ninguna
+            // emisión puede detener los tracks de otra fuente — la
+            // antigua rama de CAM 1 que detenía la cámara local salió
+            // de este handler: CAM 1 remota se atiende en su ranura
+            // como cualquier otra, sin tocar la señal local).
+            // Regla de Luis: ranura ocupada = bloqueada; la única vía
+            // para cambiarla es la desconexión manual del usuario.
+            const decision = decidirColocacionRemotaCloud({
+              sala: slotIdx,
+              colocaciones: colocacionCloudRef.current,
+              explicitSlot: slotIdx,
+              slotsCount: camSlotsRef.current?.length || 12,
+              streams: slotStreamsRef.current,
+              cameraMeta: cameraMetaRef.current,
+              assignedSlots: assignedSlotsRef.current,
+              localStreamActive: Boolean(localStreamRef.current),
+              requestingDeviceId: `cloud_${slotIdx}`,
+            });
+            if (decision.accion === 'rechazar') {
+              logger.warn(`[Cloud WebRTC] Sin ranuras libres para el celular de la sala ${slotIdx + 1}: no se reemplazó ninguna cámara.`);
+              setMobileStatus(`Un celular llegó a CAM ${slotIdx + 1}, pero no hay ranuras libres: no se desconectó ninguna cámara.`);
+              return;
             }
-            if (placedSlot === 0) {
-              if (localStreamRef.current && localStreamRef.current !== stream) {
-                try { localStreamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {}
-              }
-              setLocalStream(stream);
+            if (decision.reemision) {
+              // Re-emisión de pistas de una conexión ya colocada:
+              // solo se actualiza el stream EN SU ranura. Ninguna
+              // otra escritura, ninguna parada de tracks.
+              const placedSlot = decision.placedSlot;
+              setSlotStreams(prev => ({ ...prev, [placedSlot]: stream }));
+              setRemoteCams(prev => [
+                ...prev.filter(r => r.id !== `cloud_${placedSlot}`),
+                { id: `cloud_${placedSlot}`, stream, name: label || `Celular CAM ${placedSlot + 1}` }
+              ]);
+              return;
+            }
+            const decisionDespues = decision; // ancla: de aquí en adelante SOLO se coloca (primera vez)
+            const placedSlot = decisionDespues.placedSlot;
+            colocacionCloudRef.current[slotIdx] = placedSlot;
+            if (decisionDespues.reubicada) {
+              logger.log(`[Cloud WebRTC] CAM ${slotIdx + 1} estaba ocupada: el celular se colocó en CAM ${placedSlot + 1} sin desconectar ninguna cámara.`);
+              setMobileStatus(`CAM ${slotIdx + 1} estaba ocupada: el celular se conectó en CAM ${placedSlot + 1} sin desconectar ninguna cámara.`);
             }
             setSlotStreams(prev => ({ ...prev, [placedSlot]: stream }));
             setRemoteCams(prev => [
@@ -3570,7 +3598,7 @@ function PodcastStudioApp() {
               ...prev,
               [placedSlot]: { deviceId: `cloud_${placedSlot}`, label: label || `Celular Remoto (CAM ${placedSlot + 1})`, type: 'remote' }
             }));
-            if (!ocupadaPorOtra) {
+            if (!decisionDespues.reubicada) {
               setMobileStatus(`Celular en vivo conectado en CAM ${placedSlot + 1}`);
             }
           });
@@ -3582,6 +3610,17 @@ function PodcastStudioApp() {
             // reubicación al conectar).
             const placedSlot = colocacionCloudRef.current[slotIdx] ?? slotIdx;
             delete colocacionCloudRef.current[slotIdx];
+            // v3.3.3 (defecto A): la limpieza SOLO toca la ranura si
+            // sigue ocupada por ESTE celular. Si hoy la ocupa otra
+            // fuente (deviceId distinto), la desconexión de esta sala
+            // no puede limpiar la ranura ajena: la guarda de
+            // ocupación también protege contra escrituras de salida.
+            const metaColocada = cameraMetaRef.current?.[placedSlot];
+            if (metaColocada && metaColocada.deviceId !== `cloud_${placedSlot}` && slotStreamsRef.current?.[placedSlot]) {
+              logger.log(`[Cloud WebRTC] CAM ${placedSlot + 1} ya la ocupa otra fuente: la desconexión de la sala ${slotIdx + 1} no la toca.`);
+              setRemoteCams(prev => prev.filter(r => r.id !== `cloud_${placedSlot}`));
+              return;
+            }
             if (placedSlot === 0) {
               setLocalStream(null);
             }
@@ -3746,9 +3785,28 @@ function PodcastStudioApp() {
             return;
           }
 
+          // v3.3.3 (defecto B): la lente REALMENTE servida por el
+          // celular se lee del track recibido (su label refleja el
+          // dispositivo de captura en el estudio; la página además la
+          // publica en su presencia como lensLabel) y queda VISIBLE
+          // en la etiqueta de la cámara: si es una lente no estándar
+          // (ultra gran angular / tele — el ojo de pez), se declara
+          // con «lente no estándar» en vez de esconderlo.
+          const trackVideoVivo = stableStream.getVideoTracks().find(t => t.readyState !== 'ended');
+          const lensLabel = trackVideoVivo?.label || '';
+          const nombreCamara = name ? (role === 'student' ? `Alumno: ${name}` : name) : `Celular Wi-Fi (CAM ${targetSlot + 1})`;
+          const etiquetaCamara = lensLabel
+            ? (esEtiquetaLenteNoEstandar(lensLabel)
+              ? `${nombreCamara} · ⚠ lente no estándar: ${lensLabel}`
+              : `${nombreCamara} · ${lensLabel}`)
+            : nombreCamara;
+          if (lensLabel && esEtiquetaLenteNoEstandar(lensLabel)) {
+            logger.warn(`[WebRTC] El celular ${id} entró con una lente NO estándar («${lensLabel}»): la imagen puede verse con ojo de pez.`);
+          }
+
           setRemoteCams(prev => {
             const filtered = prev.filter(s => s.id !== id);
-            return [...filtered, { id, stream: stableStream, name: name || `Celular ${id.slice(-4)}` }];
+            return [...filtered, { id, stream: stableStream, name: etiquetaCamara, lensLabel: lensLabel || undefined }];
           });
 
           setSlotStreams(prevStreams => ({ ...prevStreams, [targetSlot]: stableStream }));
@@ -3756,8 +3814,9 @@ function PodcastStudioApp() {
             ...prevMeta,
             [targetSlot]: {
               deviceId: id,
-              label: name ? (role === 'student' ? `Alumno: ${name}` : name) : `Celular Wi-Fi (CAM ${targetSlot + 1})`,
-              type: 'mobile'
+              label: etiquetaCamara,
+              type: 'mobile',
+              lensLabel: lensLabel || undefined
             }
           }));
         };
@@ -5119,6 +5178,22 @@ function PodcastStudioApp() {
     // la ranura pedida está ocupada por otra fuente, la remota se
     // reubica a la primera libre y se avisa; sin ranuras libres, no se
     // asigna y se devuelve null. Devuelve la ranura donde quedó.
+    //
+    // v3.3.3 (defecto A): REUTILIZACIÓN por identidad — si ESTE stream
+    // o ESTE dispositivo remoto ya quedó colocado en una ranura, la
+    // llamada es una actualización de ESA colocación (los caminos que
+    // re-emiten la llegada de una remota ya conectada no pueden
+    // re-colocarla contra la ocupación de hoy, igual que en el
+    // transporte cloud).
+    if (remoteStream) {
+      const yaColocada = Object.keys(slotStreams).find(k => slotStreams[k] === remoteStream)
+        ?? (meta.id ? Object.keys(cameraMeta).find(k => cameraMeta[k]?.deviceId === meta.id && cameraMeta[k]?.type === 'remote') : undefined);
+      if (yaColocada !== undefined) {
+        const idx = Number(yaColocada);
+        setSlotStreams(prev => ({ ...prev, [idx]: remoteStream }));
+        return idx;
+      }
+    }
     let targetSlot = slot;
     const ocupadaPorOtra = Boolean(slotStreams[slot] && slotStreams[slot] !== remoteStream)
       || (slot === 0 && Boolean(localStream) && localStream !== remoteStream);
@@ -6409,7 +6484,16 @@ function PodcastStudioApp() {
                        </div>
                      </div>
                    ) : camStream ? (
-                     <VideoTile camId={camId} registerWithEngine frozen={!!frozenCams[camId]} stream={camStream} isLocal={camId === 1} muted={camSpeakerMuted[camId] !== false} className="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
+                     /* v3.3.3 (defecto B): presentación sin deformar — una
+                        fuente REMOTA se muestra con objectFit 'contain'
+                        (fotograma completo: el recorte 'cover' con el
+                        sensor 4:3 del teléfono presentado en 16:9 recorta
+                        y «acerca» la imagen — diagnóstico del 2026-11-12);
+                        las locales conservan su 'cover' de siempre. El
+                        mosaico NO alimenta la composición (eso va por el
+                        feed de programa / el motor nativo), así que su
+                        ajuste de presentación no entra a la grabación. */
+                     <VideoTile camId={camId} registerWithEngine frozen={!!frozenCams[camId]} stream={camStream} isLocal={camId === 1} muted={camSpeakerMuted[camId] !== false} objectFit={(cameraMeta[camId - 1]?.type === 'remote' || cameraMeta[camId - 1]?.type === 'mobile' || remoteCams.some(r => r.stream === camStream)) ? 'contain' : 'cover'} className="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" style={style} chromaKey={chromaKeyActive} bgImage={virtualBg} />
                    ) : camThumbnails[camId] ? (
                      <img src={camThumbnails[camId]} className="w-full h-full object-cover" alt={`CAM ${camId}`} />
                    ) : (!isElectronMaster && isActive) ? (

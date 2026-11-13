@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { RotateCw, Mic, MicOff, Video, VideoOff, Volume2, VolumeX, PhoneOff, Disc, Zap, Radio, Smartphone, Camera, AlertTriangle } from 'lucide-react'
 import { supabase } from '../lib/supabase.js'
 import { getConfiguredWebRtcConfig } from '../utils/rtcConfig.js'
+import { elegirCamaraEstandar, lenteServidaEsNoEstandar } from '../utils/remoteCameraLens.mjs'
 
 // Niveles alineados con VIDEO_ENCODING_LADDER y con la captura inicial en
 // 720p: cada escalón baja resolución Y bitrate. Antes los cuatro niveles
@@ -101,6 +102,12 @@ export default function RemoteCam() {
   const [micMuted, setMicMuted] = useState(false)
   const [speakerMuted, setSpeakerMuted] = useState(true)
   const [qualityLabel, setQualityLabel] = useState('HD 720p · Conectando')
+  // v3.3.3 (defecto B): la LENTE realmente servida por el teléfono —
+  // antes no se registraba en ninguna parte y ni siquiera se podía
+  // comprobar si había entrado la ultra gran angular (el ojo de pez).
+  // Ahora se muestra en la página y viaja en la presencia al estudio.
+  const [lensLabel, setLensLabel] = useState('')
+  const lensLabelRef = useRef('')
 
   const [localBackupActive, setLocalBackupActive] = useState(false)
   const [localBackupDuration, setLocalBackupDuration] = useState(0)
@@ -285,7 +292,11 @@ export default function RemoteCam() {
     presenceChannel.on('broadcast', { event: 'ping-presence' }, () => {
       presenceChannel.send({
         type: 'broadcast', event: 'pong-presence',
-        payload: { id: phoneId, deviceName, facing: facingMode, slot, roomCode: room, guestName: guestName.trim() || undefined, sessionRole, available: true },
+        // v3.3.3 (defecto B): la presencia lleva lensLabel — la lente
+        // REALMENTE servida por el teléfono — para que el estudio la
+        // muestre junto a la cámara y la aceptación en vivo sea
+        // verificable (debe ser la estándar, no la ultra gran angular).
+        payload: { id: phoneId, deviceName, facing: facingMode, slot, roomCode: room, guestName: guestName.trim() || undefined, sessionRole, available: true, lensLabel: lensLabelRef.current || undefined },
       }).catch(() => {});
     });
 
@@ -646,6 +657,108 @@ export default function RemoteCam() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [active, initSignaling]);
 
+  // v3.3.3 (defecto B) — selección de la lente ESTÁNDAR (1×). La
+  // página nunca elegía lente: pedía facingMode ideal + 720p y el
+  // sistema podía servir la ULTRA GRAN ANGULAR (0,5×), que es la que
+  // produce el ojo de pez de la captura de Luis. Tras el permiso se
+  // enumeran los dispositivos, se elige la estándar del facing
+  // (src/utils/remoteCameraLens.mjs) y se pide por deviceId EXACTO;
+  // sin elección segura se devuelve null y manda la petición por
+  // facingMode de siempre (caída declarada en el registro).
+  const elegirLenteEstandar = async (facing) => {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return null
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      const elegida = elegirCamaraEstandar(devices, facing || 'environment')
+      if (elegida) console.log('[RemoteCam] Lente estándar elegida por etiqueta:', elegida.label || elegida.deviceId, `(${elegida.via})`)
+      return elegida
+    } catch (e) {
+      console.warn('[RemoteCam] No se pudo enumerar cámaras para elegir la lente estándar:', e)
+      return null
+    }
+  }
+
+  // Registra la lente REALMENTE servida (track.label) en el estado,
+  // en la referencia de la presencia y en el registro: si pese a la
+  // selección el sistema impuso una lente no estándar, queda
+  // declarado en vez de oculto.
+  const registrarLenteServida = (track) => {
+    const servida = (track?.label || track?.getSettings?.().deviceId || '').trim()
+    lensLabelRef.current = servida
+    setLensLabel(servida)
+    if (servida) {
+      console.log('[RemoteCam] Lente servida:', servida)
+      if (lenteServidaEsNoEstandar(servida)) {
+        console.warn('[RemoteCam] ATENCIÓN: el sistema sirvió una lente NO estándar (posible ojo de pez):', servida)
+      }
+    }
+    return servida
+  }
+
+  // Cascada de petición de vídeo compartida por el arranque y el
+  // volteo: (1) deviceId exacto de la lente estándar elegida por
+  // etiqueta; (2) facingMode 720p (la forma anterior); (3) facingMode
+  // a secas; (4) vídeo libre sin audio (solo arranque). Devuelve el
+  // stream o lanza el último error.
+  const pedirVideoConLente = async (facing, { conAudio = false, ultimoResortSinAudio = false } = {}) => {
+    const audioConstraints = conAudio ? {
+      echoCancellation: { ideal: true },
+      noiseSuppression: { ideal: true },
+      autoGainControl: { ideal: true },
+    } : false
+    const elegida = await elegirLenteEstandar(facing)
+    if (elegida) {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: elegida.deviceId },
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 30, max: 30 },
+          },
+          audio: audioConstraints,
+        })
+      } catch (eExact) {
+        console.warn('[RemoteCam] La petición por deviceId exacto de la lente estándar falló; se cae a facingMode (declarado):', eExact)
+      }
+    }
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: facing ? { ideal: facing } : 'environment',
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30, max: 30 },
+        },
+        audio: audioConstraints,
+      })
+    } catch (e1) {
+      console.warn('getUserMedia 720p falló; intentando 720p compatible:', e1)
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: facing ? { ideal: facing } : 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30 },
+          },
+          audio: audioConstraints,
+        })
+      } catch (e2) {
+        console.warn('Fallback 720p falló; usando resolución máxima disponible:', e2)
+        try {
+          return await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: facing || 'environment' },
+            audio: conAudio ? { echoCancellation: true, noiseSuppression: true } : false,
+          })
+        } catch (e3) {
+          if (!ultimoResortSinAudio) throw e3
+          return navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+        }
+      }
+    }
+  }
+
   const startCamera = async (targetFacing = 'environment') => {
     setErrorMsg(null)
     offerSentRef.current = false
@@ -657,49 +770,11 @@ export default function RemoteCam() {
       }
 
       // Arranque en 720p compatible con iOS Safari y Android Chrome en
-      // cualquier orientación (antes se pedía 1080p a un teléfono en móvil).
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: targetFacing ? { ideal: targetFacing } : 'environment',
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-            frameRate: { ideal: 30, max: 30 },
-          },
-          audio: {
-            echoCancellation: { ideal: true },
-            noiseSuppression: { ideal: true },
-            autoGainControl: { ideal: true },
-          }
-        })
-      } catch (e1) {
-        console.warn('getUserMedia 720p falló; intentando 720p compatible:', e1)
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: targetFacing ? { ideal: targetFacing } : 'environment',
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              frameRate: { ideal: 30 },
-            },
-            audio: {
-              echoCancellation: { ideal: true },
-              noiseSuppression: { ideal: true },
-              autoGainControl: { ideal: true },
-            },
-          })
-        } catch (e2) {
-          console.warn('Fallback 720p falló; usando resolución máxima disponible:', e2)
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: targetFacing || 'environment' },
-              audio: { echoCancellation: true, noiseSuppression: true }
-            })
-          } catch {
-            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-          }
-        }
-      }
+      // cualquier orientación (antes se pedía 1080p a un teléfono en
+      // móvil), y desde la v3.3.3 con la lente estándar elegida por
+      // etiqueta (defecto B): pedirVideoConLente intenta primero el
+      // deviceId exacto de la 1× y cae a facingMode si hace falta.
+      stream = await pedirVideoConLente(targetFacing, { conAudio: true, ultimoResortSinAudio: true })
 
       if (stream) stream.getVideoTracks().forEach(t => { try { t.contentHint = 'motion' } catch {} })
 
@@ -717,9 +792,10 @@ export default function RemoteCam() {
 
       const track = stream.getVideoTracks()[0]
       if (track) {
+        const lenteServida = registrarLenteServida(track)
         const settings = track.getSettings?.() || {}
         captureResolutionRef.current = getCaptureResolutionLabel(settings)
-        setQualityLabel(`${captureResolutionRef.current} · ${Math.round(settings.frameRate || 30)} fps`)
+        setQualityLabel(`${captureResolutionRef.current} · ${Math.round(settings.frameRate || 30)} fps${lenteServida ? ` · Lente: ${lenteServida}` : ''}`)
         try {
           const caps = track.getCapabilities ? track.getCapabilities() : {}
           setTorchSupported(Boolean(caps.torch))
@@ -752,42 +828,23 @@ export default function RemoteCam() {
       // Mismo arranque que startCamera: 720p ideal, sin mínimos ni
       // aspectRatio que rompan la cámara frontal. Antes el volteo volvía a
       // pedir 1080p ideal y deshacía el arranque en 720p.
-      try {
-        newStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: nextFacing },
-            width: { ideal: 1280, max: 1920 },
-            height: { ideal: 720, max: 1080 },
-            frameRate: { ideal: 30, max: 30 }
-          },
-          audio: false,
-        })
-      } catch (e1) {
-        try {
-          newStream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-              facingMode: { ideal: nextFacing }, 
-              width: { ideal: 1280 }, 
-              height: { ideal: 720 },
-              frameRate: { ideal: 30 }
-            },
-            audio: false,
-          })
-        } catch (e2) {
-          newStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: nextFacing },
-            audio: false,
-          })
-        }
-      }
+      // v3.3.3 (defecto B): el volteo usa la MISMA cascada con lente
+      // (pedirVideoConLente): pide la estándar del facing CONTRARIO
+      // por deviceId exacto — antes solo repetía el facingMode ideal,
+      // que es la forma de petición que permitía que entrara la
+      // lente equivocada (reportado roto el 2026-11-12: el celular ya
+      // no cambiaba a frontal de forma fiable) —.
+      newStream = await pedirVideoConLente(nextFacing, { conAudio: false })
 
       const newTrack = newStream.getVideoTracks()[0]
       if (newTrack) {
         newTrack.enabled = true
         try { newTrack.contentHint = 'motion' } catch {}
+        const lenteServida = registrarLenteServida(newTrack)
         try {
           const newSettings = newTrack.getSettings?.() || {}
           if (newSettings.width || newSettings.height) captureResolutionRef.current = getCaptureResolutionLabel(newSettings)
+          setQualityLabel(`${captureResolutionRef.current} · ${Math.round(newSettings.frameRate || 30)} fps${lenteServida ? ` · Lente: ${lenteServida}` : ''}`)
         } catch {}
       }
 
@@ -892,6 +949,17 @@ export default function RemoteCam() {
           pointerEvents: 'none'
         }}
       />
+      {active && lensLabel && (
+        <div style={{
+          position: 'absolute', top: 74, left: '50%', transform: 'translateX(-50%)', zIndex: 6,
+          background: 'rgba(2,6,23,0.72)', color: lenteServidaEsNoEstandar(lensLabel) ? '#fca5a5' : '#e2e8f0',
+          fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 999,
+          border: `1px solid ${lenteServidaEsNoEstandar(lensLabel) ? 'rgba(248,113,113,0.6)' : 'rgba(148,163,184,0.35)'}`,
+          maxWidth: '92%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        }}>
+          {`Lente: ${lensLabel}${lenteServidaEsNoEstandar(lensLabel) ? ' · LENTE NO ESTÁNDAR (puede verse con ojo de pez)' : ''}`}
+        </div>
+      )}
 
       {/* PANTALLA DE INICIO (Menú de Conexión) */}
       {!active && (

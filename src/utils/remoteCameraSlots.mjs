@@ -111,6 +111,73 @@ export function resolveRemoteCameraSlot({
   });
 }
 
+// v3.3.3 (defecto A — el 4º camino) — COLOCACIÓN de una cámara remota
+// cloud con REUTILIZACIÓN idempotente por conexión. El transporte cloud
+// (streamTransport.dispatchStreamUpdate) emite «streamConnected» en
+// CADA actualización de pistas (ontrack de video, luego de audio,
+// renegociaciones, onunmute…), no una sola vez por conexión; el
+// handler del estudio (App.jsx, setupSlot) ejecutaba la colocación
+// COMPLETA en cada emisión, claveada por la ranura de la SALA, sin
+// preguntar «¿este celular ya quedó colocado?». En una re-emisión, si
+// la ocupante no se veía en slotStreams/cameraMeta en ese instante
+// (transición, readquisición del motor, pista aún sin registrar), el
+// handler volvía a evaluar la ranura de la sala como si fuera nueva y
+// pisaba a la ocupante — la v3.3.1 cubrió la PRIMERA colocación de
+// tres caminos, pero no la re-emisión de este, y por eso la remota
+// siguió cayendo en CAM 2 en vivo. Regla de Luis: una ranura ocupada
+// queda BLOQUEADA; nadie la aborda ni expulsa a su ocupante.
+// Esta función es el cerebro ÚNICO de la decisión, y todo camino de
+// conexión remota debe pasar por ella:
+//   - Si la sala ya tiene colocación viva ⇒ la re-emisión SOLO
+//     actualiza el stream EN ESA ranura ya colocada (acción
+//     'actualizar'), aunque el stream de la sala y la ocupante hayan
+//     cambiado por completo: NUNCA se reevalúa ocupación, NUNCA se
+//     escribe en otra ranura, NUNCA se detiene la pista de nadie.
+//   - Si no hay colocación previa ⇒ manda resolveRemoteCameraSlot
+//     (explícita solo si libre; si no, primera libre; la ocupante
+//     queda intacta) y la colocación queda registrada para las
+//     re-emisiones siguientes.
+//   - Sin ranuras libres ⇒ 'rechazar': no se conecta y se declara.
+export function decidirColocacionRemotaCloud({
+  sala = null,
+  colocaciones = {},
+  explicitSlot = null,
+  slotsCount = MAX_REMOTE_CAMERA_SLOTS,
+  preferredSlot = 1,
+  streams = {},
+  cameraMeta = {},
+  assignedSlots = {},
+  localStreamActive = false,
+  requestingDeviceId,
+} = {}) {
+  const salaNum = Number(sala);
+  if (Number.isInteger(salaNum)) {
+    const previa = Number(colocaciones?.[salaNum]);
+    if (Number.isInteger(previa) && previa >= 0 && previa < MAX_REMOTE_CAMERA_SLOTS) {
+      return { accion: 'actualizar', placedSlot: previa, reemision: true };
+    }
+  }
+  const placedSlot = resolveRemoteCameraSlot({
+    explicitSlot,
+    slotsCount,
+    preferredSlot,
+    streams,
+    cameraMeta,
+    assignedSlots,
+    localStreamActive,
+    requestingDeviceId,
+  });
+  if (placedSlot === null) {
+    return { accion: 'rechazar', placedSlot: null, reemision: false };
+  }
+  return {
+    accion: 'colocar',
+    placedSlot,
+    reemision: false,
+    reubicada: Number.isInteger(Number(explicitSlot)) && Number(explicitSlot) !== placedSlot,
+  };
+}
+
 // v3.3.1 (defecto 2, reglas b y c) — ranura para RECONECTAR una cámara
 // ya conocida (guardada): (b) recupera SU ranura anterior si está libre;
 // (c) si no, la primera ranura libre en orden de ranuras. Nunca la

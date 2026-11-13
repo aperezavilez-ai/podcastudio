@@ -47,3 +47,24 @@ fuentes nativas SIN tocar esas regiones (diff revisado región por región).
 - El **instrumento ventana-diag** es el juez permanente: su registro
   (`%APPDATA%\PodcastStudio\logs\ventana-diag.log`) es la evidencia con la
   que se acepta o se rechaza cualquier versión futura de la ventana.
+
+## Declaraciones de no-regresión por versión
+
+Cada paquete declara aquí sus chequeos contra lo ya aceptado en vivo por
+Luis: la traba de ventana (v3.3.0), las sesiones del motor tras la
+compuerta y el diseño de un solo lector (v3.3.0 + su corrección), las
+reglas de ranuras y programa (v3.3.1) y el teleprompter (v3.3.2).
+
+- **v3.3.3** (frente remoto + cesión de la vista previa): archivos
+  congelados byte-idénticos (sha256 verificados antes y después, arriba en
+  el historial de esta serie). Lo aceptado no se tocó: la dieta y el
+  gobernador de la ventana no cambian; en el motor solo se movió la PUERTA
+  de `start()` para que la vista previa ceda ante record/recordStream
+  (defecto C), fijado por 3 pruebas nuevas de transiciones — las suites
+  que fijan lo demás (un solo lector, subidas v3.2.2, multicámara,
+  programa) corren intactas y en verde —; las reglas de ranuras de la
+  v3.3.1 (destino explícito, deviceId recupera su ranura, primera libre)
+  no se modifican: la guarda de ocupación de la v3.3.3 las REFUERZA en el
+  camino que faltaba (la re-emisión cloud). Chequeos: suite completa en
+  verde, compuerta de humo antes de publicar y aceptación en vivo de Luis
+  (ocupación, lente y cesión) como en cada versión.

@@ -1748,3 +1748,103 @@ test('v3.3.1 · defecto 4: cameraName explícito que no empareja → tampoco hay
     delete process.env.PS_V330_DIR;
   }
 });
+
+// ===========================================================================
+// v3.3.3 — defecto C: la VISTA PREVIA CEDE ante grabar/transmitir.
+// Reportado por Luis (2026-11-13, captura image-135): con la vista
+// previa del motor abierta (fase «vista-previa»), INICIAR GRABACIÓN
+// devolvía «Ya hay una sesión del motor nativo en curso.» y no grababa.
+// La vista previa es un estado de espera: un arranque record/
+// recordStream la detiene PRIMERO (la parada real de siempre) y luego
+// arranca — orden stop→start, cero errores —. El error queda SOLO para
+// conflictos reales (grabar/transmitir contra grabar/transmitir, y la
+// vista previa contra cualquier sesión viva). Blindaje añadido por
+// orden de Luis: estas pruebas fijan las transiciones de sesión del
+// motor junto a las de la v3.2.2 (subidas renderer) y la corrección de
+// un solo lector de la v3.3.0.
+// ===========================================================================
+
+test('v3.3.3 · defecto C: con la vista previa viva, start(record) CEDE — detiene la previa y graba sin error', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v333-cede-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine, logs } = prepararMotorV330(dir);
+  try {
+    const rPrev = await engine.start('preview', { outDir });
+    assert.equal(rPrev.success, true, JSON.stringify(rPrev));
+    assert.equal(engine.getState().phase, 'vista-previa');
+    assert.equal(engine.getState().concurrentPreview, true);
+    // SIN pulsar Detener: Grabar llega con la vista previa en curso
+    // — el gesto exacto de la captura de Luis —.
+    const rRec = await engine.start('record', { outDir });
+    assert.equal(rRec.success, true, JSON.stringify(rRec));
+    assert.notEqual(rRec.error, 'Ya hay una sesión del motor nativo en curso.');
+    assert.equal(engine.getState().phase, 'grabando');
+    assert.equal(engine.getState().session, 'record');
+    const textoLogs = logs.join('\n');
+    const iCede = textoLogs.indexOf('La vista previa cede ante el arranque');
+    const iTuberia = textoLogs.lastIndexOf('Tubería:');
+    assert.ok(iCede >= 0, 'la cesión quedó declarada en el registro');
+    assert.ok(iTuberia > iCede, 'orden stop→start: la declaración de la cesión (con su parada) precede a la tubería de grabación');
+    // La grabación nacida de la cesión lleva su rama integrada (nunca
+    // el proceso independiente en paralelo: un solo lector).
+    await esperarV330(() => contenidosArgvV330(dir).some((c) => esArgvSesion(c)));
+    const argvSesion = contenidosArgvV330(dir).find((c) => esArgvSesion(c)) || '';
+    assert.ok(argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama de preview integrada');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+    assert.equal(engine.getState().validation.valid, true, 'la grabación nacida de la cesión valida al detener');
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});
+
+test('v3.3.3 · defecto C: la cesión también cubre recordStream (grabar+transmitir) desde la vista previa', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v333-cede-rs-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine } = prepararMotorV330(dir);
+  try {
+    const rPrev = await engine.start('preview', { outDir });
+    assert.equal(rPrev.success, true, JSON.stringify(rPrev));
+    const rRs = await engine.start('recordStream', { outDir });
+    assert.equal(rRs.success, true, JSON.stringify(rRs));
+    assert.equal(engine.getState().phase, 'grabando-transmitiendo');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});
+
+test('v3.3.3 · defecto C: los conflictos REALES siguen rechazados con «Ya hay una sesión» (el error no desaparece)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v333-conflicto-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine } = prepararMotorV330(dir);
+  try {
+    const rRec = await engine.start('record', { outDir });
+    assert.equal(rRec.success, true, JSON.stringify(rRec));
+    // Grabar contra grabar (directo al motor, sin los botones que
+    // reinician desde la v3.2.2): conflicto real, se rechaza.
+    const rDoble = await engine.start('record', { outDir });
+    assert.equal(rDoble.success, false);
+    assert.equal(rDoble.error, 'Ya hay una sesión del motor nativo en curso.');
+    // La vista previa contra una grabación viva: también conflicto.
+    const rPrev = await engine.start('preview', { outDir });
+    assert.equal(rPrev.success, false);
+    assert.equal(rPrev.error, 'Ya hay una sesión del motor nativo en curso.');
+    // Nada de lo rechazado tocó la sesión en curso.
+    assert.equal(engine.getState().phase, 'grabando');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});

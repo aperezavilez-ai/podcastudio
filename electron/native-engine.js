@@ -1165,8 +1165,31 @@ function createNativeEngine(deps) {
     if (session === 'stream' && streamUrls.length === 0) {
       return { success: false, error: 'La sesión de transmisión necesita al menos un destino (streamUrls vacío).' };
     }
-    if (gstProc || ['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'transmitiendo', 'validando'].includes(state.phase)) {
-      return { success: false, error: 'Ya hay una sesión del motor nativo en curso.' };
+    const sesionEnCurso = Boolean(gstProc) || ['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'transmitiendo', 'validando'].includes(state.phase);
+    if (sesionEnCurso) {
+      // v3.3.3 (defecto C) — la VISTA PREVIA CEDE ante grabar/
+      // transmitir: es un estado de espera, no una sesión con
+      // derechos. Antes, con la vista previa abierta (fase
+      // «vista-previa»), Grabar recibía «Ya hay una sesión del motor
+      // nativo en curso.» y NO grababa (captura image-135 de Luis).
+      // Si lo que hay en curso es SOLO una sesión 'preview' — servida
+      // por el proceso independiente (gstProc nulo) o por la tubería
+      // integrada —, un arranque record/recordStream la detiene
+      // PRIMERO (la maquinaria de parada de siempre: stop() espera el
+      // cierre real del proceso) y LUEGO arranca: orden stop→start,
+      // cero errores. El error «Ya hay una sesión…» queda SOLO para
+      // conflictos reales: grabar/transmitir contra
+      // grabar/transmitir (las subidas ya las reinician los botones
+      // reales desde la v3.2.2), transmitir solo desde la vista
+      // previa (sin cambios: no pedida por nadie) y la vista previa
+      // contra cualquier sesión viva.
+      const esSoloVistaPrevia = state.session === 'preview' && ['vista-previa', 'encendiendo'].includes(state.phase) && (!gstProc || previewProc === gstProc);
+      const pideGrabar = session === 'record' || session === 'recordStream';
+      if (!(esSoloVistaPrevia && pideGrabar)) {
+        return { success: false, error: 'Ya hay una sesión del motor nativo en curso.' };
+      }
+      log(`La vista previa cede ante el arranque de «${session}»: se detiene primero y luego arranca (orden stop→start; v3.3.3 defecto C).`);
+      await stop();
     }
 
     intentionalStop = false;
