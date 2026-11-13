@@ -27,7 +27,7 @@ import { bindVideoKeepAlive, getVideoTrackInfo, getVideoTrackResolution } from '
 import { CINTILLO_STYLES, getCintilloStyle } from './config/cintilloStyles.js';
 import { CINTILLO_PRESETS, resolveCintilloText, resolveCintilloSubtitle } from './config/cintilloPresets.js';
 import { CINTILLO_POSITION_OPTIONS } from './config/cintilloCameraMap.js';
-import { findAvailableRemoteCameraSlot, resolveRemoteCameraSlot, chooseReconnectCameraSlot, decidirColocacionRemotaCloud } from './utils/remoteCameraSlots.mjs';
+import { findAvailableRemoteCameraSlot, resolveRemoteCameraSlot, chooseReconnectCameraSlot, decidirColocacionRemotaCloud, fuentesDeOcupacion, elegirRanuraReadquisicion } from './utils/remoteCameraSlots.mjs';
 import { esEtiquetaLenteNoEstandar } from './utils/remoteCameraLens.mjs';
 import { componerFuentesPrograma } from './utils/nativeProgramSources.mjs';
 import { debeMontarOverlayPrompter, maximoDesplazamientoPrompter, acotarDesplazamientoPrompter } from './utils/teleprompter.mjs';
@@ -496,7 +496,18 @@ function PodcastStudioApp() {
   const [showTallyModal, setShowTallyModal] = useState(false);
 
   // TELEPROMPTER BROADCAST & SOUNDBOARD EN CABINA (P3.2)
-  const [showFloatingPrompter, setShowFloatingPrompter] = useState(false);
+  // v3.3.4: el interruptor HUD CONSERVA su estado entre sesiones
+  // (localStorage, mismo patrón que los rótulos de cámara): hasta la
+  // v3.3.3 era un useState(false) sin persistencia y cada arranque
+  // nacía con el HUD apagado aunque Luis lo hubiera dejado encendido
+  // — en vivo se leyó como «el teleprompter desapareció de la cámara
+  // máster». Primera vez en la vida de la app: apagado.
+  const [showFloatingPrompter, setShowFloatingPrompter] = useState(() => {
+    try { return localStorage.getItem('podcastudio_teleprompter_hud') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem('podcastudio_teleprompter_hud', showFloatingPrompter ? '1' : '0'); } catch (e) {}
+  }, [showFloatingPrompter]);
   const [showSoundboardPad, setShowSoundboardPad] = useState(false);
 
   // SALA MULTI-INVITADOS & AUTO-CINTILLO (P3.3)
@@ -532,7 +543,9 @@ function PodcastStudioApp() {
   // Abrir modal de conexión dirigiendo automáticamente a la primera ranura libre
   const handleOpenConnectModal = useCallback((slotNumber) => {
     let target = typeof slotNumber === 'number' ? slotNumber : (activeCam - 1);
-    const isOccupied = (s) => Boolean(slotStreamsRef.current[s]) || Boolean(cameraMetaRef.current[s]?.deviceId || cameraMetaRef.current[s]?.url);
+    // v3.3.4: una ranura con cámara prestada al motor cuenta como
+    // ocupada también al sugerir el destino del modal de conexión.
+    const isOccupied = (s) => Boolean(slotStreamsRef.current[s]) || Boolean(cameraMetaRef.current[s]?.deviceId || cameraMetaRef.current[s]?.url) || Boolean(nativeReleasedCamsRef.current?.[s]);
     if (isOccupied(target)) {
       for (let s = 0; s < 12; s++) {
         if (!isOccupied(s)) {
@@ -1776,6 +1789,12 @@ function PodcastStudioApp() {
   // mosaico muestra la foto + el rótulo «En el motor nativo». Al volver
   // la fase a apagado/error, cada cámara liberada se readquiere por el
   // camino de adquisición existente (handleUsbConnect / getUserMedia).
+  // v3.3.4: mientras una cámara está liberada, su ranura cuenta como
+  // OCUPADA y BLOQUEADA para toda colocación remota (el registro
+  // nativeReleasedCamsRef alimenta el predicado único de ocupación), y
+  // la readquisición devuelve la cámara COMPLETA (stream + meta) a su
+  // ranura — o a la primera libre si otra fuente la ocupó — sin pisar
+  // jamás la ranura ajena (ver readquirirLiberadas).
   const [nativeReleasedPhotos, setNativeReleasedPhotos] = useState({});
   const nativeReleasedCamsRef = useRef({});
 
@@ -1788,23 +1807,109 @@ function PodcastStudioApp() {
     const readquirirLiberadas = () => {
       const entradas = Object.entries(nativeReleasedCamsRef.current);
       if (!entradas.length) return;
+      // v3.3.4 — la vuelta de una cámara prestada al motor respeta la
+      // ocupación con el predicado ÚNICO (todas las fuentes, vía
+      // elegirRanuraReadquisicion):
+      //  - recupera SU ranura si está libre;
+      //  - si otra fuente la ocupó mientras estaba prestada (una
+      //    conexión manual del usuario; una remota ya no puede: la
+      //    guarda bloquea las ranuras liberadas desde esta versión),
+      //    se reubica a la primera libre con aviso visible — la
+      //    readquisición JAMÁS sobrescribe la ranura ajena;
+      //  - sin ranura libre, el registro de liberada se RESTAURA y la
+      //    cámara reintenta en el próximo apagado, con aviso.
+      // El mapa de trabajo «reservadas» empieza como copia del
+      // registro de liberadas y se muta por decisión: al decidir el
+      // destino de una cámara se retira SU registro (no se bloquea a
+      // sí misma) y se marca su destino como reservado, para que dos
+      // cámaras que vuelven en la misma pasada no elijan la misma
+      // ranura (las aperturas son asíncronas: el mapa de streams aún
+      // no refleja la primera cuando se decide la segunda).
+      const reservadas = { ...nativeReleasedCamsRef.current };
       nativeReleasedCamsRef.current = {};
       setNativeReleasedPhotos({});
       for (const [slotKey, info] of entradas) {
         const slotIdx = Number(slotKey);
+        delete reservadas[slotKey];
+        const fuentesAhora = () => ({
+          streams: slotStreamsRef.current,
+          cameraMeta: cameraMetaRef.current,
+          assignedSlots: assignedSlotsRef.current,
+          liberadasAlMotor: reservadas,
+          localStreamActive: Boolean(localStreamRef.current),
+        });
+        const restaurarRegistro = (motivo) => {
+          if (nativeReleasedCamsRef.current[slotIdx]) return; // un ciclo más nuevo ya la registró
+          if (slotStreamsRef.current?.[slotIdx] || cameraMetaRef.current?.[slotIdx]?.deviceId) return; // su ranura ya tiene dueña: no resucitar
+          nativeReleasedCamsRef.current = { ...nativeReleasedCamsRef.current, [slotIdx]: info };
+          if (info?.photo) setNativeReleasedPhotos((prev) => ({ ...prev, [slotIdx]: info.photo }));
+          ventanaDiagSend('ranura', `camino=readquisición-motor camara="${info?.label || ''}" destino=CAM ${slotIdx + 1} decision=sin-retorno motivo="${motivo}"`);
+        };
+        const destino = elegirRanuraReadquisicion({
+          ranuraOriginal: slotIdx,
+          slotsCount: camSlotsRef.current?.length || 12,
+          ...fuentesAhora(),
+        });
+        if (destino.slot === null) {
+          restaurarRegistro('sin ranuras libres');
+          showToast(`«${info?.label || 'Una cámara'}» no pudo volver del motor nativo: no hay ranuras libres. Su ranura sigue reservada y reintentará al apagar el motor.`, 'error', 9000);
+          continue;
+        }
+        const destinoIdx = destino.slot;
+        const ocupacionPedida = fuentesDeOcupacion(slotIdx, fuentesAhora()).join(',') || 'libre';
+        reservadas[destinoIdx] = { deviceId: info?.deviceId || 'readquiriendo', label: info?.label || '' };
+        ventanaDiagSend('ranura', `camino=readquisición-motor camara="${info?.label || ''}" pedida=CAM ${slotIdx + 1} ocupacionPedida=[${ocupacionPedida}] decision=${destino.reubicada ? 'reubicar' : 'retornar'} destino=CAM ${destinoIdx + 1}`);
+        if (destino.reubicada) {
+          showToast(`«${info?.label || 'Una cámara'}» volvió del motor nativo a CAM ${destinoIdx + 1}: su ranura (CAM ${slotIdx + 1}) quedó ocupada mientras tanto y no se reemplazó a nadie.`, 'info', 9000);
+        }
         if (info?.deviceId && info?.type !== 'remote') {
           // Camino de adquisición EXISTENTE: cola USB + getUserMedia
-          // probado (handleUsbConnect -> openProvenUsbStream).
-          try { const p = handleUsbConnect(info.deviceId, slotIdx, info.label); if (p?.catch) p.catch(() => {}); } catch (e) {}
+          // probado (handleUsbConnect -> openProvenUsbStream), que ya
+          // registra la cámara completa (stream + cameraMeta) y se
+          // niega a pisar una pista viva de otro dispositivo.
+          try { const p = handleUsbConnect(info.deviceId, destinoIdx, info.label); if (p?.catch) p.catch(() => restaurarRegistro('la apertura USB falló')); } catch (e) { restaurarRegistro('la apertura USB falló'); }
         } else {
           // Sin deviceId guardado: reapertura directa con el
           // getUserMedia con timeout existente (respaldo declarado).
           getUserMediaWithTimeout({ video: true, audio: false }).then((stream) => {
-            if (!stream) return;
-            slotStreamsRef.current = { ...slotStreamsRef.current, [slotIdx]: stream };
-            setSlotStreams((prev) => ({ ...prev, [slotIdx]: stream }));
-            if (slotIdx === 0) { localStreamRef.current = stream; setLocalStream(stream); }
-          }).catch(() => {});
+            if (!stream) { restaurarRegistro('el respaldo no entregó señal'); return; }
+            // Re-chequeo EN EL MOMENTO de escribir (v3.3.4): durante
+            // la espera asíncrona alguien pudo ocupar el destino
+            // elegido; si fue así se re-decide con el estado de ahora
+            // y jamás se pisa la ranura ajena (hasta la v3.3.3 esta
+            // escritura era incondicional sobre la ranura original).
+            let escritura = destinoIdx;
+            if (slotStreamsRef.current?.[escritura]) {
+              const re = elegirRanuraReadquisicion({
+                ranuraOriginal: escritura,
+                slotsCount: camSlotsRef.current?.length || 12,
+                ...fuentesAhora(),
+              });
+              if (re.slot === null) {
+                try { stream.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} }); } catch (e) {}
+                restaurarRegistro('el destino se ocupó durante la reapertura y no hay otra libre');
+                return;
+              }
+              escritura = re.slot;
+              showToast(`«${info?.label || 'Una cámara'}» volvió del motor nativo a CAM ${escritura + 1}: su destino se ocupó durante la reapertura y no se reemplazó a nadie.`, 'info', 9000);
+            }
+            // Registro COMPLETO al volver (v3.3.4): stream Y
+            // metadatos (deviceId si se conoce, label, type). Hasta
+            // la v3.3.3 este respaldo escribía SOLO el stream: la
+            // cámara volvía «a medias», sin meta, y la mitad del
+            // predicado de ocupación quedaba ciega para ella en
+            // adelante — el eslabón que dejó a CAM 2 leerse «libre».
+            const vTrack = stream.getVideoTracks?.()[0];
+            const deviceIdVuelta = info?.deviceId || vTrack?.getSettings?.()?.deviceId || null;
+            const labelVuelta = info?.label || vTrack?.label || 'Cámara';
+            const metaVuelta = { deviceId: deviceIdVuelta, resolution: getVideoTrackResolution(stream), videoInfo: getVideoTrackInfo(stream), label: labelVuelta, type: info?.type || 'usb' };
+            slotStreamsRef.current = { ...slotStreamsRef.current, [escritura]: stream };
+            cameraMetaRef.current = { ...cameraMetaRef.current, [escritura]: metaVuelta };
+            setSlotStreams((prev) => ({ ...prev, [escritura]: stream }));
+            setCameraMeta((prev) => ({ ...prev, [escritura]: metaVuelta }));
+            if (deviceIdVuelta) saveCameraToHistory({ deviceId: deviceIdVuelta, label: labelVuelta, type: metaVuelta.type, slot: escritura });
+            if (escritura === 0) { localStreamRef.current = stream; setLocalStream(stream); }
+          }).catch(() => restaurarRegistro('el respaldo falló'));
         }
       }
     };
@@ -1864,7 +1969,12 @@ function PodcastStudioApp() {
             if (cancelado) return;
             nativeReleasedCamsRef.current = {
               ...nativeReleasedCamsRef.current,
-              [slotIdx]: { camId, deviceId: meta?.deviceId || null, label: meta?.label || nombreCrudo, type: meta?.type || null },
+              // v3.3.4: la foto viaja en el propio registro de liberada
+              // (además del estado de fotos que pinta el mosaico): si la
+              // readquisición no puede completarse, el registro se
+              // restaura entero — foto incluida — para reintentar en el
+              // próximo apagado sin perder la identidad de la cámara.
+              [slotIdx]: { camId, deviceId: meta?.deviceId || null, label: meta?.label || nombreCrudo, type: meta?.type || null, photo: dataUrl },
             };
             setNativeReleasedPhotos((prev) => ({ ...prev, [slotIdx]: dataUrl }));
             try { stream.getTracks().forEach((t) => { try { t.stop(); } catch (e) {} }); } catch (e) {}
@@ -3554,18 +3664,36 @@ function PodcastStudioApp() {
             // como cualquier otra, sin tocar la señal local).
             // Regla de Luis: ranura ocupada = bloqueada; la única vía
             // para cambiarla es la desconexión manual del usuario.
+            // v3.3.4: las fuentes de ocupación incluyen el registro de
+            // cámaras prestadas al motor (nativeReleasedCamsRef): una
+            // ranura liberada está BLOQUEADA para el celular aunque en
+            // este instante no tenga stream ni meta que la sostenga —
+            // el agujero por el que la v3.3.3 volvió a perder CAM 2 en
+            // vivo. Y TODA decisión (colocar / actualizar / rechazar)
+            // queda registrada en el instrumento ([ranura]) con la
+            // ocupación vista, para que el log diga por qué se decidió.
+            const fuentesOcupacion = {
+              streams: slotStreamsRef.current,
+              cameraMeta: cameraMetaRef.current,
+              assignedSlots: assignedSlotsRef.current,
+              liberadasAlMotor: nativeReleasedCamsRef.current,
+              localStreamActive: Boolean(localStreamRef.current),
+              requestingDeviceId: `cloud_${slotIdx}`,
+            };
             const decision = decidirColocacionRemotaCloud({
               sala: slotIdx,
               colocaciones: colocacionCloudRef.current,
               explicitSlot: slotIdx,
               slotsCount: camSlotsRef.current?.length || 12,
-              streams: slotStreamsRef.current,
-              cameraMeta: cameraMetaRef.current,
-              assignedSlots: assignedSlotsRef.current,
-              localStreamActive: Boolean(localStreamRef.current),
-              requestingDeviceId: `cloud_${slotIdx}`,
+              streams: fuentesOcupacion.streams,
+              cameraMeta: fuentesOcupacion.cameraMeta,
+              assignedSlots: fuentesOcupacion.assignedSlots,
+              liberadasAlMotor: fuentesOcupacion.liberadasAlMotor,
+              localStreamActive: fuentesOcupacion.localStreamActive,
+              requestingDeviceId: fuentesOcupacion.requestingDeviceId,
             });
             if (decision.accion === 'rechazar') {
+              ventanaDiagSend('ranura', `camino=cloud sala ${slotIdx + 1} pedida=CAM ${slotIdx + 1} ocupacionPedida=[${fuentesDeOcupacion(slotIdx, fuentesOcupacion).join(',') || 'libre'}] decision=rechazar destino=ninguna`);
               logger.warn(`[Cloud WebRTC] Sin ranuras libres para el celular de la sala ${slotIdx + 1}: no se reemplazó ninguna cámara.`);
               setMobileStatus(`Un celular llegó a CAM ${slotIdx + 1}, pero no hay ranuras libres: no se desconectó ninguna cámara.`);
               return;
@@ -3575,6 +3703,7 @@ function PodcastStudioApp() {
               // solo se actualiza el stream EN SU ranura. Ninguna
               // otra escritura, ninguna parada de tracks.
               const placedSlot = decision.placedSlot;
+              ventanaDiagSend('ranura', `camino=cloud sala ${slotIdx + 1} pedida=CAM ${slotIdx + 1} decision=actualizar (re-emisión, colocación viva) destino=CAM ${placedSlot + 1}`);
               setSlotStreams(prev => ({ ...prev, [placedSlot]: stream }));
               setRemoteCams(prev => [
                 ...prev.filter(r => r.id !== `cloud_${placedSlot}`),
@@ -3584,6 +3713,7 @@ function PodcastStudioApp() {
             }
             const decisionDespues = decision; // ancla: de aquí en adelante SOLO se coloca (primera vez)
             const placedSlot = decisionDespues.placedSlot;
+            ventanaDiagSend('ranura', `camino=cloud sala ${slotIdx + 1} pedida=CAM ${slotIdx + 1} ocupacionPedida=[${fuentesDeOcupacion(slotIdx, fuentesOcupacion).join(',') || 'libre'}] decision=colocar destino=CAM ${placedSlot + 1}${decisionDespues.reubicada ? ' reubicada=true' : ''}`);
             colocacionCloudRef.current[slotIdx] = placedSlot;
             if (decisionDespues.reubicada) {
               logger.log(`[Cloud WebRTC] CAM ${slotIdx + 1} estaba ocupada: el celular se colocó en CAM ${placedSlot + 1} sin desconectar ninguna cámara.`);
@@ -3671,16 +3801,30 @@ function PodcastStudioApp() {
             const { deviceId, guestName } = ev?.payload || {};
             if (!deviceId) return;
 
-            const targetSlot = findAvailableRemoteCameraSlot({
-              slotsCount: camSlotsRef.current.length,
+            // v3.3.4: el auto-despacho decide con las MISMAS fuentes
+            // que el resto de caminos — incluidas las cámaras
+            // prestadas al motor (ranura liberada = bloqueada) — y la
+            // decisión queda en el instrumento ([ranura]).
+            const fuentesDespacho = {
               streams: slotStreamsRef.current,
               cameraMeta: cameraMetaRef.current,
               assignedSlots: assignedSlotsRef.current,
+              liberadasAlMotor: nativeReleasedCamsRef.current,
               localStreamActive: Boolean(localStreamRef.current),
+              requestingDeviceId: deviceId,
+            };
+            const targetSlot = findAvailableRemoteCameraSlot({
+              slotsCount: camSlotsRef.current.length,
+              streams: fuentesDespacho.streams,
+              cameraMeta: fuentesDespacho.cameraMeta,
+              assignedSlots: fuentesDespacho.assignedSlots,
+              liberadasAlMotor: fuentesDespacho.liberadasAlMotor,
+              localStreamActive: fuentesDespacho.localStreamActive,
               requestingDeviceId: deviceId,
             });
 
             if (targetSlot === null) {
+              ventanaDiagSend('ranura', `camino=auto-despacho dispositivo=${deviceId} pedida=primera-libre decision=rechazar destino=ninguna`);
               dispatchChannel.send({
                 type: 'broadcast',
                 event: 'slot-full',
@@ -3688,6 +3832,7 @@ function PodcastStudioApp() {
               }).catch(() => {});
               return;
             }
+            ventanaDiagSend('ranura', `camino=auto-despacho dispositivo=${deviceId} pedida=primera-libre ocupacionDestino=[${fuentesDeOcupacion(targetSlot, fuentesDespacho).join(',') || 'libre'}] decision=asignar destino=CAM ${targetSlot + 1}`);
 
             assignedSlotsRef.current[targetSlot] = deviceId;
             const assignedCam = targetSlot + 1;
@@ -3750,6 +3895,20 @@ function PodcastStudioApp() {
           logger.log(`[WebRTC] Video en vivo recibido de celular ${id} (tracks: ${stableStream.getTracks().length})`);
 
           let targetSlot = null;
+          // v3.3.4: las fuentes de ocupación de este camino incluyen
+          // las cámaras prestadas al motor (ranura liberada =
+          // bloqueada), igual que en los demás caminos, y la decisión
+          // queda registrada en el instrumento ([ranura]).
+          const fuentesOferta = {
+            streams: slotStreamsRef.current,
+            cameraMeta: cameraMetaRef.current,
+            assignedSlots: assignedSlotsRef.current,
+            liberadasAlMotor: nativeReleasedCamsRef.current,
+            localStreamActive: Boolean(localStreamRef.current),
+            requestingDeviceId: id,
+          };
+          const parsedOferta = slot != null ? parseInt(slot, 10) - 1 : NaN;
+          const explicitOferta = (!isNaN(parsedOferta) && parsedOferta >= 0 && parsedOferta < 12) ? parsedOferta : null;
           // Primero, la reconexión del MISMO celular: si su stream ya
           // vive en una ranura, esa sigue siendo la suya.
           for (let s = 1; s < 12; s++) {
@@ -3758,21 +3917,22 @@ function PodcastStudioApp() {
               break;
             }
           }
+          const reutilizaOferta = targetSlot !== null;
           if (targetSlot === null) {
             // v3.3.1 (defecto 1): la ranura que trae la oferta es una
             // PETICIÓN, no una orden: manda solo si está libre; si
             // está ocupada, la remota va a la primera ranura libre y
             // la ocupante NO se desconecta (la v3.3.0 la honraba sin
             // mirar y pisaba la cámara que estuviera ahí).
-            const parsed = slot != null ? parseInt(slot, 10) - 1 : NaN;
-            const explicitSlot = (!isNaN(parsed) && parsed >= 0 && parsed < 12) ? parsed : null;
+            const explicitSlot = explicitOferta;
             targetSlot = resolveRemoteCameraSlot({
               explicitSlot,
               slotsCount: camSlotsRef.current.length,
-              streams: slotStreamsRef.current,
-              cameraMeta: cameraMetaRef.current,
-              assignedSlots: assignedSlotsRef.current,
-              localStreamActive: Boolean(localStreamRef.current),
+              streams: fuentesOferta.streams,
+              cameraMeta: fuentesOferta.cameraMeta,
+              assignedSlots: fuentesOferta.assignedSlots,
+              liberadasAlMotor: fuentesOferta.liberadasAlMotor,
+              localStreamActive: fuentesOferta.localStreamActive,
               requestingDeviceId: id,
             });
             if (explicitSlot !== null && targetSlot !== null && targetSlot !== explicitSlot) {
@@ -3781,9 +3941,11 @@ function PodcastStudioApp() {
             }
           }
           if (targetSlot === null) {
+            ventanaDiagSend('ranura', `camino=oferta-webrtc dispositivo=${id} pedida=${explicitOferta !== null ? `CAM ${explicitOferta + 1}` : 'primera-libre'}${explicitOferta !== null ? ` ocupacionPedida=[${fuentesDeOcupacion(explicitOferta, fuentesOferta).join(',') || 'libre'}]` : ''} decision=rechazar destino=ninguna`);
             logger.warn('[RemoteCam] No hay ranuras disponibles para esta cámara móvil.');
             return;
           }
+          ventanaDiagSend('ranura', `camino=oferta-webrtc dispositivo=${id} pedida=${explicitOferta !== null ? `CAM ${explicitOferta + 1}` : 'primera-libre'}${explicitOferta !== null ? ` ocupacionPedida=[${fuentesDeOcupacion(explicitOferta, fuentesOferta).join(',') || 'libre'}]` : ''} decision=${reutilizaOferta ? 'reutilizar (mismo celular)' : (explicitOferta !== null && targetSlot !== explicitOferta ? 'reubicar' : 'colocar')} destino=CAM ${targetSlot + 1}`);
 
           // v3.3.3 (defecto B): la lente REALMENTE servida por el
           // celular se lee del track recibido (su label refleja el
@@ -5185,31 +5347,54 @@ function PodcastStudioApp() {
     // re-emiten la llegada de una remota ya conectada no pueden
     // re-colocarla contra la ocupación de hoy, igual que en el
     // transporte cloud).
+    // v3.3.4: la ocupación se juzga con las fuentes COMPLETAS del
+    // predicado único (fuentesDeOcupacion): hasta la v3.3.3 este
+    // camino solo miraba el stream de la ranura pedida (y la señal
+    // local de CAM 1) — una ranura sin stream en ese instante (su
+    // cámara prestada al motor, o readquirida «a medias» sin meta)
+    // se leía libre y la remota la pisaba. Ahora cuentan también la
+    // meta, la reserva del auto-despacho y el registro de liberadas
+    // al motor. Toda decisión queda en el instrumento ([ranura]).
+    const fuentesModal = {
+      streams: slotStreams,
+      cameraMeta,
+      assignedSlots: assignedSlotsRef.current,
+      liberadasAlMotor: nativeReleasedCamsRef.current,
+      localStreamActive: Boolean(localStream),
+      requestingDeviceId: meta.id,
+    };
     if (remoteStream) {
       const yaColocada = Object.keys(slotStreams).find(k => slotStreams[k] === remoteStream)
-        ?? (meta.id ? Object.keys(cameraMeta).find(k => cameraMeta[k]?.deviceId === meta.id && cameraMeta[k]?.type === 'remote') : undefined);
+        ?? (meta.id ? Object.keys(slotStreams).find(k => slotStreams[k]?.mobileId && slotStreams[k].mobileId === meta.id) : undefined)
+        ?? (meta.id ? Object.keys(cameraMeta).find(k => cameraMeta[k]?.deviceId === meta.id && (cameraMeta[k]?.type === 'remote' || cameraMeta[k]?.type === 'mobile')) : undefined);
       if (yaColocada !== undefined) {
         const idx = Number(yaColocada);
+        ventanaDiagSend('ranura', `camino=modal dispositivo=${meta.id || 'remota'} pedida=CAM ${slot + 1} decision=reutilizar (ya colocada) destino=CAM ${idx + 1}`);
         setSlotStreams(prev => ({ ...prev, [idx]: remoteStream }));
         return idx;
       }
     }
     let targetSlot = slot;
-    const ocupadaPorOtra = Boolean(slotStreams[slot] && slotStreams[slot] !== remoteStream)
-      || (slot === 0 && Boolean(localStream) && localStream !== remoteStream);
+    const ocupadaPorOtra = fuentesDeOcupacion(slot, fuentesModal).length > 0;
     if (ocupadaPorOtra) {
       targetSlot = findAvailableRemoteCameraSlot({
         slotsCount: camSlots.length,
         streams: slotStreams,
         cameraMeta,
+        assignedSlots: assignedSlotsRef.current,
+        liberadasAlMotor: nativeReleasedCamsRef.current,
         localStreamActive: Boolean(localStream),
         requestingDeviceId: meta.id,
       });
       if (targetSlot === null) {
+        ventanaDiagSend('ranura', `camino=modal dispositivo=${meta.id || 'remota'} pedida=CAM ${slot + 1} ocupacionPedida=[${fuentesDeOcupacion(slot, fuentesModal).join(',') || 'libre'}] decision=rechazar destino=ninguna`);
         showToast(`CAM ${slot + 1} está ocupada y no hay ranuras libres: la cámara remota NO reemplazó a ninguna cámara.`, 'error', 8000);
         return null;
       }
+      ventanaDiagSend('ranura', `camino=modal dispositivo=${meta.id || 'remota'} pedida=CAM ${slot + 1} ocupacionPedida=[${fuentesDeOcupacion(slot, fuentesModal).join(',') || 'libre'}] decision=reubicar destino=CAM ${targetSlot + 1}`);
       showToast(`CAM ${slot + 1} está ocupada: la cámara remota se asignó a CAM ${targetSlot + 1} sin desconectar la que estaba.`, 'info', 7000);
+    } else {
+      ventanaDiagSend('ranura', `camino=modal dispositivo=${meta.id || 'remota'} pedida=CAM ${slot + 1} ocupacionPedida=[libre] decision=asignar destino=CAM ${targetSlot + 1}`);
     }
     setSlotStreams(prev => ({ ...prev, [targetSlot]: remoteStream }));
     setCameraMeta(prev => ({
@@ -5234,6 +5419,9 @@ function PodcastStudioApp() {
       camSlots,
       streams: slotStreams,
       cameraMeta,
+      // v3.3.4: una ranura con cámara prestada al motor no está libre
+      // tampoco para reconectar una guardada: su dueña volverá a ella.
+      liberadasAlMotor: nativeReleasedCamsRef.current,
     });
     const targetIdx = chosen !== null ? chosen : (activeCam - 1);
     if (savedCam.type === 'wifi' && savedCam.url) {
@@ -5286,6 +5474,26 @@ function PodcastStudioApp() {
       delete next[slot];
       return next;
     });
+
+    // 4b. v3.3.4: si la cámara de esta ranura estaba PRESTADA al motor
+    // nativo (sin stream en la ventana), la desconexión manual cancela
+    // el préstamo: el registro de liberada y su foto fija se retiran,
+    // la ranura queda libre de verdad y la cámara NO se readquiere al
+    // apagarse el motor. Es la única vía legítima de liberar una
+    // ranura bloqueada (regla de Luis) — sin esto, el registro
+    // sobrevivía a la desconexión y la ranura quedaba bloqueada para
+    // siempre (o la cámara «resucitaba» al volver del motor).
+    if (nativeReleasedCamsRef.current?.[slot]) {
+      const sinLiberada = { ...nativeReleasedCamsRef.current };
+      delete sinLiberada[slot];
+      nativeReleasedCamsRef.current = sinLiberada;
+      setNativeReleasedPhotos(prev => {
+        const next = { ...prev };
+        delete next[slot];
+        return next;
+      });
+      ventanaDiagSend('ranura', `camino=desconexión-manual pedida=CAM ${slot + 1} decision=liberar (préstamo al motor cancelado por el usuario) destino=CAM ${slot + 1}`);
+    }
 
     // 5. Si la cámara desconectada estaba activa en PGM (Programa), conmutar a CAM 1 para no dejar pantalla negra
     if (activeCamRef.current === slot + 1) {
@@ -8575,6 +8783,7 @@ function PodcastStudioApp() {
         devices={cameraDevices}
         cameraMeta={cameraMeta}
         streams={slotStreams}
+        liberatedSlots={nativeReleasedCamsRef.current}
         remoteCams={remoteCams}
         masterCameraSlot={activeCam - 1}
         onSetMaster={(slot) => setActiveCam(slot + 1)}

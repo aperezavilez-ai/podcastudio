@@ -68,3 +68,26 @@ reglas de ranuras y programa (v3.3.1) y el teleprompter (v3.3.2).
   camino que faltaba (la re-emisión cloud). Chequeos: suite completa en
   verde, compuerta de humo antes de publicar y aceptación en vivo de Luis
   (ocupación, lente y cesión) como en cada versión.
+
+- **v3.3.4** (la ranura prestada al motor queda bloqueada + el HUD
+  recuerda su estado): archivos congelados byte-idénticos (sha256
+  verificados antes y después de construir: `masterBroadcastEngine.js`
+  `b270214b…`, `ventana-diag-core.js` `5e94cd54…`, `main.js` `adc3d932…`)
+  y `electron/native-engine.js` intacto. Lo aceptado no se tocó: la dieta
+  D2 conserva su comportamiento de liberación/readquisición — solo se le
+  añade disciplina de ocupación al decidir el destino de la vuelta y el
+  registro completo (stream + meta) en la rama de respaldo —; la cesión
+  de la vista previa de la v3.3.3 queda intacta (la puerta de `start()`
+  del motor no se editó); las reglas de ranuras de la v3.3.1/v3.3.3 no
+  cambian de semántica: el predicado único gana UNA fuente más
+  («liberada-al-motor») y todos los caminos la consultan, con las
+  suites de ranuras anteriores intactas y en verde; el teleprompter de
+  la v3.3.2 no se toca salvo la persistencia de su interruptor HUD
+  (localStorage), sin tocar su geometría ni su reloj. El instrumento
+  ventana-diag no se modifica: se USA su canal existente con líneas
+  nuevas `[ranura]` desde `App.jsx`, como ya hacen las `[prompter]`.
+  Chequeos: suite completa en verde (con la prueba de regresión del
+  escenario exacto de Luis: CAM 2 prestada al motor + llegada del
+  celular), compuerta de humo antes de publicar y aceptación en vivo de
+  Luis (ocupación con el motor en marcha, retorno a CAM 2 y HUD que
+  conserva su estado al reabrir la app).

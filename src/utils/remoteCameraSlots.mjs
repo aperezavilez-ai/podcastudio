@@ -24,26 +24,60 @@ export function buildRemoteCameraUrl({
   return url.toString();
 }
 
-// Predicado ÚNICO de ocupación de ranura (v3.3.1): una ranura está
-// ocupada si tiene señal (stream), reserva de metadatos (deviceId/url),
-// una reserva del auto-despacho a nombre de OTRO dispositivo, o si es la
-// ranura 1 con la señal local del anfitrión viva. Toda decisión de
-// asignación (remotas, reconexiones) pasa por este mismo predicado: la
-// v3.3.0 expulsaba cámaras porque cada camino decidía «libre» a su manera.
+// v3.3.4 — FUENTES de ocupación de una ranura, como lista legible.
+// Es la ÚNICA definición de «qué marca una ranura como ocupada» y la
+// comparten el predicado de decisión y el instrumento de diagnóstico
+// ([ranura] en ventana-diag.log): si mañana una decisión se discute,
+// el log dice exactamente qué fuentes veía la guarda al decidir.
+//   - 'stream': hay señal viva en el mapa de streams.
+//   - 'meta': hay metadatos con deviceId/url (reserva de la cámara).
+//   - 'liberada-al-motor': la cámara de la ranura está PRESTADA al
+//     motor nativo (la dieta D2 detuvo sus tracks y la sacó del mapa
+//     de streams mientras el motor la usa). La v3.3.3 no consultaba
+//     este registro: con la vista previa/grabación del motor en
+//     marcha, la ranura podía leerse «libre» en el instante en que
+//     tampoco había meta que la sostuviera, la remota caía en ella y
+//     la ocupante volvía DESPLAZADA a otra ranura. Regla de Luis:
+//     una ranura prestada al motor está OCUPADA y BLOQUEADA; solo la
+//     libera la desconexión manual de su cámara.
+//   - 'reserva': el auto-despacho reservó la ranura para OTRO
+//     dispositivo.
+//   - 'local': es la ranura 1 con la señal local del anfitrión viva.
+export function fuentesDeOcupacion(slot, {
+  streams = {},
+  cameraMeta = {},
+  assignedSlots = {},
+  liberadasAlMotor = {},
+  localStreamActive = false,
+  requestingDeviceId,
+} = {}) {
+  const fuentes = [];
+  if (streams[slot]) fuentes.push('stream');
+  if (cameraMeta[slot]?.deviceId || cameraMeta[slot]?.url) fuentes.push('meta');
+  if (liberadasAlMotor[slot]) fuentes.push('liberada-al-motor');
+  if (assignedSlots[slot] && assignedSlots[slot] !== requestingDeviceId) fuentes.push('reserva');
+  if (slot === 0 && localStreamActive) fuentes.push('local');
+  return fuentes;
+}
+
+// Predicado ÚNICO de ocupación de ranura (v3.3.1; v3.3.4: construido
+// sobre fuentesDeOcupacion y con la fuente «liberada-al-motor»): una
+// ranura está ocupada si alguna fuente la marca. Toda decisión de
+// asignación (remotas, reconexiones, readquisiciones) pasa por este
+// mismo predicado: la v3.3.0 expulsaba cámaras porque cada camino
+// decidía «libre» a su manera, y la v3.3.3 seguía expulsando porque
+// la guarda no veía las cámaras prestadas al motor nativo.
 function crearPredicadoOcupacion({
   streams = {},
   cameraMeta = {},
   assignedSlots = {},
+  liberadasAlMotor = {},
   localStreamActive = false,
   requestingDeviceId,
 } = {}) {
-  return (slot) => Boolean(
-    streams[slot]
-    || cameraMeta[slot]?.deviceId
-    || cameraMeta[slot]?.url
-    || (assignedSlots[slot] && assignedSlots[slot] !== requestingDeviceId)
-    || (slot === 0 && localStreamActive)
-  );
+  return (slot) => fuentesDeOcupacion(slot, {
+    streams, cameraMeta, assignedSlots, liberadasAlMotor, localStreamActive, requestingDeviceId,
+  }).length > 0;
 }
 
 export function findAvailableRemoteCameraSlot({
@@ -52,11 +86,12 @@ export function findAvailableRemoteCameraSlot({
   streams = {},
   cameraMeta = {},
   assignedSlots = {},
+  liberadasAlMotor = {},
   localStreamActive = false,
   requestingDeviceId,
 } = {}) {
   const limit = Math.min(MAX_REMOTE_CAMERA_SLOTS, Math.max(0, Number(slotsCount) || 0));
-  const isOccupied = crearPredicadoOcupacion({ streams, cameraMeta, assignedSlots, localStreamActive, requestingDeviceId });
+  const isOccupied = crearPredicadoOcupacion({ streams, cameraMeta, assignedSlots, liberadasAlMotor, localStreamActive, requestingDeviceId });
 
   // Repeated requests from one phone reuse its reservation instead of taking another slot.
   const existingReservation = Object.entries(assignedSlots)
@@ -91,11 +126,12 @@ export function resolveRemoteCameraSlot({
   streams = {},
   cameraMeta = {},
   assignedSlots = {},
+  liberadasAlMotor = {},
   localStreamActive = false,
   requestingDeviceId,
 } = {}) {
   const limit = Math.min(MAX_REMOTE_CAMERA_SLOTS, Math.max(0, Number(slotsCount) || 0));
-  const isOccupied = crearPredicadoOcupacion({ streams, cameraMeta, assignedSlots, localStreamActive, requestingDeviceId });
+  const isOccupied = crearPredicadoOcupacion({ streams, cameraMeta, assignedSlots, liberadasAlMotor, localStreamActive, requestingDeviceId });
   const explicit = Number(explicitSlot);
   if (Number.isInteger(explicit) && explicit >= 0 && explicit < limit && !isOccupied(explicit)) {
     return explicit;
@@ -106,6 +142,7 @@ export function resolveRemoteCameraSlot({
     streams,
     cameraMeta,
     assignedSlots,
+    liberadasAlMotor,
     localStreamActive,
     requestingDeviceId,
   });
@@ -138,6 +175,11 @@ export function resolveRemoteCameraSlot({
 //     queda intacta) y la colocación queda registrada para las
 //     re-emisiones siguientes.
 //   - Sin ranuras libres ⇒ 'rechazar': no se conecta y se declara.
+// v3.3.4: la decisión recibe además «liberadasAlMotor» (el registro
+// de cámaras prestadas al motor nativo): una ranura liberada cuenta
+// como ocupada en la primera colocación, así el celular cae en la
+// primera libre de verdad y la prestada queda intacta hasta que su
+// cámara vuelve a SU ranura al apagarse el motor.
 export function decidirColocacionRemotaCloud({
   sala = null,
   colocaciones = {},
@@ -147,6 +189,7 @@ export function decidirColocacionRemotaCloud({
   streams = {},
   cameraMeta = {},
   assignedSlots = {},
+  liberadasAlMotor = {},
   localStreamActive = false,
   requestingDeviceId,
 } = {}) {
@@ -164,6 +207,7 @@ export function decidirColocacionRemotaCloud({
     streams,
     cameraMeta,
     assignedSlots,
+    liberadasAlMotor,
     localStreamActive,
     requestingDeviceId,
   });
@@ -189,15 +233,52 @@ export function chooseReconnectCameraSlot({
   camSlots = [],
   streams = {},
   cameraMeta = {},
+  liberadasAlMotor = {},
 } = {}) {
   const indices = (Array.isArray(camSlots) ? camSlots : [])
     .map((n) => Number(n) - 1)
     .filter((i) => Number.isInteger(i) && i >= 0 && i < MAX_REMOTE_CAMERA_SLOTS);
-  const estaLibre = (i) => !streams[i] && !cameraMeta[i]?.deviceId && !cameraMeta[i]?.url;
+  // v3.3.4: una ranura con cámara prestada al motor tampoco está
+  // libre para una reconexión: su dueña volverá a ella.
+  const estaLibre = (i) => !streams[i] && !cameraMeta[i]?.deviceId && !cameraMeta[i]?.url && !liberadasAlMotor[i];
   const prev = Number(previousSlot);
   if (Number.isInteger(prev) && indices.includes(prev) && estaLibre(prev)) return prev;
   for (const i of indices) {
     if (estaLibre(i)) return i;
   }
   return null;
+}
+
+// v3.3.4 — destino de READQUISICIÓN de una cámara que vuelve del
+// motor nativo (la dieta D2 la readquiere al apagarse el motor). La
+// cámara recupera SU ranura original si está libre según el
+// predicado ÚNICO (todas las fuentes); si mientras estaba prestada
+// otra fuente ocupó su ranura (tras esta versión ya no puede ser una
+// remota — la guarda la bloquea — pero sí una conexión manual del
+// usuario), se reubica a la primera libre en orden de ranura y la
+// ocupante queda intacta: la readquisición JAMÁS sobrescribe. Sin
+// ninguna libre ⇒ slot null (la cámara no vuelve todavía; su
+// registro de liberada se conserva y reintentará en el próximo
+// apagado). El llamador decide con un mapa «liberadasAlMotor» del
+// que ya retiró el registro de ESTA cámara (su propia liberación no
+// la bloquea a ella misma; las de las demás sí).
+export function elegirRanuraReadquisicion({
+  ranuraOriginal = null,
+  slotsCount = MAX_REMOTE_CAMERA_SLOTS,
+  streams = {},
+  cameraMeta = {},
+  assignedSlots = {},
+  liberadasAlMotor = {},
+  localStreamActive = false,
+} = {}) {
+  const limit = Math.min(MAX_REMOTE_CAMERA_SLOTS, Math.max(0, Number(slotsCount) || 0));
+  const isOccupied = crearPredicadoOcupacion({ streams, cameraMeta, assignedSlots, liberadasAlMotor, localStreamActive });
+  const orig = Number(ranuraOriginal);
+  if (Number.isInteger(orig) && orig >= 0 && orig < limit && !isOccupied(orig)) {
+    return { slot: orig, reubicada: false };
+  }
+  for (let s = 0; s < limit; s += 1) {
+    if (!isOccupied(s)) return { slot: s, reubicada: Number.isInteger(orig) ? s !== orig : true };
+  }
+  return { slot: null, reubicada: true };
 }

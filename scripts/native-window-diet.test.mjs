@@ -199,9 +199,18 @@ test('v3.3.0 D2: la foto sale de un <video> de la ventana o de uno desechable, y
   assert.ok(liberacion.includes('setNativeReleasedPhotos'), 'la foto (o null) se guarda por ranura');
 });
 
-test('v3.3.0 D2: al apagarse el motor, las liberadas se readquieren por la adquisición existente', () => {
-  assert.ok(liberacion.includes('handleUsbConnect(info.deviceId, slotIdx, info.label)'),
-    'readquisición por handleUsbConnect (getUserMedia existente)');
+test('v3.3.0 D2 → v3.3.4: al apagarse el motor, las liberadas se readquieren por la adquisición existente, a un destino decidido por ocupación', () => {
+  // v3.3.4: la vuelta incondicional a la ranura original
+  // (handleUsbConnect(info.deviceId, slotIdx, …), la forma que esta
+  // prueba fijaba) quedó sustituida por orden de la corrección: el
+  // destino lo decide el predicado único de ocupación — su ranura si
+  // está libre; si otra fuente la ocupó mientras estaba prestada, la
+  // primera libre — y la readquisición jamás sobrescribe. La
+  // adquisición sigue siendo la existente (la cola USB probada).
+  assert.ok(liberacion.includes('handleUsbConnect(info.deviceId, destinoIdx, info.label)'),
+    'readquisición por handleUsbConnect (getUserMedia existente), al destino decidido por ocupación');
+  assert.ok(liberacion.includes('elegirRanuraReadquisicion({'),
+    'el destino de la vuelta lo decide elegirRanuraReadquisicion (predicado único)');
   assert.ok(liberacion.includes("phase === 'apagado' || phase === 'error'"), 'la readquisición mira la fase apagado/error');
   assert.ok(liberacion.includes('nativeBusyRef.current'), 'las transiciones ordenadas no readquieren en el apagado intermedio');
 });

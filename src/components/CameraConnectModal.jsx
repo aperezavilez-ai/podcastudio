@@ -172,6 +172,10 @@ export default function CameraConnectModal({
   devices = [],
   cameraMeta = {},
   streams = {},
+  // v3.3.4: mapa de ranuras con cámara PRESTADA al motor nativo
+  // (registro de liberadas de App). Una ranura liberada está ocupada
+  // y bloqueada también para las sugerencias de este modal.
+  liberatedSlots = {},
   remoteCams = [],
   masterCameraSlot = 0,
   onSetMaster,
@@ -353,27 +357,29 @@ export default function CameraConnectModal({
       });
   }, [activeIpadLink]);
 
-  // Encontrar el siguiente slot disponible (libre de señal y metadatos)
+  // Encontrar el siguiente slot disponible (libre de señal, metadatos
+  // y préstamos al motor nativo — v3.3.4)
   const getNextAvailableSlot = useCallback((preferredSlot) => {
     const slot = findAvailableRemoteCameraSlot({
       slotsCount,
       preferredSlot,
       streams,
       cameraMeta,
+      liberadasAlMotor: liberatedSlots,
     });
     if (slot === null && slotsCount < 12 && onAddSlot) {
       onAddSlot();
       return slotsCount;
     }
     return slot;
-  }, [streams, cameraMeta, slotsCount, onAddSlot]);
+  }, [streams, cameraMeta, liberatedSlots, slotsCount, onAddSlot]);
 
   const prevOpenRef = useRef(false);
 
   // Inicializar slot solo al momento de abrir el modal (evitando que re-renders sobreescriban la selección)
   useEffect(() => {
     if (open && !prevOpenRef.current) {
-      const isOccupied = Boolean(streams[initialSlot]) || Boolean(cameraMeta[initialSlot]?.deviceId || cameraMeta[initialSlot]?.url);
+      const isOccupied = Boolean(streams[initialSlot]) || Boolean(cameraMeta[initialSlot]?.deviceId || cameraMeta[initialSlot]?.url) || Boolean(liberatedSlots?.[initialSlot]);
       let selected = initialSlot;
       // Si el slot inicial ya está ocupado (ej. CAM 1 tiene cámara principal activa),
       // asignar automáticamente la siguiente ranura libre (CAM 2, CAM 3, etc.)
@@ -878,8 +884,9 @@ export default function CameraConnectModal({
 
   const handleCopyLink = async () => {
     // Si targetSlot está ocupado o es slot 0 con señal, asignar inteligentemente al siguiente slot libre
+    // (v3.3.4: «ocupado» incluye cámara prestada al motor nativo)
     let slotToAssign = targetSlot;
-    const isOccupied = Boolean(streams[slotToAssign]) || Boolean(cameraMeta[slotToAssign]?.deviceId || cameraMeta[slotToAssign]?.url);
+    const isOccupied = Boolean(streams[slotToAssign]) || Boolean(cameraMeta[slotToAssign]?.deviceId || cameraMeta[slotToAssign]?.url) || Boolean(liberatedSlots?.[slotToAssign]);
     if (slotToAssign === 0 || isOccupied) {
       slotToAssign = getNextAvailableSlot(targetSlot);
       if (slotToAssign == null) {
@@ -922,7 +929,8 @@ Instrucciones:
 
   const handleCopyInvite = async () => {
     let slotToAssign = targetSlot;
-    const isOccupied = Boolean(streams[slotToAssign]) || Boolean(cameraMeta[slotToAssign]?.deviceId || cameraMeta[slotToAssign]?.url);
+    // v3.3.4: «ocupado» incluye cámara prestada al motor nativo
+    const isOccupied = Boolean(streams[slotToAssign]) || Boolean(cameraMeta[slotToAssign]?.deviceId || cameraMeta[slotToAssign]?.url) || Boolean(liberatedSlots?.[slotToAssign]);
     if (slotToAssign === 0 || isOccupied) {
       slotToAssign = getNextAvailableSlot(targetSlot);
       if (slotToAssign == null) {
