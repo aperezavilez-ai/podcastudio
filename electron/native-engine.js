@@ -5,7 +5,9 @@
 //
 // La app gobierna una tubería de GStreamer FUERA de la ventana: captura
 // (mfvideosrc) → conversión/composición D3D11 → tee de programa →
-// vista previa nativa (d3d11videosink) y, según la sesión, codificación
+// rama de sesión a fakesink (v3.3.6: la sesión NO abre ventana; la
+// vista previa nativa con d3d11videosink vive SOLO fuera de sesión,
+// en buildPreviewArgs) y, según la sesión, codificación
 // H.264 por hardware → MP4 fragmentado y/o FLV hacia los destinos RTMP
 // REALES guardados (sesiones 'stream'/'recordStream' con streamUrls) o
 // hacia el RTMP LOCAL de prueba (recordStream sin destinos: el botón de
@@ -600,15 +602,25 @@ function buildPipelineArgs(opts) {
     }
   }
 
-  // Rama de vista previa de la sesión: SIEMPRE (ventana nativa fuera
-  // de la app) — es la vista previa DURANTE la sesión. El constructor
-  // conserva la opción omitPreviewBranch (probada como función pura),
-  // pero el anfitrión ya NO la usa desde la corrección tras la
-  // compuerta del 2026-11-13: ninguna sesión nace sin su rama
-  // integrada, porque el proceso de vista previa independiente nunca
-  // convive con una sesión (dos lectores MF mataban la grabación).
+  // Rama de programa de la sesión: SIEMPRE presente, pero desde la
+  // v3.3.6 termina en fakesink — la sesión NO abre ninguna ventana.
+  // Hasta la v3.3.5 esta rama era un d3d11videosink (ventana nativa
+  // fuera de la app: la vista previa DURANTE la sesión) y esa ventana
+  // era un punto de muerte de la sesión entera: en la transmisión
+  // real a Facebook del 2026-11-13 se cerró a los ~14 s, el sink
+  // erroró («Output window was closed») y la tubería completa murió
+  // con él (el rtmpsink a Facebook NO erroró). Sin ventana no hay
+  // nada que cerrar: el monitor durante la sesión es la foto fija
+  // que la app ya muestra en los mosaicos, y la vista previa nativa
+  // con d3d11videosink queda SOLO fuera de sesión (buildPreviewArgs).
+  // El constructor conserva la opción omitPreviewBranch (probada
+  // como función pura), pero el anfitrión ya NO la usa desde la
+  // corrección tras la compuerta del 2026-11-13: ninguna sesión nace
+  // sin su rama integrada, porque el proceso de vista previa
+  // independiente nunca convive con una sesión (dos lectores MF
+  // mataban la grabación).
   if (!o.omitPreviewBranch) {
-    tokens.push('tprog.', '!', 'queue', '!', 'd3d11videosink', 'sync=false');
+    tokens.push('tprog.', '!', 'queue', '!', 'fakesink', 'sync=false');
   }
 
   if (session === 'record') {

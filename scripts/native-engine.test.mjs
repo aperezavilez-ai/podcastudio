@@ -291,10 +291,13 @@ function argsDe(session, extra = {}) {
   });
 }
 
-test('tubería: preview contiene compositor y sink nativo, sin rtmp (v3.2.1: sin caps forzado)', () => {
+test('tubería: preview (buildPipelineArgs) contiene compositor y su rama va a fakesink, sin rtmp (v3.2.1: sin caps forzado; v3.3.6: sin ventana)', () => {
   const unida = argsDe('preview').join(' ');
   assert.ok(unida.includes('d3d11compositor'));
-  assert.ok(unida.includes('d3d11videosink'));
+  // v3.3.6: la rama de buildPipelineArgs ya no abre ventana (fakesink);
+  // la vista previa independiente con d3d11videosink es buildPreviewArgs.
+  assert.ok(unida.includes('fakesink'));
+  assert.ok(!unida.includes('d3d11videosink'));
   // v3.2.1: el caps forzado del Hito 2 (colorimetry=bt709 con
   // memory:D3D11Memory entre el compositor y el tee) rompió en vivo el
   // enlace al codificador; la forma vigente es la probada del Hito 1 B.
@@ -309,7 +312,7 @@ test('tubería: record contiene preset=hq, bitrate=12000 y MP4 fragmentado', () 
   const tokens = argsDe('record');
   const unida = tokens.join(' ');
   assert.ok(unida.includes('d3d11compositor'));
-  assert.ok(unida.includes('d3d11videosink'));
+  assert.ok(unida.includes('fakesink'));
   assert.ok(!unida.includes('colorimetry=bt709'));
   assert.ok(!unida.includes('memory:D3D11Memory'));
   assert.ok(unida.includes('preset=hq'));
@@ -629,7 +632,7 @@ test('Hito 3 · tubería: la sesión stream transmite sin grabar', () => {
   assert.ok(!tokens.includes('mp4mux'), 'stream no debe llevar rama de grabación');
   assert.ok(!tokens.includes('mp4.'), 'sin grabación, el audio no va a ningún mp4');
   assert.ok(tokens.includes('flv0.'));
-  assert.ok(tokens.includes('d3d11videosink'), 'la vista previa nativa sigue presente');
+  assert.ok(tokens.includes('fakesink'), 'la rama de sesión va a fakesink (v3.3.6: la sesión no abre ventana)');
 });
 
 test('Hito 3 · tubería: recordStream SIN destinos conserva la prueba local del Hito 2', () => {
@@ -1179,9 +1182,49 @@ test('v3.3.0 · tubería: omitPreviewBranch retira SOLO la rama integrada de vis
     outFile: 'C:\\x\\sin.mp4', omitPreviewBranch: true,
   });
   assert.ok(!tokens.includes('d3d11videosink'));
+  assert.ok(!tokens.includes('fakesink'), 'con omitPreviewBranch tampoco hay rama a fakesink');
   assert.ok(tokens.includes('mp4mux'), 'la grabación sigue intacta');
   const conRama = argsDe('record');
-  assert.ok(conRama.includes('d3d11videosink'), 'sin omitPreviewBranch la rama sigue, como siempre');
+  assert.ok(conRama.includes('fakesink'), 'sin omitPreviewBranch la rama sigue, ahora a fakesink (v3.3.6)');
+});
+
+test('v3.3.6 · ninguna sesión abre ventana: record, stream, recordStream y multicámara van a fakesink; la vista previa independiente conserva d3d11videosink', () => {
+  // La transmisión real a Facebook del 2026-11-13 murió a los ~14 s
+  // porque la ventana del d3d11videosink de la rama de sesión se
+  // cerró («Output window was closed») y ese error tumbó la tubería
+  // entera (el rtmpsink a Facebook no erroró). Desde la v3.3.6 la
+  // rama de sesión termina en fakesink: no hay ventana que cerrar y
+  // ninguna ventana puede matar una sesión. La vista previa FUERA
+  // de sesión (buildPreviewArgs) no cambia: conserva d3d11videosink.
+  const sesiones = {
+    record: argsDe('record'),
+    stream: argsDe('stream', { streamUrls: [URL_FB_PRUEBA] }),
+    recordStream: argsDe('recordStream'),
+    recordStreamReal: argsDe('recordStream', { streamUrls: [URL_FB_PRUEBA] }),
+  };
+  for (const [nombre, tokens] of Object.entries(sesiones)) {
+    assert.ok(tokens.includes('fakesink'), `${nombre}: la rama de sesión va a fakesink`);
+    assert.ok(!tokens.includes('d3d11videosink'), `${nombre}: ningún token abre ventana`);
+    assert.ok(tokens.join(' ').includes('tprog. ! queue ! fakesink sync=false'), `${nombre}: la rama cuelga del tee de programa tras su queue`);
+  }
+  // Multicámara (sources explícitas): la misma regla.
+  const multi = buildPipelineArgs({
+    session: 'recordStream',
+    sources: [
+      { deviceIndex: 0, devicePath: 'ruta-steren', caps: CAPS_1080 },
+      { deviceIndex: 1, devicePath: 'ruta-easy', caps: CAPS_EASY_720 },
+    ],
+    programIndex: 0,
+    encoder: 'nvh264enc', withPreset: true, withAudio: false,
+    outFile: 'C:\\x\\multi336.mp4',
+    streamUrls: [URL_FB_PRUEBA],
+  });
+  assert.ok(multi.includes('fakesink'), 'multicámara: la rama de sesión va a fakesink');
+  assert.ok(!multi.includes('d3d11videosink'), 'multicámara: ningún token abre ventana');
+  // La vista previa independiente (fuera de sesión) NO se toca.
+  const previa = buildPreviewArgs({ deviceIndex: 0, devicePath: 'ruta-steren', caps: CAPS_1080 });
+  assert.ok(previa.includes('d3d11videosink'), 'la vista previa independiente conserva d3d11videosink');
+  assert.ok(!previa.includes('fakesink'), 'la vista previa independiente no usa fakesink');
 });
 
 test('v3.3.0 · buildPreviewArgs: sin texto es la forma probada; con texto, textoverlay limpio por memoria de sistema', () => {
@@ -1390,13 +1433,13 @@ test('v3.3.0 · sonda en la vista previa: si el proceso independiente muere con 
     assert.equal(st.phase, 'vista-previa');
     assert.ok(logs.join('\n').includes('concurrentPreview=false'), logs.join(' | ').slice(0, 500));
     // Dos lanzamientos: la sonda (proceso independiente, sin
-    // compositor) y la vista previa INTEGRADA (con compositor y su
-    // d3d11videosink), la de siempre.
+    // compositor, con su d3d11videosink) y la tubería INTEGRADA
+    // (con compositor; desde la v3.3.6 su rama va a fakesink).
     await esperarV330(() => contenidosArgvV330(dir).length >= 2);
     const argvSonda = contenidosArgvV330(dir).find((c) => esArgvPreviewSinTexto(c)) || '';
     assert.ok(argvSonda.includes('d3d11videosink'), argvSonda.slice(0, 200));
     const argvIntegrada = contenidosArgvV330(dir).find((c) => esArgvSesion(c)) || '';
-    assert.ok(argvIntegrada.includes('d3d11videosink'), argvIntegrada.slice(0, 300));
+    assert.ok(argvIntegrada.includes('fakesink') && !argvIntegrada.includes('d3d11videosink'), argvIntegrada.slice(0, 300));
     // Sin concurrencia, setPreviewText no toca nada.
     const rTexto = engine.setPreviewText('Texto que no debe ir a ningún lado');
     assert.equal(rTexto.success, false);
@@ -1439,8 +1482,8 @@ test('v3.3.0 · sonda en la vista previa: si el proceso independiente vive, conc
     const rStop1 = await engine.stop();
     assert.equal(rStop1.success, true);
     // La grabación: NINGÚN lanzamiento de vista previa nuevo y la
-    // sesión CON su d3d11videosink (su vista previa durante la sesión
-    // es la rama integrada, la forma probada de la v3.2.3).
+    // sesión CON su rama integrada (la forma probada de la v3.2.3;
+    // desde la v3.3.6 esa rama termina en fakesink, sin ventana).
     const r2 = await engine.start('record', { outDir });
     assert.equal(r2.success, true, JSON.stringify(r2));
     st = engine.getState();
@@ -1449,7 +1492,7 @@ test('v3.3.0 · sonda en la vista previa: si el proceso independiente vive, conc
     await esperarV330(() => contenidosArgvV330(dir).length >= 2);
     assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), '2', 'vista previa + sesión: ningún lanzamiento más');
     const argvSesion = contenidosArgvV330(dir).find((c) => esArgvSesion(c)) || '';
-    assert.ok(argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama de preview integrada');
+    assert.ok(argvSesion.includes('fakesink') && !argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama integrada a fakesink (v3.3.6: sin ventana)');
     const rStop = await engine.stop();
     assert.equal(rStop.success, true);
     assert.equal(engine.getState().validation.valid, true);
@@ -1556,7 +1599,7 @@ test('v3.3.0 · un solo lector (i): el primer arranque de grabación NO lanza vi
     await esperarV330(() => contenidosArgvV330(dir).length >= 1);
     assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), '1');
     const argvSesion = contenidosArgvV330(dir).find((c) => esArgvSesion(c)) || '';
-    assert.ok(argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama de preview integrada');
+    assert.ok(argvSesion.includes('fakesink') && !argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama integrada a fakesink (v3.3.6: sin ventana)');
     assert.equal(contenidosArgvV330(dir).filter((c) => esArgvPreviewSinTexto(c)).length, 0, 'ningún lanzamiento tiene la forma de la vista previa independiente');
     assert.equal(contenidosArgvV330(dir).filter((c) => esArgvPreviewConTexto(c)).length, 0);
     const rStop = await engine.stop();
@@ -1599,7 +1642,7 @@ test('v3.3.0 · un solo lector (i): tras una vista previa, la grabación confirm
     await esperarV330(() => contenidosArgvV330(dir).length >= 2);
     assert.equal(fs.readFileSync(path.join(dir, 'lanzamientos.txt'), 'utf8'), '2', 'vista previa + sesión: la grabación no relanzó la vista previa');
     const argvSesion = contenidosArgvV330(dir).find((c) => esArgvSesion(c)) || '';
-    assert.ok(argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama de preview integrada');
+    assert.ok(argvSesion.includes('fakesink') && !argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama integrada a fakesink (v3.3.6: sin ventana)');
     const rStop = await engine.stop();
     assert.equal(rStop.success, true);
     assert.equal(engine.getState().validation.valid, true);
@@ -1791,7 +1834,7 @@ test('v3.3.3 · defecto C: con la vista previa viva, start(record) CEDE — deti
     // el proceso independiente en paralelo: un solo lector).
     await esperarV330(() => contenidosArgvV330(dir).some((c) => esArgvSesion(c)));
     const argvSesion = contenidosArgvV330(dir).find((c) => esArgvSesion(c)) || '';
-    assert.ok(argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama de preview integrada');
+    assert.ok(argvSesion.includes('fakesink') && !argvSesion.includes('d3d11videosink'), 'la sesión lleva su rama integrada a fakesink (v3.3.6: sin ventana)');
     const rStop = await engine.stop();
     assert.equal(rStop.success, true);
     assert.equal(engine.getState().validation.valid, true, 'la grabación nacida de la cesión valida al detener');
