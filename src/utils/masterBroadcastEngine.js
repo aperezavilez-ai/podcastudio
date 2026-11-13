@@ -250,11 +250,103 @@ export const RENDER_WORKER_SOURCE = `
   };
 `;
 
+// --- Gobernador de foco/visibilidad de la composición en ventana (v3.2.4) ---
+// El Worker de render postea un tick cada ~33 ms PARA SIEMPRE y los timers de
+// Worker no se estrangulan con la visibilidad. Antes, el manejador componía
+// una imagen 1080p completa por CADA mensaje recibido: si el hilo principal
+// no drenaba la cola al mismo ritmo (Luis en el navegador, el SO
+// despriorizando el renderer), los ticks se acumulaban y al volver a la app
+// había que ejecutar TODAS las composiciones atrasadas antes de atender un
+// clic — la ventana «trabada» al regresar. Ahora la decisión es por MARCAS DE
+// TIEMPO (funciones puras exportadas, probadas en
+// scripts/focus-governor.test.mjs):
+//   · modo 'full' — hay SALIDA en curso con este canvas (grabando o
+//     transmitiendo con el motor de ventana) o la ventana está visible y con
+//     foco: se compone en cada tick, como siempre.
+//   · modo 'maintenance' — ventana oculta o sin foco y sin salida de canvas:
+//     se compone como máximo 1 vez cada RENDER_MAINTENANCE_INTERVAL_MS y el
+//     resto de ticks se DESCARTA sin trabajo (descartar es O(1): la cola
+//     atrasada se drena sin reproducir ni una composición de más).
+// Al recuperar foco/visibilidad, la marca de último render vuelve a 0: el
+// primer tick compone al instante y no existe contador atrasado que
+// reproducir — la reanudación es limpia por construcción.
+// El motor NATIVO es un proceso aparte (gst-launch): no participa en este
+// gobernador y sigue grabando/transmitiendo igual con la ventana sin foco.
+export const RENDER_MAINTENANCE_INTERVAL_MS = 500;
+
+export function compositionMode({ outputActive, visible, focused }) {
+  if (outputActive) return 'full';
+  return visible && focused ? 'full' : 'maintenance';
+}
+
+export function compositionTickDecision({ now, lastRenderAt, mode }) {
+  if (mode === 'full') return true;
+  if (!lastRenderAt || lastRenderAt <= 0) return true;
+  return now - lastRenderAt >= RENDER_MAINTENANCE_INTERVAL_MS;
+}
+
+let rendererPageVisible = true;
+let rendererWindowFocused = true;
+let lastGovernedRenderAt = 0;
+let focusGovernorInstalled = false;
+
+function isCanvasOutputActive() {
+  return isBroadcastEngineActive || !!mediaRecorder;
+}
+
+function currentCompositionMode() {
+  return compositionMode({
+    outputActive: isCanvasOutputActive(),
+    visible: rendererPageVisible,
+    focused: rendererWindowFocused,
+  });
+}
+
+export function getCompositionGovernorState() {
+  return {
+    visible: rendererPageVisible,
+    focused: rendererWindowFocused,
+    mode: currentCompositionMode(),
+    lastRenderAt: lastGovernedRenderAt,
+  };
+}
+
+function installCompositionFocusGovernor() {
+  if (focusGovernorInstalled) return;
+  focusGovernorInstalled = true;
+  if (typeof document !== 'undefined' && document.addEventListener) {
+    rendererPageVisible = document.visibilityState !== 'hidden';
+    document.addEventListener('visibilitychange', () => {
+      rendererPageVisible = document.visibilityState !== 'hidden';
+      if (rendererPageVisible) lastGovernedRenderAt = 0;
+    });
+  }
+  if (typeof window !== 'undefined' && window.addEventListener) {
+    if (typeof document !== 'undefined' && typeof document.hasFocus === 'function') {
+      try { rendererWindowFocused = document.hasFocus(); } catch (e) {}
+    }
+    window.addEventListener('blur', () => { rendererWindowFocused = false; });
+    window.addEventListener('focus', () => {
+      rendererWindowFocused = true;
+      lastGovernedRenderAt = 0;
+    });
+  }
+}
+
+// Composición gobernada: el ÚNICO camino por el que los ticks (Worker o rAF
+// de respaldo) llegan a renderFrame().
+function governedRenderFrame() {
+  const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  if (!compositionTickDecision({ now, lastRenderAt: lastGovernedRenderAt, mode: currentCompositionMode() })) return;
+  lastGovernedRenderAt = now;
+  try { renderFrame(); } catch (e) {}
+}
+
 function fallbackRafLoop() {
   if (animFrameId) return;
   const loop = () => {
     if (!isCanvasRenderLoopActive) return;
-    try { renderFrame(); } catch (e) {}
+    governedRenderFrame();
     animFrameId = requestAnimationFrame(loop);
   };
   animFrameId = requestAnimationFrame(loop);
@@ -265,12 +357,13 @@ function fallbackRafLoop() {
 export function startRenderLoop() {
   if (isCanvasRenderLoopActive) return;
   isCanvasRenderLoopActive = true;
+  installCompositionFocusGovernor();
   try {
     if (!renderWorker) {
       const blob = new Blob([RENDER_WORKER_SOURCE], { type: 'application/javascript' });
       const url = URL.createObjectURL(blob);
       renderWorker = new Worker(url);
-      renderWorker.onmessage = () => { if (isCanvasRenderLoopActive) { try { renderFrame(); } catch(e) {} } };
+      renderWorker.onmessage = () => { if (isCanvasRenderLoopActive) governedRenderFrame() };
       renderWorker.onerror = () => {
         console.warn('Render worker failed, falling back to RAF');
         try { URL.revokeObjectURL(url); } catch(e){}

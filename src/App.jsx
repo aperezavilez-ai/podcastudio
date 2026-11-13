@@ -803,13 +803,39 @@ function PodcastStudioApp() {
   const [prompterEyeline, setPrompterEyeline] = useState(true);
   const [prompterCopiedLink, setPrompterCopiedLink] = useState(false);
   const teleprompterTextRef = useRef(null);
+  // v3.2.4 — RELOJ ÚNICO DEL TELEPROMPTER: teleprompterYRef es el
+  // DESPLAZAMIENTO canónico del guion, en píxeles recorridos (≥ 0, CRECE
+  // mientras reproduce). Ninguna superficie guarda ya una posición
+  // propia: cada una PROYECTA este desplazamiento con su geometría (el
+  // panel con su scrollTop, el HUD con translateY sobre la franja del
+  // programa). Antes el overlay guardaba un translateY pensado como
+  // scrollTop del panel y nacido de window.innerHeight: si el HUD se
+  // encendía después de INICIAR, el texto ya había cruzado la franja y
+  // no se veía NUNCA sobre el programa (informe v3.2.4, M1–M4).
   const teleprompterYRef = useRef(0);
   // v1.7.0 (Raíz D): acumulador fraccional del scroll de la caja de
   // lectura del panel (rightPrompterScrollRef): scrollTop redondea y los
-  // pasos sub-píxel a baja velocidad se perderían sin acumularlos.
+  // pasos sub-píxel a baja velocidad se perderían sin acumularlos. Desde
+  // la v3.2.4 guarda el último scrollTop APLICADO al panel (para detectar
+  // si el usuario movió la caja a mano y resincronizar el reloj).
   const panelPrompterScrollRef = useRef(0);
   const rightPrompterScrollRef = useRef(null);
   const rightPrompterScrollPos = useRef(0);
+
+  // Proyección del reloj sobre el HUD del programa: el texto entra por el
+  // borde inferior de la franja (translateY = altura de la franja −
+  // desplazamiento) y sale por arriba (tope = −altura del texto). Se
+  // calcula desde el desplazamiento SIEMPRE, así que da igual en qué
+  // orden pulse Luis INICIAR y «HUD Cámara»: al montar el overlay ya
+  // sale en la posición que le corresponde del guion.
+  const projectTeleprompterOverlay = () => {
+    const el = teleprompterTextRef.current;
+    if (!el || !el.parentElement) return;
+    const stripH = el.parentElement.clientHeight || 0;
+    const textH = el.scrollHeight || el.offsetHeight || 0;
+    const y = Math.max(-textH, stripH - teleprompterYRef.current);
+    el.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`;
+  };
 
   const prompterWordCount = useMemo(() => {
     return (teleprompterText || '').trim().split(/\s+/).filter(Boolean).length;
@@ -2672,6 +2698,14 @@ function PodcastStudioApp() {
               let lastUiUpdate = 0;
               let lastPublishedLevel = -1;
               const updateVolume = () => {
+                // Gobernador (v3.2.4): con la página oculta el medidor no
+                // analiza ni publica estado; el bucle sigue vivo pero su
+                // coste en segundo plano es ~cero y al volver no hay
+                // ningún atraso que reproducir (rAF no acumula cola).
+                if (typeof document !== 'undefined' && document.hidden) {
+                  requestAnimationFrame(updateVolume);
+                  return;
+                }
                 analyser.getByteFrequencyData(dataArray);
                 let sum = 0; for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
                 const now = performance.now();
@@ -2698,16 +2732,13 @@ function PodcastStudioApp() {
   }, []);
 
   // LÓGICA DE SCROLL FLUIDO 60FPS CON TRANSFORM 3D (TELEPROMPTER SIN BRINCO NI VIBRACIÓN)
+  // v3.2.4: el bucle avanza EL RELOJ ÚNICO (teleprompterYRef = píxeles de
+  // guion recorridos) y cada superficie se PROYECTA desde él con su
+  // geometría. El delta sigue limitado a 33 ms: sin reproducción de
+  // atrasos al volver de una pausa larga del rAF.
   useEffect(() => {
     let animationFrameId;
     let lastTime = null;
-
-    if (teleprompterTextRef.current && teleprompterYRef.current === 0) {
-      const containerH = teleprompterTextRef.current.parentElement?.clientHeight || 450;
-      teleprompterYRef.current = containerH;
-      teleprompterTextRef.current.style.transform = `translate3d(0, ${containerH}px, 0)`;
-      teleprompterTextRef.current.style.willChange = 'transform';
-    }
 
     const animate = (time) => {
       if (!lastTime) lastTime = time;
@@ -2718,47 +2749,66 @@ function PodcastStudioApp() {
         const speed = (teleprompterSpeed || 3) * 1.8;
         const moveAmount = speed * (delta / 16.666);
 
-        // Superficie 1: el overlay sobre el programa (transform). El
-        // offset compartido (teleprompterYRef) avanza SIEMPRE que el
-        // teleprompter reproduce, esté o no montado el overlay: desde
-        // la v3.2.1 el HUD se monta/desmonta con su botón y, si el
-        // offset se congelara al desmontarlo, al volver a mostrarlo el
-        // texto quedaría atrasado frente al recuadro del panel, que
-        // comparte este mismo bucle y este mismo avance.
-        teleprompterYRef.current -= moveAmount;
-        if (teleprompterTextRef.current) {
-          teleprompterTextRef.current.style.transform = `translate3d(0, ${teleprompterYRef.current.toFixed(2)}px, 0)`;
-        }
-        // Superficie 2 (v1.7.0, Raíz D): la caja de lectura del PANEL
-        // (rightPrompterScrollRef) es la que el usuario lee en pantalla
-        // y NINGÚN bucle la desplazaba: el panel decía «Leyendo» y el
-        // texto no subía. El mismo paso del bucle ahora avanza su
-        // scrollTop (con acumulador fraccional y resincronización si el
-        // usuario la movió a mano o se reinició el guión).
+        // EL RELOJ: avanza SIEMPRE que el teleprompter reproduce, esté
+        // montada la superficie que esté montada (HUD, panel o ninguna).
+        teleprompterYRef.current += moveAmount;
+
+        // Proyección 1 — el overlay sobre el programa (transform sobre
+        // la franja del 48 %): projectTeleprompterOverlay() calcula la
+        // posición desde el desplazamiento con la altura REAL de la
+        // franja; si el HUD se monta a mitad de lectura, el texto sale
+        // ya en el punto del guion que le corresponde.
+        projectTeleprompterOverlay();
+
+        // Proyección 2 — la caja de lectura del PANEL: scrollTop =
+        // desplazamiento. Si el usuario la movió a mano (su scrollTop ya
+        // no coincide con el último aplicado), su posición manda y se
+        // escribe de vuelta al reloj: las dos superficies no se desfasen.
         const panel = rightPrompterScrollRef.current;
         if (panel) {
           if (Math.abs(panel.scrollTop - panelPrompterScrollRef.current) > 2) {
-            panelPrompterScrollRef.current = panel.scrollTop;
+            teleprompterYRef.current = panel.scrollTop;
           }
-          panelPrompterScrollRef.current += moveAmount;
-          const target = Math.floor(panelPrompterScrollRef.current);
+          const target = Math.floor(teleprompterYRef.current);
           if (target !== panel.scrollTop) panel.scrollTop = target;
+          panelPrompterScrollRef.current = panel.scrollTop;
         }
         animationFrameId = requestAnimationFrame(animate);
       }
     };
 
+    if (teleprompterTextRef.current) teleprompterTextRef.current.style.willChange = 'transform';
+    // Al montar (o al cambiar play/velocidad), la posición del overlay
+    // sale de la proyección del reloj, nunca de una posición guardada.
+    projectTeleprompterOverlay();
     if (isTeleprompterPlaying) {
-      if (teleprompterTextRef.current) teleprompterTextRef.current.style.willChange = 'transform';
       animationFrameId = requestAnimationFrame(animate);
     }
     return () => cancelAnimationFrame(animationFrameId);
   }, [isTeleprompterPlaying, teleprompterSpeed]);
 
+  // Al encender el HUD o cambiar el guion con el HUD encendido, el texto
+  // se coloca según el desplazamiento vigente en cuanto el overlay monta.
+  useEffect(() => {
+    if (showFloatingPrompter) projectTeleprompterOverlay();
+  }, [showFloatingPrompter, teleprompterText]);
+
   const handlePlayTeleprompter = () => {
-    const containerH = teleprompterTextRef.current?.parentElement?.clientHeight || 450;
-    if (teleprompterYRef.current < -1000) {
-      teleprompterYRef.current = containerH;
+    // v3.2.4: «el guion ya terminó» se mide contra el recorrido real de
+    // cada superficie montada; si ya se pasó el final, INICIAR vuelve al
+    // principio (desplazamiento 0) en vez de seguir fuera de vista.
+    const el = teleprompterTextRef.current;
+    const panel = rightPrompterScrollRef.current;
+    const totalOverlay = el && el.parentElement
+      ? (el.parentElement.clientHeight || 0) + (el.scrollHeight || 0)
+      : 0;
+    const totalPanel = panel ? Math.max(0, panel.scrollHeight - panel.clientHeight) : 0;
+    const total = Math.max(totalOverlay, totalPanel);
+    if (total > 0 && teleprompterYRef.current >= total) {
+      teleprompterYRef.current = 0;
+      panelPrompterScrollRef.current = 0;
+      if (panel) panel.scrollTop = 0;
+      projectTeleprompterOverlay();
     }
     setIsTeleprompterPlaying(true);
   };
@@ -4055,7 +4105,8 @@ function PodcastStudioApp() {
         setIsTeleprompterPlaying(false);
         rightPrompterScrollPos.current = 0;
         if (rightPrompterScrollRef.current) rightPrompterScrollRef.current.scrollTop = 0;
-        teleprompterYRef.current = window.innerHeight;
+        teleprompterYRef.current = 0;
+        panelPrompterScrollRef.current = 0;
       };
       reader.readAsText(file);
     } else {
@@ -4068,7 +4119,8 @@ function PodcastStudioApp() {
           setIsTeleprompterPlaying(false);
           rightPrompterScrollPos.current = 0;
           if (rightPrompterScrollRef.current) rightPrompterScrollRef.current.scrollTop = 0;
-          teleprompterYRef.current = window.innerHeight;
+          teleprompterYRef.current = 0;
+        panelPrompterScrollRef.current = 0;
         } catch (error) { showToast("Error al leer archivo Word (.docx).", "error"); }
       };
       reader.readAsArrayBuffer(file);
@@ -4083,10 +4135,9 @@ function PodcastStudioApp() {
     if (rightPrompterScrollRef.current) {
       rightPrompterScrollRef.current.scrollTop = 0;
     }
-    teleprompterYRef.current = window.innerHeight;
-    if (teleprompterTextRef.current) {
-      teleprompterTextRef.current.style.transform = `translateY(${window.innerHeight}px)`;
-    }
+    teleprompterYRef.current = 0;
+    panelPrompterScrollRef.current = 0;
+    projectTeleprompterOverlay();
   };
 
   const handleCopyPrompterLink = () => {
@@ -4106,10 +4157,9 @@ function PodcastStudioApp() {
     if (rightPrompterScrollRef.current) {
       rightPrompterScrollRef.current.scrollTop = 0;
     }
-    teleprompterYRef.current = window.innerHeight;
-    if (teleprompterTextRef.current) {
-      teleprompterTextRef.current.style.transform = `translateY(${window.innerHeight}px)`;
-    }
+    teleprompterYRef.current = 0;
+    panelPrompterScrollRef.current = 0;
+    projectTeleprompterOverlay();
   };
 
   const handleLogoUpload = (e) => {
@@ -5731,8 +5781,10 @@ function PodcastStudioApp() {
                       className="absolute top-0 w-[90%] left-[5%] text-center font-bold text-white whitespace-pre-wrap leading-relaxed"
                       style={{
                         textShadow: '2px 2px 6px rgba(0,0,0,0.9)',
-                        fontSize: `${teleprompterFontSize}px`,
-                        transform: `translateY(100vh)`
+                        fontSize: `${teleprompterFontSize}px`
+                        // v3.2.4: SIN transform fijo. La posición la escribe
+                        // projectTeleprompterOverlay() desde el reloj único
+                        // al montar y en cada fotograma de la reproducción.
                       }}
                     >
                       {teleprompterText}
