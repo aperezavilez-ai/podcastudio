@@ -229,12 +229,40 @@ function parseDeviceMonitorOutput(texto, opciones) {
   return dispositivos;
 }
 
+// v3.3.1 (defecto 3) — normalización de nombres para el emparejamiento
+// contra la enumeración. La app (Chromium) etiqueta las cámaras como
+// «EasyCamera (04f2:b57e)» — nombre + sufijo VID:PID entre paréntesis —
+// mientras el monitor de Media Foundation las enumera como «EasyCamera»
+// a secas: con el includes de siempre, el nombre pedido (más largo) no
+// estaba contenido en el enumerado y NO emparejaba nunca («No se
+// encontró la cámara de programa»). La normalización quita el sufijo
+// «(xxxx:xxxx)», unifica espacios y pasa a minúsculas; dos nombres
+// emparejan si, ya normalizados, son iguales o uno contiene al otro.
+function normalizarNombreCamara(nombre) {
+  return String(nombre || '')
+    .replace(/\(\s*[0-9a-fA-F]{4}:[0-9a-fA-F]{4}\s*\)/g, ' ')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function nombresCamaraCoinciden(pedido, enumerado) {
+  const a = normalizarNombreCamara(pedido);
+  const b = normalizarNombreCamara(enumerado);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
 // Elección de cámara (determinista):
-//  - Con nombre pedido: entre las entradas cuyo nombre lo contiene (sin
-//    distinguir mayúsculas) se prefiere la que trae devicePath — la de
-//    MediaFoundation, que es la que mfvideosrc selecciona por ruta — y si
-//    ninguna lo trae, la primera coincidencia. Sin coincidencias, la
-//    primera enumerada (el llamador declara la sustitución).
+//  - Con nombre pedido: entre las entradas que emparejan tras la
+//    normalización v3.3.1 (nombresCamaraCoinciden: sin sufijo VID:PID)
+//    se prefiere la que trae devicePath — la de MediaFoundation, que
+//    es la que mfvideosrc selecciona por ruta — y si ninguna lo trae,
+//    la primera coincidencia. Sin coincidencias devuelve la primera
+//    enumerada SOLO como valor de respaldo: desde la v3.3.1 el
+//    llamador (start) comprueba el emparejamiento y, si el nombre
+//    pedido no emparejó, se NIEGA a arrancar (PROGRAMA_NO_DISPONIBLE)
+//    en vez de usar el respaldo — la sustitución silenciosa murió.
 //  - Sin nombre: (a) la primera cuyo caps elegido alcance AL MENOS
 //    1920x1080 (el piso del producto), prefiriendo la de devicePath en
 //    empates; (b) la primera con algún caps utilizable, con la misma
@@ -244,8 +272,7 @@ function parseDeviceMonitorOutput(texto, opciones) {
 function chooseDevice(dispositivos, cameraName) {
   if (!Array.isArray(dispositivos) || dispositivos.length === 0) return null;
   if (cameraName) {
-    const buscado = String(cameraName).toLowerCase();
-    const coincidencias = dispositivos.filter((d) => d.name && d.name.toLowerCase().includes(buscado));
+    const coincidencias = dispositivos.filter((d) => d.name && nombresCamaraCoinciden(cameraName, d.name));
     if (coincidencias.length > 0) {
       return coincidencias.find((d) => d.devicePath) || coincidencias[0];
     }
@@ -695,6 +722,11 @@ function createNativeEngine(deps) {
     // programa DENTRO de esa lista.
     sourceNames: [],
     programIndex: 0,
+    // v3.3.1 (defecto 4): nombre de la cámara de PROGRAMA que el último
+    // arranque se NEGÓ a sustituir por no emparejar con la enumeración
+    // MF (la sesión no arrancó y la fase no quedó en «error»); null si
+    // el último arranque no se detuvo por ese motivo.
+    programUnavailable: null,
     // v3.3.0 — sonda de concurrencia, REDEFINIDA tras la compuerta del
     // 2026-11-13: null = aún sin veredicto en este arranque del
     // anfitrión; true/false = la vista previa independiente puede
@@ -1151,6 +1183,7 @@ function createNativeEngine(deps) {
       // concurrentPreview NO se toca: es el veredicto de la sonda de
       // este arranque y persiste entre sesiones.
       sourceNames: [], programIndex: 0, previewTextActive: false, previewTextNote: null,
+      programUnavailable: null,
     });
     if (streamUrls.length > 0) {
       log(`Destinos de transmisión reales: ${streamUrls.length} (las URL no se escriben en el registro: llevan la clave de transmisión).`);
@@ -1184,12 +1217,19 @@ function createNativeEngine(deps) {
     // índice MF ni ruta NO resuelve (abriría la cámara equivocada por
     // el índice 0 por defecto): vale más omitirla y declararlo.
     const resolverPorNombre = (nombre) => {
-      const buscado = String(nombre).toLowerCase();
-      const coincidencias = dispositivos.filter((dd) => dd.name && dd.name.toLowerCase().includes(buscado));
+      // v3.3.1 (defecto 3): el emparejamiento usa la normalización
+      // (sin sufijo VID:PID, sin distinguir mayúsculas/espacios); si
+      // varias entradas emparejan, manda la de Media Foundation y la
+      // ambigüedad queda declarada en el registro.
+      const coincidencias = dispositivos.filter((dd) => dd.name && nombresCamaraCoinciden(nombre, dd.name));
       if (coincidencias.length === 0) return null;
-      return coincidencias.find((dd) => dd.class === 'Source/Video' && Number.isInteger(dd.deviceIndex) && dd.deviceIndex >= 0)
+      const elegida = coincidencias.find((dd) => dd.class === 'Source/Video' && Number.isInteger(dd.deviceIndex) && dd.deviceIndex >= 0)
         || coincidencias.find((dd) => dd.devicePath)
         || null;
+      if (elegida && coincidencias.length > 1) {
+        log(`«${nombre}» emparejó ${coincidencias.length} entradas de la enumeración: se elige «${elegida.name}» (${elegida.class === 'Source/Video' ? 'Media Foundation' : elegida.class || 'sin clase'}) (ambigüedad declarada).`);
+      }
+      return elegida;
     };
     let device;
     let resolucionFuentes = null; // { resolverPorNombre, indiceProgramaPedido }
@@ -1201,18 +1241,29 @@ function createNativeEngine(deps) {
       const nombrePrograma = sourcesPedidas[indiceProgramaPedido];
       device = resolverPorNombre(nombrePrograma);
       if (!device) {
-        // La de PROGRAMA sin resolver SÍ tumba la sesión (como hoy con
-        // una cámara inutilizable): sin programa no hay señal.
-        fijar({ phase: 'error', lastError: `No se encontró la cámara de programa «${nombrePrograma}» entre las enumeradas por Media Foundation.` });
-        log(`No se encontró la cámara de programa «${nombrePrograma}»: la sesión no arranca (declarado).`);
-        return { success: false, error: `No se encontró la cámara de programa «${nombrePrograma}» entre las enumeradas por Media Foundation.` };
+        // v3.3.1 (defecto 4): la de PROGRAMA sin resolver NO es un
+        // «error» de una sesión que arrancó: la sesión NO arranca, no
+        // se sustituye otra cámara y la fase vuelve a «apagado» con el
+        // motivo en programUnavailable para que la app lo declare en
+        // la banda ANTES de cualquier tubería.
+        fijar({ phase: 'apagado', programUnavailable: nombrePrograma, lastError: null });
+        log(`La cámara de programa «${nombrePrograma}» no está disponible para el motor (no emparejó con la enumeración de Media Foundation tras la normalización): la sesión NO arranca y no se sustituye otra cámara (declarado).`);
+        return { success: false, code: 'PROGRAMA_NO_DISPONIBLE', error: `La cámara de programa «${nombrePrograma}» no está disponible para el motor nativo.` };
       }
       log(`Cámara de programa «${nombrePrograma}»: coincide la entrada «${device.name}» (${device.class === 'Source/Video' ? 'Media Foundation' : device.class || 'sin clase'}, device-index=${Number.isInteger(device.deviceIndex) ? device.deviceIndex : 'sin índice'}).`);
       resolucionFuentes = { indiceProgramaPedido };
     } else {
       device = chooseDevice(dispositivos, cameraName);
-      if (cameraName && device && device.name && !device.name.toLowerCase().includes(String(cameraName).toLowerCase())) {
-        log(`No se encontró la cámara pedida «${cameraName}»; se usa la primera enumerada: «${device.name}» (declarado).`);
+      if (cameraName && device && !nombresCamaraCoinciden(cameraName, device.name)) {
+        // v3.3.1 (defecto 4): con un nombre EXPLÍCITO (la cámara de
+        // programa que manda la app) ya NO se sustituye la primera
+        // enumerada: si la pedida no empareja tras la normalización,
+        // la sesión no arranca, la fase vuelve a «apagado» y el motivo
+        // queda en programUnavailable. Sin nombre pedido manda la
+        // elección por defecto de siempre.
+        fijar({ phase: 'apagado', programUnavailable: cameraName, lastError: null });
+        log(`La cámara de programa «${cameraName}» no está disponible para el motor (no emparejó con la enumeración de Media Foundation tras la normalización): la sesión NO arranca y no se sustituye otra cámara (declarado).`);
+        return { success: false, code: 'PROGRAMA_NO_DISPONIBLE', error: `La cámara de programa «${cameraName}» no está disponible para el motor nativo.` };
       }
     }
     const caps = chooseCapsForDevice(device);
@@ -1554,6 +1605,8 @@ module.exports = {
   chooseCapsForDevice,
   chooseCaps,
   chooseDevice,
+  normalizarNombreCamara,
+  nombresCamaraCoinciden,
   buildPipelineArgs,
   buildPreviewArgs,
   locateGstTools,

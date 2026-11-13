@@ -489,11 +489,17 @@ export default function CameraConnectModal({
   const handleConnectUsb = async (deviceId, label, slotOverride) => {
     if (!onUsbConnect) return;
     const requestedSlot = typeof slotOverride === 'number' ? slotOverride : targetSlot;
-    const requestedMeta = cameraMeta[requestedSlot];
-    const requestedHasOtherSource = Boolean(streams[requestedSlot]) && requestedMeta?.deviceId !== deviceId;
-    // Adding a camera must never tear down the active Program source. Choose
-    // the next free CAM automatically when the currently selected slot is busy.
-    const effSlot = requestedHasOtherSource ? nextFreeSlot : requestedSlot;
+    // v3.3.1 (defecto 2): el destino seleccionado MANDA. Antes, si la
+    // ranura pedida «tenía otra fuente», el modal reubicaba la cámara
+    // EN SILENCIO a la siguiente libre según su propio escaneo (la
+    // EasyCamera terminó en CAM 4 con «Destino seleccionado: CAM 2»
+    // en pantalla). Ahora la apertura va a la ranura pedida tal cual:
+    // si está ocupada por otra fuente, App la rechaza con el motivo
+    // visible («CAM N ya está en uso. Desconéctala primero o
+    // selecciona una ranura libre.») en vez de mover la cámara a
+    // escondidas — y conectar una cámara sigue sin derribar nunca la
+    // fuente de programa, porque el rechazo no detiene ningún track.
+    const effSlot = requestedSlot;
     if (effSlot >= slotsCount && onAddSlot) {
       onAddSlot();
     }
@@ -815,6 +821,10 @@ export default function CameraConnectModal({
   }, [open, activeTab]);
 
   const handleAssignDiscovered = async (camera) => {
+    // v3.3.1 (defecto 1): si App reubicó la remota (la ranura pedida
+    // estaba ocupada), la contabilidad del modal usa la ranura donde
+    // quedó DE VERDAD; si no se pudo asignar (null), no se marca nada.
+    let assignedSlotForBookkeeping = targetSlot;
     if (camera.type === 'wifi_url') {
       setWifiUrl(camera.url);
       await handleConnectWifi(camera.url);
@@ -822,14 +832,16 @@ export default function CameraConnectModal({
       await handleConnectUsb(camera.deviceId, camera.name);
     } else if (camera.type === 'remote' && camera.stream) {
       if (onAssignRemoteStream) {
-        onAssignRemoteStream(camera.stream, targetSlot, camera.name, { id: camera.id });
+        const placed = onAssignRemoteStream(camera.stream, targetSlot, camera.name, { id: camera.id });
+        if (placed === null) return;
+        if (typeof placed === 'number') assignedSlotForBookkeeping = placed;
       }
     }
 
     setDiscoveredCameras(prev =>
       prev.map(c => {
-        if (c.id === camera.id) return { ...c, isAssignedSlot: targetSlot };
-        if (c.isAssignedSlot === targetSlot) return { ...c, isAssignedSlot: null };
+        if (c.id === camera.id) return { ...c, isAssignedSlot: assignedSlotForBookkeeping };
+        if (c.isAssignedSlot === assignedSlotForBookkeeping) return { ...c, isAssignedSlot: null };
         return c;
       })
     );

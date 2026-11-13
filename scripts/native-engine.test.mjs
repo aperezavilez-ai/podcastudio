@@ -1344,7 +1344,13 @@ test('v3.3.0 · anfitrión multicámara: resuelve nombres contra MF, la PiP que 
   }
 });
 
-test('v3.3.0 · anfitrión multicámara: si la de PROGRAMA no resuelve, la sesión no arranca (error declarado)', async () => {
+// v3.3.1 (defecto 4) SUPERSEDE la expectativa de fase de esta prueba:
+// en la v3.3.0 el arranque rechazado dejaba la fase en «error»; la
+// orden de Luis es que una sesión que nunca arrancó no es un error —
+// la fase vuelve a «apagado», el motivo queda en programUnavailable y
+// la respuesta lleva el código PROGRAMA_NO_DISPONIBLE. Lo demás (no se
+// lanza tubería, el error nombra la cámara) se mantiene intacto.
+test('v3.3.0→v3.3.1 · anfitrión multicámara: si la de PROGRAMA no resuelve, la sesión no arranca (negativa declarada, sin fase de error)', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v330-prog-'));
   const outDir = path.join(dir, 'salida');
   fs.mkdirSync(outDir, { recursive: true });
@@ -1354,7 +1360,9 @@ test('v3.3.0 · anfitrión multicámara: si la de PROGRAMA no resuelve, la sesi�
     const r = await engine.start({ session: 'record', outDir, sources: ['Cámara Que No Existe', 'EasyCamera'], programIndex: 0 });
     assert.equal(r.success, false);
     assert.ok(r.error.includes('Cámara Que No Existe'), r.error);
-    assert.equal(engine.getState().phase, 'error');
+    assert.equal(r.code, 'PROGRAMA_NO_DISPONIBLE');
+    assert.equal(engine.getState().phase, 'apagado');
+    assert.equal(engine.getState().programUnavailable, 'Cámara Que No Existe');
     assert.ok(!fs.existsSync(path.join(dir, 'lanzamientos.txt')), 'no debió lanzarse ninguna tubería');
   } finally {
     try { await engine.stop(); } catch (e) {}
@@ -1640,6 +1648,101 @@ test('v3.3.0 · un solo lector (ii): setPreviewText durante una grabación es un
     assert.equal(declaraciones, 1, 'la declaración del no-op se registra una sola vez por sesión');
     const rStop = await engine.stop();
     assert.equal(rStop.success, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});
+
+// ===========================================================================
+// v3.3.1 — defecto 3 (emparejamiento con sufijo VID:PID) y defecto 4
+// (la sesión sale de la cámara de programa o NO arranca; jamás la
+// sustituye en silencio dejando la fase en «error»).
+// ===========================================================================
+
+test('v3.3.1 · defecto 3: la de programa «EasyCamera (04f2:b57e)» empareja con la entrada MF «EasyCamera»', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v331-sufijo-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine, logs } = prepararMotorV330(dir);
+  try {
+    const r = await engine.start({
+      session: 'record', outDir,
+      sources: ['EasyCamera (04f2:b57e)'],
+      programIndex: 0,
+    });
+    assert.equal(r.success, true, JSON.stringify(r));
+    const st = engine.getState();
+    assert.equal(st.phase, 'grabando');
+    assert.deepEqual(st.sourceNames, ['EasyCamera']);
+    assert.ok(!logs.join('\n').includes('no está disponible'), 'no debió declararse indisponible');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});
+
+test('v3.3.1 · defecto 3+4: cameraName explícito con sufijo VID:PID también empareja (camino de una cámara)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v331-nombre-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine } = prepararMotorV330(dir);
+  try {
+    const r = await engine.start({ session: 'record', outDir, cameraName: 'EasyCamera (04f2:b57e)' });
+    assert.equal(r.success, true, JSON.stringify(r));
+    assert.equal(engine.getState().phase, 'grabando');
+    assert.equal(engine.getState().cameraName, 'EasyCamera');
+    const rStop = await engine.stop();
+    assert.equal(rStop.success, true);
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});
+
+test('v3.3.1 · defecto 4: programa que no empareja → NO arranca, NO sustituye y la fase NO queda en error', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v331-noprog-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine } = prepararMotorV330(dir);
+  try {
+    const r = await engine.start({
+      session: 'record', outDir,
+      sources: ['Cámara Fantasma', 'EasyCamera'],
+      programIndex: 0,
+    });
+    assert.equal(r.success, false);
+    assert.equal(r.code, 'PROGRAMA_NO_DISPONIBLE');
+    assert.ok(r.error.includes('Cámara Fantasma'), r.error);
+    const st = engine.getState();
+    assert.equal(st.phase, 'apagado', 'la fase no puede quedar en «error»: la sesión nunca arrancó');
+    assert.equal(st.programUnavailable, 'Cámara Fantasma');
+    assert.ok(!fs.existsSync(path.join(dir, 'lanzamientos.txt')), 'no debió lanzarse ninguna tubería');
+  } finally {
+    try { await engine.stop(); } catch (e) {}
+    delete process.env.PS_V330_DIR;
+  }
+});
+
+test('v3.3.1 · defecto 4: cameraName explícito que no empareja → tampoco hay sustitución silenciosa', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'podcastudio-motor-v331-nosust-'));
+  const outDir = path.join(dir, 'salida');
+  fs.mkdirSync(outDir, { recursive: true });
+  process.env.PS_V330_DIR = dir;
+  const { engine } = prepararMotorV330(dir);
+  try {
+    const r = await engine.start({ session: 'record', outDir, cameraName: 'Cámara Fantasma' });
+    assert.equal(r.success, false);
+    assert.equal(r.code, 'PROGRAMA_NO_DISPONIBLE');
+    const st = engine.getState();
+    assert.equal(st.phase, 'apagado');
+    assert.equal(st.programUnavailable, 'Cámara Fantasma');
+    assert.ok(!fs.existsSync(path.join(dir, 'lanzamientos.txt')), 'no debió lanzarse ninguna tubería');
   } finally {
     try { await engine.stop(); } catch (e) {}
     delete process.env.PS_V330_DIR;

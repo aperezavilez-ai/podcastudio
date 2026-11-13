@@ -8,6 +8,21 @@
 // se pasa sources y manda el camino de una cámara probado por la
 // compuerta smoke (decisión declarada en App.jsx).
 //
+// v3.3.1 (defecto 4, orden de Luis): la composición se mudó a la
+// función pura componerFuentesPrograma (src/utils/nativeProgramSources
+// .mjs, probada por unidad en scripts/camera-slots-v331.test.mjs) y la
+// regla cambió en dos puntos que SUPERSEDEN las aserciones originales
+// de la sección A: (i) la fuente de programa es la del tally PGM y, si
+// no tiene cámara local elegible, la composición devuelve programa
+// null y los botones se detienen ANTES (errorPrograma) — ya no vale
+// «la activa primero entre las elegibles» porque eso promovía a otra
+// cámara en silencio; (ii) con una sola cámara ya no manda la elección
+// por defecto del motor: la app pasa su nombre EXPLÍCITO (cameraName)
+// para que el motor la empareje o se niegue (PROGRAMA_NO_DISPONIBLE)
+// en vez de sustituirla. Las aserciones de la sección A se reescriben
+// a la nueva semántica declarada; las de dieta (D1/D2) y teleprompter
+// (C) NO se tocan: el blindaje sigue intacto.
+//
 // (D1) Mapa de evidencia del bucle de composición por canvas: NO nace
 // solo de los caminos heredados. El monitor siempre encendido también
 // lo arranca — el efecto de sincronización de App.jsx llama
@@ -44,6 +59,10 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const appSource = fs.readFileSync(path.join(repoRoot, 'src', 'App.jsx'), 'utf8');
 const engineSource = fs.readFileSync(path.join(repoRoot, 'src', 'utils', 'masterBroadcastEngine.js'), 'utf8');
+// v3.3.1: la lógica de composición vive en este módulo puro desde el
+// defecto 4; sus reglas se verifican aquí por fuente y por unidad en
+// scripts/camera-slots-v331.test.mjs.
+const fuentesSource = fs.readFileSync(path.join(repoRoot, 'src', 'utils', 'nativeProgramSources.mjs'), 'utf8');
 
 const cuerpo = (desde, hasta) => {
   const i = appSource.indexOf(desde);
@@ -61,41 +80,44 @@ const ayudante = cuerpo('const componerFuentesLocalesNativas', 'const iniciarGra
 // A-renderer: fuentes locales al motor
 // ---------------------------------------------------------------------------
 
-test('v3.3.0 A: el ayudante pone la cámara de programa PRIMERO y luego el orden de ranura', () => {
-  assert.ok(ayudante.includes('idsOrdenados.push(activa)'), 'la de programa (activeCam) entra primero');
+test('v3.3.1 A: el ayudante delega en la función pura con la de programa = tally PGM (activeCam)', () => {
+  assert.ok(ayudante.includes('componerFuentesPrograma({'), 'la composición vive en componerFuentesPrograma');
+  assert.ok(ayudante.includes('programaCamId: activeCamRef.current || 1'), 'la de programa es la del tally PGM (activeCam, defecto CAM 1)');
   assert.ok(
-    ayudante.indexOf('idsOrdenados.push(activa)') < ayudante.indexOf('camSlotsRef.current'),
-    'el resto sigue el orden de ranura (camSlots) DESPUÉS de la de programa',
+    fuentesSource.includes('sources = [etiquetaPrograma]'),
+    'en la función pura, la de programa abre la lista (programIndex 0)',
   );
-  assert.ok(ayudante.includes('activeCamRef.current'), 'la de programa sale de activeCam');
 });
 
-test('v3.3.0 A: el ayudante limita a 3 fuentes y etiqueta por track o por ranura', () => {
-  assert.ok(ayudante.includes('fuentes.length >= 3'), 'máximo 3 fuentes');
-  assert.ok(ayudante.includes('vTrack.label'), 'etiqueta del track vivo');
-  assert.ok(ayudante.includes('meta?.label'), 'o el nombre guardado por ranura (cameraMeta)');
+test('v3.3.1 A: el ayudante limita a 3 fuentes y etiqueta por track, por ranura o por liberación', () => {
+  assert.ok(fuentesSource.includes('MAX_NATIVE_SOURCES = 3'), 'máximo 3 fuentes');
+  assert.ok(fuentesSource.includes('vTrack.label'), 'etiqueta del track vivo');
+  assert.ok(fuentesSource.includes('meta?.label'), 'o el nombre guardado por ranura (cameraMeta)');
+  assert.ok(ayudante.includes('releasedLabels'), 'la app aporta las etiquetas de las cámaras liberadas al motor');
 });
 
-test('v3.3.0 A: el ayudante excluye las ranuras remotas (type remote / stream con mobileId)', () => {
-  assert.ok(ayudante.includes("meta?.type === 'remote'"), 'ranura remota fuera por su meta');
-  assert.ok(ayudante.includes('stream.mobileId'), 'stream del transporte cloud fuera por mobileId');
+test('v3.3.1 A: el ayudante excluye las ranuras remotas (type remote / stream con mobileId)', () => {
+  assert.ok(fuentesSource.includes("meta?.type === 'remote'"), 'ranura remota fuera por su meta');
+  assert.ok(fuentesSource.includes('stream.mobileId'), 'stream del transporte cloud fuera por mobileId');
 });
 
-test('v3.3.0 A: grabar pasa sources/programIndex al start del motor', () => {
-  assert.ok(grabar.includes('componerFuentesLocalesNativas()'), 'grabar compone las fuentes');
-  assert.ok(grabar.includes('sources: fuentesNativas'), 'grabar pasa sources');
-  assert.ok(grabar.includes('programIndex: 0'), 'grabar pasa programIndex 0');
+test('v3.3.1 A: grabar prepara las fuentes y se detiene ANTES si la de programa no está', () => {
+  assert.ok(grabar.includes('prepararFuentesSesionNativa()'), 'grabar prepara las fuentes');
+  assert.ok(grabar.includes('prep.errorPrograma'), 'grabar se detiene antes sin programa disponible');
+  assert.ok(grabar.includes('...optsFuentes') || grabar.includes('optsFuentes = prep.opts'), 'grabar pasa las opts preparadas');
+  assert.ok(ayudante.includes('programIndex: 0'), 'con 2+ fuentes se pasa programIndex 0');
 });
 
-test('v3.3.0 A: transmitir pasa sources/programIndex al start del motor', () => {
-  assert.ok(transmitir.includes('componerFuentesLocalesNativas()'), 'transmitir compone las fuentes');
-  assert.ok(transmitir.includes('sources: fuentesNativas'), 'transmitir pasa sources');
-  assert.ok(transmitir.includes('programIndex: 0'), 'transmitir pasa programIndex 0');
+test('v3.3.1 A: transmitir prepara las fuentes y se detiene ANTES si la de programa no está', () => {
+  assert.ok(transmitir.includes('prepararFuentesSesionNativa()'), 'transmitir prepara las fuentes');
+  assert.ok(transmitir.includes('prep.errorPrograma'), 'transmitir se detiene antes sin programa disponible');
+  assert.ok(transmitir.includes('...prep.opts'), 'transmitir pasa las opts preparadas');
 });
 
-test('v3.3.0 A: con una sola cámara NO se pasa sources (camino probado por la compuerta)', () => {
-  assert.ok(grabar.includes('fuentesNativas.length > 1'), 'grabar: sources solo con 2+ fuentes');
-  assert.ok(transmitir.includes('fuentesNativas.length > 1'), 'transmitir: sources solo con 2+ fuentes');
+test('v3.3.1 A: con una sola cámara se pasa su nombre EXPLÍCITO (cameraName), no la elección por defecto', () => {
+  assert.ok(ayudante.includes('cameraName: comp.etiquetaPrograma'), 'una sola fuente → cameraName explícito de la de programa');
+  assert.ok(grabar.includes('PROGRAMA_NO_DISPONIBLE'), 'grabar reconoce la negativa previa del motor');
+  assert.ok(transmitir.includes('PROGRAMA_NO_DISPONIBLE'), 'transmitir reconoce la negativa previa del motor');
 });
 
 test('v3.3.0 A: el arranque del panel «Motor Nativo» NO cambia (sin sources)', () => {

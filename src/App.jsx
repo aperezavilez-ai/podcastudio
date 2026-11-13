@@ -27,7 +27,8 @@ import { bindVideoKeepAlive, getVideoTrackInfo, getVideoTrackResolution } from '
 import { CINTILLO_STYLES, getCintilloStyle } from './config/cintilloStyles.js';
 import { CINTILLO_PRESETS, resolveCintilloText, resolveCintilloSubtitle } from './config/cintilloPresets.js';
 import { CINTILLO_POSITION_OPTIONS } from './config/cintilloCameraMap.js';
-import { findAvailableRemoteCameraSlot } from './utils/remoteCameraSlots.mjs';
+import { findAvailableRemoteCameraSlot, resolveRemoteCameraSlot, chooseReconnectCameraSlot } from './utils/remoteCameraSlots.mjs';
+import { componerFuentesPrograma } from './utils/nativeProgramSources.mjs';
 import { buildStreamDestinations } from './utils/streamDestinations.mjs';
 import { useCintilloRotation } from './hooks/useCintilloRotation.js';
 
@@ -616,6 +617,10 @@ function PodcastStudioApp() {
         type: camera.type || 'usb',
         url: camera.url || null,
         deviceId: camera.deviceId || null,
+        // v3.3.1 (defecto 2): la ranura donde quedó conectada — al
+        // reconectar, una cámara conocida recupera SU ranura si está
+        // libre (regla b de chooseReconnectCameraSlot).
+        slot: Number.isInteger(camera.slot) ? camera.slot : null,
         lastUsed: new Date().toISOString()
       };
       const updated = [newEntry, ...filtered].slice(0, 30);
@@ -660,6 +665,11 @@ function PodcastStudioApp() {
   }, [activeQrTargetUrl]);
 
   const assignedSlotsRef = useRef({});
+  // v3.3.1 (defecto 1): sala cloud → ranura donde el stream quedó
+  // COLOCADO de verdad (si la de la sala estaba ocupada por otra
+  // fuente, la remota se reubica a la primera libre; la desconexión de
+  // la sala debe limpiar la ranura colocada, no la de la sala).
+  const colocacionCloudRef = useRef({});
   const controlChannelRef = useRef(null);
   const cloudTransportRef = useRef(null);
   const recordingStartPendingTimeRef = useRef(0);
@@ -1300,37 +1310,53 @@ function PodcastStudioApp() {
     return pend;
   };
 
-  // v3.3.0 (A-renderer): fuentes LOCALES para el motor multicámara —
-  // etiquetas de las cámaras locales conectadas en orden de ranura
-  // (camSlots), con la de programa (activeCam) PRIMERO y máximo 3. La
-  // etiqueta sale del track vivo o del nombre guardado por ranura
-  // (cameraMeta). Las ranuras REMOTAS quedan fuera: su cameraMeta lleva
-  // type 'remote' y sus streams del transporte cloud traen mobileId —
-  // el motor nativo solo abre cámaras físicas locales. Declarado: los
-  // manejadores pasan sources SOLO con 2+ fuentes; con una sola cámara
-  // no se pasa sources y manda el camino de una cámara ya probado por
-  // la compuerta smoke (cameraName / elección por defecto del motor).
+  // v3.3.0 (A-renderer) → v3.3.1 (defecto 4): fuentes LOCALES para el
+  // motor multicámara. La composición vive en la función pura
+  // componerFuentesPrograma (src/utils/nativeProgramSources.mjs): la
+  // fuente de PROGRAMA es la cámara con el tally PGM (activeCam, por
+  // defecto CAM 1) y las demás entran como PiP en orden de ranura,
+  // máximo 3. Si la de programa no tiene cámara local elegible, la
+  // composición NO promueve a otra: devuelve programa null y el
+  // llamador se detiene ANTES de arrancar (prepararFuentesSesionNativa).
+  // Las etiquetas salen del track vivo, del nombre guardado por ranura
+  // o — durante una sesión, cuando la dieta las tiene liberadas — de
+  // la etiqueta guardada por la liberación. Las ranuras REMOTAS quedan
+  // fuera siempre: el motor nativo solo abre cámaras físicas locales.
   const componerFuentesLocalesNativas = () => {
-    const idsOrdenados = [];
-    const activa = activeCamRef.current;
-    if (activa) idsOrdenados.push(activa);
-    (camSlotsRef.current || []).forEach((id) => { if (!idsOrdenados.includes(id)) idsOrdenados.push(id); });
-    const fuentes = [];
-    for (const id of idsOrdenados) {
-      if (fuentes.length >= 3) break;
-      const slotIdx = id - 1;
-      const meta = cameraMetaRef.current?.[slotIdx] || {};
-      if (meta?.type === 'remote') continue;
-      const stream = slotStreamsRef.current?.[slotIdx] || (slotIdx === 0 ? localStreamRef.current : null);
-      if (!stream || stream.mobileId) continue;
-      const vTrack = (stream.getVideoTracks?.() || []).find((t) => t.readyState === 'live')
-        || (stream.getVideoTracks?.() || [])[0];
-      if (!vTrack || vTrack.readyState === 'ended') continue;
-      const etiqueta = String(vTrack.label || meta?.label || meta?.videoInfo?.label || '').trim();
-      if (!etiqueta || fuentes.includes(etiqueta)) continue;
-      fuentes.push(etiqueta);
+    const releasedLabels = {};
+    for (const [slotKey, info] of Object.entries(nativeReleasedCamsRef.current || {})) {
+      if (info?.label) releasedLabels[slotKey] = info.label;
     }
-    return fuentes;
+    return componerFuentesPrograma({
+      camSlots: camSlotsRef.current || [],
+      programaCamId: activeCamRef.current || 1,
+      cameraMeta: cameraMetaRef.current || {},
+      slotStreams: slotStreamsRef.current || {},
+      localStream: localStreamRef.current,
+      releasedLabels,
+    });
+  };
+
+  // v3.3.1 (defecto 4): prepara las opciones de fuentes de una sesión
+  // nativa. Devuelve { opts } listo para bridge.start, o
+  // { errorPrograma } cuando la cámara de programa (tally PGM) no está
+  // disponible como fuente local: en ese caso la sesión NO se arranca
+  // y el motivo va a la banda del motor — jamás se sustituye otra
+  // cámara en silencio. Con 2+ fuentes se pasa sources (programa en el
+  // índice 0); con una sola, su nombre EXPLÍCITO en cameraName para
+  // que el motor la empareje (o se niegue) en vez de elegir otra por
+  // defecto.
+  const prepararFuentesSesionNativa = () => {
+    const comp = componerFuentesLocalesNativas();
+    if (!comp.programa) {
+      return {
+        errorPrograma: `La cámara de programa (CAM ${activeCamRef.current || 1}) no está disponible para el motor nativo: no tiene señal local conectada. La sesión no se inició y no se sustituyó otra cámara.`,
+      };
+    }
+    if (comp.sources.length > 1) {
+      return { opts: { sources: comp.sources, programIndex: 0 } };
+    }
+    return { opts: { cameraName: comp.etiquetaPrograma } };
   };
 
   const iniciarGrabacionNativa = async () => {
@@ -1342,6 +1368,15 @@ function PodcastStudioApp() {
       // La transmisión aún está en arranque pendiente de confirmación
       // (v3.2.1): no hay sesión confirmada que reiniciar todavía.
       showToast('La transmisión aún se está conectando: espera a que el motor la confirme para sumarle la grabación.', 'warning', 6000);
+      return;
+    }
+    // v3.3.1 (defecto 4): la parada previa va ANTES de detener nada:
+    // si la cámara de programa no está disponible como fuente local,
+    // no se arranca ni se toca la sesión en curso.
+    const prep = prepararFuentesSesionNativa();
+    if (prep.errorPrograma) {
+      setNativeNotice(prep.errorPrograma);
+      showToast(prep.errorPrograma, 'error', 9000);
       return;
     }
     nativeBusyRef.current = true;
@@ -1362,10 +1397,9 @@ function PodcastStudioApp() {
           try { await bridge.stop(); } catch (e) {}
           await esperarMotorApagado();
         }
-        // v3.3.0 (A): con 2+ cámaras locales, el motor compone programa
-        // + PiP(s) desde sources (la de programa primero, programIndex 0).
-        const fuentesNativas = componerFuentesLocalesNativas();
-        const optsFuentes = fuentesNativas.length > 1 ? { sources: fuentesNativas, programIndex: 0 } : {};
+        // v3.3.0 (A) → v3.3.1 (defecto 4): las fuentes ya vienen
+        // preparadas (programa PGM primero) de prepararFuentesSesionNativa.
+        const optsFuentes = prep.opts;
         res = subiendo
           ? await bridge.start({ session: 'recordStream', projectName: topic || 'Proyecto_General', streamUrls: nativeStreamUrlsRef.current, ...optsFuentes })
           : await bridge.start({ session: 'record', projectName: topic || 'Proyecto_General', ...optsFuentes });
@@ -1382,11 +1416,13 @@ function PodcastStudioApp() {
           isStreamingRef.current = false;
           setIsStreaming(false);
           setActiveLiveDestinations([]);
-          setNativeNotice('');
+          // v3.3.1 (defecto 4): si el motor se detuvo ANTES de arrancar
+          // (programa no disponible), el motivo queda en la banda.
+          setNativeNotice(res?.code === 'PROGRAMA_NO_DISPONIBLE' ? res.error : '');
           showToast(`La sesión combinada no arrancó: ${res?.error || 'error del motor nativo'}. La transmisión anterior terminó al intentar sumarle la grabación.`, 'error', 9000);
           return;
         }
-        setNativeNotice('');
+        setNativeNotice(res?.code === 'PROGRAMA_NO_DISPONIBLE' ? res.error : '');
         showToast(res?.error || 'El motor nativo no pudo iniciar la grabación.', 'error', 7000);
         return;
       }
@@ -1409,6 +1445,7 @@ function PodcastStudioApp() {
     const seguirTransmitiendo = nativeFlagsRef.current.forStream;
     setIsStoppingRecordingUI(true);
     setNativeNotice('Deteniendo el motor: validando el máster…');
+    let avisoBandaTrasDetener = '';
     try {
       try { await bridge.stop(); } catch (e) {}
       const st = await esperarMotorApagado();
@@ -1422,9 +1459,17 @@ function PodcastStudioApp() {
         // nueva solo-stream (la tubería se reinicia y el directo se
         // reconecta; los visores pueden notar un corte breve).
         setNativeNotice('Reconectando sesión: la transmisión continúa sin grabación…');
+        // v3.3.1 (defecto 4): el reinicio también sale de la cámara de
+        // programa; si no está disponible, no se arranca ni se sustituye.
+        const prepRe = prepararFuentesSesionNativa();
         let res2 = null;
-        try { res2 = await bridge.start({ session: 'stream', streamUrls: nativeStreamUrlsRef.current }); } catch (e) { res2 = { success: false, error: e?.message || String(e) }; }
+        if (prepRe.errorPrograma) {
+          res2 = { success: false, code: 'PROGRAMA_NO_DISPONIBLE', error: prepRe.errorPrograma };
+        } else {
+          try { res2 = await bridge.start({ session: 'stream', streamUrls: nativeStreamUrlsRef.current, ...prepRe.opts }); } catch (e) { res2 = { success: false, error: e?.message || String(e) }; }
+        }
         if (!res2?.success) {
+          if (res2?.code === 'PROGRAMA_NO_DISPONIBLE') avisoBandaTrasDetener = res2.error;
           nativeFlagsRef.current = { forRecord: false, forStream: false };
           nativeStreamUrlsRef.current = [];
           nativeStreamTargetsRef.current = [];
@@ -1445,6 +1490,9 @@ function PodcastStudioApp() {
       setNativeNotice('');
       nativeBusyRef.current = false;
     }
+    // v3.3.1 (defecto 4): el aviso de programa no disponible sobrevive
+    // a la limpieza del finally: queda en la banda del motor.
+    if (avisoBandaTrasDetener) setNativeNotice(avisoBandaTrasDetener);
   };
 
   const iniciarTransmisionNativa = async (targets) => {
@@ -1461,6 +1509,16 @@ function PodcastStudioApp() {
       // (v3.2.1): no hay sesión confirmada que reiniciar todavía. El
       // error va EN el modal, como el resto de fallos de este flujo.
       setNativeStreamError('La grabación aún se está iniciando: espera a que el motor la confirme para sumarle la transmisión.');
+      return;
+    }
+    // v3.3.1 (defecto 4): parada previa ANTES de detener la grabación
+    // en curso: sin cámara de programa disponible no se arranca ni se
+    // sustituye, y la grabación en curso queda intacta.
+    const prep = prepararFuentesSesionNativa();
+    if (prep.errorPrograma) {
+      setNativeStreamError(prep.errorPrograma);
+      setNativeNotice(prep.errorPrograma);
+      showToast(prep.errorPrograma, 'error', 9000);
       return;
     }
     nativeBusyRef.current = true;
@@ -1485,14 +1543,13 @@ function PodcastStudioApp() {
           try { await bridge.stop(); } catch (e) {}
           await esperarMotorApagado();
         }
-        // v3.3.0 (A): mismas fuentes locales que en la grabación —
-        // programa primero (programIndex 0), solo con 2+ cámaras.
-        const fuentesNativas = componerFuentesLocalesNativas();
+        // v3.3.0 (A) → v3.3.1 (defecto 4): las fuentes ya vienen
+        // preparadas (programa PGM primero) de prepararFuentesSesionNativa.
         res = await bridge.start({
           session: conGrabacion ? 'recordStream' : 'stream',
           projectName: topic || 'Proyecto_General',
           streamUrls: urls,
-          ...(fuentesNativas.length > 1 ? { sources: fuentesNativas, programIndex: 0 } : {}),
+          ...prep.opts,
         });
       } catch (e) { res = { success: false, error: e?.message || String(e) }; }
       if (!res?.success) {
@@ -1512,12 +1569,13 @@ function PodcastStudioApp() {
           recordingStartTimeRef.current = null;
           const msgCombinada = `La sesión combinada no arrancó: ${res?.error || 'error del motor nativo'}. La grabación anterior terminó al intentar sumarle la transmisión.`;
           setNativeStreamError(msgCombinada);
-          setNativeNotice('');
+          // v3.3.1 (defecto 4): negativa previa del motor → banda.
+          setNativeNotice(res?.code === 'PROGRAMA_NO_DISPONIBLE' ? res.error : '');
           showToast(msgCombinada, 'error', 9000);
           return;
         }
         setNativeStreamError(res?.error || 'El motor nativo no pudo iniciar la transmisión.');
-        setNativeNotice('');
+        setNativeNotice(res?.code === 'PROGRAMA_NO_DISPONIBLE' ? res.error : '');
         showToast(res?.error || 'El motor nativo no pudo iniciar la transmisión.', 'error', 8000);
         return;
       }
@@ -1545,6 +1603,7 @@ function PodcastStudioApp() {
     nativeBusyRef.current = true;
     const conGrabacion = nativeFlagsRef.current.forRecord;
     setNativeNotice('Deteniendo la transmisión del motor nativo…');
+    let avisoBandaTrasDetenerStream = '';
     try { await bridge.stop(); } catch (e) {}
     const st = await esperarMotorApagado();
     nativeFlagsRef.current = { ...nativeFlagsRef.current, forStream: false };
@@ -1557,8 +1616,15 @@ function PodcastStudioApp() {
       // La parada también cerró y validó el máster en curso: se entrega
       // al modal y la grabación CONTINÚA en un máster nuevo (declarado).
       entregarMasterNativoAlModal(st);
+      // v3.3.1 (defecto 4): la grabación que continúa también sale de
+      // la cámara de programa; sin ella no se arranca ni se sustituye.
+      const prepRe = prepararFuentesSesionNativa();
       let res2 = null;
-      try { res2 = await bridge.start({ session: 'record', projectName: topic || 'Proyecto_General' }); } catch (e) { res2 = { success: false, error: e?.message || String(e) }; }
+      if (prepRe.errorPrograma) {
+        res2 = { success: false, code: 'PROGRAMA_NO_DISPONIBLE', error: prepRe.errorPrograma };
+      } else {
+        try { res2 = await bridge.start({ session: 'record', projectName: topic || 'Proyecto_General', ...prepRe.opts }); } catch (e) { res2 = { success: false, error: e?.message || String(e) }; }
+      }
       if (res2?.success) {
         setNativeNotice('La transmisión terminó; la grabación sigue en un máster nuevo.');
         showToast('Transmisión detenida. La grabación continúa en un máster nuevo.', 'success', 7000);
@@ -1566,7 +1632,8 @@ function PodcastStudioApp() {
         nativeFlagsRef.current = { ...nativeFlagsRef.current, forRecord: false };
         isRecordingRef.current = false;
         setIsRecording(false);
-        showToast('La grabación no pudo continuar tras detener la transmisión.', 'error', 8000);
+        if (res2?.code === 'PROGRAMA_NO_DISPONIBLE') avisoBandaTrasDetenerStream = res2.error;
+        showToast(res2?.code === 'PROGRAMA_NO_DISPONIBLE' ? res2.error : 'La grabación no pudo continuar tras detener la transmisión.', 'error', 8000);
       }
     } else {
       if (conGrabacion) {
@@ -1578,6 +1645,9 @@ function PodcastStudioApp() {
       showToast('Transmisión detenida.', 'success');
     }
     if (!nativeFlagsRef.current.forRecord) setNativeNotice('');
+    // v3.3.1 (defecto 4): el aviso de programa no disponible queda en
+    // la banda aunque la limpieza anterior lo haya borrado.
+    if (avisoBandaTrasDetenerStream) setNativeNotice(avisoBandaTrasDetenerStream);
     nativeBusyRef.current = false;
   };
 
@@ -3402,46 +3472,81 @@ function PodcastStudioApp() {
           const roomCode = `studio_cam_${slotIdx + 1}`;
           cloudTransport.on('streamConnected', slotIdx, (stream, label) => {
             logger.log(`[Cloud WebRTC] Cámara conectada en slot ${slotIdx + 1}:`, label);
-            if (slotIdx === 0) {
+            // v3.3.1 (defecto 1): la sala NO manda sobre la ocupación.
+            // Si la ranura de la sala está ocupada por OTRA fuente, el
+            // celular se coloca en la primera ranura libre y la
+            // ocupante NO se desconecta (la v3.3.0 pisaba la ranura y,
+            // en CAM 1, hasta detenía los tracks de la cámara local).
+            const ownCloudId = `cloud_${slotIdx}`;
+            const holderMeta = cameraMetaRef.current?.[slotIdx];
+            const holderStream = slotStreamsRef.current?.[slotIdx];
+            const ocupadaPorOtra = Boolean(holderStream && holderStream !== stream && holderMeta?.deviceId !== ownCloudId)
+              || (slotIdx === 0 && Boolean(localStreamRef.current) && localStreamRef.current !== stream && holderMeta?.deviceId !== ownCloudId);
+            let placedSlot = slotIdx;
+            if (ocupadaPorOtra) {
+              placedSlot = findAvailableRemoteCameraSlot({
+                slotsCount: camSlotsRef.current?.length || 12,
+                streams: slotStreamsRef.current,
+                cameraMeta: cameraMetaRef.current,
+                assignedSlots: assignedSlotsRef.current,
+                localStreamActive: Boolean(localStreamRef.current),
+                requestingDeviceId: ownCloudId,
+              });
+              if (placedSlot === null) {
+                logger.warn(`[Cloud WebRTC] Sin ranuras libres para el celular de la sala ${slotIdx + 1}: no se reemplazó ninguna cámara.`);
+                setMobileStatus(`Un celular llegó a CAM ${slotIdx + 1}, pero no hay ranuras libres: no se desconectó ninguna cámara.`);
+                return;
+              }
+              colocacionCloudRef.current[slotIdx] = placedSlot;
+              setMobileStatus(`CAM ${slotIdx + 1} estaba ocupada: el celular se conectó en CAM ${placedSlot + 1} sin desconectar ninguna cámara.`);
+            }
+            if (placedSlot === 0) {
               if (localStreamRef.current && localStreamRef.current !== stream) {
                 try { localStreamRef.current.getTracks().forEach(t => t.stop()); } catch (e) {}
               }
               setLocalStream(stream);
             }
-            setSlotStreams(prev => ({ ...prev, [slotIdx]: stream }));
+            setSlotStreams(prev => ({ ...prev, [placedSlot]: stream }));
             setRemoteCams(prev => [
-              ...prev.filter(r => r.id !== `cloud_${slotIdx}`),
-              { id: `cloud_${slotIdx}`, stream, name: label || `Celular CAM ${slotIdx + 1}` }
+              ...prev.filter(r => r.id !== `cloud_${placedSlot}`),
+              { id: `cloud_${placedSlot}`, stream, name: label || `Celular CAM ${placedSlot + 1}` }
             ]);
             setCameraMeta(prev => ({
               ...prev,
-              [slotIdx]: { deviceId: `cloud_${slotIdx}`, label: label || `Celular Remoto (CAM ${slotIdx + 1})`, type: 'remote' }
+              [placedSlot]: { deviceId: `cloud_${placedSlot}`, label: label || `Celular Remoto (CAM ${placedSlot + 1})`, type: 'remote' }
             }));
-            setMobileStatus(`Celular en vivo conectado en CAM ${slotIdx + 1}`);
+            if (!ocupadaPorOtra) {
+              setMobileStatus(`Celular en vivo conectado en CAM ${placedSlot + 1}`);
+            }
           });
           cloudTransport.on('streamDisconnected', slotIdx => {
             logger.log(`[Cloud WebRTC] Cámara desconectada en slot ${slotIdx + 1}`);
             delete assignedSlotsRef.current[slotIdx];
-            if (slotIdx === 0) {
+            // v3.3.1 (defecto 1): se limpia la ranura donde el stream
+            // quedó COLOCADO (puede no ser la de la sala si hubo
+            // reubicación al conectar).
+            const placedSlot = colocacionCloudRef.current[slotIdx] ?? slotIdx;
+            delete colocacionCloudRef.current[slotIdx];
+            if (placedSlot === 0) {
               setLocalStream(null);
             }
             setSlotStreams(prev => {
               const next = { ...prev };
-              delete next[slotIdx];
+              delete next[placedSlot];
               return next;
             });
-            setRemoteCams(prev => prev.filter(r => r.id !== `cloud_${slotIdx}`));
+            setRemoteCams(prev => prev.filter(r => r.id !== `cloud_${placedSlot}`));
             setCameraMeta(prev => {
               const next = { ...prev };
-              delete next[slotIdx];
+              delete next[placedSlot];
               return next;
             });
-            if (activeCamRef.current === slotIdx + 1) {
+            if (activeCamRef.current === placedSlot + 1) {
               setActiveCam(1);
               updateBroadcastState({ activeCam: 1 });
             }
-            if (pvwCam === slotIdx + 1) setPvwCam(null);
-            if (pipCam === slotIdx + 1) setPipCam(null);
+            if (pvwCam === placedSlot + 1) setPvwCam(null);
+            if (pipCam === placedSlot + 1) setPipCam(null);
             setMobileStatus('');
           });
           cloudTransport.connectSlot(slotIdx, roomCode);
@@ -3551,22 +3656,24 @@ function PodcastStudioApp() {
           logger.log(`[WebRTC] Video en vivo recibido de celular ${id} (tracks: ${stableStream.getTracks().length})`);
 
           let targetSlot = null;
-          if (slot != null) {
-            const parsed = parseInt(slot, 10) - 1;
-            if (!isNaN(parsed) && parsed >= 0 && parsed < 12) {
-              targetSlot = parsed;
+          // Primero, la reconexión del MISMO celular: si su stream ya
+          // vive en una ranura, esa sigue siendo la suya.
+          for (let s = 1; s < 12; s++) {
+            if (slotStreamsRef.current[s] && slotStreamsRef.current[s].mobileId === id) {
+              targetSlot = s;
+              break;
             }
           }
           if (targetSlot === null) {
-            for (let s = 1; s < 12; s++) {
-              if (slotStreamsRef.current[s] && slotStreamsRef.current[s].mobileId === id) {
-                targetSlot = s;
-                break;
-              }
-            }
-          }
-          if (targetSlot === null) {
-            targetSlot = findAvailableRemoteCameraSlot({
+            // v3.3.1 (defecto 1): la ranura que trae la oferta es una
+            // PETICIÓN, no una orden: manda solo si está libre; si
+            // está ocupada, la remota va a la primera ranura libre y
+            // la ocupante NO se desconecta (la v3.3.0 la honraba sin
+            // mirar y pisaba la cámara que estuviera ahí).
+            const parsed = slot != null ? parseInt(slot, 10) - 1 : NaN;
+            const explicitSlot = (!isNaN(parsed) && parsed >= 0 && parsed < 12) ? parsed : null;
+            targetSlot = resolveRemoteCameraSlot({
+              explicitSlot,
               slotsCount: camSlotsRef.current.length,
               streams: slotStreamsRef.current,
               cameraMeta: cameraMetaRef.current,
@@ -3574,6 +3681,10 @@ function PodcastStudioApp() {
               localStreamActive: Boolean(localStreamRef.current),
               requestingDeviceId: id,
             });
+            if (explicitSlot !== null && targetSlot !== null && targetSlot !== explicitSlot) {
+              logger.log(`[WebRTC] CAM ${explicitSlot + 1} estaba ocupada: el celular ${id} se asignó a CAM ${targetSlot + 1} sin desconectar ninguna cámara.`);
+              setMobileStatus(`CAM ${explicitSlot + 1} estaba ocupada: el celular se conectó en CAM ${targetSlot + 1}.`);
+            }
           }
           if (targetSlot === null) {
             logger.warn('[RemoteCam] No hay ranuras disponibles para esta cámara móvil.');
@@ -4681,7 +4792,7 @@ function PodcastStudioApp() {
         setCamSlots(expandedSlots);
         camSlotsRef.current = expandedSlots;
       }
-      saveCameraToHistory({ deviceId, label: label || 'Cámara USB', type: 'usb' });
+      saveCameraToHistory({ deviceId, label: label || 'Cámara USB', type: 'usb', slot });
       if (videoInfo && ((videoInfo.height > 0 && videoInfo.height < 1080) || (videoInfo.frameRate > 0 && videoInfo.frameRate < 24))) {
         showToast(`CAM ${slot + 1} (${label || 'Cámara USB'}) entregó ${videoInfo.label} en vez de 1920×1080 · 30 fps. Con varias cámaras 1080p el bus USB se satura: prueba un puerto directo sin hub o baja la carga.`, 'error', 9000);
       }
@@ -4888,7 +4999,7 @@ function PodcastStudioApp() {
         ...prev,
         [slot]: { url, label: label || `WiFi Cam ${slot + 1}`, type: 'wifi' }
       }));
-      saveCameraToHistory({ url, label: label || `WiFi Cam ${slot + 1}`, type: 'wifi' });
+      saveCameraToHistory({ url, label: label || `WiFi Cam ${slot + 1}`, type: 'wifi', slot });
       return stream;
     } catch (err) {
       logger.error('Error conectando cámara WiFi:', err);
@@ -4956,28 +5067,59 @@ function PodcastStudioApp() {
   };
 
   const handleAssignRemoteStream = (remoteStream, slot, label, meta = {}) => {
-    if (slotStreams[slot] && slotStreams[slot] !== remoteStream) {
-      try { slotStreams[slot].getTracks().forEach(t => t.stop()); } catch (e) {}
+    // v3.3.1 (defecto 1): asignar una remota NUNCA expulsa a la
+    // ocupante (la v3.3.0 detenía sus tracks y pisaba la ranura). Si
+    // la ranura pedida está ocupada por otra fuente, la remota se
+    // reubica a la primera libre y se avisa; sin ranuras libres, no se
+    // asigna y se devuelve null. Devuelve la ranura donde quedó.
+    let targetSlot = slot;
+    const ocupadaPorOtra = Boolean(slotStreams[slot] && slotStreams[slot] !== remoteStream)
+      || (slot === 0 && Boolean(localStream) && localStream !== remoteStream);
+    if (ocupadaPorOtra) {
+      targetSlot = findAvailableRemoteCameraSlot({
+        slotsCount: camSlots.length,
+        streams: slotStreams,
+        cameraMeta,
+        localStreamActive: Boolean(localStream),
+        requestingDeviceId: meta.id,
+      });
+      if (targetSlot === null) {
+        showToast(`CAM ${slot + 1} está ocupada y no hay ranuras libres: la cámara remota NO reemplazó a ninguna cámara.`, 'error', 8000);
+        return null;
+      }
+      showToast(`CAM ${slot + 1} está ocupada: la cámara remota se asignó a CAM ${targetSlot + 1} sin desconectar la que estaba.`, 'info', 7000);
     }
-    setSlotStreams(prev => ({ ...prev, [slot]: remoteStream }));
+    setSlotStreams(prev => ({ ...prev, [targetSlot]: remoteStream }));
     setCameraMeta(prev => ({
       ...prev,
-      [slot]: { deviceId: meta.id || `remote_${slot}`, label: label || `Cámara ${slot + 1}`, type: 'remote', ...meta }
+      [targetSlot]: { deviceId: meta.id || `remote_${targetSlot}`, label: label || `Cámara ${targetSlot + 1}`, type: 'remote', ...meta }
     }));
-    saveCameraToHistory({ deviceId: meta.id || `remote_${slot}`, label: label || `Cámara ${slot + 1}`, type: 'remote' });
-    if (slot === 0) setLocalStream(remoteStream);
+    saveCameraToHistory({ deviceId: meta.id || `remote_${targetSlot}`, label: label || `Cámara ${targetSlot + 1}`, type: 'remote', slot: targetSlot });
+    if (targetSlot === 0) setLocalStream(remoteStream);
+    return targetSlot;
   };
 
   const handleReconnectSavedCamera = useCallback(async (savedCam) => {
     if (!savedCam) return;
-    const freeSlot = camSlots.find(s => !slotStreams[s - 1]) || activeCam;
-    const targetIdx = freeSlot - 1;
+    // v3.3.1 (defecto 2, reglas b y c): una cámara conocida recupera
+    // SU ranura anterior si está libre; si no, la primera libre. Nunca
+    // la última/mayor por defecto (la v3.3.0 abría en CAM 4 con CAM 2
+    // libre). Sin ninguna libre se conserva el último recurso de
+    // siempre (la ranura activa), que la apertura USB protege con su
+    // error explícito si está ocupada.
+    const chosen = chooseReconnectCameraSlot({
+      previousSlot: Number.isInteger(savedCam.slot) ? savedCam.slot : null,
+      camSlots,
+      streams: slotStreams,
+      cameraMeta,
+    });
+    const targetIdx = chosen !== null ? chosen : (activeCam - 1);
     if (savedCam.type === 'wifi' && savedCam.url) {
       await handleWifiConnect(savedCam.url, targetIdx, savedCam.name || savedCam.label);
     } else if (savedCam.type === 'usb' && savedCam.deviceId) {
       await handleUsbConnect(savedCam.deviceId, targetIdx, savedCam.name || savedCam.label);
     }
-  }, [camSlots, slotStreams, activeCam, handleWifiConnect, handleUsbConnect]);
+  }, [camSlots, slotStreams, cameraMeta, activeCam, handleWifiConnect, handleUsbConnect]);
 
   const handleDisconnectSlot = async (slot) => {
     // 1. Desconectar y liberar transporte WebRTC cloud si existe
