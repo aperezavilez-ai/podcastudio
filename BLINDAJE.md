@@ -91,3 +91,6 @@ reglas de ranuras y programa (v3.3.1) y el teleprompter (v3.3.2).
   celular), compuerta de humo antes de publicar y aceptaci√≥n en vivo de
   Luis (ocupaci√≥n con el motor en marcha, retorno a CAM 2 y HUD que
   conserva su estado al reabrir la app).
+
+## Teleprompter ó CONGELADO en v3.3.5 (2026-11-13)
+Verificado en vivo por Luis: el texto sale sobre la c·mara m·ster, entra desde abajo y el HUD nace activo. PROHIBIDO tocar el estado del HUD (showFloatingPrompter y su persistencia), projectTeleprompterOverlay, el montaje del overlay y src/utils/teleprompter.mjs sin repetir suite + compuerta + aceptaciÛn en vivo de Luis.
