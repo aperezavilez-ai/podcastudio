@@ -1,13 +1,13 @@
 {
   "testSuite": "PodcastStudio v1.1.8 Forensic Validation (P4.3 & P4.4)",
-  "timestamp": "2026-11-13T21:20:04.364Z",
+  "timestamp": "2026-11-13T21:54:04.627Z",
   "targetVersion": "1.1.8",
   "tests": [
     {
       "name": "package.json versión es exactamente 1.1.8",
       "category": "VERSIONING",
       "passed": false,
-      "details": "Versión actual: 3.3.4"
+      "details": "Versión actual: 3.3.6"
     },
     {
       "name": "src/App.jsx footer refleja PODCASTUDIO v1.1.8",
