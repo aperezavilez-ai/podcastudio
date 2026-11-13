@@ -150,18 +150,28 @@ test('teleprompter: el bucle AVANZA el reloj (+=) y proyecta ambas superficies d
   assert.ok(animate.includes('projectTeleprompterOverlay()'), 'el bucle proyecta el overlay desde el reloj');
 });
 
-test('teleprompter: la caja del panel es INDEPENDIENTE del reloj (puerto seguro, build diagnóstica post-v3.2.4)', () => {
-  // La v3.2.4 acoplaba la caja al reloj único (resincronización panel →
-  // reloj) y en vivo el recuadro dejó de desplazarse. La build
-  // diagnóstica lo DESACOPLA a propósito: el bucle compartido ya no lee
-  // ni escribe la caja, y el panel se desplaza con su mecanismo simple
-  // propio (rAF + acumulador + scrollTop), como en la v3.2.0.
+test('teleprompter: UN SOLO reloj proyecta overlay y caja, acotado al recorrido real (v3.3.2)', () => {
+  // JUSTIFICACIÓN DEL CAMBIO DE SEMÁNTICA (v3.3.2, orden expresa de
+  // Luis: «reconstruye todo eso de teleprompter»): la build diagnóstica
+  // post-v3.2.4 desacopló la caja del reloj (puerto seguro) porque la
+  // v3.2.4 la había roto, y el log de la v3.3.0 demostró el coste del
+  // desacople: el reloj corría sin cota hasta y=12437 con el HUD apagado
+  // y la caja con su propio acumulador. La v3.3.2 vuelve a UN solo reloj
+  // para las dos superficies, pero ACOTADO al recorrido real medido de
+  // las superficies montadas (src/utils/teleprompter.mjs), que es la
+  // pieza que faltaba en ambos diseños. Las dos guardas negativas de la
+  // era del puerto seguro SE CONSERVAN (el bucle no resincroniza el
+  // reloj desde la caja ni escribe acumuladores paralelos); cambian las
+  // positivas: la caja ya no avanza un acumulador propio — su scrollTop
+  // es la proyección del reloj único (projectTeleprompterPanel).
   const i = appSource.indexOf('const animate = (time) =>');
   const animate = appSource.slice(i, i + 3500);
   assert.ok(!animate.includes('teleprompterYRef.current = panel.scrollTop'), 'fuera la resincronización panel → reloj');
   assert.ok(!animate.includes('panelPrompterScrollRef.current = panel.scrollTop'), 'fuera la escritura del reloj sobre la caja');
-  assert.ok(appSource.includes('rightPrompterScrollPos.current += speed'), 'el panel avanza su propio acumulador');
-  assert.ok(appSource.includes('panel.scrollTop = target'), 'el panel aplica su propio scrollTop');
+  assert.ok(animate.includes('projectTeleprompterPanel()'), 'el bucle proyecta la caja del panel desde el reloj único');
+  assert.ok(animate.includes('acotarDesplazamientoPrompter(teleprompterYRef.current, maximo)'), 'el reloj se acota al recorrido real de las superficies montadas');
+  assert.ok(!appSource.includes('rightPrompterScrollPos.current'), 'fuera el acumulador paralelo de la caja (puerto seguro retirado)');
+  assert.ok(appSource.includes('panel.scrollTop = target'), 'la caja recibe su scrollTop de la proyección del reloj');
 });
 
 test('teleprompter: la proyección del overlay usa la altura real de la franja y topa en -alturaTexto', () => {

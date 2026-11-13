@@ -29,6 +29,7 @@ import { CINTILLO_PRESETS, resolveCintilloText, resolveCintilloSubtitle } from '
 import { CINTILLO_POSITION_OPTIONS } from './config/cintilloCameraMap.js';
 import { findAvailableRemoteCameraSlot, resolveRemoteCameraSlot, chooseReconnectCameraSlot } from './utils/remoteCameraSlots.mjs';
 import { componerFuentesPrograma } from './utils/nativeProgramSources.mjs';
+import { debeMontarOverlayPrompter, maximoDesplazamientoPrompter, acotarDesplazamientoPrompter } from './utils/teleprompter.mjs';
 import { buildStreamDestinations } from './utils/streamDestinations.mjs';
 import { useCintilloRotation } from './hooks/useCintilloRotation.js';
 
@@ -807,7 +808,6 @@ function PodcastStudioApp() {
   // TELEPROMPTER BROADCAST PROFESIONAL (ESTRUCTURA HUD COMPLETA EN PANEL DERECHO)
   const [teleprompterText, setTeleprompterText] = useState('Hoy hablamos de: El futuro del podcasting y la IA\n\nCon nosotros: Invitado Especial\n\nIntroduce el tema, desarrolla los puntos clave y cierra con una llamada a la acción.');
   const [isTeleprompterPlaying, setIsTeleprompterPlaying] = useState(false);
-  const [teleprompterHideInRec, setTeleprompterHideInRec] = useState(true);
   const [teleprompterSpeed, setTeleprompterSpeed] = useState(2.0);
   const [teleprompterFontSize, setTeleprompterFontSize] = useState(36);
   const [prompterEditMode, setPrompterEditMode] = useState(false);
@@ -815,38 +815,102 @@ function PodcastStudioApp() {
   const [prompterEyeline, setPrompterEyeline] = useState(true);
   const [prompterCopiedLink, setPrompterCopiedLink] = useState(false);
   const teleprompterTextRef = useRef(null);
-  // v3.2.4 — RELOJ ÚNICO DEL TELEPROMPTER: teleprompterYRef es el
-  // DESPLAZAMIENTO canónico del guion, en píxeles recorridos (≥ 0, CRECE
-  // mientras reproduce). Ninguna superficie guarda ya una posición
-  // propia: cada una PROYECTA este desplazamiento con su geometría (el
-  // panel con su scrollTop, el HUD con translateY sobre la franja del
-  // programa). Antes el overlay guardaba un translateY pensado como
-  // scrollTop del panel y nacido de window.innerHeight: si el HUD se
-  // encendía después de INICIAR, el texto ya había cruzado la franja y
-  // no se veía NUNCA sobre el programa (informe v3.2.4, M1–M4).
+  const teleprompterOverlayRef = useRef(null);
+  // v3.3.2 — RECONSTRUCCIÓN DEL TELEPROMPTER (orden de Luis): UN solo
+  // estado (el de arriba: showFloatingPrompter = HUD, isTeleprompterPlaying,
+  // teleprompterSpeed, teleprompterFontSize, teleprompterText — panel y
+  // overlay leen y escriben ESE estado, sin paralelos) y UN solo reloj:
+  // teleprompterYRef es el DESPLAZAMIENTO canónico del guion, en píxeles
+  // recorridos (≥ 0, CRECE mientras reproduce), ACOTADO al recorrido real
+  // del texto en las superficies montadas (src/utils/teleprompter.mjs).
+  // Fuera de aquí quedaron: la segunda compuerta del montaje
+  // (teleprompterHideInRec, siempre true y sin control: el overlay no se
+  // montaba grabando aunque el HUD estuviera encendido), el acumulador
+  // propio de la caja (rightPrompterScrollPos) y su rAF «puerto seguro»,
+  // y el acumulador zombi panelPrompterScrollRef que se escribía en los
+  // resets y no se leía en ninguna parte. El log de la v3.3.0 lo probó:
+  // HUD OFF y overlay AUSENTE en 551/551 muestras mientras el reloj corría
+  // sin cota hasta y=12437 con un guion de 29 palabras.
   const teleprompterYRef = useRef(0);
-  // v1.7.0 (Raíz D): acumulador fraccional del scroll de la caja de
-  // lectura del panel (rightPrompterScrollRef): scrollTop redondea y los
-  // pasos sub-píxel a baja velocidad se perderían sin acumularlos. Desde
-  // la v3.2.4 guarda el último scrollTop APLICADO al panel (para detectar
-  // si el usuario movió la caja a mano y resincronizar el reloj).
-  const panelPrompterScrollRef = useRef(0);
   const rightPrompterScrollRef = useRef(null);
-  const rightPrompterScrollPos = useRef(0);
 
-  // Proyección del reloj sobre el HUD del programa: el texto entra por el
-  // borde inferior de la franja (translateY = altura de la franja −
-  // desplazamiento) y sale por arriba (tope = −altura del texto). Se
-  // calcula desde el desplazamiento SIEMPRE, así que da igual en qué
-  // orden pulse Luis INICIAR y «HUD Cámara»: al montar el overlay ya
-  // sale en la posición que le corresponde del guion.
+  // v3.3.2 (modalidades): la región REAL de la cámara de programa (PGM)
+  // en el layout vigente, medida sobre el DOM: el tile de la cámara
+  // activa lleva data-pgm-tile="1" en CUALQUIER modalidad (1, pip, 2,
+  // two-shot, 3, 4, 6, 6-lead, 8, 10, speaker, gallery) y su caja es la
+  // franja del teleprompter. Sin tile (espejo iPad sin tiles), null y el
+  // overlay conserva su geometría por defecto: todo el contenedor.
+  const medirRegionPgmPrompter = (wrap) => {
+    try {
+      const scope = masterMonitorRef.current;
+      const op = wrap?.offsetParent;
+      if (!scope || !op) return null;
+      const tile = scope.querySelector('[data-pgm-tile="1"]');
+      if (!tile) return null;
+      const r = tile.getBoundingClientRect();
+      const o = op.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+      return {
+        left: r.left - o.left - (op.clientLeft || 0),
+        top: r.top - o.top - (op.clientTop || 0),
+        width: r.width,
+        height: r.height,
+      };
+    } catch (e) { return null; }
+  };
+
+  // Proyección del reloj sobre el HUD del programa: primero coloca la
+  // franja sobre la región PGM medida (en cualquier modalidad) y después
+  // posiciona el texto: entra por el borde INFERIOR de la región
+  // (translateY = altura de la región − desplazamiento; con
+  // desplazamiento 0 la primera línea está a pie de video) y sale por
+  // arriba (tope = −altura del texto). Se calcula desde el
+  // desplazamiento SIEMPRE, así que da igual en qué orden pulse Luis
+  // INICIAR y el interruptor HUD: al montar el overlay ya sale en la
+  // posición que le corresponde del guion.
   const projectTeleprompterOverlay = () => {
     const el = teleprompterTextRef.current;
     if (!el || !el.parentElement) return;
+    const wrap = el.parentElement;
+    const region = medirRegionPgmPrompter(wrap);
+    if (region) {
+      wrap.style.left = `${region.left.toFixed(1)}px`;
+      wrap.style.top = `${region.top.toFixed(1)}px`;
+      wrap.style.width = `${region.width.toFixed(1)}px`;
+      wrap.style.height = `${region.height.toFixed(1)}px`;
+    }
     const stripH = el.parentElement.clientHeight || 0;
     const textH = el.scrollHeight || el.offsetHeight || 0;
     const y = Math.max(-textH, stripH - teleprompterYRef.current);
     el.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`;
+  };
+
+  // Proyección del MISMO reloj sobre la caja de lectura del panel: su
+  // scrollTop es el desplazamiento topado al recorrido real de la caja.
+  // La caja conserva su comportamiento probado (desplaza y satura al
+  // final del texto) porque su tope ES su recorrido: scrollHeight −
+  // clientHeight.
+  const projectTeleprompterPanel = () => {
+    const panel = rightPrompterScrollRef.current;
+    if (!panel) return;
+    const max = Math.max(0, panel.scrollHeight - panel.clientHeight);
+    const target = Math.min(Math.floor(teleprompterYRef.current), max);
+    if (target !== panel.scrollTop) panel.scrollTop = target;
+  };
+
+  // Recorrido real del guion según las superficies MONTADAS ahora mismo
+  // (overlay y/o caja del panel); null si ninguna está montada — sin
+  // superficie no hay recorrido medible y el reloj no avanza a ciegas.
+  const medirMaximoDesplazamientoPrompter = () => {
+    const el = teleprompterTextRef.current;
+    const overlay = el && el.parentElement
+      ? { franjaPx: el.parentElement.clientHeight || 0, textoPx: el.scrollHeight || el.offsetHeight || 0 }
+      : null;
+    const panel = rightPrompterScrollRef.current;
+    return maximoDesplazamientoPrompter({
+      overlay,
+      panel: panel ? { scrollPx: panel.scrollHeight || 0, clientePx: panel.clientHeight || 0 } : null,
+    });
   };
 
   const prompterWordCount = useMemo(() => {
@@ -1154,7 +1218,8 @@ function PodcastStudioApp() {
   // v3.3.0: «modo motor» — la condición vigente que ya elige la cadena
   // nativa en los botones: GStreamer presente y sin grabación ISO (con
   // ISO manda la cadena heredada). Gobierna la dieta de la ventana (D1),
-  // la banda de estado del programa (D3) y el monitor de programa.
+  // y el monitor de programa. (La banda D3 bajo el programa se eliminó
+  // en la v3.3.2 por orden de Luis: el recuadro máster queda limpio.)
   const enModoMotor = nativeGstAvailable && !isoRecordingEnabled;
 
   // Espera a que el motor confirme la fase «apagado» (su parada valida
@@ -3039,10 +3104,15 @@ function PodcastStudioApp() {
   }, []);
 
   // LÓGICA DE SCROLL FLUIDO 60FPS CON TRANSFORM 3D (TELEPROMPTER SIN BRINCO NI VIBRACIÓN)
-  // v3.2.4: el bucle avanza EL RELOJ ÚNICO (teleprompterYRef = píxeles de
-  // guion recorridos) y cada superficie se PROYECTA desde él con su
-  // geometría. El delta sigue limitado a 33 ms: sin reproducción de
-  // atrasos al volver de una pausa larga del rAF.
+  // v3.3.2: UN solo bucle para UN solo reloj. El bucle avanza
+  // teleprompterYRef SOLO si hay al menos una superficie montada que lo
+  // muestre (overlay y/o caja del panel) y lo ACOTA al recorrido real
+  // medido de esas superficies: al final del texto, el desplazamiento se
+  // detiene en el final en ambas. Después proyecta las dos superficies
+  // desde el mismo desplazamiento. (La era anterior: el reloj «avanza
+  // SIEMPRE, esté montada la superficie que esté montada» — y corría a
+  // y=12437 con el HUD apagado — y la caja tenía su propio rAF y su
+  // propio acumulador «puerto seguro». Ambos quedan retirados.)
   useEffect(() => {
     let animationFrameId;
     let lastTime = null;
@@ -3053,33 +3123,29 @@ function PodcastStudioApp() {
       lastTime = time;
 
       if (isTeleprompterPlaying) {
-        const speed = (teleprompterSpeed || 3) * 1.8;
-        const moveAmount = speed * (delta / 16.666);
-
-        // EL RELOJ: avanza SIEMPRE que el teleprompter reproduce, esté
-        // montada la superficie que esté montada (HUD, panel o ninguna).
-        teleprompterYRef.current += moveAmount;
-
-        // Proyección 1 — el overlay sobre el programa (transform sobre
-        // la franja del 48 %): projectTeleprompterOverlay() calcula la
-        // posición desde el desplazamiento con la altura REAL de la
-        // franja; si el HUD se monta a mitad de lectura, el texto sale
-        // ya en el punto del guion que le corresponde.
+        const maximo = medirMaximoDesplazamientoPrompter();
+        if (maximo !== null) {
+          const speed = (teleprompterSpeed || 3) * 1.8;
+          const moveAmount = speed * (delta / 16.666);
+          teleprompterYRef.current += moveAmount;
+          teleprompterYRef.current = acotarDesplazamientoPrompter(teleprompterYRef.current, maximo);
+        }
+        // Proyecciones del MISMO desplazamiento: el overlay sobre la
+        // región de la cámara de programa (transform) y la caja de
+        // lectura del panel (scrollTop). Si una superficie se monta a
+        // mitad de lectura, sale ya en el punto del guion que toca.
         projectTeleprompterOverlay();
-
-        // La caja de lectura del PANEL ya NO se proyecta desde este
-        // reloj: en la build diagnóstica post-v3.2.4 recupera su
-        // desplazamiento simple e independiente (puerto seguro, ver el
-        // efecto «PUERTO SEGURO» más abajo). Este bucle solo avanza el
-        // reloj y proyecta el overlay sobre el programa.
+        projectTeleprompterPanel();
         animationFrameId = requestAnimationFrame(animate);
       }
     };
 
     if (teleprompterTextRef.current) teleprompterTextRef.current.style.willChange = 'transform';
-    // Al montar (o al cambiar play/velocidad), la posición del overlay
-    // sale de la proyección del reloj, nunca de una posición guardada.
+    // Al montar (o al cambiar play/velocidad), la posición de ambas
+    // superficies sale de la proyección del reloj, nunca de una posición
+    // guardada en otra parte.
     projectTeleprompterOverlay();
+    projectTeleprompterPanel();
     if (isTeleprompterPlaying) {
       animationFrameId = requestAnimationFrame(animate);
     }
@@ -3092,46 +3158,22 @@ function PodcastStudioApp() {
     if (showFloatingPrompter) projectTeleprompterOverlay();
   }, [showFloatingPrompter, teleprompterText]);
 
-  // ==========================================================================
-  // PUERTO SEGURO DEL RECUADRO (build diagnóstica post-v3.2.4): la caja de
-  // lectura del panel lateral vuelve a desplazarse con su mecanismo simple
-  // e INDEPENDIENTE — su propio rAF y su propio acumulador fraccional
-  // (rightPrompterScrollPos, el de la v1.7.0) aplicando scrollTop — sin
-  // depender del reloj compartido ni de que el overlay exista. Al pulsar
-  // INICIAR en el panel, el texto del recuadro se mueve sí o sí, como
-  // cuando Luis lo vio «Leyendo» en la v3.2.0. Si el usuario arrastró la
-  // caja a mano estando en pausa, el bucle siembra desde esa posición al
-  // arrancar. El overlay sobre el programa queda como está (proyección
-  // del reloj único, solo instrumentada abajo): ningún arreglo nuevo.
-  // ==========================================================================
+  // v3.3.2 (modalidades): con el HUD encendido pero en pausa, la franja
+  // sigue a la región PGM cuando cambia el layout, la cámara de programa
+  // o el tamaño de la ventana (reproduciendo, el bucle ya reproyecta en
+  // cada fotograma).
   useEffect(() => {
-    if (!isTeleprompterPlaying) return undefined;
-    let rafId;
-    let last = null;
-    const step = (t) => {
-      const panel = rightPrompterScrollRef.current;
-      if (panel) {
-        if (last == null) {
-          last = t;
-          rightPrompterScrollPos.current = panel.scrollTop || 0;
-        }
-        const delta = Math.min(33, Math.max(1, t - last));
-        last = t;
-        const speed = (teleprompterSpeed || 3) * 1.8;
-        rightPrompterScrollPos.current += speed * (delta / 16.666);
-        const max = Math.max(0, panel.scrollHeight - panel.clientHeight);
-        if (rightPrompterScrollPos.current > max) rightPrompterScrollPos.current = max;
-        if (rightPrompterScrollPos.current < 0) rightPrompterScrollPos.current = 0;
-        const target = Math.floor(rightPrompterScrollPos.current);
-        if (target !== panel.scrollTop) panel.scrollTop = target;
-      } else {
-        last = t;
-      }
-      rafId = requestAnimationFrame(step);
-    };
-    rafId = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(rafId);
-  }, [isTeleprompterPlaying, teleprompterSpeed]);
+    if (!showFloatingPrompter) return undefined;
+    projectTeleprompterOverlay();
+    const onResize = () => projectTeleprompterOverlay();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutMode, activeCam, camSlots, showFloatingPrompter]);
+
+  // (El rAF propio de la caja del panel — el «puerto seguro» de la build
+  // diagnóstica post-v3.2.4 — quedó RETIRADO en la v3.3.2: la caja se
+  // proyecta desde el reloj único en el bucle de arriba.)
 
   // ==========================================================================
   // INSTRUMENTO DE DIAGNÓSTICO DE VENTANA (build diagnóstica post-v3.2.4):
@@ -3217,27 +3259,28 @@ function PodcastStudioApp() {
         const stripH = el.parentElement.clientHeight || 0;
         const textH = el.scrollHeight || el.offsetHeight || 0;
         const yCalc = Math.max(-textH, stripH - teleprompterYRef.current);
-        ventanaDiagSend('prompter', `y=${Math.round(teleprompterYRef.current)} franjaPx=${stripH} textoPx=${textH} translateYCalculado=${yCalc.toFixed(1)} transformAplicado="${el.style.transform || ''}" ${panelTxt}`);
+        ventanaDiagSend('prompter', `overlay PRESENTE hud=${showFloatingPrompter ? 'ON' : 'OFF'} y=${Math.round(teleprompterYRef.current)} franjaPx=${stripH} textoPx=${textH} translateYCalculado=${yCalc.toFixed(1)} transformAplicado="${el.style.transform || ''}" ${panelTxt}`);
       } catch (e) {}
     }, 1000);
     return () => clearInterval(id);
   }, [isTeleprompterPlaying, showFloatingPrompter]);
 
-  const handlePlayTeleprompter = () => {
-    // v3.2.4: «el guion ya terminó» se mide contra el recorrido real de
-    // cada superficie montada; si ya se pasó el final, INICIAR vuelve al
-    // principio (desplazamiento 0) en vez de seguir fuera de vista.
-    const el = teleprompterTextRef.current;
-    const panel = rightPrompterScrollRef.current;
-    const totalOverlay = el && el.parentElement
-      ? (el.parentElement.clientHeight || 0) + (el.scrollHeight || 0)
-      : 0;
-    const totalPanel = panel ? Math.max(0, panel.scrollHeight - panel.clientHeight) : 0;
-    const total = Math.max(totalOverlay, totalPanel);
-    if (total > 0 && teleprompterYRef.current >= total) {
+  // v3.3.2: ÚNICO camino de INICIAR/PAUSAR — el botón de transporte del
+  // panel y el clic sobre la caja de lectura pasan por aquí. (El
+  // handlePlayTeleprompter anterior, el único con guarda de fin de
+  // guion, era código muerto: estaba definido y nadie lo llamaba; el
+  // botón alternaba el estado a pelo y la guarda nunca corría.) Si el
+  // reloj ya llegó al final del recorrido real medido, INICIAR vuelve
+  // al principio en vez de seguir fuera de vista.
+  const handleToggleTeleprompterPlay = () => {
+    if (isTeleprompterPlaying) {
+      setIsTeleprompterPlaying(false);
+      return;
+    }
+    const maximo = medirMaximoDesplazamientoPrompter();
+    if (maximo !== null && maximo > 0 && teleprompterYRef.current >= maximo) {
       teleprompterYRef.current = 0;
-      panelPrompterScrollRef.current = 0;
-      if (panel) panel.scrollTop = 0;
+      if (rightPrompterScrollRef.current) rightPrompterScrollRef.current.scrollTop = 0;
       projectTeleprompterOverlay();
     }
     setIsTeleprompterPlaying(true);
@@ -3444,10 +3487,22 @@ function PodcastStudioApp() {
       cintillosVisible,
       cintillo: engineCintillo,
       topic,
-      teleprompterText,
+      // v3.3.2 — TELEPROMPTER EXCLUIDO DE LA MEZCLA POR CONSTRUCCIÓN:
+      // el motor de composición (masterBroadcastEngine) DIBUJA el
+      // teleprompter en su canvas si el estado trae texto + reproduciendo
+      // (su bloque fillText), y ese canvas es la señal que se graba y se
+      // transmite en el camino heredado. El teleprompter es ayuda de
+      // lectura SOLO en el monitor de los conductores (overlay DOM sobre
+      // el programa + caja del panel + vista del Mando iPad, que reciben
+      // el estado real por sus propios canales): al motor de composición
+      // se le publica SIEMPRE excluido — sin texto y sin reproducción —
+      // y su bloque de dibujo nunca se activa. El estado real de la app
+      // no cambia; lo que cambia es solo lo que se le entrega a la
+      // superficie capturable.
+      teleprompterText: '',
       teleprompterSpeed,
       teleprompterFontSize,
-      isTeleprompterPlaying,
+      isTeleprompterPlaying: false,
       getCamStream,
       remoteCams,
     });
@@ -4574,10 +4629,8 @@ function PodcastStudioApp() {
         const content = evt.target.result || '';
         setTeleprompterText(content);
         setIsTeleprompterPlaying(false);
-        rightPrompterScrollPos.current = 0;
         if (rightPrompterScrollRef.current) rightPrompterScrollRef.current.scrollTop = 0;
         teleprompterYRef.current = 0;
-        panelPrompterScrollRef.current = 0;
       };
       reader.readAsText(file);
     } else {
@@ -4588,10 +4641,8 @@ function PodcastStudioApp() {
           const result = await mammoth.extractRawText({ arrayBuffer });
           setTeleprompterText(result.value || '');
           setIsTeleprompterPlaying(false);
-          rightPrompterScrollPos.current = 0;
           if (rightPrompterScrollRef.current) rightPrompterScrollRef.current.scrollTop = 0;
           teleprompterYRef.current = 0;
-        panelPrompterScrollRef.current = 0;
         } catch (error) { showToast("Error al leer archivo Word (.docx).", "error"); }
       };
       reader.readAsArrayBuffer(file);
@@ -4602,12 +4653,10 @@ function PodcastStudioApp() {
   const handleWordUpload = handleTeleprompterFileUpload;
 
   const handlePrompterReset = () => {
-    rightPrompterScrollPos.current = 0;
+    teleprompterYRef.current = 0;
     if (rightPrompterScrollRef.current) {
       rightPrompterScrollRef.current.scrollTop = 0;
     }
-    teleprompterYRef.current = 0;
-    panelPrompterScrollRef.current = 0;
     projectTeleprompterOverlay();
   };
 
@@ -4624,12 +4673,10 @@ function PodcastStudioApp() {
   const handleClearTeleprompter = () => {
     setTeleprompterText('');
     setIsTeleprompterPlaying(false);
-    rightPrompterScrollPos.current = 0;
     if (rightPrompterScrollRef.current) {
       rightPrompterScrollRef.current.scrollTop = 0;
     }
     teleprompterYRef.current = 0;
-    panelPrompterScrollRef.current = 0;
     projectTeleprompterOverlay();
   };
 
@@ -5735,7 +5782,7 @@ function PodcastStudioApp() {
           }
 
           return (
-            <div key={`cam-persistent-slot-${id}`} className={tileClass} style={tileStyle}>
+            <div key={`cam-persistent-slot-${id}`} className={tileClass} style={tileStyle} data-pgm-tile={id === effectiveActiveCam ? '1' : undefined}>
               <VideoTile {...getTileProps(id)} className="w-full h-full" />
             </div>
           );
@@ -5745,7 +5792,7 @@ function PodcastStudioApp() {
             v3.3.0 D1/D3: en modo motor el canvas no compone (dieta), así
             que el monitor de canvas no se monta: el programa se ve en
             los VideoTile directos y en la ventana nativa de vista
-            previa; la banda de estado del motor va bajo el programa. */}
+            previa. */}
         {!enModoMotor && <MasterProgramMonitor />}
       </div>
     );
@@ -6263,25 +6310,39 @@ function PodcastStudioApp() {
                   sincronizado (engineCintillo): monitor, grabación y
                   streaming muestran exactamente lo mismo. */}
 
-              {/* TELEPROMPTER HUD SOBRE EL PROGRAMA (v3.2.1): SOLO el texto
-                  en desplazamiento, directamente encima de la cámara
-                  máster. Fondo COMPLETAMENTE transparente: sin ventana,
-                  sin vidrio, sin borde, sin barra ni controles (los
-                  controles viven solo en el panel lateral). Se enciende
-                  con el botón «HUD Cámara» del panel (showFloatingPrompter)
-                  y comparte la ÚNICA fuente de desplazamiento con el
-                  recuadro del panel: el mismo bucle rAF mueve este
-                  transform (teleprompterTextRef) y el scrollTop del
-                  panel — un solo temporizador, sin desfase. Es ayuda de
-                  lectura en pantalla: no se dibuja en el canvas, no se
-                  quema en el máster ni sale en el stream. */}
-              {showFloatingPrompter && (!isRecording || !teleprompterHideInRec) && (
-                  <div className="absolute top-0 left-0 right-0 h-[48%] overflow-hidden z-30 pointer-events-none">
-                    {prompterEyeline && (
-                      <div className="absolute top-1 left-0 right-0 text-center text-[10px] font-extrabold tracking-widest uppercase text-sky-300" style={{ textShadow: '0 1px 6px rgba(0,0,0,0.95)' }}>
-                        ▲ Mirar aquí (lente de cámara)
-                      </div>
-                    )}
+              {/* TELEPROMPTER HUD SOBRE EL PROGRAMA (v3.2.1; reconstruido
+                  en la v3.3.2): SOLO el texto en desplazamiento,
+                  directamente encima de la cámara máster. Fondo
+                  COMPLETAMENTE transparente: sin ventana, sin vidrio, sin
+                  borde, sin barra ni controles (los controles viven solo
+                  en el panel lateral). El montaje lo decide UNA sola
+                  función pura sobre el ÚNICO estado del teleprompter —
+                  debeMontarOverlayPrompter({ hudOn }) —: se monta si y
+                  solo si el interruptor HUD está encendido, sin depender
+                  de la sección activa del panel, de si el panel está
+                  colapsado, de la fase del motor nativo ni de si se está
+                  grabando. (Hasta la v3.3.1 el montaje tenía una segunda
+                  compuerta invisible, «ocultar al grabar» siempre activa
+                  y sin control, que lo suprimía en grabación aunque el
+                  HUD estuviera encendido.) La franja NO es una franja
+                  fija del contenedor: la proyección la coloca sobre la
+                  REGIÓN REAL de la cámara de programa (el tile con
+                  data-pgm-tile, medido en el DOM) en CUALQUIER modalidad
+                  — una cámara, PiP o mosaico de 2/3/4+ — y el texto
+                  entra por el borde INFERIOR de esa región y sube.
+                  Comparte el reloj único con el recuadro del panel.
+                  NUNCA A LA MEZCLA: esto es una capa DOM por encima del
+                  monitor, fuera de todo canvas; la composición heredada
+                  dibuja solo desde elementos <video> y el estado que la
+                  app publica al motor de composición lleva el
+                  teleprompter EXCLUIDO (ver la sincronización de estado:
+                  teleprompterText '' e isTeleprompterPlaying false), y
+                  el máster nativo es limpio por diseño (la tubería
+                  GStreamer no ve el DOM). z-[45]: sobre los tiles, la
+                  guía y el logo (z-30) y sobre el video compuesto del
+                  monitor (z-40); bajo la cuenta atrás (z-50). */}
+              {debeMontarOverlayPrompter({ hudOn: showFloatingPrompter }) && (
+                  <div ref={teleprompterOverlayRef} className="absolute left-0 top-0 w-full h-full overflow-hidden z-[45] pointer-events-none">
                     <div
                       ref={teleprompterTextRef}
                       className="absolute top-0 w-[90%] left-[5%] text-center font-bold text-white whitespace-pre-wrap leading-relaxed"
@@ -6301,36 +6362,6 @@ function PodcastStudioApp() {
             </div>
           </div>
         </div>
-
-        {/* v3.3.0 D3: banda de estado del motor SOLO en modo motor —
-            la verdad del motor (fase, cámara(s), formato, apertura y
-            concurrencia) junto al programa, sin salir al panel. */}
-        {enModoMotor && (
-          <div className="flex items-center gap-3 flex-wrap px-3 py-1.5 bg-cyan-950/40 border-t border-cyan-800/40 text-[11px] text-cyan-100 shrink-0">
-            <span className="font-black uppercase tracking-wider text-cyan-300">Motor nativo</span>
-            <span>Fase: <b>{nePhase}</b></span>
-            <span>Cámara(s): <b>{(nativeEngineState?.sourceNames && nativeEngineState.sourceNames.length > 0) ? nativeEngineState.sourceNames.join(' + ') : (nativeEngineState?.cameraName || '—')}</b></span>
-            <span>Formato: <b>{nativeEngineState?.caps ? `${nativeEngineState.caps.width}×${nativeEngineState.caps.height} @ ${nativeEngineState.caps.framerate ?? '—'} fps${nativeEngineState.caps.format ? ` (${nativeEngineState.caps.format})` : ''}` : '—'}</b></span>
-            <span>Apertura: <b>{nativeEngineState?.addressingMode || '—'}</b></span>
-            {nativeEngineState?.concurrentPreview !== null && nativeEngineState?.concurrentPreview !== undefined && (
-              <span>Vista previa independiente (fuera de sesión): <b>{nativeEngineState.concurrentPreview ? 'sí' : 'no'}</b></span>
-            )}
-            <span>Teleprompter: <b>{['grabando', 'grabando-transmitiendo', 'transmitiendo'].includes(nePhase) ? 'el de la ventana (en sesión)' : (nativeEngineState?.concurrentPreview ? 'sobre la vista previa' : 'el de la ventana')}</b></span>
-            <button
-              type="button"
-              onClick={() => {
-                if (['encendiendo', 'vista-previa', 'grabando', 'grabando-transmitiendo', 'transmitiendo', 'validando'].includes(nePhase)) {
-                  showToast('La ventana nativa de vista previa ya está abierta junto al estudio.', 'info', 5000);
-                } else {
-                  handleNativeEngineStart('preview');
-                }
-              }}
-              className="ml-auto px-2.5 py-1 rounded bg-cyan-800 hover:bg-cyan-700 text-white text-[11px] font-bold cursor-pointer"
-            >
-              Ver vista previa
-            </button>
-          </div>
-        )}
 
         {/* BOTTOM MULTI-CAM BAR (CARRUSEL Y GRILLA ENVOLVENTE CON MÁXIMA VISIBILIDAD 100% Y SIN FRANJAS NEGRAS) */}
         <div 
@@ -7501,16 +7532,16 @@ function PodcastStudioApp() {
                             ? 'bg-sky-950 text-sky-400 border-sky-500' 
                             : 'bg-[#181a22] text-gray-400 hover:text-white border-[#333]'
                         }`}
-                        title="Mostrar el texto del teleprompter directamente sobre la cámara máster (sin ventana: solo el texto)"
+                        title="Interruptor HUD — el ÚNICO que monta el texto del teleprompter sobre la cámara máster (solo el texto, sin ventana). Encendido: el texto se ve sobre el programa siempre, también grabando."
                       >
-                        <Monitor size={10} /> {showFloatingPrompter ? 'HUD Activo' : 'HUD Cámara'}
+                        <Monitor size={10} /> {showFloatingPrompter ? 'HUD Activo' : 'HUD Inactivo'}
                       </button>
                     </div>
 
                     {/* Barra de Transporte Principal */}
                     <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => setIsTeleprompterPlaying(p => !p)}
+                        onClick={handleToggleTeleprompterPlay}
                         className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all text-white shadow-md cursor-pointer ${
                           isTeleprompterPlaying 
                             ? 'bg-red-600 hover:bg-red-700 border border-red-500 shadow-red-950/50' 
@@ -7640,7 +7671,16 @@ function PodcastStudioApp() {
                         )}
                         <div
                           ref={rightPrompterScrollRef}
-                          onClick={() => setIsTeleprompterPlaying(p => !p)}
+                          onClick={handleToggleTeleprompterPlay}
+                          onScroll={() => {
+                            // En pausa, si Luis arrastra la caja a mano, el
+                            // reloj único adopta esa posición: una sola
+                            // verdad de lectura para las dos superficies.
+                            if (!isTeleprompterPlaying && rightPrompterScrollRef.current) {
+                              teleprompterYRef.current = rightPrompterScrollRef.current.scrollTop;
+                              projectTeleprompterOverlay();
+                            }
+                          }}
                           className="flex-1 overflow-y-auto p-4 text-center font-bold text-white leading-relaxed cursor-pointer [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                           style={{
                             fontSize: `${teleprompterFontSize}px`,

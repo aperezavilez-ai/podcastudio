@@ -212,23 +212,25 @@ test('v3.3.0 D2: el mosaico muestra la foto y el rótulo «En el motor nativo» 
 });
 
 // ---------------------------------------------------------------------------
-// D3: banda de estado en el área de programa
+// D3 → v3.3.2: la banda de estado FUE ELIMINADA por orden expresa de Luis
+// («agregaste una leyenda debajo del recuadro de la cámara máster — no
+// debería salir nada ahí»). El recuadro queda limpio: nada debajo del
+// monitor y nada fijo dentro. La verdad del motor (fase, cámara(s),
+// formato, apertura, concurrencia) sigue visible en la sección Motor
+// Nativo del panel derecho; no se pierde información.
 // ---------------------------------------------------------------------------
 
-test('v3.3.0 D3: la banda de estado existe solo en modo motor y muestra la verdad del motor', () => {
-  const banda = cuerpo('{enModoMotor && (', '{/* BOTTOM MULTI-CAM BAR');
-  assert.ok(banda.includes('nePhase'), 'muestra la fase');
-  assert.ok(banda.includes('sourceNames'), 'muestra la(s) cámara(s) de sourceNames');
-  assert.ok(banda.includes('nativeEngineState?.caps'), 'muestra el formato de caps');
-  assert.ok(banda.includes('addressingMode'), 'muestra el modo de apertura');
-  assert.ok(banda.includes('concurrentPreview'), 'muestra la concurrencia cuando aplica');
+test('v3.3.2 limpieza: no existe banda de estado bajo el monitor de programa', () => {
+  assert.ok(!appSource.includes('Ver vista previa'), 'sin el botón «Ver vista previa» de la banda');
+  assert.ok(!appSource.includes('banda de estado'), 'sin el bloque de la banda');
+  const entreMonitorYBarra = cuerpo('{debeMontarOverlayPrompter({', '{/* BOTTOM MULTI-CAM BAR');
+  assert.ok(!entreMonitorYBarra.includes('Motor nativo</span>'), 'nada de leyenda del motor bajo el recuadro');
 });
 
-test('v3.3.0 D3: «Ver vista previa» avisa con sesión en curso y arranca preview en reposo', () => {
-  const banda = cuerpo('{enModoMotor && (', '{/* BOTTOM MULTI-CAM BAR');
-  assert.ok(banda.includes('Ver vista previa'), 'botón «Ver vista previa»');
-  assert.ok(banda.includes('La ventana nativa de vista previa ya está abierta'), 'con sesión: aviso de que ya está abierta');
-  assert.ok(banda.includes("handleNativeEngineStart('preview')"), 'en reposo: arranca la preview por el camino existente');
+test('v3.3.2 limpieza: dentro del recuadro máster no queda la franja fija «Mirar aquí»', () => {
+  assert.ok(!appSource.includes('▲ Mirar aquí (lente de cámara)'), 'la franja fija del overlay fue eliminada');
+  const overlay = cuerpo('{debeMontarOverlayPrompter({', '{/* BOTTOM MULTI-CAM BAR');
+  assert.ok(!overlay.includes('Mirar aquí'), 'el overlay solo lleva el texto en desplazamiento');
 });
 
 // ---------------------------------------------------------------------------
