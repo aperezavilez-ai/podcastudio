@@ -48,8 +48,6 @@ const {
   locateGstTools,
   chooseEncoder,
   capsParaStream,
-  esJpegCompleto,
-  leerJpegVigenteEn,
   chooseAudioDevice,
   ENCODER_LADDER,
   RTMP_PRUEBA_URL,
@@ -1891,94 +1889,5 @@ test('v3.3.3 · defecto C: los conflictos REALES siguen rechazados con «Ya hay 
   } finally {
     try { await engine.stop(); } catch (e) {}
     delete process.env.PS_V330_DIR;
-  }
-});
-
-// ---------------------------------------------------------------------------
-// (v3.4.0) MONITOR VIVO: ramas JPEG de la tubería de sesión + lectura del
-// fotograma vigente. La tubería se prueba por tokens (buildPipelineArgs);
-// la lectura, con archivos reales en un directorio temporal.
-// ---------------------------------------------------------------------------
-const DIR_MONITOR_PRUEBA = 'C:/tmp/podcastudio-monitor-vivo';
-
-test('monitor v3.4.0: la sesión lleva la rama de programa 640x360@10 a program-%05d.jpg y la fakesink queda intacta', () => {
-  const unida = argsDe('record', { monitorDir: DIR_MONITOR_PRUEBA }).join(' ');
-  // La rama de vista previa de la v3.3.6 sigue siendo fakesink.
-  assert.ok(unida.includes('tprog. ! queue ! fakesink sync=false'), 'la rama fakesink de programa sigue como estaba');
-  // Rama de monitor de programa: desde tprog, 640×360, 10 fps, JPEG.
-  assert.ok(unida.includes('tprog. ! queue ! d3d11download ! videoscale ! videorate ! video/x-raw,width=640,height=360,framerate=10/1 ! videoconvert ! jpegenc quality=70'));
-  assert.ok(unida.includes(`multifilesink location=${DIR_MONITOR_PRUEBA}/program-%05d.jpg max-files=3`));
-  // Sin ventana nueva en ninguna sesión.
-  assert.ok(!unida.includes('d3d11videosink'));
-});
-
-test('monitor v3.4.0: cada fuente de la sesión lleva su rama gemela 480x270@8 desde su tee', () => {
-  const tokens = buildPipelineArgs({
-    session: 'record',
-    sources: [
-      { deviceIndex: 0, devicePath: 'ruta-steren', caps: CAPS_1080 },
-      { deviceIndex: 1, devicePath: 'ruta-easy', caps: CAPS_EASY_720 },
-    ],
-    programIndex: 0,
-    encoder: 'nvh264enc', withPreset: true, withAudio: false,
-    outFile: 'C:\\x\\multi.mp4',
-    monitorDir: DIR_MONITOR_PRUEBA,
-  });
-  const unida = tokens.join(' ');
-  assert.ok(unida.includes('tee name=tsrc0'), 'tee por fuente 0');
-  assert.ok(unida.includes('tee name=tsrc1'), 'tee por fuente 1');
-  assert.ok(unida.includes('video/x-raw,width=480,height=270,framerate=8/1'));
-  assert.ok(unida.includes(`multifilesink location=${DIR_MONITOR_PRUEBA}/cam-1-%05d.jpg max-files=3`));
-  assert.ok(unida.includes(`multifilesink location=${DIR_MONITOR_PRUEBA}/cam-2-%05d.jpg max-files=3`));
-  // Y la de programa también está en la sesión multicámara.
-  assert.ok(unida.includes(`multifilesink location=${DIR_MONITOR_PRUEBA}/program-%05d.jpg max-files=3`));
-  assert.ok(!unida.includes('d3d11videosink'));
-});
-
-test('monitor v3.4.0: sin directorio de monitor la tubería es la de la v3.3.6 (ninguna rama JPEG)', () => {
-  for (const sesion of ['record', 'recordStream']) {
-    const unida = argsDe(sesion).join(' ');
-    assert.ok(!unida.includes('multifilesink'), `${sesion} sin monitor no lleva multifilesink`);
-    assert.ok(!unida.includes('jpegenc'), `${sesion} sin monitor no lleva jpegenc`);
-    assert.ok(!unida.includes('tsrc0'), `${sesion} sin monitor no lleva tee por fuente`);
-  }
-});
-
-test('monitor v3.4.0: la vista previa nunca lleva ramas de monitor aunque se pase el directorio', () => {
-  const unida = argsDe('preview', { monitorDir: DIR_MONITOR_PRUEBA }).join(' ');
-  assert.ok(!unida.includes('multifilesink'));
-  assert.ok(!unida.includes('jpegenc'));
-});
-
-test('monitor v3.4.0: esJpegCompleto exige cabecera FFD8 y cierre FFD9', () => {
-  assert.equal(esJpegCompleto(Buffer.from([0xff, 0xd8, 0x10, 0xff, 0xd9])), true);
-  assert.equal(esJpegCompleto(Buffer.from([0xff, 0xd8, 0x10, 0x20])), false, 'sin cierre: a medio escribir');
-  assert.equal(esJpegCompleto(Buffer.from([0x00, 0xd8, 0xff, 0xd9])), false, 'sin cabecera');
-  assert.equal(esJpegCompleto(Buffer.from([0xff, 0xd8])), false, 'demasiado corto');
-  assert.equal(esJpegCompleto(Buffer.alloc(0)), false);
-  assert.equal(esJpegCompleto(null), false);
-});
-
-test('monitor v3.4.0: leerJpegVigenteEn sirve el último COMPLETO y salta el que está a medio escribir', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-monitor-test-'));
-  try {
-    assert.equal(leerJpegVigenteEn(dir, 'program-'), null, 'directorio vacío: null');
-    const viejo = Buffer.concat([Buffer.from([0xff, 0xd8]), Buffer.alloc(3000, 1), Buffer.from([0xff, 0xd9])]);
-    const aMedias = Buffer.from([0xff, 0xd8, 0x10, 0x20]);
-    fs.writeFileSync(path.join(dir, 'program-00001.jpg'), viejo);
-    fs.writeFileSync(path.join(dir, 'program-00002.jpg'), aMedias);
-    // El más nuevo (00002) es el más reciente por mtime y está truncado:
-    // debe servirse el anterior válido.
-    const servido = leerJpegVigenteEn(dir, 'program-');
-    assert.ok(servido && servido.equals(viejo), 'sirve el anterior válido');
-    // Otro prefijo no contamina.
-    assert.equal(leerJpegVigenteEn(dir, 'cam-1-'), null);
-    // Con el más nuevo completo, se sirve ese.
-    const nuevo = Buffer.concat([Buffer.from([0xff, 0xd8]), Buffer.alloc(4000, 2), Buffer.from([0xff, 0xd9])]);
-    fs.writeFileSync(path.join(dir, 'program-00003.jpg'), nuevo);
-    const servido2 = leerJpegVigenteEn(dir, 'program-');
-    assert.ok(servido2 && servido2.equals(nuevo), 'sirve el más nuevo cuando está completo');
-  } finally {
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {}
   }
 });

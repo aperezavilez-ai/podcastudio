@@ -187,7 +187,7 @@ test('v3.3.0 D1: en modo motor el monitor de programa por canvas no se monta', (
 });
 
 // ---------------------------------------------------------------------------
-// D2: liberación (v3.4.0: sin foto — monitor vivo; vigilante de vuelta)
+// D2: liberación (v3.4.0: sin foto; v3.4.1: sin monitor — vigilante de vuelta)
 // ---------------------------------------------------------------------------
 
 const liberacion = cuerpo('const [nativeReleasedTiles, setNativeReleasedTiles]', '// C-renderer: teleprompter');
@@ -252,12 +252,19 @@ test('v3.3.0 D2 → v3.3.4: al apagarse el motor, las liberadas se readquieren p
   assert.ok(liberacion.includes('nativeBusyRef.current'), 'las transiciones ordenadas no readquieren en el apagado intermedio');
 });
 
-test('v3.4.0 D2: el mosaico y el máster muestran el MONITOR VIVO de la ranura liberada y el rótulo «En el motor nativo»', () => {
+test('v3.4.1 D2: el mosaico de la liberada muestra SOLO el rótulo «En el motor nativo» — sin foto y sin monitor', () => {
   assert.ok(appSource.includes('nativeReleasedTiles[camId - 1]'), 'el mosaico consulta el espejo de liberadas por ranura');
-  assert.ok(appSource.includes('NativeMonitorImg'), 'los recuadros pintan la imagen del monitor vivo');
-  assert.ok(appSource.includes('monitorPort'), 'la URL sale del puerto del estado del motor');
-  assert.ok(appSource.includes('/monitor/program.jpg'), 'el recuadro de programa muestra la mezcla que va al aire');
   assert.ok(appSource.includes('En el motor nativo'), 'rótulo «En el motor nativo»');
+  // v3.4.1: el monitor vivo de la v3.4.0 SALE de la app — su imagen
+  // sobre el recuadro PGM (absolute inset-0 z-[5]) tapaba el canvas
+  // máster donde se dibujan los cintillos, y sus ramas JPEG en la
+  // tubería acoplaron un camino de fallo a la sesión (la transmisión
+  // murió en vivo con error de flujo -5 en mfvideosrc0). La sesión
+  // vuelve a la forma v3.3.6: ningún recuadro pide JPEG al motor.
+  assert.ok(!appSource.includes('NativeMonitorImg'), 'ningún recuadro pinta la imagen del monitor');
+  assert.ok(!appSource.includes('monitorPort'), 'la app ya no consume el puerto del monitor');
+  assert.ok(!appSource.includes('/monitor/program.jpg'), 'fuera la imagen de programa del monitor');
+  assert.ok(!appSource.includes('monitorCamUrlDeRanura'), 'fuera el resolvedor de URLs del monitor');
 });
 
 // ---------------------------------------------------------------------------

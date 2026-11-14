@@ -297,34 +297,6 @@ const VideoTile = React.forwardRef(({
   );
 });
 
-// v3.4.0 — MONITOR VIVO del motor nativo: un <img> contra el servidor
-// HTTP local del motor (127.0.0.1, puerto en nativeEngineState
-// .monitorPort) que sirve los JPEG que la tubería de sesión escribe
-// (programa y cada fuente). Refresca con marca de tiempo SOLO con la
-// ventana visible — con document.hidden el intervalo no trabaja (la
-// disciplina del gobernador de foco) — y conserva el último fotograma
-// si un refresco falla: nunca parpadea a negro ni a «Sin señal».
-const NativeMonitorImg = React.memo(function NativeMonitorImg({ url, className, alt }) {
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (!url) return undefined;
-    const id = setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      setTick((t) => t + 1);
-    }, 500);
-    return () => clearInterval(id);
-  }, [url]);
-  if (!url) return null;
-  return (
-    <img
-      src={`${url}${url.includes('?') ? '&' : '?'}t=${tick}`}
-      alt={alt || ''}
-      draggable={false}
-      className={className}
-    />
-  );
-});
-
 // PGM = canvas maestro: cuando el motor ya presentó fotogramas, el monitor de
 // programa muestra el stream del canvas (con escena, overlays y cintillos tal
 // como salen en grabación/streaming, no el <video> crudo). Su estado vive en
@@ -1838,9 +1810,13 @@ function PodcastStudioApp() {
   // (drawImage + toDataURL a 1920×1080, con una espera de un <video>
   // desechable de hasta 1200 ms por cámara): ese coste caía EN PLENA
   // transición de sesión y es la firma de los hipos de ~1,5 s medidos
-  // el 2026-11-13. Desde la v3.4.0 no hay foto: el mosaico y el máster
-  // muestran el MONITOR VIVO del motor (los JPEG que su tubería sirve
-  // por HTTP local) + el rótulo «En el motor nativo». Al volver la
+  // el 2026-11-13. Desde la v3.4.0 no hay foto. La v3.4.0 mostró en
+  // su lugar el monitor vivo del motor (JPEG por HTTP local), pero la
+  // v3.4.1 lo retira: sus ramas en la tubería mataron la transmisión
+  // en vivo (error de flujo -5 en mfvideosrc0) y su imagen sobre el
+  // recuadro PGM tapaba el canvas máster y sus cintillos. El mosaico
+  // de la liberada muestra solo el rótulo «En el motor nativo» sobre
+  // el fondo, y el máster vuelve a mostrar el canvas. Al volver la
   // fase a apagado/error, cada cámara liberada se readquiere por el
   // camino de adquisición existente (handleUsbConnect / getUserMedia)
   // — y el VIGILANTE de readquisición (política pura en
@@ -6002,29 +5978,6 @@ function PodcastStudioApp() {
       );
     }
 
-    // v3.4.0 — MONITOR VIVO en los recuadros: con el motor en sesión,
-    // una ranura liberada muestra el JPEG que la tubería sirve por
-    // HTTP local — su propia fuente en su mosaico
-    // (/monitor/cam-<n>.jpg, n = su posición en sourceNames, casada
-    // por la etiqueta como en el emparejador de liberación) y la
-    // mezcla que va al aire en el recuadro de PROGRAMA
-    // (/monitor/program.jpg) — en vez del «Sin señal» y de la foto
-    // fija de la v3.3.0.
-    const nativeMonitorBase = nativeEngineState?.monitorPort ? `http://127.0.0.1:${nativeEngineState.monitorPort}` : null;
-    const monitorCamUrlDeRanura = (slotIdx) => {
-      if (!nativeMonitorBase) return null;
-      const nombres = nativeEngineState?.sourceNames || [];
-      const candidatas = [nativeReleasedTiles[slotIdx]?.label, cameraMeta[slotIdx]?.label]
-        .filter(Boolean).map((s) => String(s).trim().toLowerCase());
-      for (let i = 0; i < nombres.length; i++) {
-        const nombre = String(nombres[i] || '').trim().toLowerCase();
-        if (nombre && candidatas.some((c) => c && (nombre.includes(c) || c.includes(nombre)))) {
-          return `${nativeMonitorBase}/monitor/cam-${i + 1}.jpg`;
-        }
-      }
-      return null;
-    };
-
     const getTileProps = (id) => {
       const idx = camSlots.indexOf(id);
       return {
@@ -6234,21 +6187,6 @@ function PodcastStudioApp() {
           return (
             <div key={`cam-persistent-slot-${id}`} className={tileClass} style={tileStyle} data-pgm-tile={id === effectiveActiveCam ? '1' : undefined}>
               <VideoTile {...getTileProps(id)} className="w-full h-full" />
-              {/* v3.4.0 — si esta ranura está liberada al motor y hay
-                  monitor vivo, su imagen REAL va encima del «Sin
-                  señal»: en el recuadro de programa (el máster), la
-                  mezcla que va al aire; en los demás, la fuente de la
-                  cámara. El overlay del teleprompter (z-45) sigue
-                  montándose sobre esta misma región, por encima. */}
-              {nativeReleasedTiles[id - 1] && nativeMonitorBase ? (
-                id === effectiveActiveCam ? (
-                  <NativeMonitorImg url={`${nativeMonitorBase}/monitor/program.jpg`} className="absolute inset-0 w-full h-full object-cover bg-black z-[5]" alt={`Programa CAM ${id} — monitor vivo del motor nativo`} />
-                ) : (
-                  monitorCamUrlDeRanura(id - 1) ? (
-                    <NativeMonitorImg url={monitorCamUrlDeRanura(id - 1)} className="absolute inset-0 w-full h-full object-cover bg-black z-[5]" alt={`CAM ${id} — monitor vivo del motor nativo`} />
-                  ) : null
-                )
-              ) : null}
             </div>
           );
         })}
@@ -6861,17 +6799,18 @@ function PodcastStudioApp() {
                   title={dualMonitorMode ? `Seleccionar CAM ${camId} en PREVIEW (PVW) · Clic en CUT para conmutar a PROGRAM` : `Seleccionar CAM ${camId} como Cámara Master`}
                 >
                    {nativeReleasedTiles[camId - 1] ? (
-                     /* v3.4.0: cámara liberada al motor nativo — su
-                        MONITOR VIVO (el JPEG de su fuente que la
-                        tubería sirve por HTTP local) + rótulo mientras
-                        la sesión siga activa. Hasta la v3.3.6 era una
-                        foto fija capturada al liberar; si el monitor
-                        aún no resuelve su URL, queda el fondo con el
-                        rótulo (declarado). */
+                     /* v3.4.1: cámara liberada al motor nativo — solo
+                        el rótulo «En el motor nativo» sobre el fondo
+                        mientras la sesión siga activa. Sin foto fija
+                        (la liberación sin foto de la v3.4.0 se
+                        conserva: nada de drawImage/toDataURL) y sin
+                        monitor: el monitor vivo de la v3.4.0 se retiró
+                        porque sus ramas JPEG acoplaron un camino de
+                        fallo a la sesión (la transmisión murió con
+                        error de flujo -5 en mfvideosrc0) y su imagen
+                        sobre el recuadro PGM tapaba el canvas máster
+                        donde se dibujan los cintillos. */
                      <div className="relative w-full h-full">
-                       {monitorCamUrlDeRanura(camId - 1) ? (
-                         <NativeMonitorImg url={monitorCamUrlDeRanura(camId - 1)} className="absolute inset-0 w-full h-full object-cover" alt={`CAM ${camId}`} />
-                       ) : null}
                        <div className="absolute inset-x-0 bottom-7 flex justify-center pointer-events-none">
                          <span className="px-2 py-0.5 rounded bg-cyan-950/85 border border-cyan-500/50 text-cyan-200 text-[9px] font-black tracking-wider uppercase">En el motor nativo</span>
                        </div>
